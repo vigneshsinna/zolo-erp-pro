@@ -48,7 +48,8 @@
         for (const key of Object.keys(values)) if (Array.isArray(values[key])) delete values[key];
         for (const key of ['_method', 'pos', 'grand_total', 'order_tax', 'total_tax', 'total_price', 'total_cost', 'total_qty', 'total_discount']) delete values[key];
         const series = config.series.find(s => String(s.id) === String(values.series_id));
-        return {...values, items, business_date: values.created_at,
+        const context = ['project_id', 'purchase_order_id', 'exchange_return_id'].reduce((refs, key) => config.context?.[key] ? {...refs, [key]: config.context[key]} : refs, {});
+        return {...values, ...context, items, business_date: values.created_at,
             transport_name: values.transporter_name || '', series_code: series?.code,
             ...(draft ? {draft_id: draft.id} : {})};
     }
@@ -101,7 +102,7 @@
         try {
             const data = payload(); busy = true;
             $(form).find('[type="submit"]').prop('disabled', true);
-            preview(data).then(checked => $.ajax({url: form.action, method: $('#entry-form-method').val() === 'PUT' ? 'PUT' : 'POST',
+            preview(data).then(checked => $.ajax({url: config.context?.post_url || form.action, method: $('#entry-form-method').val() === 'PUT' ? 'PUT' : 'POST',
                 dataType: 'json', data: {...checked, _token: token()}}))
                 .done(() => { window.location.href = config.listUrl; }).fail(failure)
                 .always(() => { busy = false; $(form).find('[type="submit"]').prop('disabled', false); });

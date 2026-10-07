@@ -1,0 +1,23 @@
+/* Document accelerators: visible New-bill actions, help dialog, unsaved-bill guard. */
+.sidebar-action a { font-weight: 600; }
+.side-menu kbd, .command-center-nav kbd {
+    margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 10px; line-height: 16px;
+    background: rgba(148, 163, 184, .25); color: inherit; border: 1px solid rgba(148, 163, 184, .45); box-shadow: none;
+}
+.command-center-nav .command-center-new { background: #15803d; color: #fff; margin-left: auto; }
+.command-center-nav .command-center-new:hover { background: #166534; }
+.command-center-nav .command-center-help {
+    padding: 3px 9px; border: 0; border-radius: 4px; background: transparent; color: #334155; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.command-center-nav .command-center-help:hover, .command-center-nav .command-center-help:focus-visible { background: #6d28d9; color: #fff; outline: none; }
+dialog#document-shortcut-help, dialog[data-owns-keys] {
+    max-width: 440px; width: calc(100% - 32px); padding: 18px 20px; border: 1px solid #cbd5e1; border-radius: 8px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, .28); color: #0f172a; background: #fff;
+}
+dialog#document-shortcut-help::backdrop, dialog[data-owns-keys]::backdrop { background: rgba(15, 23, 42, .45); }
+dialog#document-shortcut-help h3, dialog[data-owns-keys] h3 { margin: 0 0 10px; font-size: 16px; }
+dialog#document-shortcut-help table { width: 100%; margin-bottom: 12px; font-size: 13px; }
+dialog#document-shortcut-help td { padding: 3px 6px 3px 0; vertical-align: top; }
+dialog#document-shortcut-help td:first-child { width: 110px; white-space: nowrap; }
+dialog[data-owns-keys] .btn { margin: 8px 6px 0 0; }
+.dark-mode dialog#document-shortcut-help, .dark-mode dialog[data-owns-keys] { background: #0f172a; color: #e2e8f0; border-color: #334155; }

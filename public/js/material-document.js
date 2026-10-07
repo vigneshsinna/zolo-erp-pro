@@ -110,7 +110,8 @@
     $body.on('input', '.row-rate, .row-qty, .row-tax-rate', totals);
     $body.on('click', '.btn-remove-row', function () { $(this).closest('tr').remove(); totals(); });
     $(document).on('keydown', event => {
-        if (event.key === 'F2') { event.preventDefault(); $('#lims_productcodeSearch').focus().select(); }
+        // Alt+I focuses item search; F2/F12 belong to the global document shortcut registry.
+        if (event.altKey && !event.ctrlKey && event.key.toLowerCase() === 'i') { event.preventDefault(); $('#lims_productcodeSearch').focus().select(); }
     });
     $('.density-btn').on('click', function () {
         $('.density-btn').removeClass('active'); $(this).addClass('active');
@@ -212,5 +213,12 @@
             event.preventDefault(); $('#material-document-error').text('Select a catalog product for every row. Use Create item for a new product.').show();
         } else { totals(); }
     });
+    // ?new=1 is a one-shot instruction from a document shortcut: start blank, then drop only that parameter.
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('new') === '1' && !config.editId) {
+        reset(); $('#lims_productcodeSearch').trigger('focus');
+        query.delete('new');
+        window.history.replaceState(null, '', window.location.pathname + (query.toString() ? '?' + query : '') + window.location.hash);
+    }
     if (config.editId) $('.bill-card[data-id="' + config.editId + '"] .btn-load-challan, .bill-card[data-id="' + config.editId + '"] .btn-load-grn').trigger('click');
 })();

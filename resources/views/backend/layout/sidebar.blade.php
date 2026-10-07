@@ -14,6 +14,9 @@
             ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
             ->where('role_has_permissions.role_id', $effectiveRoleId)->where('permissions.name', $permission)->exists();
     };
+    $shortcutRegistry = app(\App\Services\Platform\DocumentShortcutRegistry::class);
+    $documentShortcuts = $shortcutRegistry->forUser($canNavigate, $isAdmin);
+    $shortcutFor = fn (string $id) => $shortcutRegistry->find($documentShortcuts, $id);
 @endphp
 
 <ul id="side-main-menu" class="side-menu list-unstyled d-print-none">
@@ -102,12 +105,8 @@
                     <li><a href="{{route('purchases.index', ['view' => 'orders', 'purchase_status' => 4])}}">Orders</a></li>
                     <li id="grn-list-menu"><a href="{{route('goods-received-notes.index')}}">Goods Received Note (GRN)</a></li>
                 @endif
-                @if($isAdmin || $canNavigate('purchases-add'))
-                    @if(config('commercial.enabled') && in_array('purchases.fast_entry', $enabledCapabilities, true))
-                        <li><a data-command-shortcut="F12" href="{{route('purchases.index', ['entry' => 'fast'])}}">Fast Entry · F12</a></li>
-                    @else
-                        <li id="purchase-create-menu"><a href="{{route('purchases.create')}}">New Bill</a></li>
-                    @endif
+                @if($shortcutFor('purchase'))
+                    <li id="purchase-create-menu" class="sidebar-action"><a data-document-shortcut="purchase" href="{{ $shortcutFor('purchase')['url'] }}">+ New Purchase Bill <kbd>F12</kbd></a></li>
                 @endif
                 @if($isAdmin || $canNavigate('purchases-import'))
                     <li id="purchase-import-menu"><a href="{{url('purchases/purchase_by_csv')}}">{{__('db.Import Purchase By CSV')}}</a></li>
@@ -141,10 +140,8 @@
                 @endif
                 @if($isAdmin || $canNavigate('sales-add'))
                     <li><a href="{{route('sale.pos')}}">POS Terminal</a></li>
-                    @if(config('commercial.enabled') && in_array('sales.fast_counter', $enabledCapabilities, true))
-                        <li><a data-command-shortcut="F2" href="{{route('sales.index', ['entry' => 'fast'])}}">Fast Entry · F2</a></li>
-                    @else
-                        <li id="sale-create-menu"><a href="{{route('sales.create')}}">New Bill</a></li>
+                    @if($shortcutFor('sale'))
+                        <li id="sale-create-menu" class="sidebar-action"><a data-document-shortcut="sale" href="{{ $shortcutFor('sale')['url'] }}">+ New Sales Bill <kbd>F2</kbd></a></li>
                     @endif
                 @endif
                 @if($isAdmin || $canNavigate('sales-import'))
@@ -193,7 +190,7 @@
                     <li id="quotation-list-menu"><a href="{{route('quotations.index')}}">{{__('db.Quotation List')}}</a></li>
                 @endif
                 @if($isAdmin || $canNavigate('quotes-add'))
-                    <li id="quotation-create-menu"><a href="{{route('quotations.create')}}">{{__('db.Add Quotation')}}</a></li>
+                    <li id="quotation-create-menu" class="sidebar-action"><a data-document-shortcut="quotation" href="{{route('quotations.create')}}">+ {{__('db.Add Quotation')}} <kbd>Alt+F10</kbd></a></li>
                 @endif
             </ul>
         </li>
@@ -704,8 +701,4 @@
         @endif
     @endif
 </ul>
-@if(config('commercial.enabled'))
-@push('scripts')
-<script src="{{ asset('js/command-center.js') }}"></script>
-@endpush
-@endif
+@include('backend.partials.document-shortcuts', ['documentShortcuts' => $documentShortcuts])

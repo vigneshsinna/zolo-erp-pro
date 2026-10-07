@@ -200,9 +200,9 @@
                             <div class="input-group-prepend">
                                 <span class="input-group-text" style="background:#f8fafc; border-color:#cbd5e1; color:#64748b;"><i class="dripicons-search"></i></span>
                             </div>
-                            <input type="text" id="lims_productcodeSearch" class="form-control form-control-sm" placeholder="Scan barcode or type item code / name... (Press F2 to focus)" autocomplete="off">
+                            <input type="text" id="lims_productcodeSearch" class="form-control form-control-sm" placeholder="Scan barcode or type item code / name... (Alt+I to focus)" autocomplete="off">
                             <div class="input-group-append">
-                                <span class="input-group-text text-muted" style="background:#f8fafc; border-color:#cbd5e1; font-size:11px;">F2 Quick Search</span>
+                                <span class="input-group-text text-muted" style="background:#f8fafc; border-color:#cbd5e1; font-size:11px;">Alt+I Quick Search</span>
                             </div>
                         </div>
                     </div>
