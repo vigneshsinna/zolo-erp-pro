@@ -25,8 +25,8 @@ abstract class CommercialTestCase extends CompanyErpServiceTestCase
             });
         }
         Schema::table('customers', function (Blueprint $t) { $t->decimal('credit_limit', 18, 4)->nullable(); $t->unsignedInteger('customer_group_id')->nullable(); });
-        Schema::table('units', fn (Blueprint $t) => $t->string('unit_name')->nullable());
-        DB::table('units')->update(['unit_name' => 'PCS']);
+        Schema::table('units', function (Blueprint $t) { $t->string('unit_name')->nullable(); $t->string('unit_code')->nullable(); });
+        DB::table('units')->update(['unit_name' => 'PCS', 'unit_code' => 'PCS']);
         Schema::table('products', function (Blueprint $t) {
             $t->boolean('is_active')->default(true);
             $t->unsignedInteger('unit_id')->nullable();
@@ -68,6 +68,15 @@ abstract class CommercialTestCase extends CompanyErpServiceTestCase
         }
         (require database_path('migrations/2026_10_05_000001_create_shared_commercial_contracts.php'))->up();
         config(['commercial.enabled' => true, 'compliance.enabled' => false, 'operations.enabled' => false]);
+        // The Optech master migration positions new columns with after(); the minimal fixture tables need those legacy columns.
+        foreach (['customers' => ['postal_code', 'tax_no', 'credit_days'], 'suppliers' => ['postal_code', 'vat_number', 'opening_balance'],
+            'products' => ['alert_quantity', 'tax_category_id'], 'sales' => ['sale_type'], 'purchases' => ['purchase_type', 'reference_no', 'note']] as $table => $legacyColumns) {
+            Schema::table($table, function (Blueprint $t) use ($table, $legacyColumns) {
+                foreach ($legacyColumns as $column) {
+                    if (!Schema::hasColumn($table, $column)) $t->string($column)->nullable();
+                }
+            });
+        }
         (require database_path('migrations/2026_10_13_000001_create_optech_modern_master_tables.php'))->up();
         (require database_path('migrations/2026_10_13_000002_add_optech_transport_and_addins_to_sales_table.php'))->up();
         $this->withoutMiddleware(\App\Http\Middleware\Common::class);

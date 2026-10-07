@@ -16,7 +16,6 @@ class CommercialUiWiringTest extends CommercialTestCase
     {
         parent::setUp();
         (require database_path('migrations/2026_10_13_000004_create_optech_dc_and_grn_tables.php'))->up();
-        Schema::table('units', fn (Blueprint $table) => $table->string('unit_code')->nullable());
         Schema::table('warehouses', fn (Blueprint $table) => $table->boolean('is_active')->default(true));
         DB::table('units')->update(['unit_code' => 'PC']);
         $this->withoutMiddleware(\App\Http\Middleware\RequireCapability::class);
