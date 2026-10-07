@@ -5,7 +5,7 @@
     const form = document.getElementById(config.kind + '-entry-form');
     const grid = window.commandCenterGrid;
     const purchase = config.kind === 'purchase';
-    let busy = false, draft = null, paymentError = '';
+    let busy = false, paymentError = '';
     const $message = $('<div class="alert" role="status" style="display:none">').insertBefore(form);
     const show = (text, failed = false) => $message.removeClass('alert-danger alert-success').addClass(failed ? 'alert-danger' : 'alert-success').text(text).show();
     const failure = xhr => show(xhr.responseJSON?.message || xhr.message || 'Unable to complete this action.', true);
@@ -34,7 +34,7 @@
             }
             if (!Number(id)) throw new Error('Select a catalog product for every row. Use Create item for a new product.');
             const unit = config.units.find(u => u.unit_name === $row.find('.row-unit-select').val());
-            return {
+            const line = {
                 product_id: id, product_name: $row.find('.row-item-name').val(), product_code: $row.find('.row-product-code').val(),
                 qty: $row.find('.row-qty').val(), [purchase ? 'net_unit_cost' : 'net_unit_price']: $row.find('.row-rate').val(),
                 [purchase ? 'purchase_unit_id' : 'sale_unit_id']: unit?.id,
@@ -43,6 +43,10 @@
                 product_batch_id: $row.attr('data-batch-id') || null,
                 ...(purchase && $row.find('.row-batch-val').val() ? {batch: {batch_no: $row.find('.row-batch-val').val(), expired_date: $row.find('.row-expire-val').val() || null}} : {})
             };
+            // Extended tracking (variant, piece, HSN, freight, dimensions, batch MRP/mfg date) is added by document-aids.js.
+            const extras = window.zoloDocumentAids ? window.zoloDocumentAids.lineExtras(row) : {};
+            if (extras.batch) { if (line.batch) line.batch = {...line.batch, ...extras.batch}; delete extras.batch; }
+            return {...line, ...extras};
         });
         if (!items.length) throw new Error('Add at least one item.');
         for (const key of Object.keys(values)) if (Array.isArray(values[key])) delete values[key];
@@ -51,7 +55,7 @@
         const context = ['project_id', 'purchase_order_id', 'exchange_return_id'].reduce((refs, key) => config.context?.[key] ? {...refs, [key]: config.context[key]} : refs, {});
         return {...values, ...context, items, business_date: values.created_at,
             transport_name: values.transporter_name || '', series_code: series?.code,
-            ...(draft ? {draft_id: draft.id} : {})};
+            };
     }
     function preview(data) {
         return api('/preview', data).then(result => {
@@ -84,16 +88,10 @@
         $(form).find('[name="' + (purchase ? 'status' : 'sale_status') + '"]').val(1);
         form.requestSubmit();
     });
+    // Shared mode: document-workspace.js turns this into Save draft (server draft tabs). Legacy mode posts a status-3 draft bill.
     $('#btn-form-save-as').text(config.shared ? 'Save draft' : 'Save as draft').on('click', () => {
-        if (!config.shared) {
-            $(form).find('[name="' + (purchase ? 'status' : 'sale_status') + '"]').val(3); form.requestSubmit(); return;
-        }
-        if (busy) return;
-        try {
-            const data = payload(); busy = true;
-            api('/drafts', {id: draft?.id, version: draft?.version || 0, payload: {...data, command_center_fields: fields()}})
-                .done(result => { draft = result.data; setDraftId(draft.id); show('Draft saved.'); loadDrafts(); }).fail(failure).always(() => { busy = false; });
-        } catch (error) { failure(error); }
+        if (config.shared) return;
+        $(form).find('[name="' + (purchase ? 'status' : 'sale_status') + '"]').val(3); form.requestSubmit();
     });
     $(form).on('submit', function (event) {
         if (!config.shared) return;
@@ -178,7 +176,7 @@
     });
 
     $(document).on('command-center-reset', () => {
-        draft = null; paymentError = ''; $message.hide(); $reason.prop('hidden', true).find('input').prop('required', false).val('');
+        paymentError = ''; $message.hide(); $reason.prop('hidden', true).find('input').prop('required', false).val('');
         $(form).find('[name="delivery_challan_id"], [name="goods_received_note_id"], [name="draft_id"]').remove();
         $(form).find('[name="idempotency_key"]').val(crypto.randomUUID());
         $(form).find('[name="status"], [name="sale_status"]').val(1);
@@ -217,53 +215,5 @@
         grid.recalcTableSummary();
     });
 
-    function setDraftId(id) {
-        $(form).find('[name="draft_id"]').remove();
-        $('<input type="hidden" name="draft_id">').val(id).appendTo(form);
-    }
-    function loadDrafts() {
-        if (!config.shared) return;
-        api('/drafts', {}, 'GET').done(result => {
-            $('.command-center-drafts').remove();
-            const $list = $('<div class="command-center-drafts">').prependTo('#side-bill-list');
-            result.data.forEach(record => {
-                $('<button type="button" class="btn btn-sm btn-outline-secondary d-block mb-1">').text('Resume draft #' + record.id).appendTo($list).on('click', () => {
-                    grid.resetFormToNew(); grid.switchWorkspaceMode('voucher');
-                    draft = record; setDraftId(record.id); const data = JSON.parse(record.payload_json);
-                    for (const [name, value] of Object.entries(data.command_center_fields || data)) {
-                        const input = form.elements.namedItem(name);
-                        if (input && typeof value !== 'object' && !['_token', '_method', 'idempotency_key'].includes(name)) input.value = value;
-                    }
-                    const editingId = data.command_center_fields?.[config.kind + '_id'];
-                    if (editingId) {
-                        form.action = config.listUrl + '/' + editingId;
-                        $('#entry-form-method').val('PUT');
-                        $reason.prop('hidden', false).find('input').prop('required', true);
-                        $('#doc-title-text').text('Edit ' + config.kind + ' #' + editingId + ' (draft)');
-                    }
-                    for (const name of ['delivery_challan_id', 'goods_received_note_id']) {
-                        if (data[name]) $('<input type="hidden">').attr('name', name).val(data[name]).appendTo(form);
-                    }
-                    $('[id^="drawer-"]').each(function () {
-                        const hidden = document.getElementById(this.id.replace('drawer-', 'hidden-'));
-                        if (hidden) $(this).val(hidden.value);
-                    });
-                    $('#drawer-paying-method').val($('#input-paying-method').val()).trigger('change');
-                    $('#drawer-paying-method, #drawer-account-id').selectpicker('refresh');
-                    $('#order-table-body tr.order-item-row').remove();
-                    (data.items || []).forEach(item => {
-                        const product = grid.products.find(p => String(p.id) === String(item.product_id));
-                        const unitId = item[purchase ? 'purchase_unit_id' : 'sale_unit_id'];
-                        grid.addProductRow({...item, preserve_line: true, product_name: item.product_name || product?.name || '',
-                            [purchase ? 'cost' : 'price']: item[purchase ? 'net_unit_cost' : 'net_unit_price'],
-                            batch_no: item.batch?.batch_no || '', expired_date: item.batch?.expired_date || '',
-                            unit: config.units.find(u => u.id === Number(unitId))?.unit_name || product?.unit});
-                    });
-                    $('#customer_id, #supplier_id').val(data[purchase ? 'supplier_id' : 'customer_id']).trigger('change');
-                    $('.selectpicker').selectpicker('refresh'); grid.recalcTableSummary(); show('Draft #' + record.id + ' loaded.');
-                });
-            });
-        }).fail(failure);
-    }
-    loadDrafts();
+    // Draft tabs (create, autosave, switch, discard) live in document-workspace.js; this file only posts.
 })();

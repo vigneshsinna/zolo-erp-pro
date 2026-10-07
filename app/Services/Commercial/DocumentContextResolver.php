@@ -48,6 +48,7 @@ class DocumentContextResolver
     private function resolve(array $refs, string $kind, CompanyContext $context, int $actor, bool $strict): array
     {
         $out = [];
+        $valid = [];
         $warnings = [];
         $blocking = [];
         foreach ($refs as $key => $id) {
@@ -59,6 +60,7 @@ class DocumentContextResolver
                     'exchange_return_id' => $this->exchangeReturn($id, $kind, $context),
                     'purchase_order_id' => $this->purchaseOrder($id, $kind, $context),
                 });
+                $valid[] = $key;
             } catch (\Throwable $error) {
                 if ($strict) throw $error;
                 if (in_array($key, self::REQUIRED, true)) {
@@ -68,7 +70,7 @@ class DocumentContextResolver
                 }
             }
         }
-        return ['context' => $out, 'warnings' => $warnings, 'blocking' => $blocking];
+        return ['context' => $out, 'valid' => $valid, 'warnings' => $warnings, 'blocking' => $blocking];
     }
 
     private function project(int $id, string $kind, CompanyContext $context, int $actor): array

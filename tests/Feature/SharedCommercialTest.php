@@ -167,13 +167,13 @@ class SharedCommercialTest extends CommercialTestCase
     public function test_drafts_are_isolated_versioned_and_have_no_effects(): void
     {
         $service = app(CommercialDraftService::class);
-        $draft = $service->save('sale', ['items' => []], null, 0, $this->context(), 1);
-        $changed = $service->save('sale', ['note' => 'Changed'], $draft->id, 1, $this->context(), 1);
+        $draft = $service->save('sale', $this->snapshot('sale'), null, 0, $this->context(), 1)['draft'];
+        $changed = $service->save('sale', $this->snapshot('sale', ['note' => 'Changed']), $draft->id, 1, $this->context(), 1)['draft'];
         $this->assertSame(2, $changed->version);
         $this->assertSame(0, DB::table('sales')->count());
         $this->assertSame(0, DB::table('stock_movements')->count());
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-        $service->save('sale', [], $draft->id, 1, $this->context(), 1);
+        $this->expectException(\Illuminate\Http\Exceptions\HttpResponseException::class);
+        $service->save('sale', $this->snapshot('sale'), $draft->id, 1, $this->context(), 1);
     }
 
     public function test_gated_routes_foreign_party_and_closed_period_fail_without_writes(): void

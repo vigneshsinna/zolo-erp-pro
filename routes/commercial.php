@@ -20,6 +20,8 @@ Route::prefix('commercial')->middleware(['auth', 'company.context', RequireShare
         Route::get('{kind}/clone/{id}', [CommercialController::class, 'cloneDocument']);
         Route::get('{kind}/drafts', [CommercialController::class, 'drafts']);
         Route::post('{kind}/drafts', [CommercialController::class, 'draft']);
+        Route::get('{kind}/drafts/{id}', [CommercialController::class, 'showDraft']);
+        Route::delete('{kind}/drafts/{id}', [CommercialController::class, 'destroyDraft']);
         Route::post('{kind}/masters/{resource}', [CommercialController::class, 'inlineMaster']);
         Route::post('{kind}/{id}/reverse', [CommercialController::class, 'reverse']);
         Route::get('{kind}/{id}/reverse', [CommercialController::class, 'reversalForm']);

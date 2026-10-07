@@ -459,6 +459,9 @@
                                 <a href="javascript:void(0)" class="side-action-btn print btn-side-print" data-id="{{ $bill->id }}" title="Print invoice">
                                     <i class="dripicons-print"></i> Print
                                 </a>
+                                <a href="javascript:void(0)" class="side-action-btn copy btn-side-copy" data-id="{{ $bill->id }}" title="Copy this bill into a new draft" hidden>
+                                    <i class="dripicons-copy"></i> Copy
+                                </a>
                             </div>
                         </div>
                     @empty
@@ -2146,6 +2149,7 @@
         tr.find('.row-total').val(lineTotal.toFixed(decimalPlaces));
 
         recalcTableSummary();
+        $(document).trigger('command-center-row-product', [tr]);
     }
 
     // --- Searchable Item Name in Table Rows ---
@@ -2369,6 +2373,7 @@
         }
         recalcTableSummary();
         $('#items-meta-count').text($('#order-table-body tr.order-item-row').length + ' line(s)');
+        $(document).trigger('command-center-row-added', [tr]);
     }
 
     // Manual Add Row (+ Add row button)

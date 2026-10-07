@@ -131,6 +131,9 @@ class CommercialApplicationService
                     throw ValidationException::withMessages(['purchase_order_id' => 'Link an active order for the same supplier and warehouse.']);
                 }
             }
+            if ($kind === 'purchase' && (int) ($data['status'] ?? 1) === 4 && ($data['paid_amount'] ?? 0) > 0) {
+                throw ValidationException::withMessages(['paid_amount' => 'An order cannot receive payment until it is billed.']);
+            }
             if ($kind === 'sale' && !in_array((int) ($data['sale_status'] ?? 1), [1, 2], true)) {
                 throw ValidationException::withMessages(['sale_status' => 'Use Completed or Pending.']);
             }

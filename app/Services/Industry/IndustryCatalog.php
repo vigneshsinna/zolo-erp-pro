@@ -13,7 +13,7 @@ final class IndustryCatalog
         'textile' => ['quantity_scale' => 3, 'units' => ['MTR'], 'uqc' => 'MTR',
             'labels' => ['dispatch' => 'Material DC', 'receipt' => 'Job Work GRN', 'warehouse' => 'Godown'],
             'document_fields' => ['transporter', 'lr_no', 'lr_date', 'bale_count', 'bundle_count'],
-            'print' => ['lines' => 68, 'columns' => 80], 'fast_entry' => ['previous_rates', 'pending_bills', 'outstanding', 'inline_masters', 'copy_invoice'],
+            'print' => ['lines' => 68, 'columns' => 80], 'entry_aids' => ['previous_rates' => true, 'outstanding' => true, 'clone_invoice' => true, 'inline_party' => true, 'inline_item' => true, 'tracking' => true],
             'reports' => ['job_work_pending', 'job_work_shrinkage', 'stock_lot', 'previous_rates']],
         'timber' => ['quantity_scale' => 4, 'units' => ['PCS', 'CFT', 'CBM'], 'dimension_unit' => 'ft',
             'formula_version' => 'rectangular-v1', 'labels' => [], 'reports' => ['piece_volume', 'conversion_yield']],

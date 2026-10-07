@@ -103,6 +103,9 @@ class CommercialController extends Controller
         $context = $this->context($request);
         $data = $legacy ? app(LegacyCommercialCommand::class)->data($request, $kind === 'purchase', $context) : $request->all();
         $key = $this->idempotencyKey($request);
+        if ($request->filled('draft_id')) {
+            app(CommercialDraftService::class)->assertPostable($kind, $request->integer('draft_id'), $context, $request->user()->id);
+        }
         $document = DB::transaction(function () use ($request, $kind, $data, $key, $context) {
             $document = $kind === 'sale'
                 ? app(SaleApplicationService::class)->create(new SaleCommand($data, $key, $request->user()->id, $context))
@@ -167,6 +170,9 @@ class CommercialController extends Controller
         $context = $this->context($request);
         $data = app(LegacyCommercialCommand::class)->data($request, $kind === 'purchase', $context);
         $document = ($kind === 'sale' ? Sale::class : Purchase::class)::visibleIn($context)->findOrFail($id);
+        if ($request->filled('draft_id')) {
+            app(CommercialDraftService::class)->assertPostable($kind, $request->integer('draft_id'), $context, $request->user()->id);
+        }
         $replacement = DB::transaction(function () use ($document, $data, $request, $kind, $context) {
             $replacement = app(CommercialReversalService::class)->replace($document, $data,
                 $this->idempotencyKey($request), $request->business_date, $request->reason, $context);
@@ -236,6 +242,7 @@ class CommercialController extends Controller
             ->join('purchases', 'product_purchases.purchase_id', '=', 'purchases.id')
             ->where('purchases.company_id', $context->companyId)
             ->where('product_purchases.product_id', $productId)
+            ->where('purchases.supplier_id', $partyId)
             ->whereNotNull('purchases.posted_at')
             ->orderByDesc('purchases.created_at')
             ->select('purchases.reference_no', 'purchases.created_at', 'product_purchases.net_unit_cost as cost', 'product_purchases.total as amount', 'product_purchases.qty', 'product_purchases.tax_rate')
@@ -266,16 +273,35 @@ class CommercialController extends Controller
 
     public function draft(Request $request, string $kind)
     {
-        $request->validate(['payload' => 'required|array', 'id' => 'nullable|integer|min:1', 'version' => 'required|integer|min:0']);
-        $draft = app(CommercialDraftService::class)->save($kind, $request->payload, $request->id, $request->version,
-            $this->context($request), $request->user()->id);
-        return response()->json(['data' => $draft]);
+        $request->validate(['payload' => 'required|array', 'id' => 'nullable|integer|min:1', 'version' => 'required|integer|min:0',
+            'party_id' => 'nullable|integer|min:0', 'party_name' => 'nullable|string|max:150']);
+        $result = app(CommercialDraftService::class)->save($kind, $request->payload, $request->id, $request->version,
+            $this->context($request), $request->user()->id, $request->only(['party_id', 'party_name']));
+        return response()->json(['data' => $result['draft'], 'warnings' => $result['warnings']]);
     }
 
+    /** Tab strip metadata only; the payload is fetched one draft at a time. */
     public function drafts(Request $request, string $kind)
     {
-        app(CommercialPermission::class)->assert($kind === 'sale' ? 'sales-add' : 'purchases-add', $this->context($request), $request->user()->id);
-        return response()->json(['data' => app(CommercialDraftService::class)->query($kind, $this->context($request), $request->user()->id)->orderByDesc('id')->limit(30)->get()]);
+        $context = $this->context($request);
+        app(CommercialPermission::class)->assert($kind === 'sale' ? 'sales-add' : 'purchases-add', $context, $request->user()->id);
+        $drafts = app(CommercialDraftService::class);
+        $drafts->prune($kind, $context, $request->user()->id);
+        return response()->json(['data' => $drafts->meta($drafts->query($kind, $context, $request->user()->id)),
+            'limit' => CommercialDraftService::MAX_OPEN, 'open' => $drafts->owned($kind, $context, $request->user()->id)->count()]);
+    }
+
+    public function showDraft(Request $request, string $kind, int $id)
+    {
+        $context = $this->context($request);
+        app(CommercialPermission::class)->assert($kind === 'sale' ? 'sales-add' : 'purchases-add', $context, $request->user()->id);
+        return response()->json(['data' => app(CommercialDraftService::class)->load($kind, $id, $context, $request->user()->id)]);
+    }
+
+    public function destroyDraft(Request $request, string $kind, int $id)
+    {
+        app(CommercialDraftService::class)->delete($kind, $id, $this->context($request), $request->user()->id);
+        return response()->json(['success' => true]);
     }
 
     public function payment(Request $request, string $kind, int $id)

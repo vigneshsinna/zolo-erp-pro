@@ -125,7 +125,7 @@ class CommercialUiWiringTest extends CommercialTestCase
         $data = $kind === 'sale' ? $this->saleData($product) : $this->purchaseData($product);
         $data['items'][0][$kind === 'sale' ? 'net_unit_price' : 'net_unit_cost'] = 1.2345;
         $data += ['transport_name' => 'Audit transport', 'bale_no' => 'BALE-1', 'lr_no' => 'LR-1'];
-        $draft = $this->postJson('/commercial/'.$kind.'/drafts', ['version' => 0, 'payload' => $data])->assertOk()->json('data');
+        $draft = $this->postJson('/commercial/'.$kind.'/drafts', ['version' => 0, 'payload' => $this->snapshot($kind, ['note' => 'unfinished'])])->assertOk()->json('data');
         $data['draft_id'] = $draft['id'];
         $preview = $this->postJson('/commercial/'.$kind.'/preview', $data)->assertOk()->json('data');
         $response = $this->postJson($kind === 'sale' ? '/sales' : '/purchases', array_replace($data, $preview, ['idempotency_key' => 'reviewed-zero']));

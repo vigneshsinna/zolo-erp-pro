@@ -190,7 +190,7 @@ class CommercialBoundariesTest extends CommercialTestCase
     public function test_additive_migration_resumes_without_removing_document_or_draft_history(): void
     {
         $this->postJson('/commercial/sale', $this->saleData($this->stock()), ['Idempotency-Key' => 'migration-source'])->assertCreated();
-        $this->postJson('/commercial/sale/drafts', ['version' => 0, 'payload' => ['note' => 'Retain me']])->assertOk();
+        $this->postJson('/commercial/sale/drafts', ['version' => 0, 'payload' => $this->snapshot('sale', ['note' => 'Retain me'])])->assertOk();
         $migration = require database_path('migrations/2026_10_05_000001_create_shared_commercial_contracts.php');
         $migration->up();
         $this->assertSame(1, DB::table('sales')->count());

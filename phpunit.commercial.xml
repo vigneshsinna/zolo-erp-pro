@@ -6,6 +6,10 @@
     <file>tests/Feature/CommercialBoundariesTest.php</file>
     <file>tests/Feature/CommercialBrowserFixtureTest.php</file>
     <file>tests/Feature/CommercialPerformanceTest.php</file>
+    <file>tests/Feature/CommercialUiWiringTest.php</file>
+    <file>tests/Feature/DocumentEntryTest.php</file>
+    <file>tests/Feature/WorkspaceDraftTest.php</file>
+    <file>tests/Feature/PurchaseOrderLifecycleTest.php</file>
   </testsuite></testsuites>
   <php><env name="APP_ENV" value="testing"/><env name="CACHE_DRIVER" value="array"/><env name="SESSION_DRIVER" value="array"/><env name="QUEUE_CONNECTION" value="sync"/></php>
 </phpunit>

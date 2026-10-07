@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.2/phpunit.xsd" bootstrap="vendor/autoload.php" colors="true" cacheDirectory=".phpunit.cache">
+  <!-- Real normal Sales/Purchase pages rendered against the seeded development database inside rolled-back transactions. -->
+  <testsuites><testsuite name="Document entry pages (seeded database)">
+    <file>tests/Feature/DocumentEntryWebTest.php</file>
+    <file>tests/Feature/OptechMasterWebTest.php</file>
+  </testsuite></testsuites>
+  <php><env name="APP_ENV" value="testing"/><env name="CACHE_DRIVER" value="array"/><env name="SESSION_DRIVER" value="array"/><env name="QUEUE_CONNECTION" value="sync"/></php>
+</phpunit>

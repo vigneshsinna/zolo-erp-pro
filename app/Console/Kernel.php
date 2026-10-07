@@ -30,6 +30,7 @@ class Kernel extends ConsoleKernel
         if (config('commercial.enabled') && config('compliance.enabled') && config('deployment.dispatch_worker_confirmed')) {
             $schedule->command('erp:dispatch-documents')->everyMinute()->withoutOverlapping();
         }
+        if (config('commercial.enabled')) $schedule->command('commercial:prune-drafts')->dailyAt('03:30')->withoutOverlapping();
         // Global legacy purchase/alert jobs and the test mailer are not production schedules.
 
     }
