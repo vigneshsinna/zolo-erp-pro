@@ -1,4 +1,4 @@
-﻿# zoloERP Pro — Persistent Session Memory & State
+# zoloERP Pro — Persistent Session Memory & State
 
 > **CRITICAL AGENT INSTRUCTION (Crash Recovery & Session Persistence)**:
 > This document is the single persistent source of truth for the active development session.
@@ -12,11 +12,13 @@
 - **Active Git Branch:** ui
 - **Upstream Remotes:**
   - `upstream`: https://github.com/nandha3d/zolo-erp-pro.git (`ui`)
-  - `origin`: https://github.com/vigneshsinna/zolo-erp-pro.git (`ui`)
-- **Latest Commits:** see `git log` on `ui`; the document-entry series is `test(commercial) fixture` → `feat(ui) shortcuts + ?new=1` → `feat(ui) fast-entry aids + server draft tabs` → `refactor(ui) remove duplicate entry UI + capabilities` → `test(docs) verification + documentation`.
+  - `nandha-origin`: https://github.com/nandha3d/zolo-erp-pro.git (`ui`, `enhanced-ui`)
+  - `origin`: https://github.com/vigneshsinna/zolo-erp-pro.git (`ui`, `enhanced-ui`)
+- **Latest Commits:** see `git log` on `ui`; the document-entry series is `test(commercial) fixture` → `feat(ui) shortcuts + ?new=1` → `feat(ui) fast-entry aids + server draft tabs` → `refactor(ui) remove duplicate entry UI + capabilities` → `test(docs) verification + documentation`. Prior synchronized commits: `e6d7583` — "Wire command center UI and material workflows", `b1dbcc3` — "docs(memory): reflect removal of enhanced-ui branch and sync ui", `02054cd` — "docs(memory): update session memory metadata for branch ui and single host state", `855f02d` — "docs(backup): create chat session dialogue history and raw transcript backup".
 - **Working Tree State:** clean after the series above (commits are local until pushed; the user approved pushing once complete).
+- **Test Suite Status:** 46/46 tests passing (CommercialUiWiringTest, DeliveryChallanWebTest, GoodsReceivedNoteWebTest, OptechVoucherWebTest, OptechMasterWebTest)
 - **Database & Server State:**
-  - Database: MariaDB (Ubuntu WSL daemon) running on port 3307 with all 179 tables and Optech master migrations applied and seeded (`sale_types`, `purchase_types`, `dc`, `grn`).
+  - Database: MariaDB running with all 179 tables and Optech master migrations applied and seeded (`sale_types`, `purchase_types`, `dc`, `grn`).
   - Web Server: Single instance on `http://localhost:8080` (bound to `0.0.0.0:8080 -t public server.php`).
 - **Chat & Transcript Backups:**
   - Raw JSONL: [`documents/chat_backups/session_47d4cc38_raw_transcript_20261007.jsonl`](file:///v:/pers/Freelance/zolo-erp-pro/documents/chat_backups/session_47d4cc38_raw_transcript_20261007.jsonl)
