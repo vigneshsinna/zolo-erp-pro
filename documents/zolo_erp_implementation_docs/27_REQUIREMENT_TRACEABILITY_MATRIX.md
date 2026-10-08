@@ -31,8 +31,8 @@ Map every useful Optech requirement into shared core or an optional capability s
 | 68-line dot matrix | Print profile capability | Textile default |
 | Returns | Core reversal engine | none |
 | DC/GRN job work | Generic Subcontracting | Textile process labels |
-| F12 purchase | Fast purchase mode | Textile shortcut preset |
-| F2 sales | Fast sales mode | Wholesale/Textile preset |
+| F12 purchase | New Purchase Bill accelerator on the normal page | Global shortcut registry |
+| F2 sales | New Sales Bill accelerator on the normal page | Global shortcut registry |
 | Live customer balance | Open-item query | none |
 | Xerox bill | Reprint or clone command | familiar label |
 | F4/F5/F6/F7 vouchers | Core accounting | shortcut preset |

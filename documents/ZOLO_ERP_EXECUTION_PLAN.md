@@ -332,8 +332,8 @@ Append one line per finished phase: `Phase N — date — PR/commit — tests: X
 3. Legacy `SaleController::store/update/destroy` and POS: keep their line-building logic but call `SalePostingService` (and reversal on update/destroy) — this is how web sales finally reach the ledger. `Api/V1/SaleApiController` → `SaleApplicationService`.
 4. Same for purchases: `PurchasePostingService` + `PurchaseApplicationService`; landed cost (by value/qty/weight/manual); service items = no stock; optional PO → GRN → bill linkage (not mandatory); "update item cost/HSN on save" checkbox.
 5. Credit control: credit limit/days on party (attributes or columns), override permission `sales.override_credit` + audit.
-6. **Fast Sales (F2)** (capability `sales.fast_counter`) — new Blade view, NOT a second engine; repurpose `Modules/OptechSpeedBilling` as `FastSales` UI module or a core view. Keyboard focus manager (vanilla JS/jQuery): Space party search, Enter advance, Alt+C new party inline, F6 new item inline, Ctrl+S previous rates, Ctrl+B pending bills, Alt+Y party statement, Ctrl+Enter save, Esc close. Header HUD Previous / Current / Total (from open items). Xerox (clone prior bill), AutoSave drafts (server-side `sale_drafts`), bill sundry drawer, transport/LR fields (attributes), save → print dialog.
-7. **Fast Purchase (F12)** same pattern.
+6. **New Sales Bill (F2) / New Purchase Bill (F12)** — keyboard accelerators into the normal `/sales` and `/purchases` pages, not separate Fast Sales / Fast Purchase modules and not a second engine. The standalone entry screens, the `sales.fast_counter` / `purchases.fast_entry` capabilities and the empty `Modules/OptechSpeedBilling` scaffold were removed; see `documents/DOCUMENT_ENTRY_CONSOLIDATION.md`.
+7. The same rule applies to every document: a shortcut opens the existing page in its new-document state.
 8. Party search service (`PartyQueryService`) with city-prefix/alias search; product search (`ProductQueryService`) — p95 ≤300 ms on 50k items.
 
 **Verify**

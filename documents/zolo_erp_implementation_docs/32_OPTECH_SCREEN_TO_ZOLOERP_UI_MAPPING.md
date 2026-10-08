@@ -1,5 +1,7 @@
 # 32 - Optech Screen to Modern zoloERP UI Mapping
 
+> **Update:** wherever this document says Fast Sales / Fast Purchase / Fast Entry, read it as the keyboard-first mode of the *normal* Sales and Purchase pages (F2 / F12 are accelerators, not separate screens). See [DOCUMENT_ENTRY_CONSOLIDATION.md](../DOCUMENT_ENTRY_CONSOLIDATION.md).
+
 > **Repository:** `vigneshsinna/zolo-erp-pro`  
 > **Target:** zoloERP Pro / Laravel 10  
 > **Status:** UI modernization implementation specification  
@@ -107,8 +109,8 @@ A modern ERP must not become slower merely to look spacious.
 Fast modes preserve documented behavior:
 
 ```text
-F2          Fast Sales
-F12         Fast Purchase
+F2          New Sales Bill (normal Sales page)
+F12         New Purchase Bill (normal Purchase page)
 F9          Voucher Hub
 F4          Contra
 F5          Payment

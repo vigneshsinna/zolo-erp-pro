@@ -1,5 +1,7 @@
 # 33 - zoloERP Common UI Component Library
 
+> **Update:** wherever this document says Fast Sales / Fast Purchase / Fast Entry, read it as the keyboard-first mode of the *normal* Sales and Purchase pages (F2 / F12 are accelerators, not separate screens). See [DOCUMENT_ENTRY_CONSOLIDATION.md](../DOCUMENT_ENTRY_CONSOLIDATION.md).
+
 > **Repository:** `vigneshsinna/zolo-erp-pro`  
 > **Target stack:** Laravel Blade + Bootstrap foundation + current zoloERP CSS/JS  
 > **Status:** Target component contract  

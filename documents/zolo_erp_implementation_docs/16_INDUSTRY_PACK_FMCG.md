@@ -32,7 +32,6 @@ core.accounting
 core.gst
 inventory.multi_uom
 inventory.batch_expiry
-sales.fast_counter
 sales.wholesale
 communications.whatsapp
 sales.route_distribution        optional by subtype

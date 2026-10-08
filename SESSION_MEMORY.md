@@ -8,18 +8,13 @@
 ---
 
 ## 1. Active Session Metadata
-- **Last Updated:** 2026-10-07 19:27:00 (+05:30)
+- **Last Updated:** 2026-10-08 (+05:30) — document entry consolidation complete (section 13)
 - **Active Git Branch:** ui
 - **Upstream Remotes:**
   - `upstream`: https://github.com/nandha3d/zolo-erp-pro.git (`ui`)
   - `origin`: https://github.com/vigneshsinna/zolo-erp-pro.git (`ui`)
-- **Latest Commits:**
-  - `855f02d` — "docs(backup): create chat session dialogue history and raw transcript backup"
-  - `38a4f02` — "docs(memory): update session memory with commit 45b0749"
-  - `45b0749` — "feat(gst): support external live GST provider with high free limits and fallback to statutory engine"
-  - `1346775` — "feat(gst): implement 100% free professional GSTIN engine with statutory auto-fill, Luhn validation, and cross-party memory"
-  - `f5e3e42` — "feat(commercial): add in-place quick create party modal and execute database fresh slate wipe"
-- **Working Tree State:** Command center navigation and entry mode changes are complete and uncommitted on `ui`. Current validation is recorded below.
+- **Latest Commits:** see `git log` on `ui`; the document-entry series is `test(commercial) fixture` → `feat(ui) shortcuts + ?new=1` → `feat(ui) fast-entry aids + server draft tabs` → `refactor(ui) remove duplicate entry UI + capabilities` → `test(docs) verification + documentation`.
+- **Working Tree State:** clean after the series above (commits are local until pushed; the user approved pushing once complete).
 - **Database & Server State:**
   - Database: MariaDB (Ubuntu WSL daemon) running on port 3307 with all 179 tables and Optech master migrations applied and seeded (`sale_types`, `purchase_types`, `dc`, `grn`).
   - Web Server: Single instance on `http://localhost:8080` (bound to `0.0.0.0:8080 -t public server.php`).
@@ -597,7 +592,7 @@ Addressed user inquiry & requirement:
    - Review pending screens in documents/zolo_erp_implementation_docs/32_OPTECH_SCREENS_AUDIT_AND_BACKEND_GAP_REPORT.md.
    - Continue audit and modernization of remaining modules (Job Work, Production, GST).
 
-## 11. Completed Command Center Consolidation (2026-10-07)
+## 11. Completed Command Center Consolidation (2026-10-07) — SUPERSEDED by section 13 for entry modes
 
 - Work on `ui`, as explicitly required by the user. Preserve all current uncommitted edits.
 - Keep `App\Services\Commercial` and its shared pricing, posting, draft, reversal, and permission services.
@@ -625,3 +620,15 @@ Addressed user inquiry & requirement:
 - Actual local database lacks chart-of-accounts/semantic posting mappings. Do not invent real financial mappings: posting is correctly blocked until company setup. Fixture accounts were created only in the disposable SQLite DB.
 - Full report: documents/zolo_erp_implementation_docs/33_UI_ACTION_WIRING_AUDIT.md. Proof: scratch/ui-wiring-challan-proof.jpg and scratch/ui-wiring-purchase-responsive-proof.jpg. Browser tab closed; disposable server stopped after verification. No deployment or commit performed.
 - Next work follows the user's next request. This audit does not certify all optional ERP modules/reference screens in the modernization plan.
+
+
+## 13. Document Entry Consolidation (2026-10-08)
+
+Decision record: `documents/DOCUMENT_ENTRY_CONSOLIDATION.md`. **There is no separate Fast Entry module.**
+
+- F2 / F12 (and Shift/Alt variants, Alt+F10) are accelerators from one registry (`DocumentShortcutRegistry` → `public/js/document-shortcuts.js`) that open the *existing* document page in new state (`?new=1`). Ctrl+F2 (Sales Order) and Ctrl+F12 (Purchase Order) stay **unassigned**: PO gaps are documented (shares the bill number series, never closes after receipts); `sale_status 2` is Pending, not an order lifecycle.
+- Removed: `commercial/entry.blade.php`, `commercial-entry.js`, `?entry=fast` hijack, `commercial/{sale,purchase}/entry` routes, `CommercialController::entry`, `Modules/OptechSpeedBilling` scaffold, capabilities `sales.fast_counter` / `purchases.fast_entry` (migration `2026_10_14_000002` deletes rows FK-safely and renames settings `fast_entry` → `entry_aids`). `commercial-entry.css` stays (normal pages use it).
+- Normal pages now have: server draft tabs (`document-workspace.js`, `CommercialDraftService`, migration `2026_10_14_000001` adds title/party metadata), entry aids (`document-aids.js`: previous rates, outstanding/pending bills, copy bill, F6 item, extended tracking), `DocumentContextResolver` for project/exchange/order references, and still post through the legacy adapter into the shared services.
+- Proof: PHP `DocumentEntryTest`, `DocumentEntryWebTest`, `WorkspaceDraftTest`, `PurchaseOrderLifecycleTest`, `CapabilityRetirementTest`; real-browser `tests/Browser/*.spec.mjs` (48 + 31 checks on the normal pages, README there). Full company suite has the same 16 failures as before this work (pre-existing; none new).
+- Known pre-existing failures (not caused by this work): 15F+1E in `phpunit.company.xml` (CapabilityEngineTest ×3, CompanyWriterTest ×11, ErpServiceRegressionTest ×1, StockLedgerMigrationTest ×1), two stale-text tests in `OperationsWebTest`, and `DeploymentReadinessTest::test_offsite_copy…` (mysqldump on the disposable server).
+- Environment notes: WSL MariaDB (3307) may be stopped; the browser specs use a throw-away clone `zolo_browser` on the disposable MySQL (33084) — see `tests/Browser/README.md`. Never run two PHPUnit suites against `zolo_test_phase4b` at once.

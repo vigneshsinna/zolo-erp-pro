@@ -1,5 +1,7 @@
 # Phase 6: shared commercial posting and fast entry
 
+> **Superseded for entry UI:** the standalone Fast Entry screens were removed. F2/F12 are keyboard accelerators into the normal `/sales` and `/purchases` pages. See [DOCUMENT_ENTRY_CONSOLIDATION.md](../DOCUMENT_ENTRY_CONSOLIDATION.md).
+
 Implementation branch: `codex/phase6-shared-commercial`, based on Phase 4c commit `3e4a112`. Phase 5 remains a separate dependency. The commercial cutover and optional capabilities remain inactive. No production migration or deployment has been performed.
 
 ## Delivered behavior
@@ -18,7 +20,7 @@ Shortcuts: Space party search, Enter advance/select, Alt+C new party, F6 new ite
 
 ## Integration and activation
 
-`ERP_SHARED_COMMERCIAL_ENABLED` defaults to false. Shared routes require Phase 5 accounting classes and schema. Fast entry additionally checks `sales.fast_counter` or `purchases.fast_entry`; this branch does not lift the existing Phase 1/optional-capability activation gates.
+`ERP_SHARED_COMMERCIAL_ENABLED` defaults to false. Shared routes require Phase 5 accounting classes and schema. Sales and purchase entry use the normal pages and are gated only by `core.sales` / `core.purchases` plus the add permission (the former `sales.fast_counter` / `purchases.fast_entry` capabilities were retired); this branch does not lift the existing Phase 1/optional-capability activation gates.
 
 Integrate the final Phase 5 package before applying `2026_10_05_000001_create_shared_commercial_contracts.php` to a reviewed UAT database. Retain both packages' route and sidebar changes. In `app/Services/ERP/PaymentService.php`, retain Phase 5 exact amounts, settlement idempotency and open-item allocations together with Phase 6's active-posted-source guard. The current branch intentionally contains only the Phase 6 guard in that file; Phase 5 supplies the accounting settlement implementation.
 

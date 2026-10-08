@@ -74,7 +74,7 @@ Follow [document 29](documents/zolo_erp_implementation_docs/29_EXISTING_OPTECH_M
 |---|---|
 | `OptechCompany` | Retire or repurpose as generic platform context; no separate textile company authority |
 | `OptechMaster` | Retire duplicate master scaffolding; extend existing products and parties |
-| `OptechSpeedBilling` | Optional fast sales/purchase UI over shared application services |
+| `OptechSpeedBilling` | Retired (empty scaffold). Sales/purchase entry is the normal `/sales` and `/purchases` pages; see `documents/DOCUMENT_ENTRY_CONSOLIDATION.md` |
 | `OptechJobWork` | Generic subcontracting/job work capability |
 | `OptechAccounting` | Retire or retain a thin UI over existing accounting |
 | `OptechGST` | Shared IndiaCompliance adapter/module |
@@ -137,7 +137,7 @@ Business profiles are presets. Companies can enable supported capabilities indep
 
 **Implemented as gated foundations:** `capabilities`, `business_profiles`, `business_profile_capabilities` and `company_capabilities`. Store stable keys, provider ownership, dependencies, configuration schema, company configuration and the actor/time of changes.
 
-Examples include `core.sales`, `core.purchases`, `core.inventory`, `core.accounting`, `core.gst`, `inventory.multi_uom`, `inventory.batch_expiry`, `inventory.serial_tracking`, `inventory.dimension_tracking`, `sales.fast_counter`, `manufacturing.production`, `operations.job_work`, `operations.projects`, `printing.dot_matrix` and `communications.whatsapp`.
+Examples include `core.sales`, `core.purchases`, `core.inventory`, `core.accounting`, `core.gst`, `inventory.multi_uom`, `inventory.batch_expiry`, `inventory.serial_tracking`, `inventory.dimension_tracking`, `manufacturing.production`, `operations.job_work`, `operations.projects`, `printing.dot_matrix` and `communications.whatsapp`.
 
 A shared capability service resolves availability/configuration, validates dependencies and supplies navigation. Cache by company and invalidate on changes. Enforce enabled capabilities at routes and business services, not only in menus. Disabling a capability prevents new operations while preserving history.
 
@@ -227,7 +227,7 @@ Preserve keyboard workflows as an optional interaction mode over the existing UI
 
 | Shortcut | Context and behavior |
 |---|---|
-| F2 / F12 | Open fast sales / fast purchase |
+| F2 / F12 | New Sales Bill / New Purchase Bill on the normal pages (accelerators, not separate modules; see `documents/DOCUMENT_ENTRY_CONSOLIDATION.md`) |
 | Space | Open lookup in the active party/item field |
 | Enter | Advance through the document's entry sequence |
 | Alt+C / Alt+A | Inline party creation / editing, subject to permission |

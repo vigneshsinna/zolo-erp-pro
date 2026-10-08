@@ -69,7 +69,7 @@ emit after-commit document events
 Fast mode should preserve useful Optech behavior:
 
 ```text
-F2        fast sales
+F2        new sales bill (normal Sales page)
 Space     contextual search
 Enter     accept/advance
 Alt+C     create party inline

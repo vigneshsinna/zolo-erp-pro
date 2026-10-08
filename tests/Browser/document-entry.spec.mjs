@@ -35,6 +35,14 @@ try {
         check('F12 default action is prevented by the registry', preventedReserved === true);
     }
 
+    /* ---------------------------------- the other documents open their existing page */
+    for (const [key, target, label] of [['Shift+F2', /\/return-sale/, 'Sales Return'], ['Alt+F2', /\/delivery-challans/, 'Delivery Challan'], ['Shift+F12', /\/return-purchase/, 'Purchase Return'],
+        ['Alt+F12', /\/goods-received-notes/, 'GRN'], ['Alt+F10', /\/quotations\/create/, 'Quotation']]) {
+        await page.goto(BASE + '/dashboard', { waitUntil: 'domcontentloaded' });
+        await page.keyboard.press(key);
+        await page.waitForURL(target, { waitUntil: 'commit', timeout: SLOW }).then(() => check(`${key} opens the existing ${label} page`, true), () => check(`${key} opens the existing ${label} page`, false, page.url()));
+    }
+
     /* --------------------------- the unassigned and accounting keys do nothing here */
     await openKind(page, 'purchase');
     for (const key of ['Control+F2', 'F6']) {

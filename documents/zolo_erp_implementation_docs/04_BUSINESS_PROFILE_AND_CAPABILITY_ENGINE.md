@@ -50,7 +50,6 @@ inventory.multi_uom
 inventory.batch_expiry
 inventory.serial_tracking
 inventory.dimension_tracking
-sales.fast_counter
 sales.route_distribution
 manufacturing.production
 operations.job_work

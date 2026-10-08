@@ -27,7 +27,6 @@ Default profile:
 ```text
 core.sales / core.purchases / core.inventory / core.accounting / core.gst
 inventory.multi_uom
-sales.fast_counter
 sales.wholesale
 operations.job_work
 printing.dot_matrix

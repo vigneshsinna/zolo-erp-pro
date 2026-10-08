@@ -25,7 +25,7 @@ Prevent the generated Optech module scaffolds from becoming duplicated ERP cores
 |---|---|
 | `OptechCompany` | Do not build a textile company system; retire or repurpose only as generic platform context |
 | `OptechMaster` | Do not duplicate zoloERP Pro products/parties; retire scaffold |
-| `OptechSpeedBilling` | May become FastSales UI; must call shared SaleApplicationService |
+| `OptechSpeedBilling` | Retired: empty scaffold removed; entry is the normal Sales/Purchase pages over the shared application services |
 | `OptechJobWork` | Repurpose as generic Subcontracting/Job Work |
 | `OptechAccounting` | Do not create second ledger; retire or make thin UI over core accounting |
 | `OptechGST` | Repurpose as IndiaCompliance adapter/module |
