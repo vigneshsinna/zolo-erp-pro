@@ -3017,3 +3017,14 @@ nav.side-navbar:not(.icon-only):not(.full-hide):not(.shrink) {
 
 /* Shared workspace navigation and accessible skip link. */
 .workspace-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}.workspace-card{display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid var(--neo-border,#dbe3ed);border-radius:8px;text-decoration:none;font-size:18px;font-weight:700}.workspace-card span{font-size:13px;font-weight:400}.workspace-skip{position:absolute;left:12px;top:-80px;background:var(--neo-surface,#fff);padding:12px;z-index:100}.workspace-skip:focus{top:8px}
+
+/* Top-bar company switch: group › company · year, opens the company picker. */
+nav.navbar .company-switch{list-style:none;margin-right:8px}
+nav.navbar .company-switch a{display:flex;align-items:center;gap:6px;height:26px;max-width:340px;padding:0 10px;border:1px solid var(--neo-border);border-radius:999px;background:var(--neo-surface);color:var(--neo-text-primary);font-size:12px;line-height:1;text-decoration:none;white-space:nowrap;overflow:hidden}
+nav.navbar .company-switch a:hover{border-color:var(--neo-primary);color:var(--neo-primary)}
+nav.navbar .company-switch-group{color:var(--neo-text-muted);font-weight:500}
+nav.navbar .company-switch-group::after{content:"\203A";margin-left:6px}
+nav.navbar .company-switch-name{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+nav.navbar .company-switch-year{padding:2px 6px;border-radius:999px;background:var(--neo-primary-light);color:var(--neo-primary);font-family:var(--neo-mono);font-size:10.5px}
+nav.navbar .company-switch-caret{color:var(--neo-text-muted)}
+@media(max-width:768px){nav.navbar .company-switch-group,nav.navbar .company-switch-year{display:none}nav.navbar .company-switch a{max-width:150px}}

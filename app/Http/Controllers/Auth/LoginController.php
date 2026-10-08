@@ -67,8 +67,10 @@ class LoginController extends Controller
         if(auth()->attempt(array($fieldType => $input['name'], 'password' => $input['password'])))
         {
             setcookie('login_now', 1, time() + (86400 * 1), "/");
-            //return redirect('/dashboard');
-            return redirect()->intended('/dashboard');
+            $request->session()->regenerate();
+            // Every sign-in starts at the company picker; it forwards to the intended page once a company is chosen.
+            $request->session()->forget(['company_id', 'branch_id', 'financial_year_id']);
+            return redirect()->route('company.select');
         }
         else {
             return redirect()->route('login')->with('error', __('db.Username And Password Are Wrong.'));

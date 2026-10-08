@@ -23,7 +23,35 @@ class ChartOfAccountsSeeder extends Seeder
         );
 
         // 2. Standard Chart of Accounts
-        $accounts = [
+        $accounts = self::accounts();
+
+        // Seed parents first, then children
+        foreach ($accounts as $data) {
+            $parentId = null;
+            if (!empty($data['parent_code'])) {
+                $parent = ChartOfAccount::where('code', $data['parent_code'])->first();
+                $parentId = $parent?->id;
+            }
+
+            ChartOfAccount::updateOrCreate(
+                ['code' => $data['code']],
+                [
+                    'name' => $data['name'],
+                    'type' => $data['type'],
+                    'sub_type' => $data['sub_type'],
+                    'parent_id' => $parentId,
+                    'is_system' => $data['is_system'],
+                    'description' => $data['description'],
+                    'is_active' => true,
+                ]
+            );
+        }
+    }
+
+    /** Standard chart template; also installed for every company created from the company picker. */
+    public static function accounts(): array
+    {
+        return [
             // ASSETS (1000 - 1999)
             [
                 'code' => '1000',
@@ -322,27 +350,5 @@ class ChartOfAccountsSeeder extends Seeder
                 'description' => 'Sundry expenses not categorized elsewhere',
             ],
         ];
-
-        // Seed parents first, then children
-        foreach ($accounts as $data) {
-            $parentId = null;
-            if (!empty($data['parent_code'])) {
-                $parent = ChartOfAccount::where('code', $data['parent_code'])->first();
-                $parentId = $parent?->id;
-            }
-
-            ChartOfAccount::updateOrCreate(
-                ['code' => $data['code']],
-                [
-                    'name' => $data['name'],
-                    'type' => $data['type'],
-                    'sub_type' => $data['sub_type'],
-                    'parent_id' => $parentId,
-                    'is_system' => $data['is_system'],
-                    'description' => $data['description'],
-                    'is_active' => true,
-                ]
-            );
-        }
     }
 }

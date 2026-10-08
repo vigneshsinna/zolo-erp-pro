@@ -154,6 +154,11 @@ Auth::routes();
 Route::middleware('auth')->group(function () {
     Route::get('company/financial-years/setup', [\App\Http\Controllers\CompanyFinancialYearController::class, 'index'])->name('company.financial-years.setup');
     Route::post('company/financial-years/setup', [\App\Http\Controllers\CompanyFinancialYearController::class, 'store'])->name('company.financial-years.store');
+    // Post-login group/company picker; it chooses the context, so it runs before company middleware.
+    Route::get('select-company', [\App\Http\Controllers\CompanySelectorController::class, 'index'])->name('company.select');
+    Route::post('select-company', [\App\Http\Controllers\CompanySelectorController::class, 'choose'])->name('company.choose');
+    Route::post('company-picker/groups', [\App\Http\Controllers\CompanySelectorController::class, 'storeGroup'])->name('company.groups.store');
+    Route::post('company-picker/companies', [\App\Http\Controllers\CompanySelectorController::class, 'storeCompany'])->name('company.companies.store');
 });
 
 Route::group(['middleware' => 'auth'], function () {

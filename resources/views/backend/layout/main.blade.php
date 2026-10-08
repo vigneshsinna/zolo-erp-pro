@@ -1,5 +1,7 @@
 @php
 $companyContext = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
+$activeCompany = $companyContext ? \App\Models\Company::with('group')->find($companyContext->companyId) : null;
+$activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_years')->where('id', $companyContext->financialYearId)->value('name') : null;
 @endphp
 <!DOCTYPE html>
 <html dir="@if( Config::get('app.locale') == 'ar' || $general_setting->is_rtl){{'rtl'}}@endif">
@@ -305,6 +307,13 @@ $companyContext = request()->attributes->get(\App\Services\Platform\CompanyConte
         @endif
 
         <ul class="nav-menu list-unstyled d-flex flex-md-row align-items-md-center">
+          @if($activeCompany)
+          <li class="nav-item company-switch"><a href="{{ route('company.select', ['manage' => 1]) }}" title="Switch company" aria-label="Switch company: {{ $activeCompany->trade_name ?: $activeCompany->legal_name }}">
+            @if($activeCompany->group)<span class="company-switch-group">{{ $activeCompany->group->name }}</span>@endif
+            <span class="company-switch-name">{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}</span>
+            @if($activeYear)<span class="company-switch-year">{{ $activeYear }}</span>@endif
+            <span class="company-switch-caret" aria-hidden="true">&#8645;</span></a></li>
+          @endif
           @unless($companyContext)
           <div class="dropdown">
 

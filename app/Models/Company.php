@@ -10,11 +10,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Company extends Model
 {
     protected $fillable = [
-        'code', 'legal_name', 'trade_name', 'country_code', 'base_currency_id',
+        'company_group_id', 'code', 'legal_name', 'trade_name', 'country_code', 'base_currency_id',
         'state_code', 'timezone', 'status', 'settings_json',
     ];
 
     protected $casts = ['settings_json' => 'array'];
+
+    public function group(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(CompanyGroup::class, 'company_group_id');
+    }
 
     public function branches(): HasMany
     {

@@ -14,6 +14,8 @@
       <file>tests/Feature/ErpServiceRegressionTest.php</file>
       <file>tests/Feature/CompanyFoundationTest.php</file>
       <file>tests/Feature/CompanyContextTest.php</file>
+      <file>tests/Feature/CompanyGroupDirectoryTest.php</file>
+      <file>tests/Feature/CompanyGroupIndustryTest.php</file>
       <file>tests/Feature/CompanyWriterTest.php</file>
       <file>tests/Feature/BranchIsolationTest.php</file>
       <file>tests/Feature/LegacyCatalogIsolationTest.php</file>
