@@ -180,7 +180,7 @@ class SharedCommercialTest extends CommercialTestCase
     {
         $product = $this->stock();
         config(['commercial.enabled' => false]);
-        $this->getJson('/commercial/sale/entry')->assertStatus(503);
+        $this->getJson('/commercial/sale/drafts')->assertStatus(503);
         config(['commercial.enabled' => true]);
         DB::table('customers')->where('id', 1)->update(['company_id' => $this->other->id]);
         $this->postJson('/commercial/sale', $this->saleData($product), ['Idempotency-Key' => 'foreign'])->assertUnprocessable();

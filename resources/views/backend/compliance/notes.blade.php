@@ -7,6 +7,6 @@
 @forelse($notes as $note)<tr><td>{{ $note->reference_no }}<br>{{ $note->created_at->toDateString() }}</td><td>{{ $note->return_note }}</td><td>{{ ucfirst($note->note_type) }} · {{ str_replace('_',' ',$note->adjustment_type) }}</td><td>{{ number_format($note->grand_total,4,'.','') }}</td><td>{{ str_replace('_',' ',$note->status) }}</td><td>
 @if($note->status === 'awaiting_approval')<form method="POST" action="{{ url('/compliance/'.$kind.'/notes/'.$note->id.'/approve') }}">@csrf<button type="submit">Approve and post</button></form>
 @elseif($note->posted_at)<a href="{{ url('/compliance/documents/'.$kind.'_note/'.$note->id) }}">Print / send</a>
-@if($kind === 'sale' && $note->adjustment_type === 'quantity')<br><a href="{{ url('/sales?entry=fast&exchange_return_id='.$note->id) }}">Exchange with new sale</a>@endif
+@if($kind === 'sale' && $note->adjustment_type === 'quantity')<br><a href="{{ url('/sales?new=1&exchange_return_id='.$note->id) }}">Exchange with new sale</a>@endif
 @endif</td></tr>@empty<tr><td colspan="6">No notes in this financial year and branch.</td></tr>@endforelse</tbody></table></div></section>@endforeach
 @endsection

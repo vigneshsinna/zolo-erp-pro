@@ -43,16 +43,25 @@ class OperationsWebTest extends OperationsTestCase
         $this->getJson('/operations/dispatch/'.$dispatch->id.'/print')->assertNotFound();
     }
 
-    public function test_industry_profiles_expose_the_shared_sales_and_purchase_entry_with_profile_fields(): void
+    public function test_industry_profiles_configure_the_entry_aids_of_the_shared_sales_and_purchase_pages(): void
     {
-        $this->withoutExceptionHandling();
+        // The normal pages need the full legacy schema; their rendered config is covered by DocumentEntryWebTest.
+        $aids = app(\App\Services\Industry\DocumentEntryAids::class);
         foreach (['fmcg' => 'distribution', 'textile' => 'wholesale', 'timber' => 'trading', 'solar' => 'epc'] as $profile => $subtype) {
             app(IndustryProfileService::class)->apply($profile, $subtype, $this->context(), 1);
-            $this->get('/sales?entry=fast')->assertOk()->assertSee('line-unit-options', false);
-            $purchase = $this->get('/purchases?entry=fast')->assertOk();
-            if ($profile === 'fmcg') $purchase->assertSee('Manufacturing date')->assertSee('Batch MRP');
-            else $purchase->assertDontSee('Batch MRP');
+            $purchase = $aids->forContext($this->context(), 'purchase');
+            $this->assertSame($profile, $purchase['tracking']['profile']);
+            $this->assertSame(\App\Services\Industry\DocumentEntryAids::KEYS, array_keys($purchase['aids']));
+            $this->assertNotContains(false, $purchase['aids'], 'the page offers every aid unless the profile switches one off');
+            $this->assertSame($profile === 'timber', $purchase['tracking']['dimensions'], 'dimension tracking follows its capability');
         }
+        // An explicit false in the profile's entry_aids switches a single aid off; nothing else changes.
+        \Illuminate\Support\Facades\DB::table('company_industry_settings')->where('company_id', $this->company->id)->update([
+            'settings_json' => json_encode(['entry_aids' => ['previous_rates' => false, 'unknown' => false]])]);
+        $off = $aids->forContext($this->context(), 'sale')['aids'];
+        $this->assertFalse($off['previous_rates']);
+        $this->assertTrue($off['clone_invoice']);
+        $this->assertArrayNotHasKey('unknown', $off);
     }
 
     public function test_gate_permission_and_foreign_context_reject_before_operations(): void

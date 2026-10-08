@@ -109,8 +109,8 @@ class WorkspaceSecurityTest extends OperationsTestCase
         $this->putJson('/api/v1/company-context/setup/branch', $data)->assertJsonPath('data.id', $id);
         $this->assertTrue(DB::table('company_user_branches')->where('user_id', 1)->where('branch_id', $id)->exists());
         $this->assertSame(1, DB::table('company_setup_audits')->where('action', 'branch_setup')->count());
-        app(CapabilityService::class)->enable('sales.fast_counter', [], $this->context(), 1);
-        app(CapabilityService::class)->disable('sales.fast_counter', $this->context(), 1);
+        app(CapabilityService::class)->enable('sales.wholesale', [], $this->context(), 1);
+        app(CapabilityService::class)->disable('sales.wholesale', $this->context(), 1);
         $this->assertSame(2, DB::table('company_setup_audits')->where('action', 'capabilities_changed')->count());
     }
 

@@ -6,19 +6,11 @@ use App\Http\Controllers\CommercialController;
 use Closure;
 use Illuminate\Http\Request;
 
-/** Routes command center entry modes and legacy web/POS mutations through the shared engine. */
+/** Routes legacy web/POS mutations through the shared engine. The normal Sales/Purchase pages are the only entry UI. */
 class CommercialRouteAdapter
 {
     public function handle(Request $request, Closure $next)
     {
-        if ($request->isMethod('GET') && $request->route()->getActionMethod() === 'index' && $request->query('entry') === 'fast') {
-            $kind = str_contains($request->route()->getActionName(), 'SaleController') ? 'sale' : 'purchase';
-            return app(RequireSharedCommercial::class)->handle($request, fn ($request) =>
-                app(ResolveCompanyContext::class)->handle($request, fn ($request) =>
-                    app(RequireCapability::class)->handle($request,
-                        fn ($request) => response(app(CommercialController::class)->entry($request, $kind)),
-                        $kind === 'sale' ? 'sales.fast_counter' : 'purchases.fast_entry')));
-        }
         if (!config('commercial.enabled')) {
             return $next($request);
         }

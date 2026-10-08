@@ -20,8 +20,6 @@ final class CapabilityCatalog
         'inventory.dimension_tracking' => ['Dimension tracking', ['core.inventory']],
         'inventory.lot_tracking' => ['Lot tracking', ['core.inventory']],
         'sales.wholesale' => ['Wholesale sales', ['core.sales']],
-        'sales.fast_counter' => ['Fast counter', ['core.sales']],
-        'purchases.fast_entry' => ['Fast purchase', ['core.purchases']],
         'sales.route_distribution' => ['Route distribution', ['core.sales', 'core.inventory']],
         'sales.installment_plans' => ['Installment plans', ['core.sales', 'core.accounting']],
         'sales.exchange' => ['Exchange', ['core.sales', 'core.inventory']],
@@ -46,10 +44,10 @@ final class CapabilityCatalog
 
     public const PROFILES = [
         'general_trading' => ['General Trading', []],
-        'fmcg' => ['FMCG', ['inventory.multi_uom', 'inventory.batch_expiry', 'sales.fast_counter', 'purchases.fast_entry', 'sales.wholesale', 'communications.whatsapp']],
-        'textile' => ['Textile', ['inventory.multi_uom', 'sales.fast_counter', 'purchases.fast_entry', 'sales.wholesale', 'operations.job_work', 'printing.dot_matrix', 'communications.whatsapp']],
-        'timber' => ['Timber', ['inventory.multi_uom', 'inventory.dimension_tracking', 'inventory.lot_tracking', 'sales.fast_counter', 'purchases.fast_entry', 'sales.wholesale']],
-        'solar' => ['Solar', ['sales.fast_counter', 'purchases.fast_entry', 'operations.projects', 'inventory.serial_tracking', 'operations.installation', 'manufacturing.bom', 'service.warranty_amc', 'communications.whatsapp']],
+        'fmcg' => ['FMCG', ['inventory.multi_uom', 'inventory.batch_expiry', 'sales.wholesale', 'communications.whatsapp']],
+        'textile' => ['Textile', ['inventory.multi_uom', 'sales.wholesale', 'operations.job_work', 'printing.dot_matrix', 'communications.whatsapp']],
+        'timber' => ['Timber', ['inventory.multi_uom', 'inventory.dimension_tracking', 'inventory.lot_tracking', 'sales.wholesale']],
+        'solar' => ['Solar', ['operations.projects', 'inventory.serial_tracking', 'operations.installation', 'manufacturing.bom', 'service.warranty_amc', 'communications.whatsapp']],
     ];
 
     public const CONFIGURATION = [

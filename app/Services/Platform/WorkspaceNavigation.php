@@ -11,8 +11,8 @@ class WorkspaceNavigation
     {
         $items = [];
         foreach ([
-            ['Sales', '/commercial/sale/entry', 'sales.fast_counter', 'sales-add', 'commercial.enabled'],
-            ['Purchases', '/commercial/purchase/entry', 'purchases.fast_entry', 'purchases-add', 'commercial.enabled'],
+            ['Sales', '/sales?new=1', 'core.sales', 'sales-add', 'commercial.enabled'],
+            ['Purchases', '/purchases?new=1', 'core.purchases', 'purchases-add', 'commercial.enabled'],
             ['Inventory', '/operations/stock', 'core.inventory', 'products-index', 'operations.enabled'],
             ['Accounts', '/accounting/vouchers', 'core.accounting', 'accounting.voucher.post', null],
             ['Manufacturing', '/operations/manufacturing', 'manufacturing.production', 'manufacturing.read', 'operations.enabled'],

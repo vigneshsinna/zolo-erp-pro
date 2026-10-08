@@ -36,7 +36,6 @@ class CapabilityServiceProvider extends ServiceProvider
                     'ProjectManagementController' => 'operations.projects',
                     'ProductionController', 'RecipeController', 'ManufacturingController' => 'manufacturing.production',
                     'OptechJobWorkController' => 'operations.job_work',
-                    'OptechSpeedBillingController' => 'sales.fast_counter',
                     'OptechPrintingController' => 'printing.dot_matrix',
                     'DamageStockController' => 'inventory.damage_stock',
                     'ExchangeController' => 'sales.exchange',

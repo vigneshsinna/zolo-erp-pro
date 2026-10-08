@@ -46,49 +46,41 @@ class OptechMasterWebTest extends TestCase
         }
     }
 
-    public function test_commercial_sale_entry_page_loads_with_database_masters(): void
+    public function test_sales_page_loads_with_database_masters_and_the_document_workspace(): void
     {
-        $response = $this->actingAs($this->adminUser)->get('/sales?entry=fast');
+        $response = $this->actingAs($this->adminUser)->get('/sales?new=1');
 
         $response->assertStatus(200);
         $response->assertViewHas('saleTypes');
         $response->assertViewHas('agents');
         $response->assertViewHas('areas');
         $response->assertViewHas('billSundries');
-        $response->assertViewHas('remarks');
-        $response->assertSee('Sale Type');
-        $response->assertSee('Agent / Through');
-        $response->assertSee('Bill Sundries');
-        // Assert New Desk UI Elements
-        $response->assertSee('side-panel');
-        $response->assertSee('btn-dock-toggle');
-        $response->assertSee('btn-toggle-bill-list');
+        $response->assertViewHas('standardRemarks');
+        $response->assertSee('Sales Command Center');
+        $response->assertSee('Tax Classification');
         $response->assertSee('charges-drawer');
         $response->assertSee('Charges & remarks', false);
-        $response->assertSee('RATE + TAX');
-        $response->assertSee('TAXABLE AMOUNT');
-        $response->assertSee('LINE TOTAL');
+        $response->assertSee('GRAND TOTAL');
+        $response->assertSee('id="document-tabs"', false);
+        $response->assertSee('js/document-workspace.js', false);
+        $response->assertDontSee('Fast Entry');
     }
 
-    public function test_commercial_purchase_entry_page_loads_with_database_masters(): void
+    public function test_purchase_page_loads_with_database_masters_and_the_document_workspace(): void
     {
-        $response = $this->actingAs($this->adminUser)->get('/purchases?entry=fast');
+        $response = $this->actingAs($this->adminUser)->get('/purchases?new=1');
 
         $response->assertStatus(200);
         $response->assertViewHas('purchaseTypes');
         $response->assertViewHas('agents');
         $response->assertViewHas('areas');
         $response->assertViewHas('billSundries');
-        $response->assertSee('Purchase Type');
-        $response->assertSee('Supplier Inv No');
-        // Assert New Desk UI Elements
-        $response->assertSee('side-panel');
-        $response->assertSee('btn-dock-toggle');
-        $response->assertSee('btn-toggle-bill-list');
-        $response->assertSee('charges-drawer');
         $response->assertSee('Purchase Command Center');
+        $response->assertSee('Supplier Bill No');
+        $response->assertSee('charges-drawer');
+        $response->assertSee('id="document-tabs"', false);
+        $response->assertDontSee('Fast Entry');
     }
-
     public function test_inline_creation_of_all_optech_masters(): void
     {
         // 1. Inline Agent

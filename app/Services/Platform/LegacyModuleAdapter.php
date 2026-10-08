@@ -22,7 +22,6 @@ final class LegacyModuleAdapter
         'ecommerce' => 'sales.ecommerce',
         'woocommerce' => 'sales.woocommerce',
         'api' => 'integrations.api',
-        'OptechSpeedBilling' => 'sales.fast_counter',
         'OptechJobWork' => 'operations.job_work',
         'OptechPrinting' => 'printing.dot_matrix',
         'OptechGST' => 'core.gst',

@@ -35,17 +35,17 @@ class CommercialPerformanceTest extends CommercialTestCase
             $postings[] = $time(fn () => app(SaleApplicationService::class)->create(new SaleCommand(
                 $this->saleData(\App\Models\Product::findOrFail($lines[0]['product_id']), ['items' => $lines]), 'perf-'.$i, 1, $this->context())));
         }
-        // Measure the HTML response separately from service calls; repeated kernel requests retain test state.
-        $this->get('/sales?entry=fast')->assertOk();
-        for ($i = 0; $i < 30; $i++) $screens[] = $time(fn () => $this->get('/sales?entry=fast')->assertOk());
+        // The draft-tab list is the one request every Sales page load adds; measure it separately from service calls.
+        $this->getJson('/commercial/sale/drafts')->assertOk();
+        for ($i = 0; $i < 30; $i++) $screens[] = $time(fn () => $this->getJson('/commercial/sale/drafts')->assertOk());
         $p95 = function (array $samples): float { sort($samples); return round($samples[(int) ceil(count($samples) * .95) - 1], 2); };
         $metrics = ['driver' => DB::connection()->getDriverName(), 'items' => 50000, 'parties' => 50000, 'samples' => 30,
-            'product_search_p95_ms' => $p95($products), 'party_search_p95_ms' => $p95($parties), 'twenty_line_post_p95_ms' => $p95($postings), 'warm_screen_response_p95_ms' => $p95($screens)];
+            'product_search_p95_ms' => $p95($products), 'party_search_p95_ms' => $p95($parties), 'twenty_line_post_p95_ms' => $p95($postings), 'warm_draft_list_p95_ms' => $p95($screens)];
         fwrite(STDOUT, "\nCommercial timing: ".json_encode($metrics)."\n");
         $this->assertLessThanOrEqual(300, $metrics['product_search_p95_ms']);
         $this->assertLessThanOrEqual(300, $metrics['party_search_p95_ms']);
         $this->assertLessThanOrEqual(1000, $metrics['twenty_line_post_p95_ms']);
-        $this->assertLessThanOrEqual(1500, $metrics['warm_screen_response_p95_ms']);
+        $this->assertLessThanOrEqual(1500, $metrics['warm_draft_list_p95_ms']);
         $this->assertSame(30, DB::table('sales')->count());
     }
 }

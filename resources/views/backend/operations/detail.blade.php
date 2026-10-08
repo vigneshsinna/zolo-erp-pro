@@ -47,6 +47,6 @@
 @include('backend.operations.form_start',['formId'=>'service-'.$installation->id,'action'=>'project-service/'.$installation->id])
 <div class="ops-fields">@include('backend.operations.date')<label>Service event<select name="event"><option value="inspection">Inspection</option><option value="repair">Repair</option></select></label><label>Service notes<textarea name="notes" required maxlength="5000"></textarea></label></div><button class="ops-primary">Append service record</button></form></section>
 @endforeach
-<section class="ops-panel"><h2>Invoice and payment</h2><p>Issue installed serials from site warehouse #{{ $record->site_warehouse_id }}. Invoice and payment use the Sales Command Center.</p><a class="ops-link-button" href="{{ url('/sales?entry=fast&project_id='.$record->id) }}">Create project invoice</a></section>
+<section class="ops-panel"><h2>Invoice and payment</h2><p>Issue installed serials from site warehouse #{{ $record->site_warehouse_id }}. Invoice and payment use the Sales Command Center.</p><a class="ops-link-button" href="{{ url('/sales?new=1&project_id='.$record->id) }}">Create project invoice</a></section>
 @endif
 @endsection
