@@ -598,6 +598,51 @@ class ProductController extends Controller
                     }
                 }
             }
+
+            // dealing with batch initial stock
+            if(isset($data['is_batch']) && isset($data['batch_no']) && isset($data['batch_warehouse_id'])) {
+                foreach ($data['batch_warehouse_id'] as $key => $warehouse_id) {
+                    $batch_no = trim($data['batch_no'][$key] ?? '');
+                    if(!empty($batch_no)) {
+                        $expired_date = !empty($data['expired_date'][$key]) ? date('Y-m-d', strtotime($data['expired_date'][$key])) : null;
+                        $batch_qty = (float)($data['batch_qty'][$key] ?? 0);
+                        $product_batch = \App\Models\ProductBatch::firstOrCreate([
+                            'product_id' => $lims_product_data->id,
+                            'batch_no' => $batch_no,
+                        ], [
+                            'expired_date' => $expired_date,
+                            'qty' => $batch_qty,
+                        ]);
+                        if($batch_qty > 0) {
+                            $pw = \App\Models\Product_Warehouse::firstOrNew([
+                                'product_id' => $lims_product_data->id,
+                                'warehouse_id' => $warehouse_id,
+                            ]);
+                            $pw->product_batch_id = $product_batch->id;
+                            $pw->qty = ($pw->qty ?? 0) + $batch_qty;
+                            $pw->price = $pw->price ?? $lims_product_data->price;
+                            $pw->save();
+                        }
+                    }
+                }
+            }
+
+            // dealing with imei / serial numbers
+            if(isset($data['is_imei']) && isset($data['imei_number']) && isset($data['imei_warehouse_id'])) {
+                foreach ($data['imei_warehouse_id'] as $key => $warehouse_id) {
+                    $imei = trim($data['imei_number'][$key] ?? '');
+                    if(!empty($imei)) {
+                        $pw = \App\Models\Product_Warehouse::firstOrNew([
+                            'product_id' => $lims_product_data->id,
+                            'warehouse_id' => $warehouse_id,
+                        ]);
+                        $pw->imei_number = $imei;
+                        $pw->price = $pw->price ?? $lims_product_data->price;
+                        $pw->save();
+                    }
+                }
+            }
+
             //dealing with product variant
             if(!isset($data['is_batch']))
                 $data['is_batch'] = null;

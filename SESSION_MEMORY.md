@@ -8,14 +8,20 @@
 ---
 
 ## 1. Active Session Metadata
-- **Last Updated:** 2026-10-25 11:30:00 (+05:30) — Upstream pull origin/main into ui (sections 66-74)
+- **Last Updated:** 2026-10-25 13:50:00 (+05:30) — Resolved blank screen on /dashboard (section 81)
 - **Production:** https://erp.samuraibuiness.in (Hostinger VPS). Pushing `main` runs CI, then deploys automatically; see [deploy/README.md](deploy/README.md)
 - **Active Git Branch:** ui (synchronized with origin/main, origin/ui and nandha-origin/ui)
 - **Upstream Remotes:**
   - `nandha-origin`: https://github.com/nandha3d/zolo-erp-pro.git (`ui`, `enhanced-ui`)
   - `origin`: https://github.com/vigneshsinna/zolo-erp-pro.git (`main`, `ui`, `enhanced-ui`)
 - **Latest Commits:**
-  - `1b1baf1` — "Drop Summary Report from the sidebar; Profit & Loss is the one P&L"
+  - `8c3cde4` — "fix(dashboard): resolve blank screen by placing @extends on line 1 before @section"
+  - `1b7dba5` — "fix(tokens): use brand tokens for section box purple icon in neo css"
+  - `d301699` — "feat(ui): enlarge section-box title typography, add 10px spacing, and integrate crisp vector SVG icons"
+  - `4003731` — "One brand colour system for every page, light and dark"
+  - `54fde10` — "feat(product): unify add product into single page with template sectionized boxes and zero scroll"
+  - `fd360f7` — "Give Operations right-side action cards one shared theme"
+  - `ad16cc5` — "Expand company dialog dimensions, add color differentiation per section box, and prevent field penetration"
   - `e97dae3` — "Render expense, income and notification modals only on their own pages"
   - `b668ed6` — "Remove duplicate navigation: Pending Sales, old Returns lists, Add entries"
   - `05ec2b7` — "Make every sidebar link open a real page; merge the two job work entries"
@@ -1832,6 +1838,8 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 - **Guard:** `tests/Unit/DesignTokensTest.php` (in `phpunit.operations.xml`, so CI runs it) fails if old accents return in app CSS or blade styles.
 - **Not yet done (next phases):** 2,864 inline `style=""` in 192 blades and 116 `<style>` blocks still exist (colours now tokenised, layout values remain) -> move to classes module by module (Sales/Purchase first); fold ~40 custom button classes (`cx-btn`, `cp-btn`, `nav-btn`, `bottom-btn`, `btn-ops-submit`...) into the 4 roles; move body `<link>`s into `@push('css')`.
 
+---
+
 ## 80. No Inline Styles: Utilities, Page CSS Files, Button Roles (2026-10-25, branch ui)
 - **User request:** finish all remaining steps — no inline styles, every element from a template; keep nandha3d's per-section colours (x-ui.section-box) unchanged.
 - **CSS load order now:** `zolo-tokens.css` -> `zolo-utilities.css` (head, before neo) -> neo/app-shell -> `@stack('css')` (page CSS incl. `css/pages/*.css`) -> `zolo-components.css` -> settings custom_css.
@@ -1843,7 +1851,198 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 - **Verification:** Playwright crawl of 123 sidebar pages (+ entry forms) at 1536x730, pixel diff per step vs baseline; only intended colour changes remained (accounting tones, buttons). Tests: operations 78/78 (3 skipped), AccountingWebTest, documents-web 37/37.
 - **nandha3d section tints restored (user: "don't change nandha3d's deliberate colour per section"):** the first token pass had turned the violet `zolo-section-box-purple` / `cp-col-compliance` tint into brand purple; it is back to nandha's exact values via fixed tokens `--z-tint-violet-*` in zolo-tokens.css (not mode-switched; his rules choose light/dark). Blue/emerald/amber boxes were never changed. `zolo-tokens.css` is skipped by the accent guard (it is the definition file).
 
-## 81. Sidebar Restructure to User's Information Architecture (2026-10-25, branch ui)
+---
+
+## 81. Resolution of Blank White Screen on Dashboard (`/dashboard`) (2026-10-25, commit 8c3cde4)
+- **User Defect Report:** User navigated to `http://zolo-erp-pro.test/dashboard` and encountered a completely blank white screen.
+- **Root Cause Analysis:**
+  - HTTP status returned 200 OK, but response payload was **0 bytes** (empty string).
+  - In `resources/views/backend/index.blade.php`, line 1 had `@section('charts', '1')` followed by `@extends('backend.layout.main')` on line 2.
+  - In Laravel Blade compilation, `@extends` must strictly be the first statement. Placing `@section` before `@extends` causes Blade's compiler to treat it as an inline section rather than an extending template, which silently causes `$__env->make('backend.layout.main')->render()` to fail rendering output to the main buffer, emitting 0 bytes of HTML.
+- **Fix Applied:**
+  - Placed `@extends('backend.layout.main')` as the very first line of `resources/views/backend/index.blade.php`.
+  - Cleared compiled view cache (`php artisan view:clear`).
+  - Added automated regression guard in `tests/Feature/DashboardSmokeTest.php` asserting HTTP 200, non-empty response, and presence of core executive dashboard markup (`dashboard-counts`).
+  - Audited all blade files across `resources/views` to verify no other views place directives before `@extends`.
+- **Verification:**
+  - `Tests\Feature\DashboardSmokeTest`: PASS (118,131 bytes rendered).
+  - Browser subagent visual verification: Rendered full dashboard at `http://zolo-erp-pro.test/dashboard`, verified all KPI cards (Revenue, Profit, Sale Total, Purchase Total, Expense, Receivables, Payables, Cash & Bank), quick action buttons, cash flow charts, and navigation bar. Screenshot captured: `initial_nav_dashboard_1792916289130.png`.
+
+---
+
+## 82. Resolution of Checkbox Persistence, Full-Width Section Boxes & Universal Dropdown Width Normalization (2026-10-25, branch ui)
+- **User Defect Reports:**
+  1. Pull latest from `origin/ui`.
+  2. Clicking each product checkbox should enable a full-width section box with the **same width as the top container**.
+  3. The `Initial Stock` checkbox was automatically unchecking whenever other checkboxes (`is_batch`, `is_imei`, `is_variant`) were clicked.
+  4. Fix dropdowns that open full-screen / full-card width across the application (e.g., `#negative-stock-policy` and other dropdowns throughout the ERP).
+- **Root Cause Analysis:**
+  1. **Git Synchronization:** Merged incoming commits from `origin/ui` (`28aa003`, `d28aee2`, `3252084`). Resolved conflicts cleanly in `SESSION_MEMORY.md`, `zolo-erp-neo.css` (preserving nandha3d's per-section tints), and `product/create.blade.php`.
+  2. **Checkbox Persistence:** `is_batch`, `is_imei`, and `is_variant` event handlers in `backend/product/create.blade.php` contained calls to `initialStockUncheck()`, `$("#stock-section").hide(300)`, and `$("#featured").hide(300)`, automatically unchecking and hiding Initial Stock whenever a user toggled any variant, batch, or IMEI options.
+  3. **Section Box Widths:** `#initial-stock-section` and `#diffPrice-section` were constrained inside a `<div class="row" id="warehouse-details-row"><div class="col-md-6">` half-width layout instead of being direct full-width children of `.product-extended-details-container`. In `product/edit.blade.php`, `#diffPrice-section` was also restricted to `col-md-6`.
+  4. **Universal Full-Width Dropdowns:**
+     - In `public/js/front.js:48` and `front_rtl.js:44`, `$.fn.dropdown.Constructor.Default.boundary = 'viewport'` is configured globally.
+     - When Bootstrap 4 opens any dropdown with `boundary !== 'scrollParent'`, its internal `dropdown.js` executes `$(parent).addClass('position-static')`.
+     - In Bootstrap's stylesheet, `.position-static` is defined with `position: static !important;`.
+     - When the toggle's parent loses `position: relative`, its child `.dropdown-menu` (which has `position: absolute; left: 0; min-width: 100%`) can no longer calculate its offset or width relative to the input field; its nearest positioned ancestor becomes the entire `.card`, `.row`, or `<body>`, causing the menu to align to `left: 0` and stretch to 100% width of the card or viewport.
+     - Additionally, for body-level `.bs-container` elements created when `container: 'body'` is used, `bootstrap-select.min.css` applies `:not(.input-group) > .bootstrap-select.form-control:not([class*=col-]) { width: 100%; }`. Because `.bs-container` is a direct child of `<body>` and carries `.form-control`, it inherited `width: 100%` of `<body>` (1536px), and its menu took `min-width: 100%` (1536px).
+     - Furthermore, `$('select:not(...)').selectpicker({ container: 'body' })` in `front.js` was indiscriminately matching Laravel Debugbar select dropdowns (`phpdebugbar-datasets-switcher`).
+- **Fixes Applied:**
+  1. **Product Checkbox Handlers (`product/create.blade.php`):**
+     - Completely removed calls to `initialStockUncheck()`, `$("#stock-section").hide(300)`, and `$("#featured").hide(300)` from `is_batch`, `is_imei`, and `is_variant` change listeners.
+     - Toggling any combination of flags now preserves the checked state and visibility of Initial Stock and Featured.
+  2. **Section Box Layout Normalization (`product/create.blade.php` & `product/edit.blade.php`):**
+     - Eliminated `#warehouse-details-row` and `col-md-6` wrappers in `create.blade.php`.
+     - Made `#initial-stock-section` and `#diffPrice-section` direct full-width children (`class="w-100"`) inside `.product-extended-details-container`, exactly matching `#variant-section`, `#promo-container`, and `#combo`.
+     - In `product/edit.blade.php`, upgraded `#diffPrice-section` from `col-md-6` to `col-12`.
+  3. **Universal Dropdown Normalization (`zolo-components.css`, `zolo-erp-neo.css`, `front.js`, `front_rtl.js`):**
+     - Enforced `position: relative !important;` on `.bootstrap-select`, `.bootstrap-select.position-static`, `.btn-group.position-static`, `.dropdown.position-static`, `.dropup.position-static`, `.input-group-*.position-static`, and `.form-group.position-static` in both component and neo stylesheets.
+     - Constrained `body > .bs-container` and all `.bs-container` variants to `position: absolute !important; width: auto !important; min-width: 0 !important; max-width: min(100vw - 32px, 480px) !important; height: 0 !important; padding: 0 !important; margin: 0 !important; z-index: 99999 !important;`.
+     - Constrained `.dropdown-menu`, `.bootstrap-select .dropdown-menu`, and `.bs-container .dropdown-menu` to `max-width: min(100vw - 32px, 480px) !important; box-sizing: border-box !important;`.
+     - Added global event interceptor in `front.js` and `front_rtl.js` on `show.bs.dropdown shown.bs.dropdown` to dynamically strip `.position-static` from dropdown parents.
+     - Excluded `phpdebugbar` dropdowns from `$('select...').selectpicker()`.
+     - Added `selectpicker` class to `#negative-stock-policy` in `stock-policy.blade.php` and `profit_margin_type` in `create.blade.php` and `edit.blade.php`.
+- **Automated Verification:**
+  - Automated Playwright audit across `/products/create`, `/products`, `/purchases`, and `/sales`: verified 0 wide/misaligned dropdowns across all pages.
+  - Multi-checkbox verification: `isInitialChecked: true`, `initialSecVisible: true`, `diffPriceVisible: true`, `variantVisible: true`, with identical 1230px full-width containers (`sameWidth: true`).
+  - `php artisan test --filter=ProductCreateSmokeTest`: PASS (1 test, 10 assertions).
+  - `php artisan test --filter=DesignTokensTest`: PASS (4 tests, 4 assertions, 100% green, 0 inline styles).
+  - Visual verification artifacts: `negative_stock_fixed.png`, `sections_extended_view.png`.
+
+---
+
+## 83. 4-Column Balanced Grid Layout for Conditional Product Boxes (2026-10-25, branch ui)
+- **User Feedback & Requirement:**
+  - "i never wanted like this. no need full width box, instead of that, keep the boxes as like the primary boxes in the top, if 3 boxes, arrange them in the same line, whichever need maximum width then occupy 2 grids in 4 column, then the other 2 boxes wil be occupy each grids."
+- **Layout Architecture & Alignment Math:**
+  - The top primary container (`.zolo-product-grid`) uses a 4-column grid: `grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;`.
+  - The conditional container (`.product-extended-details-container`) mirrors this exact 4-column structure instead of stacking full-width cards:
+    - `#initial-stock-section`: `grid-column: span 1 !important;` (occupies Column 1, 300px width).
+    - `#diffPrice-section`: `grid-column: span 1 !important;` (occupies Column 2, 300px width).
+    - `#variant-section`: `grid-column: span 2 !important;` (occupies Columns 3 & 4, 610px width - maximum width for option, values, and variant table).
+    - `#promo-container`: `grid-column: span 2 !important;` (occupies 2 columns for price, start date, end date).
+    - `#combo`: `grid-column: span 4 !important;` (occupies 4 columns for combo search and table).
+  - Math check: `1 col (300px) + gap (10px) + 1 col (300px) + gap (10px) + 2 cols (610px) = 1230px` total container width.
+  - When all 3 boxes are enabled, all three start at the exact same vertical offset (`top: 674.77px`), creating a perfectly balanced 4-column second row directly beneath the primary 4 boxes.
+- **Modifications Applied:**
+  1. `resources/views/backend/product/create.blade.php`:
+     - Removed `class="w-100"` from `#initial-stock-section` and `#diffPrice-section`.
+  2. `public/css/zolo-erp-neo.css`:
+     - Converted `.product-extended-details-container` from `flex-direction: column` to CSS Grid:
+       `display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 10px !important; align-items: stretch !important;`.
+     - Added column spans for each section type (`span 1` for initial stock and diffPrice, `span 2` for variant and promo, `span 4` for combo).
+     - Added responsive breakpoints: `@media (max-width: 1400px)` -> 2 columns; `@media (max-width: 768px)` -> 1 column.
+     - Enforced `height: 100% !important; display: flex !important; flex-direction: column !important;` on `.zolo-section-box` and `.zolo-section-box-content` so cards stretch to equal height.
+- **Verification:**
+  - Automated Playwright measurement (`scratch/test_layout.js`):
+    - `initialStock.top = 674.77, width = 300`
+    - `diffPrice.top = 674.77, width = 300`
+    - `variant.top = 674.77, width = 610`
+    - All 3 boxes share the exact same top position (`top: 674.77px`) and fill 100% of the 1230px grid row without wrapping or stretching full-width.
+  - Verified across light mode (`three_boxes_same_line.png`, `three_boxes_extended_close.png`) and dark mode (`three_boxes_dark_mode.png`).
+  - `php artisan test --filter=ProductCreateSmokeTest`: PASS (1 test, 10 assertions).
+  - `php artisan test --filter=DesignTokensTest`: PASS (4 tests, 4 assertions, 0 inline styles).
+
+---
+
+## 84. Product Create Architecture: 3 Top Boxes, Full-Width Inventory Stripe, Seamless Input Groups & Batch/IMEI Sections (2026-10-25, branch ui)
+- **User Feedback & Requirements:**
+  - "the icon and the input fields are not matching and its not seamless. the inventory and stock control can be a stripe under the primary boxes with full content width and make them as a toggle button. and the 3 primary boxes are occupying the top section, and then the strip of control toggle buttons, then the toggle boxes, also where are the batch & expiry, imei serial numbers, etc."
+- **Key Architectural Solutions:**
+  1. **Top Section (3 Primary Boxes):**
+     - Updated `.zolo-product-grid` from 4 columns to 3 columns (`repeat(3, minmax(0, 1fr))`).
+     - Box 1: Product Details (Blue accent, 403px width)
+     - Box 2: Pricing & Tax (Emerald accent, 403px width)
+     - Box 3: Media, Details & SEO (Purple accent, 403px width)
+     - Removed the cramped 4th box from the top grid, giving all 3 primary boxes ample room (~403px each on 1230px container) with zero cramping.
+  2. **Inventory & Stock Control Horizontal Full-Width Stripe:**
+     - Created `.zolo-inventory-stripe` with `width: 100%`, amber theme, full content width directly beneath the 3 top boxes.
+     - Header integrates an inline `Alert Quantity` input (`#alert_quantity`) on the right with comfortable 130px width.
+     - Controls rendered as modern interactive toggle buttons (`.zolo-toggle-pill`) with active state highlights, indicator dots, and semantic color accents (amber, emerald, blue, purple, rose).
+     - Active classes (`is-active`) dynamically synchronized in JavaScript on checkbox changes.
+  3. **Seamless Input Groups & Icons:**
+     - Root cause: General `.form-control` rule at line 3213 was imposing `padding: 9px 14px !important`, `border-radius: 10px !important`, and `font-size: 13.5px !important` over compact product inputs, breaking seam alignment with prepend icons and clipping date text (`25-10-20`).
+     - Added targeted overrides for `.zolo-product-grid`, `.product-extended-details-container`, and `.zolo-inventory-stripe`:
+       - Enforced uniform 31px height across inputs, prepends, appends, and select pickers.
+       - `.input-group-prepend .input-group-text`: `height: 31px`, `border-right: none`, `border-radius: 6px 0 0 6px`, matching field background in both light and dark mode.
+       - `.input-group-prepend + .form-control`: `border-top-left-radius: 0`, `border-bottom-left-radius: 0`, `border-left: 1px solid var(--z-field-border)`.
+       - Added `.input-group:focus-within` border synchronization.
+       - Added click delegation on prepend icons to focus adjacent inputs.
+  4. **Batch & Expiry and IMEI/Serial Number Extended Sections:**
+     - Added `#batch-section` (Warehouse | Batch No | Expired Date | Initial Qty) spanning 2 columns in the extended grid, toggled via `is_batch`.
+     - Added `#imei-section` (Warehouse | IMEI or Serial Numbers) spanning 1 column in the extended grid, toggled via `is_imei`.
+     - Initialized jQuery UI datepicker on `#batch-section .datepicker`.
+     - Handled persistence in `ProductController@store` to create `ProductBatch` and `Product_Warehouse` records when batch or IMEI data is submitted.
+- **Verification:**
+  - Automated Playwright verification (`scratch/verify_new_layout.js`):
+    - Top grid has exactly 3 boxes of 403px width each.
+    - Full-width stripe measures exactly 1230px with 10 toggle pill buttons.
+    - When 3 boxes enabled (`Initial Stock` [300px] + `Diff Price` [300px] + `Variants` [610px]), all align on the exact same horizontal row (`top: 748.3px`).
+    - Batch, IMEI, and Promotional Price sections toggle cleanly and display dates without clipping (`25-10-2026`).
+  - Dark mode verified cleanly across all boxes and stripe.
+  - `php artisan test --filter=ProductCreateSmokeTest`: PASS (1 test, 10 assertions).
+  - `php artisan test --filter=DesignTokensTest`: PASS (4 tests, 4 assertions, 0 inline styles, 0 forbidden accents).
+
+---
+
+## 85. Toggle-Oriented Responsive Grid with Zero Empty Gaps & Modern Toggle Switch Buttons (2026-10-25, branch ui)
+- **User Feedback & Requirements:**
+  - "when i click other toggle buttons, 'this product has variant' hide and appears, also make use of the width responsively, make it as a toggle button. promotional price should be vertically arranged and keep it in single grid, and make all these boxes more dynamic, which means never have the gap in each line, if i toggle, make use of the space if nothing is there, then use the full width of that box. it should be toggle oriented responsive."
+- **Key Architectural Solutions:**
+  1. **Modern Toggle Switch Buttons (`.zolo-switch-track` & `.zolo-switch-thumb`):**
+     - Transformed each toggle pill in the Inventory & Stock Control stripe into authentic modern toggle switch buttons matching the provided reference (green/blue track with white circular knob).
+     - Track: 28px × 16px capsule, neutral inactive grey (`#cbd5e1` / `#334155`), transitions smoothly to active role colors (amber `#f59e0b`, emerald `#10b981`, blue `#2563eb`, purple `var(--z-primary)`, rose `#e11d48`).
+     - Thumb: 12px white circular knob with soft elevation, slides 12px to the right (`translateX(12px)`) on checked.
+  2. **Preventing "This product has variant" Hide/Reappear Glitch:**
+     - Removed legacy mutual exclusion JavaScript that was forcibly hiding `#variant-option` when `is_batch` checked and hiding `#batch-option` when `is_variant` checked.
+     - All toggle buttons remain reliably visible and stable.
+  3. **Vertically Arranged Single-Grid Promotional Price:**
+     - Converted `#promo-container` from horizontal 3-column row into `.zolo-promo-vertical-form` (vertical column of Promotional Price, Promotion Starts with calendar prepend, and Promotion Ends with calendar prepend).
+     - Constrained `#promo-container` to single grid (`span 1`), matching Initial Stock, Diff Price, and IMEI.
+  4. **Toggle-Oriented Dynamic Responsive Grid Spans (`applyDynamicGridSpans()`):**
+     - Developed dynamic layout packing algorithm to guarantee **ZERO empty gaps** in any row:
+       - **1 Box Active:** Expands to `span 4` (100% full container width, 1230px).
+       - **2 Boxes Active (1 Wide + 1 Compact, e.g., Initial Stock + Variants):** Wide section takes `span 3` (75%, 920px), compact section takes `span 1` (25%, 300px) -> Total = 4 columns (1230px, 100% width, zero right gap!).
+       - **2 Boxes Active (Both Compact or Both Wide):** Each takes `span 2` (50% each) -> Total = 4 columns (1230px, 100% width, zero gap!).
+       - **3 Boxes Active (1 Wide + 2 Compact, or 3 Compact):** Row 1 occupies all 4 columns (`1 + 1 + 2 = 4 cols` or `2 + 1 + 1 = 4 cols`) on the exact same row!
+       - **4 Boxes Active:** All 4 compact boxes occupy 1 column each (`1 + 1 + 1 + 1 = 4 cols`) on the same row with zero gap!
+- **Verification:**
+  - Automated Playwright verification (`scratch/test_dynamic_toggles.js`):
+    - Switch track and thumb verified present across all stripe controls.
+    - Single box: `width: 1230px`, `class: zolo-grid-span-4`.
+    - Initial Stock + Variants: Initial Stock is 300px (`span 1`), Variants is 920px (`span 3`), total width 1230px (zero gap).
+    - Variant option stays visible when Batch & Expiry is toggled.
+    - Promotional Price: `width: 300px`, `isVertical: true`.
+    - 3 boxes (Initial Stock + Diff Price + Variants) align on the exact same horizontal row (`top: 382.7px`, `allSameLine: true`).
+    - Verified across light and dark modes.
+  - `php artisan test --filter=ProductCreateSmokeTest`: PASS (1 test, 10 assertions).
+  - `php artisan test --filter=DesignTokensTest`: PASS (4 tests, 4 assertions, 0 inline styles, 0 forbidden accents).
+
+---
+
+## 86. Modal Top Line Removal Across All Popups & In-Place Tab-Based Purchase Orders Workspace (2026-10-26, branch ui)
+- **User Feedback & Requirements:**
+  - "remove the top line in all the popups. also what is purchase order, whether it cant be same like the purchase bill? when i click the purchase order, do not go to popup, instead of that, make relevant UI by replacing the current UI, same process like a tab. make it more simple."
+- **Key Architectural Solutions:**
+  1. **Complete Removal of Modal Top Accent Lines (`.modal-content::before`):**
+     - Neutralized `.modal-content::before`, `.modal-content::after`, `.modal-dialog::before`, `.modal-dialog::after`, `.modal-header::before`, and `.modal-header::after` across all dialogs with `display: none !important; content: none !important;`.
+     - Popups now have clean, unified, executive borders without decorative colored lines.
+  2. **Conceptual Unification of Purchase Order & Purchase Bill:**
+     - Clarified that a Purchase Order (PO) is an official intent/commitment document sent by a buyer to a supplier prior to delivery. It carries no financial accounting impact (no inventory addition, no AP debt, no tax liability) until received.
+     - Confirmed that PO and Purchase Bill can and should share the exact same clean voucher layout (Supplier, PO#, Dates, Warehouse, Items Grid, Totals) to eliminate user learning curves.
+  3. **Seamless In-Place Tab Replacement for Purchase Orders (Zero Popups):**
+     - Replaced the popup modal click handler in `commercial-orders.js` and `command-center-nav.blade.php` with `switchCommercialTab(mode)`:
+       - Clicking `Purchase Orders` tab highlights it with `aria-current="page"`, updates URL to `?orders=1` via pushState without reloading, updates title to `New Purchase Order [Order]`, updates labels to `Our PO No`, `Quotation / Ref #`, `PO Date`, `Delivery Date`, sets status to `4`, and changes save button to `Save Purchase Order`.
+       - Right-side drawer transforms from the bill list to the `Purchase Orders` list (`#side-order-list`), featuring order cards with status badges, remaining quantities to bill/deliver, and direct `⚡ Load to bill`, `Details`, and `Cancel` buttons.
+       - Clicking `⚡ Load to bill` on any order automatically switches the workspace back to the `Bills` tab and preloads all open lines into the bill voucher.
+       - Clicking `Bills` tab returns the workspace to `New Purchase Bill [New]` with `Our Bill No`, `Bill Date`, `Entry Date`, and `Save` button.
+       - Hidden `#commercial-orders` toolbar button to prevent cluttering the items row.
+- **Verification:**
+  - Browser subagent verified zero popups when clicking `Purchase Orders`, clean in-place tab switching, seamless return to `Bills`, and zero top lines on all popups.
+  - `php artisan test --filter=PurchaseOrderLifecycleTest`: PASS (5 tests, 28 assertions).
+  - `php artisan test --filter=DesignTokensTest`: PASS (4 tests, 4 assertions, 0 inline styles, 0 forbidden accents).
+
+## 87. Sidebar Restructure to User's Information Architecture (2026-10-25, branch ui)
 
 User gave the left-bar structure; implemented in `resources/views/backend/layout/sidebar.blade.php` (also saved to agent memory `sidebar-structure`).
 - Sections: Dashboard · Master Data (Products / Parties / Commercial Masters groups) · Inventory · Buying · Selling · Job Work / Subcontracting · Sales Support · Scheduling · GST & Compliance · Finance & Ledger · Organization · Industry Addons (kept) · Analytics (kept, stock reports moved to Inventory Reports) · Settings (7 named links + "Other Settings" group).
@@ -1852,9 +2051,9 @@ User gave the left-bar structure; implemented in `resources/views/backend/layout
 - Not shown yet (no page exists): Rental workflows, Rework / Returns, Service Bills, Tax Reports. Voucher Series and Document Series both open `document-series.index`.
 - Verified: 160 feature tests green (CapabilityEngine, PageSpeed, OptechMaster/Voucher, Navigation, Operations, Compliance fixtures, TextileScenarioMatrix, JobWorkReturnsRework…); Playwright check of active/open state on job-work, returns, stock-count, warehouse stock, customer, warehouse pages.
 
-## 82. Sidebar Rebuilt From the IA Plan Document (2026-10-25, branch ui)
+## 88. Sidebar Rebuilt From the IA Plan Document (2026-10-25, branch ui)
 
-Source: [documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md](documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md) (supersedes the section-81 flat list).
+Source: [documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md](documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md) (supersedes the section-87 flat list).
 - Sidebar: Master Data · Inventory · Transactions (Buying, Selling + Sales Tools) · Operations (capability-gated Job Work, Manufacturing, Projects / Sites, Distribution, Repair, Cafe, module menus; Booking Calendar) · Finance · Compliance · Reporting (one Reports group, category sub-labels, Brokerage moved here) · Organization · Administration (one Settings entry).
 - `App\Services\Platform\NavigationAccess` holds the role-override/permission/capability checks once (sidebar + Settings workspace). `SettingsCatalog` lists every settings page by area.
 - New `/settings` (`settings.workspace`, `SettingsWorkspaceController`, `backend/settings/workspace.blade.php`, `css/pages/settings-workspace.css`): 10 area cards, filter box, Enter/arrow keys; fits 1536x730 with no scroll.
@@ -1862,9 +2061,9 @@ Source: [documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md](documents/Z
 - Not done (needs decision): new capability keys for HRM / POS / promotions / scheduling (still permission-only), Rental (no feature), Service Bills register, Stock-by-lot gating by lot capability.
 - Verified: 91 nav/design feature+unit tests green; Playwright: active+open group correct on 8 pages, accordion one-open, search "purchase return"/"sms", settings page one-screen.
 
-## 83. Switchable Capabilities for Existing Features (2026-10-25, branch ui)
+## 89. Switchable Capabilities for Existing Features (2026-10-25, branch ui)
 
-User decisions on section 82's open items:
+User decisions on section 88's open items:
 - New capabilities `hrm.enabled`, `sales.pos`, `sales.gift_cards`, `sales.coupons`, `operations.scheduling`, `inventory.lot_report` (`CapabilityCatalog::SWITCHABLE`). With no company row they are on; they are exempt from `ERP_OPTIONAL_ACTIVATION_READY` (that gate guards new modules, not turning old ones back on).
 - Migration `2026_10_25_000001_switchable_existing_feature_capabilities`: seeds the keys, backfills every existing company ON for HRM/POS/gift cards/coupons/scheduling; stock-by-lot ON for textile/FMCG/timber profiles only. Fresh companies follow the profile preset (FMCG: POS + lot report; textile/timber: lot report; general trading/solar: none).
 - Server enforcement: `CapabilityServiceProvider` maps HRM controllers, GiftCard, Coupon, Booking, InventoryLotReport controllers and route `sale.pos` to their capability (RequireCapability).

@@ -1,6 +1,6 @@
 {{-- Include once in each normal sales/purchase workspace. Entry always uses its existing grid. --}}
 @if(config('commercial.enabled'))
-<div class="d-flex align-items-center flex-wrap gap-2 my-2" id="commercial-orders" data-kind="{{ $orderKind }}" data-url="{{ url('/commercial/orders/'.$orderKind) }}">
+<div class="d-none" id="commercial-orders" data-kind="{{ $orderKind }}" data-url="{{ url('/commercial/orders/'.$orderKind) }}">
     <button type="button" class="btn btn-sm btn-outline-primary" data-order-save>Save {{ $orderKind === 'sale' ? 'Sales' : 'Purchase' }} Order</button>
     <span class="small text-muted" data-order-feedback role="status" aria-live="polite"></span>
 </div>

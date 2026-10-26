@@ -1,5 +1,5 @@
-@section('charts', '1')
 @extends('backend.layout.main')
+@section('charts', '1')
 @section('content')
 
 @push('css')

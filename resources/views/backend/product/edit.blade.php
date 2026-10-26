@@ -264,7 +264,7 @@
                                 <div class="col-md-4">
                                     <div class="form-group">
                                         <label>{{ __('db.Profit Margin Type') }}</label>
-                                        <select name="profit_margin_type" class="form-control" required>
+                                        <select name="profit_margin_type" class="form-control selectpicker" required>
                                             <option value="percentage" {{ $lims_product_data->profit_margin_type == 'percentage' ? 'selected' : '' }}>Percentage</option>
                                             <option value="flat" {{ $lims_product_data->profit_margin_type == 'flat' ? 'selected' : '' }}>Flat</option>
                                         </select>
@@ -501,9 +501,8 @@
                                     @else
                                         <h5><input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1">&nbsp; {{__('db.This product has different price for different warehouse')}}</h5>
                                     @endif
-                                </div>
-                                <div class="col-md-6" id="diffPrice-section">
-                                    <div class="table-responsive ml-2">
+                                <div class="col-12" id="diffPrice-section">
+                                    <div class="table-responsive">
                                         <table id="diffPrice-table" class="table table-hover">
                                             <thead>
                                                 <tr>

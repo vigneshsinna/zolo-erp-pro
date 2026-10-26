@@ -42,3 +42,29 @@ dialog.document-pending-dialog { max-width: 720px; }
 dialog.document-pending-dialog table { width: 100%; margin-bottom: 10px; font-size: 12.5px; }
 dialog.document-pending-dialog th, dialog.document-pending-dialog td { padding: 4px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; }
 dialog.document-pending-dialog td.num, dialog.document-pending-dialog th.num { text-align: right; }
+
+/* Side Order Register Panel (In-place Tab View) */
+#side-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    overflow-y: auto;
+}
+.side-orders-header {
+    border-bottom: 1px solid var(--zb-border);
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+}
+.side-order-card {
+    border-left: 3px solid var(--z-primary) !important;
+}
+.side-order-card .side-action-btn.btn-side-load-order {
+    background: var(--primary-bg-color);
+    color: var(--z-primary);
+    font-weight: 700;
+}
+.side-order-card .side-action-btn.btn-side-load-order:hover {
+    background: var(--z-primary);
+    color: #fff;
+}

@@ -206,10 +206,46 @@ html body input[type="range"] {
 }
 
 /* ---------- Dropdown menus (Bootstrap, bootstrap-select, action menus) ---------- */
-html body .dropdown-menu {
+html body .bootstrap-select,
+html body .bootstrap-select.position-static,
+html body div.bootstrap-select.position-static,
+html body .btn-group.position-static,
+html body .dropdown.position-static,
+html body .dropup.position-static,
+html body .input-group-prepend.position-static,
+html body .input-group-append.position-static,
+html body .input-group-btn.position-static,
+html body .form-group.position-static {
+  position: relative !important;
+}
+
+html body > .bs-container,
+html body > .bs-container.position-static,
+html body .bs-container,
+html body .bs-container.position-static,
+html body div.bs-container,
+html body div.bs-container.position-static,
+html body .bootstrap-select.bs-container,
+html body .bootstrap-select.bs-container.position-static,
+html body .bootstrap-select.bs-container.form-control {
+  position: absolute !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: min(100vw - 32px, 480px) !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  z-index: 99999 !important;
+}
+
+html body .dropdown-menu,
+html body .bootstrap-select .dropdown-menu,
+html body .bs-container .dropdown-menu {
   background-color: var(--z-surface);
   border-color: var(--z-border);
   color: var(--z-text);
+  max-width: min(100vw - 32px, 480px) !important;
+  box-sizing: border-box !important;
 }
 html body .dropdown-menu .dropdown-item,
 html body .dropdown-menu > li > a,

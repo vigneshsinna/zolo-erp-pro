@@ -4,45 +4,159 @@
     $(function () {
         const root = document.getElementById('commercial-orders');
         if (!root) return;
-        $(root).removeClass('my-2').appendTo($('.items-controls-group').first());
+        
         const kind = root.dataset.kind, base = root.dataset.url, form = document.getElementById(kind + '-entry-form');
-        const modal = $('#commercial-orders-modal'), rows = modal.find('[data-orders-rows]');
-        modal.appendTo(document.body);
-        const status = message => modal.find('[data-orders-status]').text(message);
-        const feedback = message => $(root).find('[data-order-feedback]').text(message);
+        const modal = $('#commercial-orders-modal');
+        const feedback = message => {
+            const $fb = $(root).find('[data-order-feedback]');
+            if ($fb.length) $fb.text(message);
+            else if (window.toastr) window.toastr.info(message);
+        };
         const error = xhr => xhr.responseJSON?.message || 'Order action failed. Try again.';
         const token = document.querySelector('meta[name="csrf-token"]')?.content || form?.querySelector('[name="_token"]')?.value;
         let page = 1, lastPage = 1, pending = false, generation = 0;
+        let activeCommercialMode = 'bills';
         const cell = value => $('<td>').text(value ?? '');
-        function register() {
+
+        // Order registration / fetch into side panel
+        function fetchSideOrders() {
             const current = ++generation;
-            status('Loading orders…'); rows.empty();
-            $.getJSON(base, {page, party_id: form?.querySelector('[name="' + (kind === 'sale' ? 'customer_id' : 'supplier_id') + '"]')?.value || '', status: modal.find('[data-orders-all]').prop('checked') ? 'all' : 'pending'})
+            const $status = $('#side-orders-status');
+            const $cards = $('#side-orders-cards');
+            $status.text('Loading orders…');
+            $cards.empty();
+            
+            const includeAll = $('#side-orders-all-toggle').prop('checked');
+            const partyId = form?.querySelector('[name="' + (kind === 'sale' ? 'customer_id' : 'supplier_id') + '"]')?.value || '';
+
+            $.getJSON(base, {page, party_id: partyId, status: includeAll ? 'all' : 'pending'})
                 .done(data => {
                     if (current !== generation) return;
-                    lastPage = data.last_page; let count = 0;
-                    data.data.forEach(order => {
-                        if (!modal.find('[data-orders-all]').prop('checked') && (order.reversed || ['cancelled', 'fulfilled'].includes(order.status))) return;
+                    lastPage = data.last_page;
+                    let count = 0;
+                    (data.data || []).forEach(order => {
+                        if (!includeAll && (order.reversed || ['cancelled', 'fulfilled'].includes(order.status))) return;
                         count++;
-                        const row = $('<tr>').append(cell(order.reference_no), cell(order.party), cell(order.status), cell(order.remaining_delivery_base), cell(order.remaining_billing_base));
-                        const actions = $('<td>');
-                        $('<button type="button" class="btn btn-sm btn-light mr-1">Details</button>').on('click', () => details(order.id)).appendTo(actions);
-                        if (!order.reversed && order.remaining_billing_base > 0) $('<button type="button" class="btn btn-sm btn-outline-primary mr-1">Load to bill</button>').on('click', () => load(order.id)).appendTo(actions);
-                        if (!order.reversed && (order.remaining_billing_base > 0 || order.remaining_delivery_base > 0)) $('<button type="button" class="btn btn-sm btn-outline-danger">Cancel remainder</button>').on('click', () => {
-                            const cancel = modal.find('[data-order-cancel]').prop('hidden', false);
-                            cancel.find('[name="order_id"]').val(order.id);
-                            cancel.find('[name="business_date"]').val(form?.querySelector('[name="created_at"], [name="business_date"]')?.value || new Date().toLocaleDateString('en-CA'));
-                            cancel.find('[name="reason"]').val('').trigger('focus');
-                        }).appendTo(actions);
-                        row.append(actions).appendTo(rows);
+                        const statusClass = (order.status === 'fulfilled' ? 'received' : (order.status === 'partial' ? 'partial' : (order.status === 'cancelled' ? 'due' : 'ordered')));
+                        const $card = $('<div class="side-bill-card side-order-card">').attr('data-order-id', order.id);
+                        $card.html(`
+                            <div class="side-card-top">
+                                <strong class="side-card-ref">${order.reference_no}</strong>
+                                <span class="side-card-status ${statusClass}">${order.status}</span>
+                            </div>
+                            <div class="side-card-party">
+                                <i class="dripicons-user u-fs-10px u-c-text-muted"></i> ${order.party || (kind === 'sale' ? 'Customer' : 'Supplier')}
+                            </div>
+                            <div class="side-card-bottom">
+                                <span class="side-card-date">To bill: <strong>${order.remaining_billing_base}</strong> base</span>
+                                <span class="side-card-date">To deliver: <strong>${order.remaining_delivery_base}</strong> base</span>
+                            </div>
+                            <div class="side-card-actions">
+                                ${(!order.reversed && order.remaining_billing_base > 0) ? `
+                                    <a href="javascript:void(0)" class="side-action-btn edit btn-side-load-order" data-order-id="${order.id}" title="Load remaining items into ${kind === 'sale' ? 'Sales' : 'Purchase'} Bill">
+                                        <i class="dripicons-download"></i> Load to bill
+                                    </a>
+                                ` : ''}
+                                <a href="javascript:void(0)" class="side-action-btn view btn-side-order-details" data-order-id="${order.id}" title="View order lines">
+                                    <i class="dripicons-preview"></i> Details
+                                </a>
+                                ${(!order.reversed && (order.remaining_billing_base > 0 || order.remaining_delivery_base > 0)) ? `
+                                    <a href="javascript:void(0)" class="side-action-btn reverse btn-side-cancel-order" data-order-id="${order.id}" title="Cancel remainder">
+                                        <i class="dripicons-cross"></i> Cancel
+                                    </a>
+                                ` : ''}
+                            </div>
+                        `);
+                        $cards.append($card);
                     });
-                    status(count ? 'Page ' + page + ' of ' + lastPage : 'No orders on this page.');
-                    modal.find('[data-orders-prev]').prop('disabled', page <= 1);
-                    modal.find('[data-orders-next]').prop('disabled', page >= lastPage);
-                }).fail(xhr => current === generation && status(error(xhr)));
+                    $status.text(count ? 'Showing ' + count + ' orders' : 'No orders on this page.');
+                })
+                .fail(xhr => {
+                    if (current === generation) $status.text(error(xhr));
+                });
         }
+
+        function switchCommercialTab(mode) {
+            activeCommercialMode = mode;
+            const isOrders = (mode === 'orders');
+            
+            // 1. Update Tabs Active Indicator
+            const $billsTab = $('[data-nav-tab="bills"]');
+            const $ordersTab = $('[data-nav-tab="orders"], [data-order-register]');
+            
+            if (isOrders) {
+                $billsTab.removeAttr('aria-current');
+                $ordersTab.attr('aria-current', 'page');
+                if (window.history && window.history.pushState) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('orders', '1');
+                    url.searchParams.delete('view');
+                    window.history.pushState({ mode: 'orders' }, '', url.toString());
+                }
+            } else {
+                $ordersTab.removeAttr('aria-current');
+                $billsTab.attr('aria-current', 'page');
+                if (window.history && window.history.pushState) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('orders');
+                    url.searchParams.delete('view');
+                    window.history.pushState({ mode: 'bills' }, '', url.toString());
+                }
+            }
+
+            // 2. Breadcrumbs & Title
+            const orderDocTitle = (kind === 'sale' ? 'New Sales Order' : 'New Purchase Order');
+            const billDocTitle = (kind === 'sale' ? 'New Sales Bill' : 'New Purchase Bill');
+            $('#doc-title-text').text(isOrders ? orderDocTitle : billDocTitle);
+            $('#doc-breadcrumb-mode').text(isOrders ? 'Order' : 'New');
+
+            // 3. Document Field Labels
+            $('label[for="reference_no"]').text(isOrders ? (kind === 'sale' ? 'Our Order No' : 'Our PO No') : 'Our Bill No');
+            $('#reference_no').attr('placeholder', isOrders ? 'Auto series (PO-...)' : 'Auto series');
+            $('label[for="supplier_invoice_no"]').text(isOrders ? 'Quotation / Ref #' : 'Supplier Bill No');
+            $('label[for="supplier_invoice_date"]').text(isOrders ? 'PO Date' : 'Bill Date');
+            $('label[for="created_at"]').text(isOrders ? 'Delivery Date' : 'Entry Date');
+            $('label[for="issue_date"]').text(isOrders ? 'Order Date' : 'Bill Date');
+            $('label[for="entry_date"]').text(isOrders ? 'Delivery Date' : 'Entry Date');
+
+            // 4. Form status value & Cash toggle
+            const statusVal = isOrders ? (kind === 'sale' ? '2' : '4') : '1';
+            $('#purchase-status-val, #sale-status-val').val(statusVal);
+            $(form).find('[name="status"], [name="sale_status"]').val(statusVal);
+            if (isOrders) {
+                $('#input-paying-method').val('Credit');
+                $('#hidden-paid-amount').val('0');
+                $('.payment-type-segmented [data-payment-type="Credit"]').addClass('active');
+                $('.payment-type-segmented [data-payment-type="Cash"]').removeClass('active').addClass('u-op-50pct u-pe-none');
+            } else {
+                $('.payment-type-segmented [data-payment-type="Cash"]').removeClass('u-op-50pct u-pe-none');
+            }
+
+            // 5. Save Button Styling & Text
+            const saveText = isOrders
+                ? '<i class="dripicons-document-edit"></i> Save ' + (kind === 'sale' ? 'Sales Order' : 'Purchase Order')
+                : '<i class="dripicons-document-edit"></i> Save';
+            $('#btn-form-save').html(saveText);
+
+            // 6. Side Drawer Content
+            if (isOrders) {
+                $('.comm-drawer-title').html('<i class="dripicons-clipboard text-primary"></i> ' + (kind === 'sale' ? 'Sales Orders' : 'Purchase Orders'));
+                $('#side-bill-list').addClass('d-none');
+                $('.side-dropdown-filters, .side-panel-filter-label, .side-panel-series-filter, .side-filter-tabs').addClass('d-none');
+                $('#side-order-list').removeClass('d-none');
+                fetchSideOrders();
+            } else {
+                $('.comm-drawer-title').html('<i class="dripicons-view-list text-success"></i> ' + (kind === 'sale' ? 'Sales list' : 'Purchase list'));
+                $('#side-order-list').addClass('d-none');
+                $('.side-dropdown-filters, .side-panel-filter-label, .side-panel-series-filter, .side-filter-tabs').removeClass('d-none');
+                $('#side-bill-list').removeClass('d-none');
+            }
+        }
+
+        // Details function
         function details(id) {
             $.getJSON(base + '/' + id).done(({data}) => {
+                const modal = $('#commercial-orders-modal');
                 const container = modal.find('[data-order-lines]').empty();
                 const edit = $('<form>');
                 const table = $('<table class="table table-sm">').append('<thead><tr><th>Item</th><th>Unit</th><th>Ordered</th><th>Rate</th><th>Delivered (base)</th><th>Billed (base)</th><th>Cancelled (base)</th></tr></thead>');
@@ -67,22 +181,29 @@
                         const items = edit.find('[data-order-line]').toArray().map(row => ({order_item_id: Number(row.dataset.orderLine), qty: row.querySelectorAll('input')[0].value, unit_rate: row.querySelectorAll('input')[1].value}));
                         pending = true;
                         $.ajax({url: base + '/' + id, method: 'PUT', headers: {'X-CSRF-TOKEN': token}, data: {items, business_date: date.val(), reason: reason.val(), version: data.order.attributes_json?.order_version || 1, idempotency_key: key}})
-                            .done(() => { register(); details(id); status('Order changes saved.'); }).fail(xhr => status(error(xhr))).always(() => { pending = false; });
+                            .done(() => { fetchSideOrders(); details(id); modal.find('[data-orders-status]').text('Order changes saved.'); }).fail(xhr => modal.find('[data-orders-status]').text(error(xhr))).always(() => { pending = false; });
                     });
                 }
                 edit.appendTo(container);
                 data.events.forEach(event => $('<p class="small">').text(event.created_at + ' · ' + event.event + ' · ' + event.reason).appendTo(container));
                 modal.find('[data-order-detail]').prop('hidden', false);
-            }).fail(xhr => status(error(xhr)));
+                modal.modal('show');
+            }).fail(xhr => feedback(error(xhr)));
         }
+
+        // Load order lines into bill
         function load(id) {
             const grid = window.commandCenterGrid;
-            if (!grid || !window.zoloDocumentWorkspace) { status('Document workspace is still loading.'); return; }
+            if (!grid || !window.zoloDocumentWorkspace) { feedback('Document workspace is still loading.'); return; }
             $.getJSON(base + '/' + id).done(async ({data}) => {
                 const open = data.items.filter(item => item.remaining_qty > 0);
-                if (!open.length) { status('Order has no remaining billing quantity.'); return; }
+                if (!open.length) { feedback('Order has no remaining billing quantity.'); return; }
                 if (!(await window.zoloDocumentWorkspace.newDocument({}))) return;
+                
+                // Switch tab back to Bills
+                switchCommercialTab('bills');
                 grid.switchWorkspaceMode?.('voucher');
+                
                 const order = data.order, field = kind === 'sale' ? 'sales_order_id' : 'purchase_order_id';
                 $(form).find('[name="sales_order_id"], [name="purchase_order_id"]').remove();
                 $('<input type="hidden">').attr('name', field).val(order.id).appendTo(form);
@@ -98,40 +219,98 @@
                     $('#order-table-body tr.order-item-row').last().attr('data-order-item-id', item.id).attr('data-variant-id', item.variant_id || '').attr('data-order-batch-no', item.batch_no || '');
                 });
                 window.zoloDocumentWorkspace.config.context = {[field]: Number(order.id)};
-                grid.recalcTableSummary?.(); $(form).trigger('change'); window.zoloDocumentWorkspace.touch(); modal.modal('hide'); feedback('Loaded ' + order.reference_no + '. Review quantities before saving.');
-            }).fail(xhr => status(error(xhr)));
+                grid.recalcTableSummary?.();
+                $(form).trigger('change');
+                window.zoloDocumentWorkspace.touch();
+                $('#doc-title-text').text((kind === 'sale' ? 'New Sales Bill' : 'New Purchase Bill') + ' (from ' + order.reference_no + ')');
+                feedback('Loaded ' + order.reference_no + '. Review quantities before saving.');
+            }).fail(xhr => feedback(error(xhr)));
         }
-        $('[data-order-register]').on('click', event => { event.preventDefault(); page = 1; modal.modal('show'); register(); });
-        modal.find('[data-orders-all], [data-orders-refresh]').on('change click', register);
-        modal.find('[data-orders-prev]').on('click', () => { if (page > 1) { page--; register(); } });
-        modal.find('[data-orders-next]').on('click', () => { if (page < lastPage) { page++; register(); } });
-        modal.find('[data-order-cancel]').on('submit', function (event) {
-            event.preventDefault(); if (pending || !this.reportValidity()) return;
-            pending = true;
-            $.ajax({url: base + '/' + this.order_id.value + '/cancel', method: 'POST', headers: {'X-CSRF-TOKEN': token}, data: {business_date: this.business_date.value, reason: this.reason.value}})
-                .done(() => { this.hidden = true; register(); }).fail(xhr => status(error(xhr))).always(() => { pending = false; });
-        });
-        $(root).find('[data-order-save]').on('click', function () {
-            if (pending || !form) return;
-            if (Number(form.querySelector('[name="paid_amount"]')?.value || 0) !== 0) { feedback('Orders cannot take payment. Set paid amount to zero.'); return; }
-            if ($(form).find('[name="sale_id"], [name="purchase_id"], [name="sales_order_id"], [name="purchase_order_id"], [name="delivery_challan_id"], [name="goods_received_note_id"]').filter(function () { return !!this.value; }).length) { feedback('Start a new unlinked entry before creating an order.'); return; }
-            if (kind === 'purchase') {
-                const select = form.querySelector('[name="status"]');
-                if (!select) { feedback('Purchase status control is unavailable.'); return; }
-                $(select).val('4').trigger('change'); form.requestSubmit(); return;
+
+        // New order reset
+        function resetNewOrder() {
+            if (window.commandCenterGrid?.resetFormToNew) {
+                window.commandCenterGrid.resetFormToNew();
             }
-            if (!form.reportValidity()) return;
-            const payload = new FormData(form);
-            payload.set('paid_amount', '0'); payload.set('idempotency_key', form.dataset.orderKey ||= crypto.randomUUID());
-            const draftId = window.zoloDocumentWorkspace?.activeDraftId?.();
-            if (draftId) payload.set('draft_id', draftId);
-            pending = true; $(this).prop('disabled', true); feedback('Saving order…');
-            $.ajax({url: base, method: 'POST', data: payload, processData: false, contentType: false, headers: {'X-CSRF-TOKEN': token, Accept: 'application/json'}})
-                .done(({data}) => { feedback('Saved ' + data.reference_no); window.zoloDocumentWorkspace?.leave?.(); window.location.href = form.action; })
-                .fail(xhr => feedback(error(xhr))).always(() => { pending = false; $(this).prop('disabled', false); });
+            switchCommercialTab('orders');
+        }
+
+        // TAB CLICK HANDLERS (In-place tab replacement, ZERO popups)
+        $(document).on('click', '[data-order-register], [data-nav-tab="orders"]', function (event) {
+            event.preventDefault();
+            switchCommercialTab('orders');
         });
-        const linked = new URLSearchParams(window.location.search).get(kind === 'sale' ? 'sales_order_id' : 'purchase_order_id');
-        if (linked) load(Number(linked));
-        else if (new URLSearchParams(window.location.search).get('orders') === '1') $('[data-order-register]').first().trigger('click');
+
+        $(document).on('click', '[data-nav-tab="bills"]', function (event) {
+            event.preventDefault();
+            switchCommercialTab('bills');
+        });
+
+        // Side panel action handlers
+        $(document).on('click', '.btn-side-load-order', function (e) {
+            e.preventDefault();
+            const orderId = $(this).data('order-id');
+            if (orderId) load(orderId);
+        });
+
+        $(document).on('click', '.btn-side-order-details', function (e) {
+            e.preventDefault();
+            const orderId = $(this).data('order-id');
+            if (orderId) details(orderId);
+        });
+
+        $(document).on('click', '.btn-side-cancel-order', function (e) {
+            e.preventDefault();
+            const orderId = $(this).data('order-id');
+            const reason = prompt('Reason for cancelling unfulfilled remainder:');
+            if (!reason) return;
+            const businessDate = form?.querySelector('[name="created_at"], [name="business_date"]')?.value || new Date().toLocaleDateString('en-CA');
+            $.ajax({
+                url: base + '/' + orderId + '/cancel',
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token},
+                data: {business_date: businessDate, reason: reason}
+            }).done(() => {
+                feedback('Order remainder cancelled.');
+                fetchSideOrders();
+            }).fail(xhr => feedback(error(xhr)));
+        });
+
+        $(document).on('click', '#btn-side-new-order', function (e) {
+            e.preventDefault();
+            resetNewOrder();
+        });
+
+        $(document).on('change', '#side-orders-all-toggle', function () {
+            fetchSideOrders();
+        });
+
+        // Intercept form submission when in orders mode to guarantee order status and payment=0
+        $('#btn-form-save').on('click', function (e) {
+            if (activeCommercialMode === 'orders') {
+                $('#input-paying-method').val('Credit');
+                $('#hidden-paid-amount').val('0');
+                const statusVal = (kind === 'sale' ? '2' : '4');
+                $('#purchase-status-val, #sale-status-val').val(statusVal);
+                $(form).find('[name="status"], [name="sale_status"]').val(statusVal);
+            }
+        });
+
+        // Window popstate navigation
+        window.addEventListener('popstate', function (event) {
+            const isOrders = new URLSearchParams(window.location.search).get('orders') === '1' || new URLSearchParams(window.location.search).get('view') === 'orders';
+            switchCommercialTab(isOrders ? 'orders' : 'bills');
+        });
+
+        // Initialize state on page load
+        const params = new URLSearchParams(window.location.search);
+        const linked = params.get(kind === 'sale' ? 'sales_order_id' : 'purchase_order_id');
+        if (linked) {
+            load(Number(linked));
+        } else if (params.get('orders') === '1' || params.get('view') === 'orders') {
+            switchCommercialTab('orders');
+        }
+
+        window.switchCommercialTab = switchCommercialTab;
     });
 })(window.jQuery);

@@ -477,6 +477,20 @@
                         </div>
                     @endforelse
                 </div>
+
+                <!-- Purchase Orders Side List (Active in Purchase Orders mode) -->
+                <div class="side-list-container d-none" id="side-order-list">
+                    <div class="side-orders-header d-flex justify-content-between align-items-center mb-2 px-1">
+                        <label class="mb-0 small text-muted font-weight-bold">
+                            <input type="checkbox" id="side-orders-all-toggle"> Include closed
+                        </label>
+                        <button type="button" class="btn btn-xs btn-outline-primary font-weight-bold" id="btn-side-new-order">
+                            <i class="dripicons-plus"></i> New Order
+                        </button>
+                    </div>
+                    <div id="side-orders-status" class="small text-muted mb-2 px-1" role="status"></div>
+                    <div id="side-orders-cards"></div>
+                </div>
             </div>
         </aside>
     </div>

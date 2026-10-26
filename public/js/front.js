@@ -46,12 +46,20 @@ $(document).ready(function () {
     // Popper pushed tall selectpicker menus down over their own field.
     if ($.fn.dropdown && $.fn.dropdown.Constructor) {
         $.fn.dropdown.Constructor.Default.boundary = 'viewport';
+
+        // Strip Bootstrap 4's position-static hack on dropdown parents so menus never detach or stretch across the card
+        $(document).on('show.bs.dropdown shown.bs.dropdown', function (e) {
+            var $parent = $(e.target).parent();
+            if ($parent.hasClass('position-static') && !$parent.is('body')) {
+                $parent.removeClass('position-static');
+            }
+        });
     }
 
-    //Custom select - Universal anti-clipping container (exclude DataTables and native selects)
+    //Custom select - Universal anti-clipping container (exclude DataTables, native selects and debugbars)
     if ($.fn.selectpicker) {
         $.fn.selectpicker.Constructor.DEFAULTS.container = 'body';
-        $('select:not(.dataTables_length select):not([name$="_length"]):not(.custom-select-native)').selectpicker({
+        $('select:not(.dataTables_length select):not([name$="_length"]):not(.custom-select-native):not(.phpdebugbar select):not([class*="phpdebugbar"])').selectpicker({
             container: 'body'
         });
     }

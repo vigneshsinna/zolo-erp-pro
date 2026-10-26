@@ -1,6 +1,6 @@
+@extends('backend.layout.main')
 @section('rich-editor', '1')
 @section('image-upload', '1')
-@extends('backend.layout.main')
 
 @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
 @push('css')
@@ -142,29 +142,6 @@
                                                 <span class="validation-msg text-danger small"></span>
                                             </div>
                                         </div>
-                                        <div id="combo" class="col-12">
-                                            <label>{{__('db.Combo Products')}}</label>
-                                            <div class="search-box input-group mb-2">
-                                                <button type="button" class="btn btn-secondary btn-sm"><i class="fa fa-barcode"></i></button>
-                                                <input type="text" name="product_code_name" id="lims_productcodeSearch" placeholder="{{ __('db.Please type product code and select') }}" class="form-control" />
-                                            </div>
-                                            <div class="table-responsive">
-                                                <table id="myTable" class="table table-hover order-list">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>{{__('db.product')}}</th>
-                                                            <th>{{__('db.Wastage Percent')}}</th>
-                                                            <th>{{__('db.Quantity')}}</th>
-                                                            <th>{{__('db.Unit Cost')}}</th>
-                                                            <th>{{__('db.Unit Price')}}</th>
-                                                            <th>{{__('db.Sub total')}}</th>
-                                                            <th><i class="dripicons-trash"></i></th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody class="combo_product_list_table"></tbody>
-                                                </table>
-                                            </div>
-                                        </div>
                                     </div>
                                 </x-ui.section-box>
 
@@ -184,7 +161,7 @@
                                         <div class="col-6">
                                             <div class="form-group">
                                                 <label>{{ __('db.Profit Margin Type') }}</label>
-                                                <select name="profit_margin_type" class="form-control" required>
+                                                <select name="profit_margin_type" class="form-control selectpicker" required>
                                                     <option value="percentage">Percentage (%)</option>
                                                     <option value="flat">Flat</option>
                                                 </select>
@@ -253,7 +230,7 @@
                                             </div>
                                         </div>
 
-                                        @include('backend.product.partials.stock-policy', ['product' => null])
+                                        @include('backend.product.partials.stock-policy', ['product' => null, 'colClass' => 'col-6'])
 
                                         <!-- Warranty and Guarantee -->
                                         <div class="col-6">
@@ -296,7 +273,7 @@
                                                         <textarea rows="2" name="{{str_replace(' ', '_', strtolower($field->name))}}" value="{{$field->default_value}}" class="form-control" @if($field->is_required){{'required'}}@endif></textarea>
                                                     @elseif($field->type == 'select')
                                                         <?php $option_values = explode(",", $field->option_value); ?>
-                                                        <select class="form-control" name="{{str_replace(' ', '_', strtolower($field->name))}}" @if($field->is_required){{'required'}}@endif>
+                                                        <select class="form-control selectpicker" name="{{str_replace(' ', '_', strtolower($field->name))}}" @if($field->is_required){{'required'}}@endif>
                                                             @foreach($option_values as $value)
                                                                 <option value="{{$value}}" @if($value == $field->default_value){{'selected'}}@endif>{{$value}}</option>
                                                             @endforeach
@@ -309,200 +286,7 @@
                                     </div>
                                 </x-ui.section-box>
 
-                                <!-- BOX 3: Inventory & Options (Amber) -->
-                                <x-ui.section-box variant="amber" title="{{__('db.Inventory & Stock Control')}}" icon="inventory">
-                                    <div class="row">
-                                        <div id="alert-qty" class="col-12">
-                                            <div class="form-group">
-                                                <label>{{__('db.Alert Quantity')}}</label>
-                                                <input type="number" name="alert_quantity" class="form-control" step="any" placeholder="{{ __('db.Minimum alert qty') }}">
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <label class="mt-1 mb-1 font-weight-bold u-fs-11px u-tt-uppercase u-ls-0_05em u-c-neo-text-secondary">{{ __('db.Product Flags & Controls') }}</label>
-                                    <div class="zolo-toggle-grid">
-                                        <div id="featured" class="zolo-toggle-item">
-                                            <input type="checkbox" name="featured" id="chk_featured" value="1">
-                                            <label for="chk_featured">{{__('db.Featured')}}</label>
-                                        </div>
-                                        <div class="zolo-toggle-item">
-                                            <input type="checkbox" name="is_embeded" id="chk_embeded" value="1">
-                                            <label for="chk_embeded">{{__('db.Embedded Barcode')}}</label>
-                                        </div>
-                                        <div id="stock-section" class="zolo-toggle-item">
-                                            <input type="checkbox" name="is_initial_stock" id="chk_initial_stock" value="1">
-                                            <label for="chk_initial_stock">{{__('db.Initial Stock')}}</label>
-                                        </div>
-                                        <div id="variant-option" class="zolo-toggle-item">
-                                            <input name="is_variant" type="checkbox" id="is-variant" value="1">
-                                            <label for="is-variant">{{__('db.This product has variant')}}</label>
-                                        </div>
-                                        <div id="diffPrice-option" class="zolo-toggle-item">
-                                            <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1">
-                                            <label for="is-diffPrice">{{__('db.Different price by warehouse')}}</label>
-                                        </div>
-                                        <div id="batch-option" class="zolo-toggle-item">
-                                            <input name="is_batch" type="checkbox" id="is-batch" value="1">
-                                            <label for="is-batch">{{__('db.Batch & expiry date')}}</label>
-                                        </div>
-                                        <div id="imei-option" class="zolo-toggle-item">
-                                            <input name="is_imei" type="checkbox" id="is-imei" value="1">
-                                            <label for="is-imei">{{__('db.IMEI / Serial numbers')}}</label>
-                                        </div>
-                                        <div class="zolo-toggle-item">
-                                            <input name="promotion" type="checkbox" id="promotion" value="1">
-                                            <label for="promotion">{{__('db.Promotional Price')}}</label>
-                                        </div>
-
-                                        @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
-                                        <div class="zolo-toggle-item">
-                                            <input name="is_online" type="checkbox" id="is_online" value="1" checked>
-                                            <label for="is_online">{{__('db.Sell Online')}}</label>
-                                        </div>
-                                        @endif
-
-                                        @if(in_array('ecommerce',explode(',',$general_setting->modules)))
-                                        <div class="zolo-toggle-item">
-                                            <input name="in_stock" type="checkbox" id="in_stock" value="1" checked>
-                                            <label for="in_stock">{{__('db.In Stock')}}</label>
-                                        </div>
-                                        @endif
-
-                                        @if (\Schema::hasColumn('products', 'woocommerce_product_id'))
-                                        <div class="zolo-toggle-item">
-                                            <input name="is_sync_disable" type="checkbox" id="is_sync_disable" value="1">
-                                            <label for="is_sync_disable">Disable WooCommerce</label>
-                                        </div>
-                                        @endif
-
-                                        @if(in_array('restaurant',explode(',',$general_setting->modules)))
-                                        <div class="zolo-toggle-item">
-                                            <input name="is_addon" type="checkbox" id="is_addon" value="1">
-                                            <label for="is_addon">{{__('db.This is topping')}}</label>
-                                        </div>
-                                        @endif
-                                    </div>
-
-                                    <!-- Expandable: Warehouse Initial Stock Table -->
-                                    <div class="col-12 px-0" id="initial-stock-section">
-                                        <label class="mt-2 mb-1 font-weight-bold small">{{__('db.Warehouse Initial Stock')}}</label>
-                                        <div class="table-responsive">
-                                            <table class="table table-hover table-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th>{{__('db.Warehouse')}}</th>
-                                                        <th>{{__('db.qty')}}</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    @foreach($lims_warehouse_list as $warehouse)
-                                                    <tr>
-                                                        <td>
-                                                            <input type="hidden" name="stock_warehouse_id[]" value="{{$warehouse->id}}">
-                                                            {{$warehouse->name}}
-                                                        </td>
-                                                        <td><input type="number" name="stock[]" min="0" class="form-control form-control-sm"></td>
-                                                    </tr>
-                                                    @endforeach
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    <!-- Expandable: Different Warehouse Price Table -->
-                                    <div class="col-12 px-0" id="diffPrice-section">
-                                        <label class="mt-2 mb-1 font-weight-bold small">{{__('db.Different Warehouse Price')}}</label>
-                                        <div class="table-responsive">
-                                            <table id="diffPrice-table" class="table table-hover table-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th>{{__('db.Warehouse')}}</th>
-                                                        <th>{{__('db.Price')}}</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    @foreach($lims_warehouse_list as $warehouse)
-                                                    <tr>
-                                                        <td>
-                                                            <input type="hidden" name="warehouse_id[]" value="{{$warehouse->id}}">
-                                                            {{$warehouse->name}}
-                                                        </td>
-                                                        <td><input type="number" name="diff_price[]" class="form-control form-control-sm" placeholder="0.00"></td>
-                                                    </tr>
-                                                    @endforeach
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    <!-- Expandable: Variant Section -->
-                                    <div class="col-12 px-0" id="variant-section">
-                                        <div id="variant-input-section">
-                                            <div class="row">
-                                                <div class="col-5 form-group mt-1">
-                                                    <label>{{__('db.Option')}} *</label>
-                                                    <input type="text" name="variant_option[]" class="form-control form-control-sm variant-field" placeholder="{{ __('db.Size, Color etc') }}">
-                                                </div>
-                                                <div class="col-5 form-group mt-1">
-                                                    <label>{{__('db.Value')}} *</label>
-                                                    <input type="text" name="variant_value[]" class="type-variant form-control form-control-sm variant-field">
-                                                </div>
-                                                <div class="col-2 form-group mt-1 d-flex align-items-end justify-content-center">
-                                                    <button type="button" class="delVarOption btn btn-danger btn-sm p-1"><i class="dripicons-cross"></i></button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <button type="button" class="btn btn-info btn-xs add-more-variant my-1"><i class="dripicons-plus"></i> {{__('db.Add More Variant')}}</button>
-                                        <div class="table-responsive">
-                                            <table id="variant-table" class="table table-hover table-sm variant-list">
-                                                <thead>
-                                                    <tr>
-                                                        <th>{{__('db.name')}}</th>
-                                                        <th>{{__('db.Item Code')}}</th>
-                                                        <th>{{__('db.Additional Cost')}}</th>
-                                                        <th>{{__('db.Additional Price')}}</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody></tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    <!-- Expandable: Promotional Price Details -->
-                                    <div class="row mt-2" id="promo-container">
-                                        <div class="col-12" id="promotion_price">
-                                            <div class="form-group">
-                                                <label>{{__('db.Promotional Price')}}</label>
-                                                <input type="number" name="promotion_price" class="form-control" step="any" placeholder="0.00" />
-                                            </div>
-                                        </div>
-                                        <div class="col-6" id="start_date">
-                                            <div class="form-group">
-                                                <label>{{__('db.Promotion Starts')}}</label>
-                                                <div class="input-group">
-                                                    <div class="input-group-prepend">
-                                                        <div class="input-group-text"><i class="dripicons-calendar"></i></div>
-                                                    </div>
-                                                    <input type="text" name="starting_date" id="starting_date" class="form-control" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-6" id="last_date">
-                                            <div class="form-group">
-                                                <label>{{__('db.Promotion Ends')}}</label>
-                                                <div class="input-group">
-                                                    <div class="input-group-prepend">
-                                                        <div class="input-group-text"><i class="dripicons-calendar"></i></div>
-                                                    </div>
-                                                    <input type="text" name="last_date" id="ending_date" class="form-control" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </x-ui.section-box>
-
-                                <!-- BOX 4: Media, Details & SEO (Purple) -->
+                                <!-- BOX 3: Media, Details & SEO (Purple) -->
                                 <x-ui.section-box variant="purple" title="{{__('db.Media, Details & SEO')}}" icon="media">
                                     <div class="form-group">
                                         <label>{{__('db.Product Image')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.You can upload multiple image Only jpeg, jpg, png, gif file can be uploaded First image will be base image')}}"></i></label>
@@ -570,6 +354,322 @@
                                     @endif
                                 </x-ui.section-box>
 
+                            </div>
+
+                            <!-- Full Content Width Stripe: Inventory & Stock Control Toggle Buttons -->
+                            <div class="zolo-inventory-stripe">
+                                <div class="zolo-inventory-stripe-header">
+                                    <span class="zolo-inventory-stripe-icon">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                                    </span>
+                                    <h6 class="zolo-inventory-stripe-title">{{ __('db.Inventory & Stock Control') }}</h6>
+                                </div>
+
+                                <div class="zolo-inventory-stripe-alert">
+                                    <label for="alert_quantity">{{ __('db.Alert Quantity') }}</label>
+                                    <input type="number" name="alert_quantity" id="alert_quantity" class="form-control form-control-sm" step="any" placeholder="{{ __('db.Minimum alert qty') }}">
+                                </div>
+
+                                <div class="zolo-inventory-stripe-divider"></div>
+
+                                <div class="zolo-inventory-stripe-toggles">
+                                    <label id="stock-section" class="zolo-toggle-pill" data-role="amber" for="chk_initial_stock" title="{{ __('db.Initial Stock') }}">
+                                        <input type="checkbox" name="is_initial_stock" id="chk_initial_stock" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Initial Stock')}}</span>
+                                    </label>
+
+                                    <label id="variant-option" class="zolo-toggle-pill" data-role="purple" for="is-variant" title="{{ __('db.This product has variant') }}">
+                                        <input name="is_variant" type="checkbox" id="is-variant" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.This product has variant')}}</span>
+                                    </label>
+
+                                    <label id="diffPrice-option" class="zolo-toggle-pill" data-role="emerald" for="is-diffPrice" title="{{ __('db.Different price by warehouse') }}">
+                                        <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Different price by warehouse')}}</span>
+                                    </label>
+
+                                    <label id="batch-option" class="zolo-toggle-pill" data-role="amber" for="is-batch" title="{{ __('db.Batch & expiry date') }}">
+                                        <input name="is_batch" type="checkbox" id="is-batch" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Batch & expiry date')}}</span>
+                                    </label>
+
+                                    <label id="imei-option" class="zolo-toggle-pill" data-role="blue" for="is-imei" title="{{ __('db.IMEI / Serial numbers') }}">
+                                        <input name="is_imei" type="checkbox" id="is-imei" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.IMEI / Serial numbers')}}</span>
+                                    </label>
+
+                                    <label class="zolo-toggle-pill" data-role="blue" for="promotion" title="{{ __('db.Promotional Price') }}">
+                                        <input name="promotion" type="checkbox" id="promotion" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Promotional Price')}}</span>
+                                    </label>
+
+                                    <label id="featured" class="zolo-toggle-pill" data-role="purple" for="chk_featured" title="{{ __('db.Featured') }}">
+                                        <input type="checkbox" name="featured" id="chk_featured" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Featured')}}</span>
+                                    </label>
+
+                                    <label class="zolo-toggle-pill" data-role="emerald" for="chk_embeded" title="{{ __('db.Embedded Barcode') }}">
+                                        <input type="checkbox" name="is_embeded" id="chk_embeded" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Embedded Barcode')}}</span>
+                                    </label>
+
+                                    @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
+                                    <label class="zolo-toggle-pill is-active" data-role="purple" for="is_online" title="{{ __('db.Sell Online') }}">
+                                        <input name="is_online" type="checkbox" id="is_online" value="1" checked>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Sell Online')}}</span>
+                                    </label>
+                                    @endif
+
+                                    @if(in_array('ecommerce',explode(',',$general_setting->modules)))
+                                    <label class="zolo-toggle-pill is-active" data-role="emerald" for="in_stock" title="{{ __('db.In Stock') }}">
+                                        <input name="in_stock" type="checkbox" id="in_stock" value="1" checked>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.In Stock')}}</span>
+                                    </label>
+                                    @endif
+
+                                    @if (\Schema::hasColumn('products', 'woocommerce_product_id'))
+                                    <label class="zolo-toggle-pill" data-role="rose" for="is_sync_disable" title="Disable WooCommerce">
+                                        <input name="is_sync_disable" type="checkbox" id="is_sync_disable" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>Disable WooCommerce</span>
+                                    </label>
+                                    @endif
+
+                                    @if(in_array('restaurant',explode(',',$general_setting->modules)))
+                                    <label class="zolo-toggle-pill" data-role="blue" for="is_addon" title="{{ __('db.This is topping') }}">
+                                        <input name="is_addon" type="checkbox" id="is_addon" value="1">
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.This is topping')}}</span>
+                                    </label>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <!-- Extended Conditional Details Container (4-column grid mirroring top primary boxes) -->
+                            <div class="product-extended-details-container mt-2">
+                                <!-- Warehouse Initial Stock Section (1 grid column) -->
+                                <div id="initial-stock-section">
+                                    <x-ui.section-box variant="amber" title="{{__('db.Warehouse Initial Stock')}}" icon="inventory">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.Warehouse')}}</th>
+                                                        <th>{{__('db.qty')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($lims_warehouse_list as $warehouse)
+                                                    <tr>
+                                                        <td>
+                                                            <input type="hidden" name="stock_warehouse_id[]" value="{{$warehouse->id}}">
+                                                            {{$warehouse->name}}
+                                                        </td>
+                                                        <td><input type="number" name="stock[]" min="0" class="form-control form-control-sm"></td>
+                                                    </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Warehouse Differential Price Section (1 grid column) -->
+                                <div id="diffPrice-section">
+                                    <x-ui.section-box variant="emerald" title="{{__('db.Different Warehouse Price')}}" icon="pricing">
+                                        <div class="table-responsive">
+                                            <table id="diffPrice-table" class="table table-hover table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.Warehouse')}}</th>
+                                                        <th>{{__('db.Price')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($lims_warehouse_list as $warehouse)
+                                                    <tr>
+                                                        <td>
+                                                            <input type="hidden" name="warehouse_id[]" value="{{$warehouse->id}}">
+                                                            {{$warehouse->name}}
+                                                        </td>
+                                                        <td><input type="number" name="diff_price[]" class="form-control form-control-sm" placeholder="0.00"></td>
+                                                    </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Product Variants Section -->
+                                <div id="variant-section">
+                                    <x-ui.section-box variant="purple" title="{{__('db.Product Variants')}}" icon="tag">
+                                        <div id="variant-input-section">
+                                            <div class="row align-items-end">
+                                                <div class="col-md-4 form-group mb-2">
+                                                    <label class="font-weight-bold">{{__('db.Option')}} * <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Size, Color etc')}}"></i></label>
+                                                    <input type="text" name="variant_option[]" class="form-control form-control-sm variant-field" placeholder="{{ __('db.Size, Color etc') }}">
+                                                </div>
+                                                <div class="col-md-7 form-group mb-2">
+                                                    <label class="font-weight-bold">{{__('db.Value')}} * <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Enter variant value seperated by comma')}}"></i></label>
+                                                    <input type="text" name="variant_value[]" class="type-variant form-control form-control-sm variant-field">
+                                                </div>
+                                                <div class="col-md-1 form-group mb-2 text-center">
+                                                    <button type="button" class="delVarOption btn btn-danger btn-sm" title="{{__('db.delete')}}"><i class="dripicons-cross"></i></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="my-2">
+                                            <button type="button" class="btn btn-info btn-xs add-more-variant"><i class="dripicons-plus"></i> {{__('db.Add More Variant')}}</button>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table id="variant-table" class="table table-hover table-sm variant-list mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.name')}}</th>
+                                                        <th>{{__('db.Item Code')}}</th>
+                                                        <th>{{__('db.Additional Cost')}}</th>
+                                                        <th>{{__('db.Additional Price')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody></tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Warehouse Batch & Expiry Date Section -->
+                                <div id="batch-section">
+                                    <x-ui.section-box variant="amber" title="{{__('db.Batch & Expiry Date')}}" icon="inventory">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.Warehouse')}}</th>
+                                                        <th>{{__('db.Batch No')}}</th>
+                                                        <th>{{__('db.Expired Date')}}</th>
+                                                        <th>{{__('db.Initial Qty')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($lims_warehouse_list as $warehouse)
+                                                    <tr>
+                                                        <td>
+                                                            <input type="hidden" name="batch_warehouse_id[]" value="{{$warehouse->id}}">
+                                                            {{$warehouse->name}}
+                                                        </td>
+                                                        <td><input type="text" name="batch_no[]" class="form-control form-control-sm" placeholder="BATCH-001"></td>
+                                                        <td>
+                                                            <div class="input-group">
+                                                                <div class="input-group-prepend">
+                                                                    <div class="input-group-text"><i class="dripicons-calendar"></i></div>
+                                                                </div>
+                                                                <input type="text" name="expired_date[]" class="form-control form-control-sm datepicker" placeholder="dd-mm-yyyy">
+                                                            </div>
+                                                        </td>
+                                                        <td><input type="number" name="batch_qty[]" min="0" class="form-control form-control-sm" placeholder="0"></td>
+                                                    </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Warehouse IMEI / Serial Numbers Section -->
+                                <div id="imei-section">
+                                    <x-ui.section-box variant="blue" title="{{__('db.IMEI / Serial numbers')}}" icon="tag">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.Warehouse')}}</th>
+                                                        <th>{{__('db.IMEI or Serial Numbers')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($lims_warehouse_list as $warehouse)
+                                                    <tr>
+                                                        <td>
+                                                            <input type="hidden" name="imei_warehouse_id[]" value="{{$warehouse->id}}">
+                                                            {{$warehouse->name}}
+                                                        </td>
+                                                        <td><input type="text" name="imei_number[]" class="form-control form-control-sm" placeholder="SN12345, SN12346..."></td>
+                                                    </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Promotional Price Section -->
+                                <div id="promo-container">
+                                    <x-ui.section-box variant="blue" title="{{__('db.Promotional Price')}}" icon="pricing">
+                                        <div class="zolo-promo-vertical-form">
+                                            <div class="form-group mb-2" id="promotion_price">
+                                                <label class="font-weight-bold">{{__('db.Promotional Price')}}</label>
+                                                <input type="number" name="promotion_price" class="form-control form-control-sm" step="any" placeholder="0.00" />
+                                            </div>
+                                            <div class="form-group mb-2" id="start_date">
+                                                <label class="font-weight-bold">{{__('db.Promotion Starts')}}</label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <div class="input-group-text"><i class="dripicons-calendar"></i></div>
+                                                    </div>
+                                                    <input type="text" name="starting_date" id="starting_date" class="form-control form-control-sm" />
+                                                </div>
+                                            </div>
+                                            <div class="form-group mb-0" id="last_date">
+                                                <label class="font-weight-bold">{{__('db.Promotion Ends')}}</label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <div class="input-group-text"><i class="dripicons-calendar"></i></div>
+                                                    </div>
+                                                    <input type="text" name="last_date" id="ending_date" class="form-control form-control-sm" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Combo Products Section -->
+                                <div id="combo">
+                                    <x-ui.section-box variant="blue" title="{{__('db.Combo Products')}}" icon="box">
+                                        <div class="search-box input-group mb-2">
+                                            <div class="input-group-prepend">
+                                                <span class="input-group-text"><i class="fa fa-barcode"></i></span>
+                                            </div>
+                                            <input type="text" name="product_code_name" id="lims_productcodeSearch" placeholder="{{ __('db.Please type product code and select') }}" class="form-control form-control-sm" />
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table id="myTable" class="table table-hover order-list mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.product')}}</th>
+                                                        <th>{{__('db.Wastage Percent')}}</th>
+                                                        <th>{{__('db.Quantity')}}</th>
+                                                        <th>{{__('db.Unit Cost')}}</th>
+                                                        <th>{{__('db.Unit Price')}}</th>
+                                                        <th>{{__('db.Sub total')}}</th>
+                                                        <th class="text-center"><i class="dripicons-trash"></i></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="combo_product_list_table"></tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
                             </div>
 
                             <!-- Bottom Action Bar -->
@@ -791,6 +891,9 @@
     $("#variant-section").hide();
     $("#initial-stock-section").hide();
     $("#diffPrice-section").hide();
+    $("#batch-section").hide();
+    $("#imei-section").hide();
+    $("#promo-container").hide();
     $("#promotion_price").hide();
     $("#start_date").hide();
     $("#last_date").hide();
@@ -812,7 +915,7 @@
     });
 
     $('.add-more-variant').on("click", function() {
-        var htmlText = '<div class="row"><div class="col-md-4 form-group mt-2"><label>Option *</label><input type="text" name="variant_option[]" class="form-control variant-field" placeholder="Size, Color etc..."></div><div class="col-md-7 form-group mt-2"><label>Value *</label><input type="text" name="variant_value[]" class="type-variant form-control variant-field"></div><div class="col-sm-1 form-group mt-2 u-d-flex u-dir-column u-items-center u-justify-end"><button type="button" class="delVarOption btn btn-danger btn-sm mr-3"><i class="dripicons-cross"></i></button></div></div>';
+        var htmlText = '<div class="row align-items-end"><div class="col-md-4 form-group mb-2"><label>Option *</label><input type="text" name="variant_option[]" class="form-control form-control-sm variant-field" placeholder="Size, Color etc..."></div><div class="col-md-7 form-group mb-2"><label>Value *</label><input type="text" name="variant_value[]" class="type-variant form-control form-control-sm variant-field"></div><div class="col-md-1 form-group mb-2 text-center"><button type="button" class="delVarOption btn btn-danger btn-sm"><i class="dripicons-cross"></i></button></div></div>';
         $("#variant-input-section").append(htmlText);
         $('.type-variant').tagsInput();
     });
@@ -1323,6 +1426,7 @@
             $("#combo").hide(300);
             $("input[name='price']").prop('disabled',false);
         }
+        applyDynamicGridSpans();
     });
 
     $('select[name="unit_id"]').on('change', function() {
@@ -1614,80 +1718,238 @@
         else {
             $("#initial-stock-section").hide(300);
         }
+        applyDynamicGridSpans();
     });
-
-    function initialStockUncheck(){
-        $("input[name='is_initial_stock']").prop("checked", false);
-        $("input[name='featured']").prop("checked", false);
-        $("#initial-stock-section").hide(300);
-    }
 
     $("input[name='is_batch']").on("change", function () {
         if ($(this).is(':checked')) {
-            initialStockUncheck()
-            $("#variant-option").hide(300);
-            $("#stock-section").hide(300);
-            $("#featured").hide(300);
-
+            $("#batch-section").show(300);
         }
         else {
-            $("#variant-option").show(300);
-            $("#stock-section").show(300);
-            $("#featured").show(300);
+            $("#batch-section").hide(300);
         }
-
+        applyDynamicGridSpans();
     });
 
     $("input[name='is_imei']").on("change", function () {
         if ($(this).is(':checked')) {
-            initialStockUncheck()
-            $("#stock-section").hide(300);
-            $("#featured").hide(300);
+            $("#imei-section").show(300);
         }
         else {
-            $("#stock-section").show(300);
-            $("#featured").show(300);
+            $("#imei-section").hide(300);
         }
+        applyDynamicGridSpans();
+    });
 
+    // Synchronize toggle pill visual active state
+    $('.zolo-toggle-pill input[type="checkbox"]').on("change", function () {
+        var $pill = $(this).closest('.zolo-toggle-pill');
+        if ($(this).is(':checked')) {
+            $pill.addClass('is-active');
+        } else {
+            $pill.removeClass('is-active');
+        }
+    });
+
+    // Seamless click on prepend icon opens/focuses corresponding input
+    $(document).on('click', '.input-group-prepend', function() {
+        $(this).closest('.input-group').find('input').focus();
+    });
+
+    // Initialize datepicker on batch expiry fields
+    $('#batch-section .datepicker').datepicker({
+        format: "dd-mm-yyyy",
+        startDate: "<?php echo date('d-m-Y'); ?>",
+        autoclose: true,
+        todayHighlight: true
     });
 
     $("input[name='is_variant']").on("change", function () {
         if ($(this).is(':checked')) {
-            initialStockUncheck()
             $("#variant-section").show(300);
-            $("#batch-option").hide(300);
             $(".variant-field").prop("required", true);
-            $("#stock-section").hide(300);
         }
         else {
             $("#variant-section").hide(300);
-            $("#batch-option").show(300);
             $(".variant-field").prop("required", false);
-            $("#stock-section").show(300);
         }
+        applyDynamicGridSpans();
     });
 
     $("input[name='is_diffPrice']").on("change", function () {
         if ($(this).is(':checked')) {
             $("#diffPrice-section").show(300);
         }
-        else
+        else {
             $("#diffPrice-section").hide(300);
+        }
+        applyDynamicGridSpans();
     });
 
     $( "#promotion" ).on( "change", function() {
         if ($(this).is(':checked')) {
             $("#starting_date").val($.datepicker.formatDate('dd-mm-yy', new Date()));
+            $("#promo-container").show(300);
             $("#promotion_price").show(300);
             $("#start_date").show(300);
             $("#last_date").show(300);
         }
         else {
+            $("#promo-container").hide(300);
             $("#promotion_price").hide(300);
             $("#start_date").hide(300);
             $("#last_date").hide(300);
         }
+        applyDynamicGridSpans();
     });
+
+    function applyDynamicGridSpans() {
+        var isCombo = $('select[name="type"]').val() === 'combo';
+
+        var sections = [
+            {
+                id: 'initial-stock-section',
+                $el: $('#initial-stock-section'),
+                isWide: false,
+                active: !isCombo && $("input[name='is_initial_stock']").is(':checked')
+            },
+            {
+                id: 'diffPrice-section',
+                $el: $('#diffPrice-section'),
+                isWide: false,
+                active: !isCombo && $("input[name='is_diffPrice']").is(':checked')
+            },
+            {
+                id: 'imei-section',
+                $el: $('#imei-section'),
+                isWide: false,
+                active: !isCombo && $("input[name='is_imei']").is(':checked')
+            },
+            {
+                id: 'promo-container',
+                $el: $('#promo-container'),
+                isWide: false,
+                active: $("#promotion").is(':checked')
+            },
+            {
+                id: 'variant-section',
+                $el: $('#variant-section'),
+                isWide: true,
+                active: !isCombo && $("input[name='is_variant']").is(':checked')
+            },
+            {
+                id: 'batch-section',
+                $el: $('#batch-section'),
+                isWide: true,
+                active: !isCombo && $("input[name='is_batch']").is(':checked')
+            },
+            {
+                id: 'combo',
+                $el: $('#combo'),
+                isWide: true,
+                active: isCombo
+            }
+        ];
+
+        var spanClasses = 'zolo-grid-span-1 zolo-grid-span-2 zolo-grid-span-3 zolo-grid-span-4';
+        sections.forEach(function(s) {
+            if (s.$el.length) {
+                s.$el.removeClass(spanClasses);
+            }
+        });
+
+        var activeSections = sections.filter(function(s) {
+            return s.active && s.$el.length;
+        });
+
+        var count = activeSections.length;
+        if (count === 0) return;
+
+        if (isCombo) {
+            $('#combo').addClass('zolo-grid-span-4');
+            return;
+        }
+
+        if (count === 1) {
+            activeSections[0].$el.addClass('zolo-grid-span-4');
+        }
+        else if (count === 2) {
+            var wideList = activeSections.filter(function(s) { return s.isWide; });
+            var compactList = activeSections.filter(function(s) { return !s.isWide; });
+
+            if (wideList.length === 1 && compactList.length === 1) {
+                compactList[0].$el.addClass('zolo-grid-span-1');
+                wideList[0].$el.addClass('zolo-grid-span-3');
+            } else {
+                activeSections[0].$el.addClass('zolo-grid-span-2');
+                activeSections[1].$el.addClass('zolo-grid-span-2');
+            }
+        }
+        else if (count === 3) {
+            var wideList = activeSections.filter(function(s) { return s.isWide; });
+            var compactList = activeSections.filter(function(s) { return !s.isWide; });
+
+            if (wideList.length === 1 && compactList.length === 2) {
+                compactList[0].$el.addClass('zolo-grid-span-1');
+                compactList[1].$el.addClass('zolo-grid-span-1');
+                wideList[0].$el.addClass('zolo-grid-span-2');
+            } else if (wideList.length === 0) {
+                activeSections[0].$el.addClass('zolo-grid-span-2');
+                activeSections[1].$el.addClass('zolo-grid-span-1');
+                activeSections[2].$el.addClass('zolo-grid-span-1');
+            } else if (wideList.length === 2 && compactList.length === 1) {
+                wideList[0].$el.addClass('zolo-grid-span-2');
+                wideList[1].$el.addClass('zolo-grid-span-2');
+                compactList[0].$el.addClass('zolo-grid-span-4');
+            }
+        }
+        else if (count === 4) {
+            var wideList = activeSections.filter(function(s) { return s.isWide; });
+            var compactList = activeSections.filter(function(s) { return !s.isWide; });
+
+            if (wideList.length === 0) {
+                activeSections.forEach(function(s) {
+                    s.$el.addClass('zolo-grid-span-1');
+                });
+            } else if (wideList.length === 1) {
+                compactList[0].$el.addClass('zolo-grid-span-1');
+                compactList[1].$el.addClass('zolo-grid-span-1');
+                wideList[0].$el.addClass('zolo-grid-span-2');
+                compactList[2].$el.addClass('zolo-grid-span-4');
+            } else if (wideList.length === 2) {
+                wideList[0].$el.addClass('zolo-grid-span-2');
+                wideList[1].$el.addClass('zolo-grid-span-2');
+                compactList[0].$el.addClass('zolo-grid-span-2');
+                compactList[1].$el.addClass('zolo-grid-span-2');
+            }
+        }
+        else {
+            var rowRem = 4;
+            var rowItems = [];
+            activeSections.forEach(function(s, idx) {
+                var need = s.isWide ? 2 : 1;
+                if (need > rowRem) {
+                    if (rowRem > 0 && rowItems.length) {
+                        var last = rowItems[rowItems.length - 1];
+                        var curClass = last.$el.attr('class') || '';
+                        var curSpan = (curClass.match(/zolo-grid-span-(\d)/) || [0, 1])[1];
+                        last.$el.removeClass(spanClasses).addClass('zolo-grid-span-' + (parseInt(curSpan) + rowRem));
+                    }
+                    rowRem = 4;
+                    rowItems = [];
+                }
+                s.$el.addClass('zolo-grid-span-' + need);
+                rowRem -= need;
+                rowItems.push(s);
+                if (idx === activeSections.length - 1 && rowRem > 0 && rowItems.length) {
+                    var last = rowItems[rowItems.length - 1];
+                    var curClass = last.$el.attr('class') || '';
+                    var curSpan = (curClass.match(/zolo-grid-span-(\d)/) || [0, 1])[1];
+                    last.$el.removeClass(spanClasses).addClass('zolo-grid-span-' + (parseInt(curSpan) + rowRem));
+                }
+            });
+        }
+    }
 
     var starting_date = $('#starting_date');
     starting_date.datepicker({
@@ -2023,6 +2285,9 @@ $(document).on('click', '#create_unit', function (e) {
             }
         }
     });
+
+    // Initial calculation of dynamic responsive grid spans
+    applyDynamicGridSpans();
 });
 </script>
 
