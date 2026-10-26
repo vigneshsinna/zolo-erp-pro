@@ -50,6 +50,21 @@ class DocumentEntryWebTest extends TestCase
     }
 
     #[DataProvider('kinds')]
+    public function test_the_page_script_defines_the_grid_before_the_form_scripts_read_it(string $kind, string $path): void
+    {
+        // With the Returns tab on, a nested partial's @push once moved command-center-form.js ahead of the page script,
+        // so window.commandCenterGrid was undefined and every save failed on recalcTableSummary.
+        config(['compliance.enabled' => true]);
+        foreach (['', '?orders=1', '?returns=1'] as $query) {
+            $html = $this->get($path.$query)->assertOk()->getContent();
+            $grid = strpos($html, 'window.commandCenterGrid = {');
+            $this->assertNotFalse($grid, $path.$query);
+            $this->assertGreaterThan($grid, strpos($html, 'js/command-center-form.js'), $path.$query);
+            $this->assertGreaterThan($grid, strpos($html, 'js/document-workspace.js'), $path.$query);
+        }
+    }
+
+    #[DataProvider('kinds')]
     public function test_linked_references_must_exist_in_the_trusted_company_context(string $kind, string $path): void
     {
         $this->get($path.'?new=1&project_id=999999')->assertStatus(404);

@@ -299,13 +299,13 @@
                                         <textarea name="product_details" class="form-control no-tiny" rows="2" placeholder="{{ __('db.Type product details') }}"></textarea>
                                     </div>
 
+                                    @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
+                                    {{-- products.tags comes with the ecommerce/restaurant addon; gated like edit.blade.php --}}
                                     <div class="form-group">
                                         <label>{{__('db.Product Tags')}}</label>
                                         <input type="text" name="tags" class="form-control" placeholder="Tag1, Tag2...">
                                         <span class="validation-msg text-danger small" id="tags-error"></span>
                                     </div>
-
-                                    @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
                                     <div class="row">
                                         <div class="col-6 form-group">
                                             <label>{{ __('Meta Title') }} *</label>
@@ -2048,6 +2048,12 @@
         return true;
     }
 
+    var submitLabel;
+    // A failed save must hand the button back, or the page sits on "Saving..." forever.
+    function restoreSubmit() {
+        if (submitLabel) $('#submit-btn').prop('disabled', false).html(submitLabel);
+    }
+
     /*$('#submit-btn').on("click", function (e) {
         $('#submit-btn').attr('disabled','true').html('<span class="spinner-border text-light" role="status"></span> {{__("db.Saving")}}...');
     })*/
@@ -2098,6 +2104,7 @@
             $('#submit-btn').on("click", function (e) {
                 e.preventDefault();
                 if ( $("#product-form").valid() && validate() ) {
+                    submitLabel = $('#submit-btn').html();
                     $('#submit-btn').attr('disabled','true').html('<span class="spinner-border text-light" role="status"></span> {{__("db.Saving")}}...');
                     tinyMCE.triggerSave();
                     if(myDropzone.getAcceptedFiles().length) {
@@ -2124,13 +2131,18 @@
                                 location.href = '../products';
                             },
                             error:function(response) {
-                                // console.log(response);
-                              if(response.responseJSON.errors.name) {
-                                  $("#name-error").text(response.responseJSON.errors.name);
+                              var json = response.responseJSON || {};
+                              var errors = json.errors || {};
+                              if(errors.name) {
+                                  $("#name-error").text(errors.name);
                               }
-                              else if(response.responseJSON.errors.code) {
-                                  $("#code-error").text(response.responseJSON.errors.code);
+                              else if(errors.code) {
+                                  $("#code-error").text(errors.code);
                               }
+                              else {
+                                  alert(json.message || 'Product could not be saved.');
+                              }
+                              restoreSubmit();
                             },
                         });
                     }
@@ -2150,7 +2162,7 @@
             });
         },
         error: function (file, response) {
-            console.log(response.message, 'hi');
+            restoreSubmit();
             if(response.message) {
               $("#name-error").text(response.message);
               this.removeAllFiles(true);

@@ -2081,3 +2081,24 @@ User: Returns should open in the same bill workspace (like the Purchase Orders t
 - `commercial-orders.js` drops `returns` from the URL on Bills/Orders and ignores popstate while `returns=1`.
 - Live example on company 23 (Sri Murugan Textiles Demo): PR-00001 (1 MTR against PUR-00002, ₹12.60) and SR-00001 (2 MTR against MJ-00001, ₹178.50), both saved → awaiting approval (no return policy) → approved from the side list → posted. Playwright: no page errors; Back button, Bills tab, card Return button all verified.
 - Not done: a feature test for the two new endpoints (needs the MySQL compliance fixtures).
+
+## 91. Add Product Did Not Save (2026-10-26, branch ui)
+
+Bug: every Add Product save failed with 503 "Database temporarily unavailable"; button stuck on "Saving...".
+- Cause: `create.blade.php` rendered the `tags` input outside the ecommerce/restaurant module check (edit.blade.php gates it). `products.tags` only exists with that addon, so the insert hit `Unknown column 'tags'`. The ajax error handler then crashed on `response.responseJSON.errors.name` (503 has no `errors`), so nothing showed.
+- Fix: `tags` moved inside the ecommerce/restaurant `@if`; error handler shows `message` via `alert()` and `restoreSubmit()` re-enables the button (ajax and Dropzone paths).
+- Test: `ProductCreateSmokeTest::test_product_create_form_only_posts_fields_the_products_table_has` (fails on the old view with `tags`). Verified in browser on company 14: save → /products; probe product id 953 "Bug Probe …" left in local DB.
+
+## 92. Purchase / Sales Save Broken by the Returns Tab Push Order (2026-10-26, branch ui)
+
+Bug (live since cb1ad4e): Save / Review on every Purchase and Sales bill/order showed "Cannot read properties of undefined (reading 'recalcTableSummary')".
+- Cause: Laravel groups `@push` content by render depth (keyed in first-use order). `returns-workspace.blade.php` (included inside `@section('content')`, depth 2) pushed `scripts` first, so the later depth-2 push from `@include('backend.partials.command-center-form')` landed ahead of the page's own depth-1 inline script. `command-center-form.js` then read `window.commandCenterGrid` before it existed (document-workspace.js silently bailed too).
+- Fix: the returns partial no longer pushes; purchase/sale `index.blade.php` push `commercial-returns.js` / `.css` themselves under `@if($returnsTab)`.
+- Rule: never `@push('scripts')` from a partial included inside a section of these pages.
+- Test: `DocumentEntryWebTest::test_the_page_script_defines_the_grid_before_the_form_scripts_read_it` (fails on the old views).
+
+## 93. Edit Product on the Single-Screen Layout (2026-10-26, branch ui)
+
+User: Edit Product still showed the old 4-step tabs (`data-shell-steps`). `edit.blade.php` markup now mirrors create: 3 section boxes, inventory stripe with toggle pills (alert qty `#alert-qty`, diff price, batch, IMEI, promotion, featured, embedded, addon pills), extended grid (diff price, variants, promotion, combo) packed by `applyDynamicGridSpans()`. All edit names/IDs/hidden `*_hidden` inputs kept, so the existing JS works. Variants stay create-only (hidden `is-variant` when the product has them). Save error handler fixed like create (`restoreSubmit`). Test: `ProductCreateSmokeTest::test_product_edit_page_uses_the_same_single_screen_layout_as_create`. Probe product 953 renamed "… (edited)" in local DB.
+
+Open: PO on company 23 blocks with "Set a valid HSN code for 3200 cc" — product 954 has GST 5% but no HSN and category "General" has no default HSN. Same strict TaxDeterminationService check runs for PO preview and bills.

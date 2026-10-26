@@ -13,753 +13,716 @@
 <x-success-message key="edit_message" />
 
 <x-product-command-bar active="products"></x-product-command-bar>
+@php
+    $modules = explode(',', $general_setting->modules);
+    $ecommerce = in_array('ecommerce', $modules);
+    $restaurant = in_array('restaurant', $modules);
+@endphp
 <section class="forms">
     <div class="container-fluid">
         <div class="row">
             <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header d-flex align-items-center">
-                        <h4>{{__('db.Update Product')}}</h4>
+                <div class="card product-single-screen-card">
+                    <div class="card-header d-flex align-items-center justify-content-between py-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <h4 class="mb-0 font-weight-bold u-fs-1_05rem">{{__('db.Update Product')}}</h4>
+                            <span class="text-muted small ml-2 font-italic">{{__('db.The field labels marked with * are required input fields')}}.</span>
+                        </div>
+                        <div class="card-header-actions d-flex align-items-center gap-2">
+                            <a href="{{route('products.index')}}" class="btn btn-sm btn-outline-secondary">{{__('db.Cancel')}}</a>
+                            <x-ui.button type="submit" variant="primary" size="sm" id="submit-btn" icon="dripicons-checkmark">{{__('db.Update Product')}}</x-ui.button>
+                        </div>
                     </div>
 
                     <x-error-message key="not_permitted" />
 
-                    <div class="card-body">
-                        <p class="italic"><small>{{__('db.The field labels marked with * are required input fields')}}.</small></p>
-                        <form id="product-form" data-shell-steps>
+                    <div class="card-body p-2">
+                        <form id="product-form">
                             <input type="hidden" name="id" value="{{$lims_product_data->id}}" />
-                            <div class="row" data-step-title="Item">
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Type')}} * </label>
-                                        <div class="input-group">
-                                            <select name="type" required class="form-control selectpicker" id="type">
-                                                <option value="standard">Standard</option>
-                                                <option value="combo">Combo</option>
-                                                <option value="digital">Digital</option>
-                                                <option value="service">Service</option>
-                                            </select>
-                                            <input type="hidden" name="type_hidden" value="{{$lims_product_data->type}}">
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Name')}} * </label>
-                                        <input type="text" name="name" value="{{$lims_product_data->name}}" required class="form-control">
-                                        <span class="validation-msg" id="name-error"></span>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Code')}} * </label>
-                                        <div class="input-group">
-                                            <input type="text" name="code" id="code" value="{{$lims_product_data->code}}" class="form-control" required>
-                                            <div class="input-group-append">
-                                                <button id="genbutton" type="button" class="btn btn-sm btn-default" title="{{__('db.Generate')}}"><i class="fa fa-refresh"></i></button>
-                                            </div>
-                                        </div>
-                                        <span class="validation-msg" id="code-error"></span>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Barcode Symbology')}} * </label>
-                                        <div class="input-group">
-                                            <input type="hidden" name="barcode_symbology_hidden" value="{{$lims_product_data->barcode_symbology}}">
-                                            <select name="barcode_symbology" required class="form-control selectpicker">
-                                                <option value="UPCE">UPC-E</option>
-                                                <option value="C128">Code 128</option>
-                                                <option value="C39">Code 39</option>
-                                                <option value="UPCA">UPC-A</option>
-                                                <option value="EAN8">EAN-8</option>
-                                                <option value="EAN13">EAN-13</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div id="digital" class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Attach File')}} </label>
-                                        <div class="input-group">
-                                            <input id="file" type="file" name="file" class="form-control">
-                                        </div>
-                                        <span class="validation-msg"></span>
-                                    </div>
-                                </div>
-                                <div id="combo" class="col-md-12 mb-1">
-                                    <label>{{__('db.add_product')}}</label>
-                                    <div class="search-box input-group mb-3">
-                                        <button class="btn btn-secondary"><i class="fa fa-barcode"></i></button>
-                                        <input type="text" name="product_code_name" id="lims_productcodeSearch" placeholder="{{__('db.Please type product code and select')}}" class="form-control" />
-                                    </div>
-                                    <label>{{__('db.Combo Products')}}</label>
-                                    <div class="table-responsive">
-                                        <table id="myTable" class="table table-hover order-list">
-                                            <thead>
-                                                <tr>
-                                                    <th>{{__('db.product')}}</th>
-                                                    <th>{{__('db.Wastage Percent')}}</th>
-                                                    <th>{{__('db.Quantity')}}</th>
-                                                    <th>{{__('db.Unit Cost')}}</th>
-                                                    <th>{{__('db.Unit Price')}}</th>
-                                                    <th>{{__('db.Sub Total')}}</th>
-                                                    <th><i class="dripicons-trash"></i></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @if($lims_product_data->type == 'combo')
-                                                <?php
-                                                    $product_list = explode(",", $lims_product_data->product_list);
-                                                    $wastage_percent = explode(",", $lims_product_data->wastage_percent);
-                                                    $qty_list = explode(",", $lims_product_data->qty_list);
-                                                    $variant_list = explode(",", $lims_product_data->variant_list);
-                                                    $price_list = explode(",", $lims_product_data->price_list);
-                                                ?>
-                                                @foreach($product_list as $key=>$id)
-                                                <tr>
-                                                    <?php
-                                                        $product = App\Models\Product::find($id);
-                                                        $combo_unit = App\Models\Unit::query()->where('id',$product->unit_id)->orWhere('base_unit',$product->unit_id)->get()->unique('id');
+                            <div class="zolo-product-grid">
 
-                                                        if($lims_product_data->variant_list && $variant_list[$key]) {
-                                                            $product_variant_data = App\Models\ProductVariant::select('item_code')->FindExactProduct($id, $variant_list[$key])->first();
-                                                            $product->code = $product_variant_data->item_code;
-                                                        }
-                                                        else
-                                                            $variant_list[$key] = "";
-                                                    ?>
-                                                    <td>{{$product->name}} [{{$product->code}}]</td>
-                                                    <td>
-                                                        <div class="input-group" >
-                                                            <input type="number" class="form-control wastage_percent" name="wastage_percent[]" value="{{@$wastage_percent[$key] ?? 0 }}" min="0" step="any"/>
-                                                         <div class="input-group-append">
-                                                            <span class="input-group-text">%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="input-group u-maxw-unset">
-                                                            <input type="number"
-                                                                class="form-control qty"
-                                                                min="1"
-                                                                name="product_qty[]"
-                                                                value="{{ $qty_list[$key] ?? 1 }}"
-                                                                step="any"
-                                                                placeholder="Qty"
-
-                                                                aria-label="Quantity">
-
-                                                            <div class="input-group-append">
-                                                                <select name="combo_unit_id[]"
-                                                                        class="btn btn-outline-secondary form-control combo_unit_id u-w-112px"
-                                                                        onchange="calculate_price()">
-                                                                    @foreach ($combo_unit as $row)
-                                                                        <option value="{{ $row->id }}"
-                                                                                data-operation_value="{{ $row->operation_value }}"
-                                                                                data-operator="{{ $row->operator }}"
-                                                                                @if ($lims_product_data->unit_id == $row->id) 'selected' @endif>
-                                                                            {{ $row->unit_name }}
-                                                                        </option>
-                                                                    @endforeach
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-
-
-                                                    <td><input type="number" class="form-control unit_cost" name="product_unit_cost[]" value="{{$product->cost}}" step="any"/></td>
-                                                    <td><input type="number" class="form-control unit_price" name="unit_price[]" value="{{$price_list[$key]}}" step="any"/></td>
-                                                    <td><input type="number" class="form-control subtotal" name="subtotal[]" value="0.00" step="any"/></td>
-                                                    <td><button type="button" class="ibtnDel btn btn-danger btn-sm">X</button></td>
-                                                    <input type="hidden" class="product-id" name="product_id[]" value="{{$id}}"/>
-                                                    <input type="hidden" class="variant-id" name="variant_id[]" value="{{$variant_list[$key]}}"/>
-                                                    <input type="hidden" class="product_unit_cost" name="" value="{{$product->cost}}"/>
-                                                    <input type="hidden" class="product_unit_price" name="" value="{{$price_list[$key]}}"/>
-                                                </tr>
-                                                @endforeach
-                                                @endif
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                 {{-- <div class="col-md-4">
-                                                <label>{{__('db.Production Cost')}} </label>
-                                                <div class="input-group">
-                                                  <input type="number" name="production_cost" class="form-control" value="{{ $lims_product_data->production_cost ?? 0}}">
-                                              </div>
-                                        </div> --}}
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Brand')}} </label>
-                                        <div class="input-group">
-                                            <input type="hidden" name="brand" value="{{ $lims_product_data->brand_id}}">
-                                          <select name="brand_id" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="Select Brand...">
-                                            @foreach($lims_brand_list as $brand)
-                                                <option value="{{$brand->id}}">{{$brand->title}}</option>
-                                            @endforeach
-                                          </select>
-                                      </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <input type="hidden" name="category" value="{{$lims_product_data->category_id}}">
-                                        <label>{{__('db.category')}} * </label>
-                                        <div class="input-group">
-                                          <select name="category_id" required class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="Select Category...">
-                                            @foreach($lims_category_list as $category)
-                                                <option value="{{$category->id}}">{{$category->name}}</option>
-                                            @endforeach
-                                          </select>
-                                      </div>
-                                    </div>
-                                </div>
-                                <div id="unit" class="col-md-12">
-                                    <div class="row ">
-                                        <div class="col-md-4">
-                                                <label>{{__('db.Product Unit')}} * </label>
-                                                <div class="input-group">
-                                                  <select required class="form-control selectpicker" data-live-search="true" data-live-search-style="begins" title="Select unit..." name="unit_id">
-                                                    @foreach($lims_unit_list as $unit)
-                                                        @if($unit->base_unit==null)
-                                                            <option value="{{$unit->id}}">{{$unit->unit_name}}</option>
-                                                        @endif
-                                                    @endforeach
-                                                  </select>
-                                                  <input type="hidden" name="unit" value="{{ $lims_product_data->unit_id}}">
-                                              </div>
-                                        </div>
-                                        <div class="col-md-4">
-                                                <label>{{__('db.Sale Unit')}} </label>
-                                                <div class="input-group">
-                                                  <select class="form-control selectpicker" name="sale_unit_id" id="sale-unit">
-                                                  </select>
-                                                  <input type="hidden" name="sale_unit" value="{{ $lims_product_data->sale_unit_id}}">
-                                              </div>
-                                        </div>
-                                        <div class="col-md-4 mt-2">
-                                                <div class="form-group">
-                                                    <label>{{__('db.Purchase Unit')}} </label>
-                                                    <div class="input-group">
-                                                      <select class="form-control selectpicker" name="purchase_unit_id">
-                                                      </select>
-                                                      <input type="hidden" name="purchase_unit" value="{{ $lims_product_data->purchase_unit_id}}">
-                                                  </div>
-                                                </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row" data-step-title="Price &amp; tax">
-                                <div id="cost" class="col-md-4 @if(Auth::user()->role_id > 2) d-none @endif">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Cost')}} * </label>
-                                        <input type="number" name="cost" value="{{$lims_product_data->cost}}" required class="form-control product_cost" step="any">
-                                        <div class="alert alert-warning very-small-text d-none p-2 position-absolute" id="product-cost-warning">
-                                            Cost must be higher than 0!
-                                        </div>
-                                        <span class="validation-msg"></span>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{ __('db.Profit Margin Type') }}</label>
-                                        <select name="profit_margin_type" class="form-control selectpicker" required>
-                                            <option value="percentage" {{ $lims_product_data->profit_margin_type == 'percentage' ? 'selected' : '' }}>Percentage</option>
-                                            <option value="flat" {{ $lims_product_data->profit_margin_type == 'flat' ? 'selected' : '' }}>Flat</option>
-                                        </select>
-                                        <span class="validation-msg"></span>
-                                    </div>
-                                </div>
-                                <div id="profit_margin" class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Profit Margin')}}</label>
-                                        <input type="number" name="profit_margin" value="{{$lims_product_data->profit_margin}}" required class="form-control" step="0.01">
-                                        <span class="validation-msg"></span>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Price')}} * </label>
-                                        <input type="number" name="price" value="{{$lims_product_data->price}}" required class="form-control" step="any">
-                                        <div class="alert alert-warning very-small-text d-none p-2 position-absolute" id="product-price-warning">
-                                            Price must be higher than Cost to make Profit!
-                                        </div>
-                                        <span class="validation-msg"></span>
-                                    </div>
-                                    <div class="form-group">
-                                        <input type="hidden" name="qty" value="{{ $lims_product_data->qty }}" class="form-control">
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Wholesale Price')}} </label>
-                                        <input type="number" name="wholesale_price" class="form-control" value="{{$lims_product_data->wholesale_price}}" step="any">
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Daily Sale Objective')}} </label>
-                                        <input type="number" name="daily_sale_objective" class="form-control" step="any" value="{{$lims_product_data->daily_sale_objective}}">
-                                    </div>
-                                </div>
-                                <div id="alert-qty" class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{__('db.Alert Quantity')}} </label>
-                                        <input type="number" name="alert_quantity" value="{{$lims_product_data->alert_quantity}}" class="form-control" step="any">
-                                    </div>
-                                </div>
-                                @include('backend.product.partials.stock-policy', ['product' => $lims_product_data])
-                                @if(\App\Services\Tax\GstSetupService::usesGst())
-                                <input type="hidden" name="tax" value="{{$lims_product_data->tax_id}}">
-                                @include('backend.product.partials.gst-fields', ['product' => $lims_product_data])
-                                @else
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <input type="hidden" name="tax" value="{{$lims_product_data->tax_id}}">
-                                        <label>{{__('db.product')}} {{__('db.Tax')}} </label>
-                                        <select name="tax_id" class="form-control selectpicker">
-                                            <option value="">No Tax</option>
-                                            @foreach($lims_tax_list as $tax)
-                                                <option value="{{$tax->id}}">{{$tax->name}}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                </div>
-                                @endif
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <input type="hidden" name="tax_method_id" value="{{$lims_product_data->tax_method}}">
-                                        <label>{{__('db.Tax Method')}} </label>
-                                        <select name="tax_method" class="form-control selectpicker">
-                                            <option value="1">{{__('db.Exclusive')}}</option>
-                                            <option value="2">{{__('db.Inclusive')}}</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <!-- Warranty and Guarantee [20-01-2025] -->
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{ __('db.Warranty') }}</label>
-                                        <div class="d-flex justify-content-between">
-                                            <input type="number" name="warranty" min="1" class="form-control u-w-48pct" placeholder="{{__('db.eg: 1')}}" value="{{ $lims_product_data->warranty }}">
-                                            <select name="warranty_type" class="form-control selectpicker u-w-48pct">
-                                                <option value="days" {{ $lims_product_data->warranty_type == 'days' ? 'selected' : '' }}>{{ __('db.Days') }}</option>
-                                                <option value="months" {{ $lims_product_data->warranty_type == 'months' ? 'selected' : '' }}>{{ __('db.Months') }}</option>
-                                                <option value="years" {{ $lims_product_data->warranty_type == 'years' ? 'selected' : '' }}>{{ __('db.Years') }}</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- <div>{{ $lims_product_data->guarantee_type }}</div> -->
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>{{ __('db.Guarantee') }}</label>
-                                        <div class="d-flex justify-content-between">
-                                            <input type="number" name="guarantee" min="1" class="form-control u-w-48pct" placeholder="{{__('db.eg: 1')}}" value="{{ $lims_product_data->guarantee }}">
-                                            <select name="guarantee_type" class="form-control selectpicker u-w-48pct">
-                                                <option value="days" {{ $lims_product_data->guarantee_type == 'days' ? 'selected' : '' }}>{{ __('db.Days') }}</option>
-                                                <option value="months" {{ $lims_product_data->guarantee_type == 'months' ? 'selected' : '' }}>{{ __('db.Months') }}</option>
-                                                <option value="years" {{ $lims_product_data->guarantee_type == 'years' ? 'selected' : '' }}>{{ __('db.Years') }}</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Warranty and Guarantee end -->
-
-                                @foreach($custom_fields as $field)
-                                    <?php $field_name = str_replace(' ', '_', strtolower($field->name)); ?>
-                                    @if(!$field->is_admin || \Auth::user()->role_id == 1)
-                                        <div class="{{'col-md-'.$field->grid_value}}">
+                                <!-- BOX 1: Primary Identity & Categorization (Blue) -->
+                                <x-ui.section-box variant="blue" title="{{__('db.Product Details')}}" icon="box">
+                                    <div class="row">
+                                        <div class="col-6">
                                             <div class="form-group">
-                                                <label>{{$field->name}}</label>
-                                                @if($field->type == 'text')
-                                                    <input type="text" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif>
-                                                @elseif($field->type == 'number')
-                                                    <input type="number" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif>
-                                                @elseif($field->type == 'textarea')
-                                                    <textarea rows="5" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif></textarea>
-                                                @elseif($field->type == 'checkbox')
-                                                    <br>
-                                                    <?php
-                                                    $option_values = explode(",", $field->option_value);
-                                                    $field_values =  explode(",", $lims_product_data->$field_name);
-                                                    ?>
-                                                    @foreach($option_values as $value)
-                                                        <label>
-                                                            <input type="checkbox" name="{{$field_name}}[]" value="{{$value}}" @if(in_array($value, $field_values)) checked @endif @if($field->is_required){{'required'}}@endif> {{$value}}
-                                                        </label>
-                                                        &nbsp;
-                                                    @endforeach
-                                                @elseif($field->type == 'radio_button')
-                                                    <br>
-                                                    <?php
-                                                    $option_values = explode(",", $field->option_value);
-                                                    ?>
-                                                    @foreach($option_values as $value)
-                                                        <label class="radio-inline">
-                                                            <input type="radio" name="{{$field_name}}" value="{{$value}}" @if($value == $lims_product_data->$field_name){{'checked'}}@endif @if($field->is_required){{'required'}}@endif> {{$value}}
-                                                        </label>
-                                                        &nbsp;
-                                                    @endforeach
-                                                @elseif($field->type == 'select')
-                                                    <?php $option_values = explode(",", $field->option_value); ?>
-                                                    <select class="form-control" name="{{$field_name}}" @if($field->is_required){{'required'}}@endif>
-                                                        @foreach($option_values as $value)
-                                                            <option value="{{$value}}" @if($value == $lims_product_data->$field_name){{'selected'}}@endif>{{$value}}</option>
-                                                        @endforeach
-                                                    </select>
-                                                @elseif($field->type == 'multi_select')
-                                                    <?php
-                                                    $option_values = explode(",", $field->option_value);
-                                                    $field_values =  explode(",", $lims_product_data->$field_name);
-                                                    ?>
-                                                    <select class="form-control" name="{{$field_name}}[]" @if($field->is_required){{'required'}}@endif multiple>
-                                                        @foreach($option_values as $value)
-                                                            <option value="{{$value}}" @if(in_array($value, $field_values)) selected @endif>{{$value}}</option>
-                                                        @endforeach
-                                                    </select>
-                                                @elseif($field->type == 'date_picker')
-                                                    <input type="date" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif>
-                                                @endif
+                                                <label>{{__('db.Product Type')}} *</label>
+                                                <select name="type" required class="form-control selectpicker" id="type">
+                                                    <option value="standard">Standard</option>
+                                                    <option value="combo">Combo</option>
+                                                    <option value="digital">Digital</option>
+                                                    <option value="service">Service</option>
+                                                </select>
+                                                <input type="hidden" name="type_hidden" value="{{$lims_product_data->type}}">
                                             </div>
                                         </div>
-                                    @endif
-                                @endforeach
-                            </div>
-                            <div class="row" data-step-title="Stock &amp; image">
-                                <div class="col-md-4">
-                                    <div class="form-group mt-3">
-                                        @if($lims_product_data->featured)
-                                            <input type="checkbox" name="featured" value="1" checked>
-                                        @else
-                                            <input type="checkbox" name="featured" value="1">
-                                        @endif
-                                        <label>{{__('db.Featured')}}</label>
-                                        <p class="italic">{{__('db.Featured product will be displayed in POS')}}</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group mt-3">
-                                        @if($lims_product_data->is_embeded)
-                                            <input type="checkbox" name="is_embeded" value="1" checked>
-                                        @else
-                                            <input type="checkbox" name="is_embeded" value="1">
-                                        @endif
-                                        <label>{{__('db.Embedded Barcode')}}</label>
-                                        <p class="italic">{{__('db.Check this if this product will be used in weight scale machine')}}</p>
-                                    </div>
-                                </div>
-                                <div class="col-12"></div>
-                                <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Image')}} </label> <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.You can upload multiple image Only jpeg, jpg, png, gif file can be uploaded First image will be base image')}}"></i>
-                                        <div id="imageUpload" class="dropzone"></div>
-                                        <span class="validation-msg" id="image-error"></span>
-                                    </div>
-                                </div>
-                                @if($lims_product_data->image)
-                                <div class="col-md-6">
-                                    <div class="form-group">
-                                        <table class="table table-hover">
-                                            <thead>
-                                                <tr>
-                                                    <th><button type="button" class="btn btn-sm"><i class="fa fa-list"></i></button></th>
-                                                    <th>Image</th>
-                                                    <th>Remove</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php $images = explode(",", $lims_product_data->image)?>
-                                                @foreach($images as $key => $image)
-                                                <tr>
-                                                    <td><button type="button" class="btn btn-sm"><i class="fa fa-list"></i></button></td>
-                                                    <td>
-                                                        <img src="{{url('images/product', $image)}}" height="60" width="60">
-                                                        <input type="hidden" name="prev_img[]" value="{{$image}}">
-                                                    </td>
-                                                    <td><button type="button" class="btn btn-sm btn-danger remove-img">X</button></td>
-                                                </tr>
-                                                @endforeach
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                @endif
-                            </div>
-                            <div class="row" data-step-title="Details &amp; options">
-                                <div class="col-md-12">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Details')}}</label>
-                                        <textarea name="product_details" class="form-control" rows="5">{{str_replace('@', '"', $lims_product_data->product_details)}}</textarea>
-                                    </div>
-                                </div>
-                                <div class="col-md-12 mt-2" id="diffPrice-option">
-                                    @if($lims_product_data->is_diffPrice)
-                                        <h5><input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1" checked>&nbsp; {{__('db.This product has different price for different warehouse')}}</h5>
-                                    @else
-                                        <h5><input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1">&nbsp; {{__('db.This product has different price for different warehouse')}}</h5>
-                                    @endif
-                                <div class="col-12" id="diffPrice-section">
-                                    <div class="table-responsive">
-                                        <table id="diffPrice-table" class="table table-hover">
-                                            <thead>
-                                                <tr>
-                                                    <th>{{__('db.Warehouse')}}</th>
-                                                    <th>{{__('db.Price')}}</th>
-                                                </tr>
-                                                @foreach($lims_warehouse_list as $warehouse)
-                                                <tr>
-                                                    <td>
-                                                        <input type="hidden" name="warehouse_id[]" value="{{$warehouse->id}}">
-                                                        {{$warehouse->name}}
-                                                    </td>
-                                                    <td>
-                                                        <?php
-                                                            $product_warehouse = \App\Models\Product_Warehouse::FindProductWithoutVariant($lims_product_data->id, $warehouse->id)->first();
-                                                        ?>
-                                                        @if($product_warehouse)
-                                                            <input type="number" name="diff_price[]" class="form-control" value="{{$product_warehouse->price}}">
-                                                        @else
-                                                            <input type="number" name="diff_price[]" class="form-control">
-                                                        @endif
-                                                    </td>
-                                                </tr>
-                                                @endforeach
-                                            </thead>
-                                            <tbody>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                <div class="col-md-12 mt-3" id="batch-option">
-                                    @if($lims_product_data->is_batch)
-                                    <h5><input name="is_batch" type="checkbox" id="is-batch" value="1" checked>&nbsp; {{__('db.This product has batch and expired date')}}</h5>
-                                    @else
-                                    <h5><input name="is_batch" type="checkbox" id="is-batch" value="1">&nbsp; {{__('db.This product has batch and expired date')}}</h5>
-                                    @endif
-                                </div>
-                                <div class="col-md-12 mt-3" id="imei-option">
-                                    @if($lims_product_data->is_imei)
-                                    <h5><input name="is_imei" type="checkbox" id="is-imei" value="1" checked>&nbsp; {{__('db.This product has IMEI or Serial numbers')}}</h5>
-                                    @else
-                                    <h5><input name="is_imei" type="checkbox" id="is-imei" value="1">&nbsp; {{__('db.This product has IMEI or Serial numbers')}}</h5>
-                                    @endif
-                                </div>
-                                @if($lims_product_data->is_variant)
-                                <div class="col-md-12 mt-3" id="variant-option">
-                                    <h5 class="d-none"><input name="is_variant" type="checkbox" id="is-variant" value="1" checked>&nbsp; {{__('db.This product has variant')}}</h5>
-                                </div>
-                                @endif
-                                <div class="col-md-12" id="variant-section">
-                                    @if($lims_product_data->variant_option)
-                                    <div id="variant-input-section">
-                                        @foreach($lims_product_data->variant_option as $key => $variant_option)
-                                        <?php
-                                            $noOfVariantValue += count(explode(",", $lims_product_data->variant_value[$key]));
-                                        ?>
-                                        <div class="row">
-                                            <div class="col-sm-4 form-group mt-2">
-                                                <label>{{__('db.Option')}} *</label>
-                                                <input type="text" name="variant_option[]" class="form-control variant-field" value="{{$lims_product_data->variant_option[$key]}}">
-                                            </div>
-                                            <div class="col-sm-7 form-group mt-2">
-                                                <label>{{__('db.Value')}} *</label>
-                                                <input type="text" name="variant_value[]" class="type-variant form-control variant-field" value="{{$lims_product_data->variant_value[$key]}}">
-                                            </div>
-                                            <div class="col-sm-1 form-group mt-2 u-d-flex u-dir-column u-items-center u-justify-end">
-                                                <button type="button" class="delVarOption btn btn-danger btn-sm mr-3"><i class="dripicons-cross"></i></button>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Barcode Symbology')}} *</label>
+                                                <input type="hidden" name="barcode_symbology_hidden" value="{{$lims_product_data->barcode_symbology}}">
+                                                <select name="barcode_symbology" required class="form-control selectpicker">
+                                                    <option value="C128">Code 128</option>
+                                                    <option value="C39">Code 39</option>
+                                                    <option value="UPCA">UPC-A</option>
+                                                    <option value="UPCE">UPC-E</option>
+                                                    <option value="EAN8">EAN-8</option>
+                                                    <option value="EAN13">EAN-13</option>
+                                                </select>
                                             </div>
                                         </div>
+                                        <div class="col-12">
+                                            <div class="form-group">
+                                                <label>{{__('db.Product Name')}} *</label>
+                                                <input type="text" name="name" value="{{$lims_product_data->name}}" required class="form-control" id="name">
+                                                <span class="validation-msg text-danger small" id="name-error"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="form-group">
+                                                <label>{{__('db.Product Code')}} *</label>
+                                                <div class="input-group">
+                                                    <input type="text" name="code" id="code" value="{{$lims_product_data->code}}" class="form-control" required>
+                                                    <div class="input-group-append">
+                                                        <button id="genbutton" type="button" class="btn btn-sm btn-default" title="{{__('db.Generate')}}"><i class="fa fa-refresh"></i></button>
+                                                    </div>
+                                                </div>
+                                                <span class="validation-msg text-danger small" id="code-error"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Brand')}}</label>
+                                                <input type="hidden" name="brand" value="{{ $lims_product_data->brand_id}}">
+                                                <select name="brand_id" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Brand...') }}">
+                                                    @foreach($lims_brand_list as $brand)
+                                                        <option value="{{$brand->id}}">{{$brand->title}}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.category')}} *</label>
+                                                <input type="hidden" name="category" value="{{$lims_product_data->category_id}}">
+                                                <select name="category_id" required class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Category...') }}">
+                                                    @foreach($lims_category_list as $category)
+                                                        <option value="{{$category->id}}">{{$category->name}}</option>
+                                                    @endforeach
+                                                </select>
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                        </div>
+                                        <div id="unit" class="col-12">
+                                            <div class="row">
+                                                <div class="col-12 form-group">
+                                                    <label>{{__('db.Product Unit')}} *</label>
+                                                    <select required class="form-control selectpicker" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Product Unit...') }}" name="unit_id">
+                                                        @foreach($lims_unit_list as $unit)
+                                                            @if($unit->base_unit==null)
+                                                                <option value="{{$unit->id}}">{{$unit->unit_name}}</option>
+                                                            @endif
+                                                        @endforeach
+                                                    </select>
+                                                    <input type="hidden" name="unit" value="{{ $lims_product_data->unit_id}}">
+                                                    <span class="validation-msg text-danger small"></span>
+                                                </div>
+                                                <div class="col-6 form-group">
+                                                    <label>{{__('db.Sale Unit')}}</label>
+                                                    <select class="form-control selectpicker" name="sale_unit_id" id="sale-unit"></select>
+                                                    <input type="hidden" name="sale_unit" value="{{ $lims_product_data->sale_unit_id}}">
+                                                </div>
+                                                <div class="col-6 form-group">
+                                                    <label>{{__('db.Purchase Unit')}}</label>
+                                                    <select class="form-control selectpicker" name="purchase_unit_id"></select>
+                                                    <input type="hidden" name="purchase_unit" value="{{ $lims_product_data->purchase_unit_id}}">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div id="digital" class="col-12">
+                                            <div class="form-group">
+                                                <label>{{__('db.Attach File')}}</label>
+                                                <input id="file" type="file" name="file" class="form-control">
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </x-ui.section-box>
+
+                                <!-- BOX 2: Pricing, Margins & Tax (Emerald) -->
+                                <x-ui.section-box variant="emerald" title="{{__('db.Pricing & Tax')}}" icon="pricing">
+                                    <div class="row">
+                                        <div id="cost" class="col-6 @if(Auth::user()->role_id > 2) d-none @endif">
+                                            <div class="form-group">
+                                                <label>{{__('db.Product Cost')}} *</label>
+                                                <input type="number" name="cost" value="{{$lims_product_data->cost}}" required class="form-control product_cost" step="any">
+                                                <div class="alert alert-warning very-small-text d-none p-1 position-absolute" id="product-cost-warning">
+                                                    Cost must be higher than 0!
+                                                </div>
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{ __('db.Profit Margin Type') }}</label>
+                                                <select name="profit_margin_type" class="form-control selectpicker" required>
+                                                    <option value="percentage" {{ $lims_product_data->profit_margin_type == 'percentage' ? 'selected' : '' }}>Percentage (%)</option>
+                                                    <option value="flat" {{ $lims_product_data->profit_margin_type == 'flat' ? 'selected' : '' }}>Flat</option>
+                                                </select>
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                        </div>
+                                        <div id="profit_margin" class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Profit Margin')}}</label>
+                                                <input type="number" name="profit_margin" value="{{$lims_product_data->profit_margin}}" required class="form-control" step="0.01">
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Product Price')}} *</label>
+                                                <input type="number" name="price" value="{{$lims_product_data->price}}" required class="form-control" step="any">
+                                                <div class="alert alert-warning very-small-text d-none p-1 position-absolute" id="product-price-warning">
+                                                    Price must be higher than Cost!
+                                                </div>
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                            <input type="hidden" name="qty" value="{{ $lims_product_data->qty }}">
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Wholesale Price')}}</label>
+                                                <input type="number" name="wholesale_price" class="form-control" value="{{$lims_product_data->wholesale_price}}" step="any">
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Daily Sale Objective')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Minimum qty which must be sold in a day')}}"></i></label>
+                                                <input type="number" name="daily_sale_objective" class="form-control" step="any" value="{{$lims_product_data->daily_sale_objective}}">
+                                            </div>
+                                        </div>
+
+                                        <input type="hidden" name="tax" value="{{$lims_product_data->tax_id}}">
+                                        @if(\App\Services\Tax\GstSetupService::usesGst())
+                                            @include('backend.product.partials.gst-fields', ['product' => $lims_product_data])
+                                        @else
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Product Tax')}}</label>
+                                                <select name="tax_id" class="selectpicker form-control">
+                                                    <option value="">No Tax</option>
+                                                    @foreach($lims_tax_list as $tax)
+                                                        <option value="{{$tax->id}}">{{$tax->name}}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                        </div>
+                                        @endif
+
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <input type="hidden" name="tax_method_id" value="{{$lims_product_data->tax_method}}">
+                                                <label>{{__('db.Tax Method')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Exclusive: Poduct price = Actual product price + Tax Inclusive: Actual product price = Product price - Tax')}}"></i></label>
+                                                <select name="tax_method" class="form-control selectpicker">
+                                                    <option value="1">{{__('db.Exclusive')}}</option>
+                                                    <option value="2">{{__('db.Inclusive')}}</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        @include('backend.product.partials.stock-policy', ['product' => $lims_product_data, 'colClass' => 'col-6'])
+
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{ __('db.Warranty') }}</label>
+                                                <div class="input-group">
+                                                    <input type="number" name="warranty" min="1" class="form-control" placeholder="1" value="{{ $lims_product_data->warranty }}">
+                                                    <select name="warranty_type" class="form-control selectpicker">
+                                                        <option value="days" {{ $lims_product_data->warranty_type == 'days' ? 'selected' : '' }}>{{ __('db.Days') }}</option>
+                                                        <option value="months" {{ $lims_product_data->warranty_type == 'months' ? 'selected' : '' }}>{{ __('db.Months') }}</option>
+                                                        <option value="years" {{ $lims_product_data->warranty_type == 'years' ? 'selected' : '' }}>{{ __('db.Years') }}</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{ __('db.Guarantee') }}</label>
+                                                <div class="input-group">
+                                                    <input type="number" name="guarantee" min="1" class="form-control" placeholder="1" value="{{ $lims_product_data->guarantee }}">
+                                                    <select name="guarantee_type" class="form-control selectpicker">
+                                                        <option value="days" {{ $lims_product_data->guarantee_type == 'days' ? 'selected' : '' }}>{{ __('db.Days') }}</option>
+                                                        <option value="months" {{ $lims_product_data->guarantee_type == 'months' ? 'selected' : '' }}>{{ __('db.Months') }}</option>
+                                                        <option value="years" {{ $lims_product_data->guarantee_type == 'years' ? 'selected' : '' }}>{{ __('db.Years') }}</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        @foreach($custom_fields as $field)
+                                            <?php $field_name = str_replace(' ', '_', strtolower($field->name)); ?>
+                                            @if(!$field->is_admin || \Auth::user()->role_id == 1)
+                                            <div class="col-12">
+                                                <div class="form-group">
+                                                    <label>{{$field->name}}</label>
+                                                    @if($field->type == 'text')
+                                                        <input type="text" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif>
+                                                    @elseif($field->type == 'number')
+                                                        <input type="number" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif>
+                                                    @elseif($field->type == 'textarea')
+                                                        <textarea rows="2" name="{{$field_name}}" class="form-control no-tiny" @if($field->is_required){{'required'}}@endif>{{$lims_product_data->$field_name}}</textarea>
+                                                    @elseif($field->type == 'checkbox')
+                                                        <?php $option_values = explode(",", $field->option_value); $field_values = explode(",", $lims_product_data->$field_name); ?>
+                                                        <div>
+                                                            @foreach($option_values as $value)
+                                                                <label class="mr-2"><input type="checkbox" name="{{$field_name}}[]" value="{{$value}}" @if(in_array($value, $field_values)) checked @endif @if($field->is_required){{'required'}}@endif> {{$value}}</label>
+                                                            @endforeach
+                                                        </div>
+                                                    @elseif($field->type == 'radio_button')
+                                                        <?php $option_values = explode(",", $field->option_value); ?>
+                                                        <div>
+                                                            @foreach($option_values as $value)
+                                                                <label class="radio-inline mr-2"><input type="radio" name="{{$field_name}}" value="{{$value}}" @if($value == $lims_product_data->$field_name){{'checked'}}@endif @if($field->is_required){{'required'}}@endif> {{$value}}</label>
+                                                            @endforeach
+                                                        </div>
+                                                    @elseif($field->type == 'select')
+                                                        <?php $option_values = explode(",", $field->option_value); ?>
+                                                        <select class="form-control selectpicker" name="{{$field_name}}" @if($field->is_required){{'required'}}@endif>
+                                                            @foreach($option_values as $value)
+                                                                <option value="{{$value}}" @if($value == $lims_product_data->$field_name){{'selected'}}@endif>{{$value}}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    @elseif($field->type == 'multi_select')
+                                                        <?php $option_values = explode(",", $field->option_value); $field_values = explode(",", $lims_product_data->$field_name); ?>
+                                                        <select class="form-control selectpicker" name="{{$field_name}}[]" @if($field->is_required){{'required'}}@endif multiple>
+                                                            @foreach($option_values as $value)
+                                                                <option value="{{$value}}" @if(in_array($value, $field_values)) selected @endif>{{$value}}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    @elseif($field->type == 'date_picker')
+                                                        <input type="date" name="{{$field_name}}" value="{{$lims_product_data->$field_name}}" class="form-control" @if($field->is_required){{'required'}}@endif>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            @endif
                                         @endforeach
                                     </div>
-                                    @else
-                                    <div id="variant-input-section">
-                                        <div class="row">
-                                            <div class="col-md-4 form-group mt-2">
-                                                <label>{{__('db.Option')}} *</label>
-                                                <input type="text" name="variant_option[]" class="form-control variant-field" placeholder="{{__('db.Size, Color etc')}}">
-                                            </div>
-                                            <div class="col-md-7 form-group mt-2">
-                                                <label>{{__('db.Value')}} *</label>
-                                                <input type="text" name="variant_value[]" class="type-variant form-control variant-field">
-                                            </div>
-                                            <div class="col-sm-1 form-group mt-2 u-d-flex u-dir-column u-items-center u-justify-end">
-                                                <button type="button" class="delVarOption btn btn-danger btn-sm mr-3"><i class="dripicons-cross"></i></button>
-                                            </div>
-                                        </div>
+                                </x-ui.section-box>
+
+                                <!-- BOX 3: Media, Details & SEO (Purple) -->
+                                <x-ui.section-box variant="purple" title="{{__('db.Media, Details & SEO')}}" icon="media">
+                                    <div class="form-group">
+                                        <label>{{__('db.Product Image')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.You can upload multiple image Only jpeg, jpg, png, gif file can be uploaded First image will be base image')}}"></i></label>
+                                        <div id="imageUpload" class="dropzone"></div>
+                                        <span class="validation-msg text-danger small" id="image-error"></span>
                                     </div>
-                                    @endif
-                                    <div class="col-md-12 form-group">
-                                        <button type="button" class="btn btn-info add-more-variant"><i class="dripicons-plus"></i> {{__('db.Add More Variant')}}</button>
-                                    </div>
-                                    <div class="table-responsive ml-2">
-                                        <table id="variant-table" class="table table-hover variant-list">
-                                            <thead>
-                                                <tr>
-                                                    <th>{{__('db.name')}}</th>
-                                                    <th>{{__('db.Item Code')}}</th>
-                                                    <th>{{__('db.Additional Cost')}}</th>
-                                                    <th>{{__('db.Additional Price')}}</th>
-                                                </tr>
-                                            </thead>
+
+                                    @if($lims_product_data->image)
+                                    <div class="form-group">
+                                        <table class="table table-hover table-sm mb-0">
                                             <tbody>
-                                                @foreach($lims_product_variant_data as $key=> $variant)
+                                                @foreach(explode(",", $lims_product_data->image) as $image)
                                                 <tr>
-                                                    <td>{{$variant->name}}
-                                                        <input type="hidden" class="form-control variant-name" name="variant_name[]" value="{{$variant->name}}" />
+                                                    <td><i class="fa fa-list"></i></td>
+                                                    <td>
+                                                        <img src="{{url('images/product', $image)}}" height="40" width="40" alt="">
+                                                        <input type="hidden" name="prev_img[]" value="{{$image}}">
                                                     </td>
-                                                    <td><input type="text" class="form-control item-code" name="item_code[]" value="{{$variant->pivot['item_code']}}" /></td>
-                                                    <td><input type="number" class="form-control additional-cost" name="additional_cost[]" value="{{$variant->pivot['additional_cost']}}" step="any" /></td>
-                                                    <td><input type="number" class="form-control additional-price" name="additional_price[]" value="{{$variant->pivot['additional_price']}}" step="any" /></td>
+                                                    <td class="text-right"><button type="button" class="btn btn-sm btn-danger remove-img" title="{{__('db.delete')}}"><i class="dripicons-cross"></i></button></td>
                                                 </tr>
                                                 @endforeach
                                             </tbody>
                                         </table>
                                     </div>
-                                </div>
-                                <div class="col-md-12 mt-3">
-                                    <input type="hidden" name="promotion_hidden" value="{{$lims_product_data->promotion}}">
-                                    <h5><input name="promotion" type="checkbox" id="promotion" value="1">&nbsp; {{__('db.Add Promotional Price')}}</h5>
-                                </div>
-
-                                <div class="col-md-12">
-                                    <div class="row">
-                                        <div class="col-md-4" id="promotion_price">   <label>{{__('db.Promotional Price')}}</label>
-                                            <input type="number" name="promotion_price" value="{{$lims_product_data->promotion_price}}" class="form-control" step="any" />
-                                        </div>
-                                        <div id="start_date" class="col-md-4">
-                                            <div class="form-group">
-                                                <label>{{__('db.Promotion Starts')}}</label>
-                                                <input type="text" name="starting_date" value="{{$lims_product_data->starting_date}}" id="starting_date" class="form-control" />
-                                            </div>
-                                        </div>
-                                        <div id="last_date" class="col-md-4">
-                                            <div class="form-group">
-                                                <label>{{__('db.Promotion Ends')}}</label>
-                                                <input type="text" name="last_date" value="{{$lims_product_data->last_date}}" id="ending_date" class="form-control" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                @if (\Schema::hasColumn('products', 'woocommerce_product_id'))
-                                <div class="col-md-12 mt-3">
-                                    <h5><input name="is_sync_disable" {{$lims_product_data->is_sync_disable==1 ? 'checked':''}} type="checkbox" id="is_sync_disable" value="1">&nbsp; {{__('db.Disable Woocommerce Sync')}}</h5>
-                                </div>
-                                @endif
-                                @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
-                                <div class="col-md-12 mt-3">
-                                    <h5><input name="is_online" type="checkbox" id="is_online" value="1" {{$lims_product_data->is_online==1 ? 'checked':''}}>&nbsp; {{__('db.Sell Online')}}</h5>
-                                </div>
-                                @endif
-
-                                @if(in_array('restaurant',explode(',',$general_setting->modules)))
-                                    @if($lims_product_data->extras == null)
-                                    <div class="col-md-12 mt-3">
-                                        <h5>
-                                            <input name="is_addon" type="checkbox" id="is_addon" value="1" {{$lims_product_data->is_addon==1 ? 'checked':''}}>&nbsp; {{__('db.This is topping')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Check this if the item is a topping or extra or add-on only to be served with a main course')}}"></i></h5>
-                                    </div>
                                     @endif
-                                @endif
 
-                                @if(in_array('ecommerce',explode(',',$general_setting->modules)))
-                                <div class="col-md-12 mt-3">
-                                    <h5><input name="in_stock" type="checkbox" id="in_stock" value="1" {{$lims_product_data->in_stock==1 ? 'checked':''}}>&nbsp; {{__('db.In Stock')}}</h5>
-                                </div>
-                                <!-- <div class="col-md-12 mt-3 track_inventory">
-                                    <h5><input name="track_inventory" type="checkbox" id="track_inventory" value="1" {{$lims_product_data->track_inventory==1 ? 'checked':''}}>&nbsp; {{__('db.Track Inventory')}}</h5>
-                                </div> -->
-                                @endif
-                                @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
-                                <div class="col-12 mt-3">
                                     <div class="form-group">
-                                        <label>{{__('db.Product Tags')}} </label>
-                                        <input type="text" name="tags" class="form-control" value="{{$lims_product_data->tags}}">
-                                        <span class="validation-msg" id="tags-error"></span>
+                                        <label>{{__('db.Product Details')}}</label>
+                                        <textarea name="product_details" class="form-control no-tiny" rows="2" placeholder="{{ __('db.Type product details') }}">{{str_replace('@', '"', $lims_product_data->product_details)}}</textarea>
                                     </div>
-                                </div>
-                                <div class="col-md-12">
-                                    <br/>
-                                    <h6>For SEO</h6>
-                                    <br>
-                                </div>
-                                <div class="col-md-12 form-group">
-                                    <label>{{ __('Meta Title') }}</label>
-                                    <input type="text" name="meta_title" class="form-control" value="{{$lims_product_data->meta_title}}">
-                                </div>
-                                <div class="col-md-12 form-group">
-                                    <label>{{ __('Meta Description') }}</label>
-                                    <input type="text" name="meta_description" class="form-control" value="{{$lims_product_data->meta_description}}">
-                                </div>
-                                <div class="col-md-12 form-group related-section">
-                                    <label>{{__('db.Related Products')}}</label>
-                                    <input type="text" id="search_products" class="form-control">
-                                    <div class="search_result"></div>
-                                    <h4 class="mt-5 mb-3">{{__('db.Selected Items')}}</h4>
-                                    @if(isset($related_products))
-                                        <div class="selected_items">
-                                            @foreach($related_products as $product)
-                                            @php
-                                                $image = explode(',', $product->image);
-                                            @endphp
-                                            <div data-id="{{$product->id}}"><img src="{{asset('images/product/small/')}}/{{$image[0]}}"><h4>{{$product->name}}</h4><span class="remove_item"><i class="dripicons-cross"></i></span></div>
-                                            @endforeach
-                                        </div>
-                                        <textarea class="selected_ids hidden no-tiny" name="products">{{$related_products}},</textarea>
-                                    @endif
-                                </div>
-                                @endif
 
-                                @if(in_array('restaurant',explode(',',$general_setting->modules)))
-                                <div class="col-md-12 form-group extra-section">
-                                    <label>{{__('db.Extras')}}</label>
-                                    <input type="text" id="search_addons" class="form-control">
-                                    <div class="search_result_addon"></div>
-                                    <h4 class="mt-5 mb-3">Selected Extras</h4>
-                                    @if(isset($extras))
-                                        <div class="selected_addons">
-                                            @foreach($extras as $product)
-                                            @php
-                                                $image = explode(',', $product->image);
-                                            @endphp
-                                            <div data-id="{{$product->id}}"><img src="{{asset('images/product/small/')}}/{{$image[0]}}"><h4>{{$product->name}}</h4><span class="remove_item"><i class="dripicons-cross"></i></span></div>
-                                            @endforeach
+                                    @if($ecommerce || $restaurant)
+                                    {{-- products.tags comes with the ecommerce/restaurant addon --}}
+                                    <div class="form-group">
+                                        <label>{{__('db.Product Tags')}}</label>
+                                        <input type="text" name="tags" class="form-control" value="{{$lims_product_data->tags}}" placeholder="Tag1, Tag2...">
+                                        <span class="validation-msg text-danger small" id="tags-error"></span>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-6 form-group">
+                                            <label>{{ __('Meta Title') }}</label>
+                                            <input type="text" name="meta_title" class="form-control" value="{{$lims_product_data->meta_title}}">
                                         </div>
-                                        <textarea class="selected_addon_ids hidden no-tiny" name="extras">{{$extras}},</textarea>
+                                        <div class="col-6 form-group">
+                                            <label>{{ __('Meta Description') }}</label>
+                                            <input type="text" name="meta_description" class="form-control" value="{{$lims_product_data->meta_description}}">
+                                        </div>
+                                        <div class="col-12 form-group related-section">
+                                            <label>{{__('db.Related Products')}}</label>
+                                            <input type="text" id="search_products" class="form-control" placeholder="{{ __('db.Search related products...') }}">
+                                            <div class="search_result"></div>
+                                            @if(isset($related_products))
+                                                <div class="selected_items mt-1">
+                                                    @foreach($related_products as $product)
+                                                    @php $image = explode(',', $product->image); @endphp
+                                                    <div data-id="{{$product->id}}"><img src="{{asset('images/product/small/')}}/{{$image[0]}}" alt=""><h4>{{$product->name}}</h4><span class="remove_item"><i class="dripicons-cross"></i></span></div>
+                                                    @endforeach
+                                                </div>
+                                                <textarea class="selected_ids hidden no-tiny" name="products">{{$related_products}},</textarea>
+                                            @endif
+                                        </div>
+                                    </div>
                                     @endif
-                                </div>
-                                <div class="col-md-4 col-6">
-                                    <div class="form-group top-fields">
-                                        <label>{{__('db.Kitchen')}}</label>
-                                        <div class="input-group pos">
+
+                                    @if($restaurant)
+                                    <div class="row">
+                                        <div class="col-12 form-group extra-section">
+                                            <label>{{__('db.Extras')}}</label>
+                                            <input type="text" id="search_addons" class="form-control" placeholder="{{ __('db.Search extras...') }}">
+                                            <div class="search_result_addon"></div>
+                                            @if(isset($extras))
+                                                <div class="selected_addons mt-1">
+                                                    @foreach($extras as $product)
+                                                    @php $image = explode(',', $product->image); @endphp
+                                                    <div data-id="{{$product->id}}"><img src="{{asset('images/product/small/')}}/{{$image[0]}}" alt=""><h4>{{$product->name}}</h4><span class="remove_item"><i class="dripicons-cross"></i></span></div>
+                                                    @endforeach
+                                                </div>
+                                                <textarea class="selected_addon_ids hidden no-tiny" name="extras">{{$extras}},</textarea>
+                                            @endif
+                                        </div>
+                                        <div class="col-6 form-group">
+                                            <label>{{__('db.Kitchen')}}</label>
                                             <input type="hidden" name="kitchen" value="{{$lims_product_data->kitchen_id}}" />
-                                            <select id="kitchen_id" name="kitchen_id" class=" form-control" title="Select kitchen...">
+                                            <select id="kitchen_id" name="kitchen_id" class="form-control" title="Select kitchen...">
                                                 @foreach($kitchen_list as $kitchen)
                                                 <option value="{{$kitchen->id}}">{{$kitchen->name}}</option>
                                                 @endforeach
                                             </select>
                                         </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-8 col-12">
-                                    <div class="form-group top-fields">
-                                        <label>{{__('db.Menu Type')}} *</label>
-                                        <div class="input-group pos">
-                                            @php
-                                                $menu_type = explode(',', $lims_product_data->menu_type);
-                                            @endphp
-                                            @foreach($menu_type_list as $menu)
-                                                <input type="checkbox" name="menu_type[]" value="{{$menu->id}}" required @checked(in_array($menu->id, $menu_type))/> &nbsp;{{$menu->name}}  &nbsp;
-                                            @endforeach
+                                        <div class="col-6 form-group">
+                                            <label>{{__('db.Menu Type')}} *</label>
+                                            @php $menu_type = explode(',', $lims_product_data->menu_type); @endphp
+                                            <div>
+                                                @foreach($menu_type_list as $menu)
+                                                    <label class="mr-2"><input type="checkbox" name="menu_type[]" value="{{$menu->id}}" required @checked(in_array($menu->id, $menu_type))/> {{$menu->name}}</label>
+                                                @endforeach
+                                            </div>
                                         </div>
                                     </div>
+                                    @endif
+                                </x-ui.section-box>
+
+                            </div>
+
+                            <!-- Full Content Width Stripe: Inventory & Stock Control Toggle Buttons -->
+                            <div class="zolo-inventory-stripe">
+                                <div class="zolo-inventory-stripe-header">
+                                    <span class="zolo-inventory-stripe-icon">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                                    </span>
+                                    <h6 class="zolo-inventory-stripe-title">{{ __('db.Inventory & Stock Control') }}</h6>
                                 </div>
-                                @endif
-                                <div class="col-md-12 mt-3">
-                                    <div class="form-group">
-                                        <button class="btn btn-primary" type="submit" id="submit-btn">{{__('db.submit')}}</button>
-                                    </div>
+
+                                <div class="zolo-inventory-stripe-alert" id="alert-qty">
+                                    <label for="alert_quantity">{{ __('db.Alert Quantity') }}</label>
+                                    <input type="number" name="alert_quantity" id="alert_quantity" value="{{$lims_product_data->alert_quantity}}" class="form-control form-control-sm" step="any" placeholder="{{ __('db.Minimum alert qty') }}">
+                                </div>
+
+                                <div class="zolo-inventory-stripe-divider"></div>
+
+                                <div class="zolo-inventory-stripe-toggles">
+                                    {{-- Variants are set when the product is created; an existing variant product keeps the flag. --}}
+                                    @if($lims_product_data->is_variant)
+                                    <span id="variant-option" hidden><input name="is_variant" type="checkbox" id="is-variant" value="1" checked></span>
+                                    @endif
+
+                                    <label id="diffPrice-option" class="zolo-toggle-pill @if($lims_product_data->is_diffPrice) is-active @endif" data-role="emerald" for="is-diffPrice" title="{{ __('db.Different price by warehouse') }}">
+                                        <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1" @checked($lims_product_data->is_diffPrice)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Different price by warehouse')}}</span>
+                                    </label>
+
+                                    <label id="batch-option" class="zolo-toggle-pill @if($lims_product_data->is_batch) is-active @endif" data-role="amber" for="is-batch" title="{{ __('db.Batch & expiry date') }}">
+                                        <input name="is_batch" type="checkbox" id="is-batch" value="1" @checked($lims_product_data->is_batch)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Batch & expiry date')}}</span>
+                                    </label>
+
+                                    <label id="imei-option" class="zolo-toggle-pill @if($lims_product_data->is_imei) is-active @endif" data-role="blue" for="is-imei" title="{{ __('db.IMEI / Serial numbers') }}">
+                                        <input name="is_imei" type="checkbox" id="is-imei" value="1" @checked($lims_product_data->is_imei)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.IMEI / Serial numbers')}}</span>
+                                    </label>
+
+                                    <label class="zolo-toggle-pill @if($lims_product_data->promotion) is-active @endif" data-role="blue" for="promotion" title="{{ __('db.Promotional Price') }}">
+                                        <input type="hidden" name="promotion_hidden" value="{{$lims_product_data->promotion}}">
+                                        <input name="promotion" type="checkbox" id="promotion" value="1" @checked($lims_product_data->promotion)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Promotional Price')}}</span>
+                                    </label>
+
+                                    <label id="featured" class="zolo-toggle-pill @if($lims_product_data->featured) is-active @endif" data-role="purple" for="chk_featured" title="{{ __('db.Featured product will be displayed in POS') }}">
+                                        <input type="checkbox" name="featured" id="chk_featured" value="1" @checked($lims_product_data->featured)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Featured')}}</span>
+                                    </label>
+
+                                    <label class="zolo-toggle-pill @if($lims_product_data->is_embeded) is-active @endif" data-role="emerald" for="chk_embeded" title="{{ __('db.Check this if this product will be used in weight scale machine') }}">
+                                        <input type="checkbox" name="is_embeded" id="chk_embeded" value="1" @checked($lims_product_data->is_embeded)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Embedded Barcode')}}</span>
+                                    </label>
+
+                                    @if($ecommerce || $restaurant)
+                                    <label class="zolo-toggle-pill @if($lims_product_data->is_online == 1) is-active @endif" data-role="purple" for="is_online" title="{{ __('db.Sell Online') }}">
+                                        <input name="is_online" type="checkbox" id="is_online" value="1" @checked($lims_product_data->is_online == 1)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.Sell Online')}}</span>
+                                    </label>
+                                    @endif
+
+                                    @if($ecommerce)
+                                    <label class="zolo-toggle-pill @if($lims_product_data->in_stock == 1) is-active @endif" data-role="emerald" for="in_stock" title="{{ __('db.In Stock') }}">
+                                        <input name="in_stock" type="checkbox" id="in_stock" value="1" @checked($lims_product_data->in_stock == 1)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.In Stock')}}</span>
+                                    </label>
+                                    @endif
+
+                                    @if (\Schema::hasColumn('products', 'woocommerce_product_id'))
+                                    <label class="zolo-toggle-pill @if($lims_product_data->is_sync_disable == 1) is-active @endif" data-role="rose" for="is_sync_disable" title="{{__('db.Disable Woocommerce Sync')}}">
+                                        <input name="is_sync_disable" type="checkbox" id="is_sync_disable" value="1" @checked($lims_product_data->is_sync_disable == 1)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>Disable WooCommerce</span>
+                                    </label>
+                                    @endif
+
+                                    @if($restaurant && $lims_product_data->extras == null)
+                                    <label class="zolo-toggle-pill @if($lims_product_data->is_addon == 1) is-active @endif" data-role="blue" for="is_addon" title="{{__('db.Check this if the item is a topping or extra or add-on only to be served with a main course')}}">
+                                        <input name="is_addon" type="checkbox" id="is_addon" value="1" @checked($lims_product_data->is_addon == 1)>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>{{__('db.This is topping')}}</span>
+                                    </label>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <!-- Extended Conditional Details Container (4-column grid mirroring top primary boxes) -->
+                            <div class="product-extended-details-container mt-2">
+                                <!-- Warehouse Differential Price Section -->
+                                <div id="diffPrice-section">
+                                    <x-ui.section-box variant="emerald" title="{{__('db.Different Warehouse Price')}}" icon="pricing">
+                                        <div class="table-responsive">
+                                            <table id="diffPrice-table" class="table table-hover table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.Warehouse')}}</th>
+                                                        <th>{{__('db.Price')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($lims_warehouse_list as $warehouse)
+                                                    @php $product_warehouse = \App\Models\Product_Warehouse::FindProductWithoutVariant($lims_product_data->id, $warehouse->id)->first(); @endphp
+                                                    <tr>
+                                                        <td>
+                                                            <input type="hidden" name="warehouse_id[]" value="{{$warehouse->id}}">
+                                                            {{$warehouse->name}}
+                                                        </td>
+                                                        <td><input type="number" name="diff_price[]" class="form-control form-control-sm" value="{{$product_warehouse?->price}}" placeholder="0.00"></td>
+                                                    </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Product Variants Section -->
+                                <div id="variant-section">
+                                    <x-ui.section-box variant="purple" title="{{__('db.Product Variants')}}" icon="tag">
+                                        <div id="variant-input-section">
+                                            @forelse($lims_product_data->variant_option ?: [] as $key => $variant_option)
+                                            <?php $noOfVariantValue += count(explode(",", $lims_product_data->variant_value[$key])); ?>
+                                            <div class="row align-items-end">
+                                                <div class="col-md-4 form-group mb-2">
+                                                    <label class="font-weight-bold">{{__('db.Option')}} *</label>
+                                                    <input type="text" name="variant_option[]" class="form-control form-control-sm variant-field" value="{{$variant_option}}">
+                                                </div>
+                                                <div class="col-md-7 form-group mb-2">
+                                                    <label class="font-weight-bold">{{__('db.Value')}} *</label>
+                                                    <input type="text" name="variant_value[]" class="type-variant form-control form-control-sm variant-field" value="{{$lims_product_data->variant_value[$key]}}">
+                                                </div>
+                                                <div class="col-md-1 form-group mb-2 text-center">
+                                                    <button type="button" class="delVarOption btn btn-danger btn-sm" title="{{__('db.delete')}}"><i class="dripicons-cross"></i></button>
+                                                </div>
+                                            </div>
+                                            @empty
+                                            <div class="row align-items-end">
+                                                <div class="col-md-4 form-group mb-2">
+                                                    <label class="font-weight-bold">{{__('db.Option')}} *</label>
+                                                    <input type="text" name="variant_option[]" class="form-control form-control-sm variant-field" placeholder="{{__('db.Size, Color etc')}}">
+                                                </div>
+                                                <div class="col-md-7 form-group mb-2">
+                                                    <label class="font-weight-bold">{{__('db.Value')}} *</label>
+                                                    <input type="text" name="variant_value[]" class="type-variant form-control form-control-sm variant-field">
+                                                </div>
+                                                <div class="col-md-1 form-group mb-2 text-center">
+                                                    <button type="button" class="delVarOption btn btn-danger btn-sm" title="{{__('db.delete')}}"><i class="dripicons-cross"></i></button>
+                                                </div>
+                                            </div>
+                                            @endforelse
+                                        </div>
+                                        <div class="my-2">
+                                            <button type="button" class="btn btn-info btn-xs add-more-variant"><i class="dripicons-plus"></i> {{__('db.Add More Variant')}}</button>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table id="variant-table" class="table table-hover table-sm variant-list mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.name')}}</th>
+                                                        <th>{{__('db.Item Code')}}</th>
+                                                        <th>{{__('db.Additional Cost')}}</th>
+                                                        <th>{{__('db.Additional Price')}}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($lims_product_variant_data as $variant)
+                                                    <tr>
+                                                        <td>{{$variant->name}}
+                                                            <input type="hidden" class="form-control variant-name" name="variant_name[]" value="{{$variant->name}}" />
+                                                        </td>
+                                                        <td><input type="text" class="form-control form-control-sm item-code" name="item_code[]" value="{{$variant->pivot['item_code']}}" /></td>
+                                                        <td><input type="number" class="form-control form-control-sm additional-cost" name="additional_cost[]" value="{{$variant->pivot['additional_cost']}}" step="any" /></td>
+                                                        <td><input type="number" class="form-control form-control-sm additional-price" name="additional_price[]" value="{{$variant->pivot['additional_price']}}" step="any" /></td>
+                                                    </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Promotional Price Section -->
+                                <div id="promo-container">
+                                    <x-ui.section-box variant="blue" title="{{__('db.Promotional Price')}}" icon="pricing">
+                                        <div class="zolo-promo-vertical-form">
+                                            <div class="form-group mb-2" id="promotion_price">
+                                                <label class="font-weight-bold">{{__('db.Promotional Price')}}</label>
+                                                <input type="number" name="promotion_price" value="{{$lims_product_data->promotion_price}}" class="form-control form-control-sm" step="any" placeholder="0.00" />
+                                            </div>
+                                            <div class="form-group mb-2" id="start_date">
+                                                <label class="font-weight-bold">{{__('db.Promotion Starts')}}</label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <div class="input-group-text"><i class="dripicons-calendar"></i></div>
+                                                    </div>
+                                                    <input type="text" name="starting_date" value="{{$lims_product_data->starting_date}}" id="starting_date" class="form-control form-control-sm" />
+                                                </div>
+                                            </div>
+                                            <div class="form-group mb-0" id="last_date">
+                                                <label class="font-weight-bold">{{__('db.Promotion Ends')}}</label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <div class="input-group-text"><i class="dripicons-calendar"></i></div>
+                                                    </div>
+                                                    <input type="text" name="last_date" value="{{$lims_product_data->last_date}}" id="ending_date" class="form-control form-control-sm" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+
+                                <!-- Combo Products Section -->
+                                <div id="combo">
+                                    <x-ui.section-box variant="blue" title="{{__('db.Combo Products')}}" icon="box">
+                                        <div class="search-box input-group mb-2">
+                                            <div class="input-group-prepend">
+                                                <span class="input-group-text"><i class="fa fa-barcode"></i></span>
+                                            </div>
+                                            <input type="text" name="product_code_name" id="lims_productcodeSearch" placeholder="{{ __('db.Please type product code and select') }}" class="form-control form-control-sm" />
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table id="myTable" class="table table-hover order-list mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>{{__('db.product')}}</th>
+                                                        <th>{{__('db.Wastage Percent')}}</th>
+                                                        <th>{{__('db.Quantity')}}</th>
+                                                        <th>{{__('db.Unit Cost')}}</th>
+                                                        <th>{{__('db.Unit Price')}}</th>
+                                                        <th>{{__('db.Sub total')}}</th>
+                                                        <th class="text-center"><i class="dripicons-trash"></i></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="combo_product_list_table">
+                                                    @if($lims_product_data->type == 'combo')
+                                                    <?php
+                                                        $product_list = explode(",", $lims_product_data->product_list);
+                                                        $wastage_percent = explode(",", $lims_product_data->wastage_percent);
+                                                        $qty_list = explode(",", $lims_product_data->qty_list);
+                                                        $variant_list = explode(",", $lims_product_data->variant_list);
+                                                        $price_list = explode(",", $lims_product_data->price_list);
+                                                    ?>
+                                                    @foreach($product_list as $key=>$id)
+                                                    <tr>
+                                                        <?php
+                                                            $product = App\Models\Product::find($id);
+                                                            $combo_unit = App\Models\Unit::query()->where('id',$product->unit_id)->orWhere('base_unit',$product->unit_id)->get()->unique('id');
+
+                                                            if($lims_product_data->variant_list && $variant_list[$key]) {
+                                                                $product_variant_data = App\Models\ProductVariant::select('item_code')->FindExactProduct($id, $variant_list[$key])->first();
+                                                                $product->code = $product_variant_data->item_code;
+                                                            }
+                                                            else
+                                                                $variant_list[$key] = "";
+                                                        ?>
+                                                        <td>{{$product->name}} [{{$product->code}}]</td>
+                                                        <td>
+                                                            <div class="input-group">
+                                                                <input type="number" class="form-control form-control-sm wastage_percent" name="wastage_percent[]" value="{{@$wastage_percent[$key] ?? 0 }}" min="0" step="any"/>
+                                                                <div class="input-group-append">
+                                                                    <span class="input-group-text">%</span>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="input-group u-maxw-unset">
+                                                                <input type="number" class="form-control form-control-sm qty" min="1" name="product_qty[]" value="{{ $qty_list[$key] ?? 1 }}" step="any" placeholder="Qty" aria-label="Quantity">
+                                                                <div class="input-group-append">
+                                                                    <select name="combo_unit_id[]" class="btn btn-outline-secondary form-control combo_unit_id u-w-112px" onchange="calculate_price()">
+                                                                        @foreach ($combo_unit as $row)
+                                                                            <option value="{{ $row->id }}" data-operation_value="{{ $row->operation_value }}" data-operator="{{ $row->operator }}">{{ $row->unit_name }}</option>
+                                                                        @endforeach
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td><input type="number" class="form-control form-control-sm unit_cost" name="product_unit_cost[]" value="{{$product->cost}}" step="any"/></td>
+                                                        <td><input type="number" class="form-control form-control-sm unit_price" name="unit_price[]" value="{{$price_list[$key]}}" step="any"/></td>
+                                                        <td><input type="number" class="form-control form-control-sm subtotal" name="subtotal[]" value="0.00" step="any"/></td>
+                                                        <td class="text-center"><button type="button" class="ibtnDel btn btn-danger btn-sm"><i class="dripicons-cross"></i></button></td>
+                                                        <input type="hidden" class="product-id" name="product_id[]" value="{{$id}}"/>
+                                                        <input type="hidden" class="variant-id" name="variant_id[]" value="{{$variant_list[$key]}}"/>
+                                                        <input type="hidden" class="product_unit_cost" name="" value="{{$product->cost}}"/>
+                                                        <input type="hidden" class="product_unit_price" name="" value="{{$price_list[$key]}}"/>
+                                                    </tr>
+                                                    @endforeach
+                                                    @endif
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </x-ui.section-box>
+                                </div>
+                            </div>
+
+                            <!-- Bottom Action Bar -->
+                            <div class="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
+                                <span class="text-muted small"><i class="dripicons-information mr-1"></i> {{ __('db.The field labels marked with * are required input fields') }}.</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <a href="{{route('products.index')}}" class="btn btn-sm btn-outline-secondary">{{__('db.Cancel')}}</a>
+                                    <button type="button" class="btn btn-sm btn-primary zolo-btn-primary" onclick="$('#submit-btn').click();">
+                                        <i class="dripicons-checkmark mr-1"></i> {{__('db.Update Product')}}
+                                    </button>
                                 </div>
                             </div>
                         </form>
@@ -949,18 +912,8 @@
         $("#combo").show();
     }
 
-    var promotion = $("input[name='promotion_hidden']").val();
-    if(promotion){
-        $("input[name='promotion']").prop('checked', true);
-        $("#promotion_price").show(300);
-        $("#start_date").show(300);
-        $("#last_date").show(300);
-    }
-    else {
-        $("#promotion_price").hide(300);
-        $("#start_date").hide(300);
-        $("#last_date").hide(300);
-    }
+    $("#promo-container").toggle($("#promotion").is(':checked'));
+    applyDynamicGridSpans();
 
     $('#genbutton').on("click", function(){
       $.get('../gencode', function(data){
@@ -1532,6 +1485,7 @@
             $("#combo").hide();
             $("input[name='price']").prop('disabled',false);
         }
+        applyDynamicGridSpans();
     });
 
     $('select[name="unit_id"]').on('change', function() {
@@ -1841,6 +1795,7 @@
             $("#batch-option").show(300);
             $(".variant-field").prop("required", false);
         }
+        applyDynamicGridSpans();
     };
 
     function diffPriceShowHide() {
@@ -1850,20 +1805,52 @@
         else {
             $("#diffPrice-section").hide(300);
         }
+        applyDynamicGridSpans();
     };
 
     $( "#promotion" ).on( "change", function() {
-        if ($(this).is(':checked')) {
-            $("#promotion_price").show();
-            $("#start_date").show();
-            $("#last_date").show();
-        }
-        else {
-            $("#promotion_price").hide();
-            $("#start_date").hide();
-            $("#last_date").hide();
-        }
+        $("#promo-container").toggle($(this).is(':checked'));
+        applyDynamicGridSpans();
     });
+
+    $('.zolo-toggle-pill input[type="checkbox"]').on("change", function () {
+        $(this).closest('.zolo-toggle-pill').toggleClass('is-active', $(this).is(':checked'));
+    });
+
+    // Same packing as Add Product: visible sections share the 4-column row, a single one takes the full width.
+    function applyDynamicGridSpans() {
+        var isCombo = $('select[name="type"]').val() === 'combo';
+        var sections = [
+            {$el: $('#diffPrice-section'), isWide: false, active: !isCombo && $("#is-diffPrice").is(':checked')},
+            {$el: $('#promo-container'), isWide: false, active: $("#promotion").is(':checked')},
+            {$el: $('#variant-section'), isWide: true, active: !isCombo && $("#is-variant").is(':checked')},
+            {$el: $('#combo'), isWide: true, active: isCombo}
+        ];
+        var spanClasses = 'zolo-grid-span-1 zolo-grid-span-2 zolo-grid-span-3 zolo-grid-span-4';
+        sections.forEach(function (s) { s.$el.removeClass(spanClasses); });
+        var active = sections.filter(function (s) { return s.active && s.$el.length; });
+        if (active.length === 1) {
+            active[0].$el.addClass('zolo-grid-span-4');
+            return;
+        }
+        if (active.length === 2 && !active[0].isWide && !active[1].isWide) {
+            active.forEach(function (s) { s.$el.addClass('zolo-grid-span-2'); });
+            return;
+        }
+        var rowRem = 4, last = null;
+        active.forEach(function (s) {
+            var need = s.isWide ? 2 : 1;
+            if (need > rowRem && last) {
+                last.$el.removeClass(spanClasses).addClass('zolo-grid-span-' + (last.span + rowRem));
+                rowRem = 4;
+            }
+            s.span = need;
+            s.$el.addClass('zolo-grid-span-' + need);
+            rowRem -= need;
+            last = s;
+        });
+        if (last && rowRem > 0) last.$el.removeClass(spanClasses).addClass('zolo-grid-span-' + (last.span + rowRem));
+    }
 
     var starting_date = $('#starting_date');
     starting_date.datepicker({
@@ -1934,6 +1921,12 @@
         return true;
     }
 
+    var submitLabel;
+    // A failed save must hand the button back, or the page sits on "Saving..." forever.
+    function restoreSubmit() {
+        if (submitLabel) $('#submit-btn').prop('disabled', false).html(submitLabel);
+    }
+
     $(".dropzone").sortable({
         items:'.dz-preview',
         cursor: 'grab',
@@ -1981,6 +1974,7 @@
                 e.preventDefault();
                 if ( $("#product-form").valid() && validate() ) {
                     tinyMCE.triggerSave();
+                    submitLabel = $(this).html();
                     $(this).attr('disabled','true').html('<span class="spinner-border text-light" role="status"></span> {{__("db.Saving")}}...');
                     if(myDropzone.getAcceptedFiles().length) {
                         myDropzone.processQueue();
@@ -2005,13 +1999,18 @@
                                 window.location.reload(true);
                             },
                             error:function(response) {
-                                //console.log(response);
-                              if(response.responseJSON.errors.name) {
-                                  $("#name-error").text(response.responseJSON.errors.name);
+                              var json = response.responseJSON || {};
+                              var errors = json.errors || {};
+                              if(errors.name) {
+                                  $("#name-error").text(errors.name);
                               }
-                              else if(response.responseJSON.errors.code) {
-                                  $("#code-error").text(response.responseJSON.errors.code);
+                              else if(errors.code) {
+                                  $("#code-error").text(errors.code);
                               }
+                              else {
+                                  alert(json.message || 'Product could not be saved.');
+                              }
+                              restoreSubmit();
                             },
                         });
                     }
@@ -2030,7 +2029,9 @@
             });
         },
         error: function (file, response) {
-            console.log(response);
+            restoreSubmit();
+            alert((response && response.message) || (typeof response === 'string' ? response : 'Product could not be saved.'));
+            this.removeAllFiles(true);
             /*if(response.errors.name) {
               $("#name-error").text(response.errors.name);
               this.removeAllFiles(true);

@@ -1752,6 +1752,7 @@
 
 @push('scripts')
 <script src="{{ asset('js/commercial-product-lookup.js') }}"></script>
+@if($returnsTab)<script src="{{ versioned_asset('js/commercial-returns.js') }}"></script>@endif
 <script type="text/javascript">
 (function() {
     'use strict';
@@ -3890,6 +3891,7 @@
 
 @push('css')
     <link rel="stylesheet" href="{{ versioned_asset('css/pages/shared-purchase-index.css') }}">
+    @if($returnsTab)<link rel="stylesheet" href="{{ versioned_asset('css/pages/commercial-returns.css') }}">@endif
     <link rel="stylesheet" href="<?php echo asset('css/commercial-entry.css') . '?v=' . (file_exists(public_path('css/commercial-entry.css')) ? filemtime(public_path('css/commercial-entry.css')) : time()) ?>" type="text/css">
     <link rel="stylesheet" href="<?php echo asset('css/commercial-workspace.css') . '?v=' . (file_exists(public_path('css/commercial-workspace.css')) ? filemtime(public_path('css/commercial-workspace.css')) : time()) ?>" type="text/css">
 @endpush

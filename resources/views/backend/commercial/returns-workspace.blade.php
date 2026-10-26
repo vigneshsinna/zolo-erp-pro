@@ -109,10 +109,5 @@
         </div>
     </form>
 </div>
-
-@push('css')
-    <link rel="stylesheet" href="{{ versioned_asset('css/pages/commercial-returns.css') }}">
-@endpush
-@push('scripts')
-    <script src="{{ versioned_asset('js/commercial-returns.js') }}"></script>
-@endpush
+{{-- commercial-returns.css/.js are pushed by the including page, not here: a push from this nested partial
+     would put command-center-form.js ahead of the page script that defines window.commandCenterGrid. --}}
