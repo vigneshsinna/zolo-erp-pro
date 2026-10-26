@@ -40,13 +40,25 @@ final class CapabilityCatalog
         'printing.dot_matrix' => ['Dot matrix printing', ['core.sales']],
         'communications.whatsapp' => ['WhatsApp', ['core.sales']],
         'integrations.api' => ['API integration', []],
+        'hrm.enabled' => ['HRM', []],
+        'sales.pos' => ['POS terminal', ['core.sales']],
+        'sales.gift_cards' => ['Gift cards', ['core.sales']],
+        'sales.coupons' => ['Coupons', ['core.sales']],
+        'operations.scheduling' => ['Scheduling', []],
+        'inventory.lot_report' => ['Stock by lot report', ['core.inventory']],
     ];
+
+    /**
+     * Features every company already had, made switchable. With no explicit company choice they stay on, and the
+     * optional-activation gate does not apply to them (it guards new modules, not turning old ones back on).
+     */
+    public const SWITCHABLE = ['hrm.enabled', 'sales.pos', 'sales.gift_cards', 'sales.coupons', 'operations.scheduling', 'inventory.lot_report'];
 
     public const PROFILES = [
         'general_trading' => ['General Trading', []],
-        'fmcg' => ['FMCG', ['inventory.multi_uom', 'inventory.batch_expiry', 'inventory.damage_stock', 'sales.wholesale', 'communications.whatsapp']],
-        'textile' => ['Textile', ['inventory.multi_uom', 'sales.wholesale', 'printing.dot_matrix', 'communications.whatsapp']],
-        'timber' => ['Timber', ['inventory.multi_uom', 'inventory.dimension_tracking', 'inventory.lot_tracking', 'sales.wholesale']],
+        'fmcg' => ['FMCG', ['inventory.multi_uom', 'inventory.batch_expiry', 'inventory.damage_stock', 'sales.wholesale', 'communications.whatsapp', 'sales.pos', 'inventory.lot_report']],
+        'textile' => ['Textile', ['inventory.multi_uom', 'sales.wholesale', 'printing.dot_matrix', 'communications.whatsapp', 'inventory.lot_report']],
+        'timber' => ['Timber', ['inventory.multi_uom', 'inventory.dimension_tracking', 'inventory.lot_tracking', 'sales.wholesale', 'inventory.lot_report']],
         'solar' => ['Solar', ['operations.projects', 'inventory.serial_tracking', 'operations.installation', 'manufacturing.bom', 'service.warranty_amc', 'communications.whatsapp']],
     ];
 

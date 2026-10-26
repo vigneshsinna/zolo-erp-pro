@@ -1842,3 +1842,33 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 - **Guard (`tests/Unit/DesignTokensTest.php`, in operations CI suite):** old accents, inline styles (except the allowed two), `<style>` blocks, body stylesheet links.
 - **Verification:** Playwright crawl of 123 sidebar pages (+ entry forms) at 1536x730, pixel diff per step vs baseline; only intended colour changes remained (accounting tones, buttons). Tests: operations 78/78 (3 skipped), AccountingWebTest, documents-web 37/37.
 - **nandha3d section tints restored (user: "don't change nandha3d's deliberate colour per section"):** the first token pass had turned the violet `zolo-section-box-purple` / `cp-col-compliance` tint into brand purple; it is back to nandha's exact values via fixed tokens `--z-tint-violet-*` in zolo-tokens.css (not mode-switched; his rules choose light/dark). Blue/emerald/amber boxes were never changed. `zolo-tokens.css` is skipped by the accent guard (it is the definition file).
+
+## 81. Sidebar Restructure to User's Information Architecture (2026-10-25, branch ui)
+
+User gave the left-bar structure; implemented in `resources/views/backend/layout/sidebar.blade.php` (also saved to agent memory `sidebar-structure`).
+- Sections: Dashboard · Master Data (Products / Parties / Commercial Masters groups) · Inventory · Buying · Selling · Job Work / Subcontracting · Sales Support · Scheduling · GST & Compliance · Finance & Ledger · Organization · Industry Addons (kept) · Analytics (kept, stock reports moved to Inventory Reports) · Settings (7 named links + "Other Settings" group).
+- Deep links: job work hub opens a register from `?tab=dc|grn|outside|shrinkage` (`operations/hub.blade.php`); GST returns cards carry `#gstr3b`, `#itc04`, `#tds`; `ComplianceController@notes` accepts `?side=sale|purchase`.
+- `main.blade.php` sidebar script now opens only the groups around the active entry (page scripts still expand old ul ids like `#product`), and a matching URL hash breaks ties.
+- Not shown yet (no page exists): Rental workflows, Rework / Returns, Service Bills, Tax Reports. Voucher Series and Document Series both open `document-series.index`.
+- Verified: 160 feature tests green (CapabilityEngine, PageSpeed, OptechMaster/Voucher, Navigation, Operations, Compliance fixtures, TextileScenarioMatrix, JobWorkReturnsRework…); Playwright check of active/open state on job-work, returns, stock-count, warehouse stock, customer, warehouse pages.
+
+## 82. Sidebar Rebuilt From the IA Plan Document (2026-10-25, branch ui)
+
+Source: [documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md](documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md) (supersedes the section-81 flat list).
+- Sidebar: Master Data · Inventory · Transactions (Buying, Selling + Sales Tools) · Operations (capability-gated Job Work, Manufacturing, Projects / Sites, Distribution, Repair, Cafe, module menus; Booking Calendar) · Finance · Compliance · Reporting (one Reports group, category sub-labels, Brokerage moved here) · Organization · Administration (one Settings entry).
+- `App\Services\Platform\NavigationAccess` holds the role-override/permission/capability checks once (sidebar + Settings workspace). `SettingsCatalog` lists every settings page by area.
+- New `/settings` (`settings.workspace`, `SettingsWorkspaceController`, `backend/settings/workspace.blade.php`, `css/pages/settings-workspace.css`): 10 area cards, filter box, Enter/arrow keys; fits 1536x730 with no scroll.
+- `public/js/sidebar-state.js` now owns: current-page marking (settings pages mark Settings via the hidden `#side-search-index`), one top-level group open, remembered group per tab, scroll restore, and "Search menu…" (permission-filtered, includes settings pages). Inline marker script removed from `main.blade.php`. CSS for search/sub-labels appended to `zolo-erp-neo.css`.
+- Not done (needs decision): new capability keys for HRM / POS / promotions / scheduling (still permission-only), Rental (no feature), Service Bills register, Stock-by-lot gating by lot capability.
+- Verified: 91 nav/design feature+unit tests green; Playwright: active+open group correct on 8 pages, accordion one-open, search "purchase return"/"sms", settings page one-screen.
+
+## 83. Switchable Capabilities for Existing Features (2026-10-25, branch ui)
+
+User decisions on section 82's open items:
+- New capabilities `hrm.enabled`, `sales.pos`, `sales.gift_cards`, `sales.coupons`, `operations.scheduling`, `inventory.lot_report` (`CapabilityCatalog::SWITCHABLE`). With no company row they are on; they are exempt from `ERP_OPTIONAL_ACTIVATION_READY` (that gate guards new modules, not turning old ones back on).
+- Migration `2026_10_25_000001_switchable_existing_feature_capabilities`: seeds the keys, backfills every existing company ON for HRM/POS/gift cards/coupons/scheduling; stock-by-lot ON for textile/FMCG/timber profiles only. Fresh companies follow the profile preset (FMCG: POS + lot report; textile/timber: lot report; general trading/solar: none).
+- Server enforcement: `CapabilityServiceProvider` maps HRM controllers, GiftCard, Coupon, Booking, InventoryLotReport controllers and route `sale.pos` to their capability (RequireCapability).
+- Sidebar, Settings catalog (POS/HRM settings, gift cards, coupons) and dashboard POS quick button follow the capabilities; Operations heading hides when no module is on.
+- Company profile › Features card toggles the six (skipped when the industry changes in the same save, since the preset applies).
+- Rental and Service Bills: nothing added until real modules exist.
+- Tests: new `SwitchableCapabilityTest` (4) + `CompanyProfileTest::test_features_card_...`.

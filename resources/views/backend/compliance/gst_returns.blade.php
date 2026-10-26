@@ -20,7 +20,7 @@
     <p class="cx-lead mb-0">Figures from posted documents. Type the GSTR-3B boxes into the portal; upload ITC-04 tables through the GST offline tool.</p>
 </div>
 <div class="gst-returns">
-    <div class="cx-card">
+    <div class="cx-card" id="gstr3b">
         <h2><i class="dripicons-document"></i> GSTR-3B <a class="cx-btn ghost ml-auto" href="{{ $q(['download' => 'gstr3b', 'format' => 'json']) }}"><i class="dripicons-download"></i> JSON</a></h2>
         <div class="cx-table-wrap"><table class="cx-table">
             <thead><tr><th>Box</th><th>Details</th><th class="num">Taxable</th><th class="num">IGST</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">Cess</th></tr></thead>
@@ -48,7 +48,7 @@
             <p class="cx-help mb-0">@foreach($gstr3b['3.2_inter_state_unregistered'] as $place => $row)State {{ $place }}: {{ $inr($row['taxable_value']) }} (IGST {{ $inr($row['igst']) }}); @endforeach</p>
         @endif
     </div>
-    <div class="cx-card">
+    <div class="cx-card" id="itc04">
         <h2><i class="dripicons-swap"></i> Form GST ITC-04 · job work</h2>
         <p class="cx-help">Half-yearly if turnover was over ₹5 crore, otherwise yearly. Shrinkage is reported as loss and waste in table 5A.</p>
         @foreach($itcTables as $key => [$title, $rows])
@@ -61,7 +61,7 @@
             </table></div>
             @endif
         @endforeach
-        <h2 class="mt-3"><i class="dripicons-wallet"></i> TDS under 194Q ({{ count($tds) }})
+        <h2 class="mt-3" id="tds"><i class="dripicons-wallet"></i> TDS under 194Q ({{ count($tds) }})
             @if($tds)<a class="cx-btn ghost ml-auto" href="{{ $q(['download' => 'tds_194q', 'format' => 'csv']) }}">CSV</a>@endif</h2>
         <p class="cx-help">Deposit by the 7th of next month (challan 281) and report in the quarterly 26Q return.</p>
         @if($tds)

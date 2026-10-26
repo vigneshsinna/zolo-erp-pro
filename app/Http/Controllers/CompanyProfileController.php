@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Services\Industry\{IndustryCatalog, IndustryProfileService};
-use App\Services\Platform\{CapabilityCatalog, CompanyContext, CompanyContextResolver, CompanyProfileService};
+use App\Services\Platform\{CapabilityCatalog, CapabilityService, CompanyContext, CompanyContextResolver, CompanyProfileService};
 use App\Services\Tax\{Gstin, GstSetupService};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Schema};
@@ -32,6 +32,9 @@ class CompanyProfileController extends Controller
             'states' => array_diff_key(Gstin::$states, ['97' => 1]),
             'industry' => $industry, 'industries' => collect(CapabilityCatalog::PROFILES)->map(fn ($profile) => $profile[0])->all(),
             'subtypes' => IndustryCatalog::SUBTYPES,
+            'features' => collect(CapabilityCatalog::SWITCHABLE)->mapWithKeys(fn ($key) => [$key => [
+                'label' => CapabilityCatalog::DEFINITIONS[$key][0], 'enabled' => app(CapabilityService::class)->enabled($key, $context),
+            ]])->all(),
         ]);
     }
 
@@ -44,11 +47,24 @@ class CompanyProfileController extends Controller
             DB::table('general_settings')->where('id', DB::table('general_settings')->latest()->value('id'))->update(['currency' => $company->base_currency_id]);
             cache()->forget('general_setting');
         }
+        $industryChanged = false;
         if ($request->filled('industry') && Schema::hasTable('company_industry_settings')) {
             $request->validate(['industry' => ['required', Rule::in(array_keys(IndustryCatalog::SUBTYPES))], 'subtype' => 'nullable|string|max:50']);
             $current = app(IndustryProfileService::class)->settings($context);
             if ([$current['profile'], $current['subtype']] !== [$request->input('industry'), $request->input('subtype')]) {
                 app(IndustryProfileService::class)->apply($request->input('industry'), $request->input('subtype'), $context, $actor);
+                $industryChanged = true;
+            }
+        }
+        // A new industry applies its own preset; otherwise the Features checkboxes switch existing features on or off.
+        if ($request->boolean('features_submitted') && !$industryChanged) {
+            $request->validate(['features' => 'array', 'features.*' => ['string', Rule::in(CapabilityCatalog::SWITCHABLE)]]);
+            $capabilities = app(CapabilityService::class);
+            foreach (CapabilityCatalog::SWITCHABLE as $key) {
+                $wanted = in_array($key, $request->input('features', []), true);
+                if ($wanted !== $capabilities->enabled($key, $context)) {
+                    $wanted ? $capabilities->enable($key, [], $context, $actor) : $capabilities->disable($key, $context, $actor);
+                }
             }
         }
         return redirect()->route('settings.company')->with('message', 'Company profile saved. New bills print these details; posted bills keep the details they were posted with.');

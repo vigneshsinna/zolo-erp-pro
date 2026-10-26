@@ -1,0 +1,85 @@
+/* Page styles for: backend/settings/workspace.blade.php — every settings area on one screen. */
+.settings-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+}
+
+.settings-workspace-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.settings-workspace-head h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--z-text);
+}
+
+.settings-workspace-head input {
+    max-width: 320px;
+    height: 32px;
+}
+
+/* Cards flow in columns so short and long groups pack without gaps. */
+.settings-workspace-grid {
+    columns: 4 220px;
+    column-gap: 12px;
+}
+
+.settings-group {
+    break-inside: avoid;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: var(--z-surface);
+    border: 1px solid var(--z-border);
+    border-radius: var(--z-radius-md);
+}
+
+.settings-group h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--z-text-2);
+}
+
+.settings-group h2 i {
+    color: var(--z-primary-text);
+    font-size: 14px;
+}
+
+.settings-group ul {
+    margin: 0;
+}
+
+.settings-group a {
+    display: block;
+    padding: 3px 6px;
+    border-radius: var(--z-radius-sm);
+    font-size: 13px;
+    color: var(--z-text);
+    text-decoration: none;
+}
+
+.settings-group a:hover,
+.settings-group a:focus {
+    background: var(--z-primary-soft);
+    color: var(--z-primary-text);
+    outline: none;
+}
+
+.settings-group a:focus-visible {
+    box-shadow: var(--z-focus-ring);
+}
+
+.settings-empty {
+    color: var(--z-text-muted);
+}

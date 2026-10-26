@@ -107,9 +107,11 @@
                 <!-- Executive Quick Action Bar -->
                 <div class="zolo-quick-actions-bar pt-2 mt-2 border-top border-secondary-subtle">
                     <span class="text-muted mr-2 u-fs-11_5px u-fw-600"><i class="dripicons-broadcast mr-1"></i>QUICK ACTIONS:</span>
+                    @if(in_array('sales.pos', app(\App\Services\Platform\CapabilityService::class)->forNavigation(), true))
                     <a href="{{ route('sale.pos') }}" class="zolo-quick-btn primary">
                         <i class="dripicons-shopping-bag"></i> POS Terminal
                     </a>
+                    @endif
                     <a href="{{ route('sales.create') }}" class="zolo-quick-btn">
                         <i class="dripicons-plus"></i> New Sale
                     </a>

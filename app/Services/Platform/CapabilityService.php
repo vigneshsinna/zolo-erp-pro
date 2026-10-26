@@ -103,7 +103,7 @@ class CapabilityService
         // Cache configured states; activation gates and dependency checks always apply on read.
         foreach ($states as $key => &$state) {
             if (!$this->dependenciesEnabled($key, $states)
-                || (!$this->optionalActivationReady() && !(CapabilityCatalog::DEFINITIONS[$key][2] ?? false))) {
+                || (!$this->optionalActivationReady() && !$this->exemptFromActivationGate($key))) {
                 $state['enabled'] = false;
             }
         }
@@ -116,7 +116,8 @@ class CapabilityService
         $legacy = app(LegacyModuleAdapter::class)->forCompany($companyId);
         $states = [];
         foreach (CapabilityCatalog::DEFINITIONS as $key => $definition) {
-            $states[$key] = ['enabled' => ($definition[2] ?? false) || in_array($key, $legacy, true), 'config' => null];
+            $states[$key] = ['enabled' => ($definition[2] ?? false) || in_array($key, $legacy, true)
+                || in_array($key, CapabilityCatalog::SWITCHABLE, true), 'config' => null];
         }
         foreach (DB::table('company_capabilities as state')->join('capabilities', 'capabilities.id', '=', 'state.capability_id')
             ->where('company_id', $companyId)->get() as $row) {
@@ -151,7 +152,7 @@ class CapabilityService
                 if (($definition[2] ?? false) && empty($states[$key]['enabled'])) {
                     throw ValidationException::withMessages(['capability' => 'Core capabilities cannot be disabled.']);
                 }
-                if (!$importOnly && !$this->optionalActivationReady() && !($definition[2] ?? false)
+                if (!$importOnly && !$this->optionalActivationReady() && !$this->exemptFromActivationGate($key)
                     && !empty($states[$key]['enabled']) && empty($previousStates[$key]['enabled'])) {
                     throw ValidationException::withMessages(['capability' => 'Optional activation waits for full Phase 1 isolation acceptance.']);
                 }
@@ -209,6 +210,11 @@ class CapabilityService
         $connection = DB::connection();
         $identity = [$connection->getName(), $connection->getConfig('host'), $connection->getConfig('port'), $connection->getDatabaseName()];
         return 'capabilities:'.hash('sha256', json_encode($identity)).':'.$companyId;
+    }
+
+    private function exemptFromActivationGate(string $key): bool
+    {
+        return (CapabilityCatalog::DEFINITIONS[$key][2] ?? false) || in_array($key, CapabilityCatalog::SWITCHABLE, true);
     }
 
     protected function optionalActivationReady(): bool

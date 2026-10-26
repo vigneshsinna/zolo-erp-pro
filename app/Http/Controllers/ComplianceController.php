@@ -131,6 +131,7 @@ class ComplianceController extends Controller
     public function notes(Request $request, ?string $side = null)
     {
         $context = $this->context($request); $permissions = app(CommercialPermission::class);
+        $side ??= in_array($request->query('side'), ['sale', 'purchase'], true) ? $request->query('side') : null;
         $saleAccess = $side !== 'purchase' && $permissions->allows('returns-index', $context, $request->user()->id);
         $purchaseAccess = $side !== 'sale' && $permissions->allows('purchase-return-index', $context, $request->user()->id);
         abort_unless($saleAccess || $purchaseAccess, 403);

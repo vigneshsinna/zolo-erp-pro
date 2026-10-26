@@ -83,6 +83,17 @@
         </div>
         @endif
 
+        <div class="cpf-card">
+            <h2>Features</h2>
+            <input type="hidden" name="features_submitted" value="1">
+            <div class="cpf-grid cpf-features">
+                @foreach($features as $key => $feature)
+                    <label class="cpf-check"><input type="checkbox" name="features[]" value="{{ $key }}" @checked($feature['enabled'])> {{ $feature['label'] }}</label>
+                @endforeach
+            </div>
+            <p class="cpf-muted">Switched-off features leave the menu and their pages refuse access. Records already saved are kept. Changing the industry resets these to its preset.</p>
+        </div>
+
         <div class="cpf-actions"><button type="submit" class="btn btn-primary">Save company profile</button></div>
     </form>
 </div>

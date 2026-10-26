@@ -171,6 +171,7 @@ Route::middleware('auth')->group(function () {
 
 // Settings › Company profile: names, address, GSTIN, logo, currency and industry of the current company.
 Route::middleware(['auth', 'company.context', 'common'])->group(function () {
+    Route::get('settings', [\App\Http\Controllers\SettingsWorkspaceController::class, 'index'])->name('settings.workspace');
     Route::get('settings/company', [\App\Http\Controllers\CompanyProfileController::class, 'edit'])->name('settings.company');
     Route::post('settings/company', [\App\Http\Controllers\CompanyProfileController::class, 'update'])->name('settings.company.update');
 });

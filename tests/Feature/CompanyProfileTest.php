@@ -158,4 +158,23 @@ class CompanyProfileTest extends ReturnsDocumentTestCase
         $this->assertSame(['Motumo FMCG', 'Coimbatore', 1], [$company->trade_name, $company->city, (int) $company->base_currency_id]);
         $this->assertStringStartsWith(CompanyProfileService::LOGO_DIR.'/company-'.$company->id.'-', $company->logo);
     }
+
+    public function test_features_card_switches_existing_features_off_and_back_on(): void
+    {
+        // This test case stubs enabled() to true, so start from the real stored state and assert stored rows.
+        $this->app->forgetInstance(\App\Services\Platform\CapabilityService::class);
+        $this->app->bind(\App\Services\Platform\CapabilityService::class, fn () => new \App\Services\Platform\CapabilityService);
+        $stored = fn (string $key) => (bool) DB::table('company_capabilities')->join('capabilities', 'capabilities.id', '=', 'capability_id')
+            ->where('company_id', $this->company->id)->where('key', $key)->value('enabled');
+        $this->get('/settings/company')->assertOk()->assertSee('Features')->assertSee('POS terminal');
+        $keep = array_values(array_diff(\App\Services\Platform\CapabilityCatalog::SWITCHABLE, ['sales.coupons', 'hrm.enabled']));
+        $payload = ['legal_name' => 'Motumo Foods Private Limited', 'state_code' => '33', 'base_currency_id' => 1, 'features_submitted' => 1];
+        $this->post('/settings/company', $payload + ['features' => $keep])->assertSessionHasNoErrors();
+        $this->assertFalse($stored('sales.coupons'));
+        $this->assertFalse($stored('hrm.enabled'));
+        \Illuminate\Support\Facades\Cache::flush();
+        $this->post('/settings/company', $payload + ['features' => \App\Services\Platform\CapabilityCatalog::SWITCHABLE])->assertSessionHasNoErrors();
+        $this->assertTrue($stored('sales.coupons'));
+        $this->assertTrue($stored('hrm.enabled'));
+    }
 }

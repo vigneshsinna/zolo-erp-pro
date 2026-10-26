@@ -74,6 +74,13 @@
                         </a>
                     </li>
                 </ul>
+                {{-- Sidebar entries open a register directly: ?tab=dc|grn|outside|shrinkage --}}
+                <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var tab = new URLSearchParams(window.location.search).get('tab');
+                    if (tab && window.jQuery) jQuery('.ops-tab-strip a[href="#tab-' + tab + '"]').tab('show');
+                });
+                </script>
             </div>
             <div class="tab-content flex-fill d-flex flex-column min-h-0 u-ov-hidden">
                 <!-- Tab: Orders -->

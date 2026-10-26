@@ -42,8 +42,17 @@ class CapabilityServiceProvider extends ServiceProvider
                     'InstallmentController', 'InstallmentPlanController' => 'sales.installment_plans',
                     'CatalogueQrController' => 'sales.catalogue_qr',
                     'WhatsappController' => 'communications.whatsapp',
+                    'DepartmentController', 'DesignationController', 'ShiftController', 'EmployeeController', 'AttendanceController',
+                    'HolidayController', 'OvertimeController', 'LeaveTypeController', 'LeaveController', 'PayrollController' => 'hrm.enabled',
+                    'GiftCardController' => 'sales.gift_cards',
+                    'CouponController' => 'sales.coupons',
+                    'BookingController' => 'operations.scheduling',
+                    'InventoryLotReportController' => 'inventory.lot_report',
                     default => null,
                 };
+                if ($route->getName() === 'sale.pos') {
+                    $key = 'sales.pos';
+                }
                 $action = $route->getActionName();
                 foreach (['Ecommerce' => 'ecommerce', 'Woocommerce' => 'woocommerce', 'Project' => 'project', 'Restaurant' => 'restaurant'] as $module => $legacy) {
                     if (str_starts_with($action, 'Modules\\'.$module.'\\') && in_array('common', $route->middleware(), true)) {

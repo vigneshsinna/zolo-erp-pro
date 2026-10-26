@@ -1359,34 +1359,6 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
   @stack('scripts')
 
   <script type="text/javascript">
-    // Pages mark their own sidebar entry; any page that does not gets the link whose URL best matches the current one.
-    $(function () {
-      setTimeout(function () {
-        var menu = $('#side-main-menu');
-        if (!menu.length || menu.find('li.active').not('.sidebar-heading').length) return;
-        var here = window.location, best = null, bestScore = 0;
-        menu.find('a[href]').each(function () {
-          var href = this.getAttribute('href');
-          if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
-          var url;
-          try { url = new URL(this.href); } catch (e) { return; }
-          if (url.host !== here.host) return;
-          var path = url.pathname.replace(/\/+$/, '') || '/', current = here.pathname.replace(/\/+$/, '') || '/';
-          if (current !== path && current.indexOf(path === '/' ? '/' : path + '/') !== 0) return;
-          var params = new URLSearchParams(here.search), matched = 0, ok = true;
-          url.searchParams.forEach(function (value, key) { if (params.get(key) === value) matched++; else ok = false; });
-          if (!ok) return;
-          var score = path.length * 10 + (current === path ? 5 : 0) + matched;
-          if (score > bestScore) { best = this; bestScore = score; }
-        });
-        if (!best) return;
-        $(best).closest('li').addClass('active');
-        $(best).parents('ul.collapse').addClass('show').siblings('a').attr('aria-expanded', 'true');
-      }, 0);
-    });
-  </script>
-
-  <script type="text/javascript">
     $.ajaxSetup({
       headers: {
         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')

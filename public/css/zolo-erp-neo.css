@@ -4310,3 +4310,70 @@ nav.side-navbar.icon-only { overflow: visible !important; }
     body.pos-page #pos-layout .col-md-5.order-first { height: calc(100vh - 10px); display: flex; flex-direction: column; }
     body.pos-page #pos-layout .col-md-5.order-first > .row:last-child { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 }
+
+/* ====================================================================
+   SIDEBAR MENU SEARCH + SUB-LABELS (sidebar IA plan, Oct 2026)
+   ==================================================================== */
+.side-navbar .side-search {
+  padding: 4px 12px 6px;
+}
+
+.side-navbar .side-search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--neo-sidebar-border);
+  border-radius: 8px;
+  background: var(--neo-sidebar-surface);
+  color: var(--neo-sidebar-text-active);
+  font-size: 12.5px;
+}
+
+.side-navbar .side-search input::placeholder {
+  color: var(--neo-sidebar-text-muted);
+}
+
+.side-navbar .side-search input:focus {
+  outline: none;
+  border-color: var(--neo-sidebar-active-border);
+  box-shadow: var(--z-focus-ring);
+}
+
+#side-search-results li a {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+}
+
+#side-search-results li a small {
+  color: var(--neo-sidebar-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+#side-search-results li a:focus {
+  outline: none;
+  background: var(--neo-sidebar-active-bg) !important;
+  color: var(--neo-sidebar-text-active) !important;
+}
+
+#side-search-results .side-search-empty {
+  padding: 8px 26px;
+  color: var(--neo-sidebar-text-muted);
+  font-size: 12.5px;
+}
+
+/* A non-clickable label grouping links inside one submenu (e.g. Selling › Sales Tools). */
+.side-navbar ul.collapse li.sidebar-sublabel {
+  padding: 8px 14px 2px !important;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neo-sidebar-text-muted);
+  user-select: none;
+}
+
+.side-navbar.icon-only .side-search,
+.side-navbar.icon-only #side-search-results {
+  display: none !important;
+}
