@@ -1,0 +1,216 @@
+/* Returns tab of the Purchase / Sales command center (backend/commercial/returns-workspace.blade.php). */
+
+/* Returns mode swaps the bill voucher and bill list for the return voucher and note list. */
+.comm-split-grid:not(.is-returns) #return-workspace,
+.comm-split-grid:not(.is-returns) #side-return-list,
+.comm-split-grid.is-returns #comm-entry-workspace,
+.comm-split-grid.is-returns .comm-drawer-body > :not(#side-return-list) {
+    display: none !important;
+}
+
+.return-workspace > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+}
+
+/* Three fields on row A and two on row B, not the bill voucher's six-column grid. */
+#return-workspace .doc-primary-fields .fields-compact-row.doc-row-a {
+    display: grid !important;
+    grid-template-columns: minmax(220px, 320px) minmax(240px, 1fr) 136px;
+}
+
+#return-workspace .doc-primary-fields .fields-compact-row.doc-row-b {
+    display: grid !important;
+    grid-template-columns: max-content minmax(220px, 1fr);
+}
+
+@media (max-width: 720px) {
+    #return-workspace .doc-primary-fields .fields-compact-row.doc-row-a,
+    #return-workspace .doc-primary-fields .fields-compact-row.doc-row-b {
+        grid-template-columns: 1fr;
+    }
+}
+
+.return-bill-field {
+    position: relative;
+}
+
+/* Label above the party box like the other fields (the bill voucher puts it beside on laptop widths). */
+#return-workspace .doc-primary-fields .doc-party-details {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+#return-workspace .doc-party-details .party-info-compact-inline {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.return-bill-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 280px;
+    overflow-y: auto;
+    margin: 2px 0 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--z-surface);
+    border: 1px solid var(--z-border-strong);
+    border-radius: var(--z-radius-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.return-bill-results li {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 8px;
+    padding: 6px 8px;
+    border-radius: var(--z-radius-sm);
+    font-size: 11.5px;
+    color: var(--z-text);
+    cursor: pointer;
+}
+
+.return-bill-results li small {
+    color: var(--z-text-muted);
+}
+
+.return-bill-results li[aria-selected="true"],
+.return-bill-results li:hover {
+    background: var(--z-primary-soft);
+}
+
+.return-bill-results li.is-empty {
+    display: block;
+    cursor: default;
+    color: var(--z-text-muted);
+}
+
+.return-grid td {
+    vertical-align: middle;
+    font-size: 12px;
+}
+
+.return-grid .return-input {
+    height: 28px;
+    text-align: right;
+    font-size: 12px;
+}
+
+#return-workspace .return-grid select.return-condition {
+    min-width: 120px !important;
+    height: 28px;
+    font-size: 11.5px;
+    padding: 0 4px;
+}
+
+.return-grid tr.is-picked td {
+    background: var(--z-primary-soft);
+}
+
+.return-grid tr.is-done td {
+    color: var(--z-text-muted);
+}
+
+.return-identities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: var(--z-text-2);
+}
+
+.return-identities label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin: 0;
+}
+
+#return-feedback.is-error {
+    color: var(--z-danger);
+    font-weight: 600;
+}
+
+#return-feedback.is-ok {
+    color: var(--z-success);
+    font-weight: 600;
+}
+
+.return-note-head {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 0.8fr 1.4fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.return-note-head > div {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.return-note-head span {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--z-text-muted);
+}
+
+.return-note-head strong {
+    font-size: 13px;
+    color: var(--z-text);
+}
+
+.return-note-head small {
+    color: var(--z-text-2);
+}
+
+.return-note-modal .modal-dialog {
+    max-width: min(1000px, calc(100vw - 32px));
+}
+
+.return-note-modal .modal-body {
+    overflow-x: auto;
+}
+
+.return-note-modal .return-note-lines {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0;
+}
+
+.return-note-lines td,
+.return-note-lines th {
+    font-size: 12px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.return-note-lines td:nth-child(2) {
+    white-space: normal;
+    min-width: 200px;
+}
+
+.return-note-lines tfoot td {
+    border-top: 2px solid var(--z-border-strong);
+}
+
+.side-return-card .side-card-status.awaiting {
+    background: var(--z-warning-soft);
+    color: var(--z-warning);
+}
+
+.side-return-card .side-card-status.posted {
+    background: var(--z-success-soft);
+    color: var(--z-success);
+}

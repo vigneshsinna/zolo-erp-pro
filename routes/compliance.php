@@ -22,6 +22,7 @@ Route::prefix('compliance')->middleware(['auth', 'company.context', RequireShare
         Route::get('{format}/{source}/{id}', [ComplianceController::class, 'eDocument'])
             ->where(['format' => 'einvoice|ewaybill', 'source' => 'sale|dispatch'])->name('compliance.e-document');
         Route::get('returns', [ComplianceController::class, 'notes']);
+        Route::get('{kind}/returnable', [ComplianceController::class, 'returnable']);
         Route::get('{kind}/{id}/return', [ComplianceController::class, 'returnForm']);
         Route::post('{kind}/{id}/notes', [ComplianceController::class, 'createNote']);
         Route::post('{kind}/notes/{id}/approve', [ComplianceController::class, 'approve']);

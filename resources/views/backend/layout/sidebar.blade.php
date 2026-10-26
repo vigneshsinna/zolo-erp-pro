@@ -147,7 +147,7 @@
                     <li><a href="{{ config('commercial.enabled') ? route('purchases.index', ['orders' => 1]) : route('purchases.index', ['view' => 'orders', 'purchase_status' => 4]) }}" data-keywords="po">Purchase Orders</a></li>
                 @endif
                 @if($nav->allows('purchase-return-index'))
-                    <li id="purchase-return-menu"><a href="{{ $complianceOn ? url('/compliance/returns?side=purchase') : route('return-purchase.index') }}">Purchase Returns &amp; Debit Notes</a></li>
+                    <li id="purchase-return-menu"><a href="{{ $complianceOn ? route('purchases.index', ['returns' => 1]) : route('return-purchase.index') }}">Purchase Returns &amp; Debit Notes</a></li>
                 @endif
                 @if($nav->allows('purchases-import'))
                     <li id="purchase-import-menu"><a href="{{url('purchases/purchase_by_csv')}}" data-keywords="csv">Import Purchases</a></li>
@@ -167,7 +167,7 @@
                     @if(config('commercial.enabled'))<li><a href="{{ route('sales.index', ['orders' => 1]) }}" data-keywords="so">Sales Orders</a></li>@endif
                 @endif
                 @if($nav->allows('returns-index'))
-                    <li id="sale-return-menu"><a href="{{ $complianceOn ? url('/compliance/returns?side=sale') : route('return-sale.index') }}">Sales Returns &amp; Credit Notes</a></li>
+                    <li id="sale-return-menu"><a href="{{ $complianceOn ? route('sales.index', ['returns' => 1]) : route('return-sale.index') }}">Sales Returns &amp; Credit Notes</a></li>
                 @endif
                 @if($nav->allows('quotes-index'))
                     <li id="quotation-list-menu"><a href="{{route('quotations.index')}}" data-keywords="estimate">Quotations</a></li>

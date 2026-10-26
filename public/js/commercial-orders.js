@@ -91,6 +91,7 @@
                     const url = new URL(window.location.href);
                     url.searchParams.set('orders', '1');
                     url.searchParams.delete('view');
+                    url.searchParams.delete('returns');
                     window.history.pushState({ mode: 'orders' }, '', url.toString());
                 }
             } else {
@@ -100,6 +101,7 @@
                     const url = new URL(window.location.href);
                     url.searchParams.delete('orders');
                     url.searchParams.delete('view');
+                    url.searchParams.delete('returns');
                     window.history.pushState({ mode: 'bills' }, '', url.toString());
                 }
             }
@@ -298,6 +300,7 @@
 
         // Window popstate navigation
         window.addEventListener('popstate', function (event) {
+            if (new URLSearchParams(window.location.search).get('returns') === '1') return; // commercial-returns.js owns that tab
             const isOrders = new URLSearchParams(window.location.search).get('orders') === '1' || new URLSearchParams(window.location.search).get('view') === 'orders';
             switchCommercialTab(isOrders ? 'orders' : 'bills');
         });

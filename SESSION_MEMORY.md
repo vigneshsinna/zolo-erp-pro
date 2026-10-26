@@ -2071,3 +2071,13 @@ User decisions on section 88's open items:
 - Company profile › Features card toggles the six (skipped when the industry changes in the same save, since the preset applies).
 - Rental and Service Bills: nothing added until real modules exist.
 - Tests: new `SwitchableCapabilityTest` (4) + `CompanyProfileTest::test_features_card_...`.
+
+## 90. Returns as an In-Place Tab of the Purchase / Sales Workspace (2026-10-26, branch ui)
+
+User: Returns should open in the same bill workspace (like the Purchase Orders tab), only the needed fields, separately for purchase and sales.
+- `/purchases?returns=1` and `/sales?returns=1` (nav tab, sidebar "Purchase Returns & Debit Notes" / "Sales Returns & Credit Notes", purchase top-bar Returns) swap the bill voucher for `backend/commercial/returns-workspace.blade.php` and the bill list for `returns-side.blade.php`; `public/js/commercial-returns.js`, `public/css/pages/commercial-returns.css`. Only when commercial + compliance are on and the user has `purchase-return-add` / `returns-add`; otherwise the old routes stay.
+- Fields: Against bill (search posted bills by number/party), party (read-only), return date, Type (Goods return / Rate difference / Discount), Reason; lines show billed, already returned, rate, return qty (or pre-tax amount), sales-only Condition (Back to stock → bill warehouse, else first quarantine warehouse), serial/piece checkboxes when the bill has identities. Saves through the existing `ReturnService` (`POST /compliance/{kind}/{id}/notes`, JSON, Idempotency-Key). Side list: recent notes with Approve / View / Print. View opens a modal on the same page (from the JSON of `/compliance/documents/{kind}_note/{id}`), not the separate document page; Print opens the A4 note in a new tab, like a bill's Print. Bill cards get a "Return" action.
+- New endpoints: `GET /compliance/{kind}/returnable` (posted unreversed bills of the branch), `GET /compliance/{kind}/{id}/return` now answers JSON (lines + posted returned qty + warehouses + identities).
+- `commercial-orders.js` drops `returns` from the URL on Bills/Orders and ignores popstate while `returns=1`.
+- Live example on company 23 (Sri Murugan Textiles Demo): PR-00001 (1 MTR against PUR-00002, ₹12.60) and SR-00001 (2 MTR against MJ-00001, ₹178.50), both saved → awaiting approval (no return policy) → approved from the side list → posted. Playwright: no page errors; Back button, Bills tab, card Return button all verified.
+- Not done: a feature test for the two new endpoints (needs the MySQL compliance fixtures).

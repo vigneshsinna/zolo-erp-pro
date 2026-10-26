@@ -59,7 +59,16 @@
 <section class="commercial-workspace-view">
 @include('backend.partials.command-center-nav', ['kind' => 'sale'])
     <!-- 2-Column Command Center Grid: Main Entry Workspace + Side Bill List Panel -->
-    <div class="comm-split-grid" id="comm-split-grid">
+    @php
+        // Returns tab (debit / credit note against a posted bill) lives in this workspace when shared commercial + compliance are on.
+        $returnsTab = config('commercial.enabled') && config('compliance.enabled') && (function () {
+            try {
+                return app(\App\Services\Commercial\CommercialPermission::class)->allows('returns-add',
+                    app(\App\Services\Platform\CompanyContextResolver::class)->forActor(), (int) auth()->id());
+            } catch (\Illuminate\Auth\Access\AuthorizationException) { return false; }
+        })();
+    @endphp
+    <div class="comm-split-grid{{ $returnsTab && request('returns') == 1 ? ' is-returns' : '' }}" id="comm-split-grid">
         <!-- Main: Sales Entry Workspace (Matching Screenshot 3) -->
         <div class="comm-entry-workspace" id="comm-entry-workspace">
             <form id="sale-entry-form" method="POST" action="{{ route('sales.store') }}" enctype="multipart/form-data">
@@ -338,6 +347,10 @@
             </form>
         </div>
 
+        @if($returnsTab)
+            @include('backend.commercial.returns-workspace', ['kind' => 'sale'])
+        @endif
+
         <!-- Right / Dockable Side Panel: Bill List with Screenshot 2 Filters & Dropdowns -->
         <aside class="comm-drawer-card desk-bill-list-panel" id="comm-drawer" aria-label="Transaction List Panel">
             <div class="comm-drawer-header">
@@ -475,6 +488,11 @@
                                 <a href="javascript:void(0)" class="side-action-btn copy btn-side-copy" data-id="{{ $bill->id }}" title="Copy this bill into a new draft" hidden>
                                     <i class="dripicons-copy"></i> Copy
                                 </a>
+                                @if($returnsTab && $bill->posted_at && !$bill->reversed_at)
+                                <a href="javascript:void(0)" class="side-action-btn edit btn-side-return" data-id="{{ $bill->id }}" title="Return goods or adjust value: make a credit note against this bill">
+                                    <i class="dripicons-return"></i> Return
+                                </a>
+                                @endif
                                 @if($canReverseBills && !$bill->reversed_at && !$isDraft && $bill->branch_id)
                                 <a href="{{ url('/commercial/sale/'.$bill->id.'/reverse') }}" class="side-action-btn reverse" title="Reverse: cancel this bill, stock comes back and its journal is reversed; the bill stays in history" aria-label="Reverse bill">
                                     <i class="dripicons-return"></i>
@@ -488,6 +506,9 @@
                         </div>
                     @endforelse
                 </div>
+                @if($returnsTab)
+                    @include('backend.commercial.returns-side', ['kind' => 'sale'])
+                @endif
             </div>
         </aside>
     </div>

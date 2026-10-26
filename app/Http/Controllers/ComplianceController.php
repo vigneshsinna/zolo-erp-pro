@@ -141,6 +141,24 @@ class ComplianceController extends Controller
             : view('backend.compliance.notes', compact('context', 'sales', 'purchases', 'side'));
     }
 
+    /** Posted, unreversed bills of this branch that a return tab can pick, newest first. */
+    public function returnable(Request $request, string $kind)
+    {
+        $context = $this->permit($request, $kind === 'sale' ? 'returns-add' : 'purchase-return-add');
+        $party = $kind === 'sale' ? 'customer' : 'supplier';
+        $search = trim((string) $request->query('q', ''));
+        $bills = ($kind === 'sale' ? Sale::class : Purchase::class)::visibleIn($context)->with($party)
+            ->where('branch_id', $context->branchId)->whereNotNull('posted_at')->whereNull('reversed_at')
+            ->when($request->integer('party_id'), fn ($q, $id) => $q->where($party.'_id', $id))
+            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('reference_no', 'like', "%{$search}%")
+                ->orWhereHas($party, fn ($p) => $p->where('name', 'like', "%{$search}%"))))
+            ->latest('created_at')->limit(30)->get();
+        return response()->json(['data' => $bills->map(fn ($bill) => [
+            'id' => $bill->id, 'reference_no' => $bill->reference_no, 'date' => $bill->created_at->toDateString(),
+            'party' => $bill->{$party}?->name, 'grand_total' => (float) $bill->grand_total,
+        ])]);
+    }
+
     public function returnForm(Request $request, string $kind, int $id)
     {
         $context = $this->permit($request, $kind === 'sale' ? 'returns-add' : 'purchase-return-add');
@@ -149,7 +167,35 @@ class ComplianceController extends Controller
         $lines = ($kind === 'sale' ? $source->productSales() : $source->productPurchases())->forCompany($context)->with('product')->get();
         $warehouses = Warehouse::forCompany($context)->where('branch_id', $context->branchId)->get();
         $stock = \App\Models\Inventory\StockMovementLine::forCompany($context)->whereHas('movement', fn ($q) => $q->where('source_type', $kind)->where('source_id', $id)->where('projection_mode', 'applied')->whereNull('reversal_of_id'))->with('identity')->get();
+        if ($request->expectsJson()) return response()->json(['data' => $this->returnSource($kind, $source, $lines, $warehouses, $stock, $context)]);
         return view('backend.compliance.return', compact('context', 'kind', 'source', 'lines', 'warehouses', 'stock'));
+    }
+
+    /** The bill, its lines with quantity already returned by posted notes, and the warehouses a return may use. */
+    private function returnSource(string $kind, Sale|Purchase $source, $lines, $warehouses, $stock, CompanyContext $context): array
+    {
+        $headerTable = $kind === 'sale' ? 'returns' : 'return_purchases';
+        $lineTable = $kind === 'sale' ? 'product_returns' : 'purchase_product_return';
+        $returned = DB::table($lineTable)->where('company_id', $context->companyId)->whereIn('source_line_id', $lines->pluck('id'))
+            ->whereIn('return_id', DB::table($headerTable)->where('company_id', $context->companyId)->whereNotNull('posted_at')
+                ->where('note_type', $kind === 'sale' ? 'credit' : 'debit')->select('id'))
+            ->groupBy('source_line_id')->selectRaw('source_line_id, SUM(qty) as qty')->pluck('qty', 'source_line_id');
+        $units = DB::table('units')->pluck('unit_code', 'id');
+        $party = $kind === 'sale' ? 'customer' : 'supplier';
+        return [
+            'source' => ['id' => $source->id, 'reference_no' => $source->reference_no, 'date' => $source->created_at->toDateString(),
+                'party' => $source->{$party}?->name, 'warehouse_id' => $source->warehouse_id, 'grand_total' => (float) $source->grand_total],
+            'lines' => $lines->map(fn ($line) => [
+                'id' => $line->id, 'product' => $line->product?->name, 'code' => $line->product?->code,
+                'unit' => $units[$line->{$kind === 'sale' ? 'sale_unit_id' : 'purchase_unit_id'}] ?? '',
+                'qty' => (float) $line->qty, 'returned' => (float) ($returned[$line->id] ?? 0),
+                'rate' => (float) ($kind === 'sale' ? $line->net_unit_price : $line->net_unit_cost),
+                'tax_rate' => (float) $line->tax_rate, 'tax' => (float) $line->tax, 'total' => (float) $line->total,
+                'identities' => $stock->filter(fn ($m) => ($m->attributes_json['commercial_line_id'] ?? 0) == $line->id && $m->stock_identity_id)
+                    ->map(fn ($m) => ['id' => $m->id, 'label' => $m->identity->identity_no.' · '.$m->identity->identity_type])->values(),
+            ])->values(),
+            'warehouses' => $warehouses->map(fn ($w) => ['id' => $w->id, 'name' => $w->name, 'quarantine' => (bool) $w->is_quarantine])->values(),
+        ];
     }
 
     public function createNote(Request $request, string $kind, int $id)
