@@ -461,6 +461,7 @@ class CustomerController extends Controller
         $request->validate(['credit_days' => 'nullable|integer|min:0|max:3650', 'search_alias' => 'nullable|string|max:100']);
         $this->validate($request, [
             'phone_number' => \App\Support\CompanyUnique::rules('customers'),
+            'tax_no' => \App\Services\Tax\Gstin::rule(),
         ]);
         //validation for supplier if create both user and supplier
         if(isset($request->both)) {
@@ -655,6 +656,7 @@ class CustomerController extends Controller
         $request->validate(['credit_days' => 'nullable|integer|min:0|max:3650', 'search_alias' => 'nullable|string|max:100']);
         $this->validate($request, [
             'phone_number' => \App\Support\CompanyUnique::rules('customers', (int) $id),
+            'tax_no' => \App\Services\Tax\Gstin::rule(),
         ]);
 
         $input = $request->all();

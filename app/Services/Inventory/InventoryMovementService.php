@@ -271,9 +271,10 @@ class InventoryMovementService
             ]);
             $run = new PostingRun($movement, $companyId, $type !== 'opening' && !$command->shadow,
                 $type === 'issue' ? StockIdentity::ISSUED : 'removed', $command->shadow, $command->purpose);
+            // Only taking goods OUT of quarantine is restricted; moving rejects or damaged goods INTO it is its purpose.
             if (!$command->shadow && in_array($type, ['issue', 'transfer'], true) && $this->hasColumn('warehouses', 'is_quarantine')
-                && DB::table('warehouses')->whereIn('id', $warehouseIds)->where('is_quarantine', true)->exists()
-                && !in_array($command->purpose, ['disposal', 'purchase_return'], true)) {
+                && DB::table('warehouses')->whereIn('id', $type === 'transfer' ? [$from] : $warehouseIds)->where('is_quarantine', true)->exists()
+                && !in_array($command->purpose, ['disposal', 'purchase_return', 'rework'], true)) {
                 throw new StockPolicyException('Quarantined stock cannot be sold or transferred through ordinary stock operations.');
             }
 
@@ -524,7 +525,7 @@ class InventoryMovementService
                 $batch = $this->createBatch($product, $batchNo, $line->batch, $run);
             }
             if (!$batch) {
-                throw new StockPolicyException("Batch {$batchNo} of product {$product->id} does not exist.");
+                throw new StockPolicyException("Lot / batch \"{$batchNo}\" of {$product->name} is not in stock. Pick an existing lot, or leave the lot blank.");
             }
         } else {
             if ($product->is_batch && $type !== 'opening') {

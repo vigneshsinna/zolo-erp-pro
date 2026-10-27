@@ -273,6 +273,8 @@ class SaleController extends Controller
         return response()->json([
             'success' => true,
             'sale' => $sale,
+            // created_at serialises as UTC; the form needs the company-local day or edits shift a day early.
+            'business_date' => $sale->created_at?->toDateString(),
             'items' => $items,
         ]);
     }

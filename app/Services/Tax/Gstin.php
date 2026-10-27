@@ -23,6 +23,18 @@ final class Gstin
         return $value;
     }
 
+    /**
+     * Validation rule for a party GSTIN field. Under GST an invalid GSTIN would silently make the party
+     * unregistered (no tax on its bills), so it is refused at entry; other tax setups keep a free VAT number.
+     */
+    public static function rule(): array
+    {
+        if (!GstSetupService::usesGst()) return ['nullable', 'string', 'max:50'];
+        return ['nullable', 'string', function ($attribute, $value, $fail) {
+            try { self::normalize($value); } catch (ValidationException $e) { $fail(collect($e->errors())->flatten()->first()); }
+        }];
+    }
+
     public static array $states = [
         '01' => 'Jammu and Kashmir',
         '02' => 'Himachal Pradesh',

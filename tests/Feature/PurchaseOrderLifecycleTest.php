@@ -33,6 +33,21 @@ class PurchaseOrderLifecycleTest extends CommercialTestCase
         $this->assertEquals(100, DB::table('products')->where('id', $this->legacyOrder()['product_id'][0])->value('qty'), 'ordered stock is not received');
     }
 
+    public function test_an_untouched_order_can_be_edited_in_full_and_deleted(): void
+    {
+        $order = $this->postJson('/purchases', $this->legacyOrder())->assertCreated()->json('data');
+        $row = fn ($id) => collect($this->getJson('/commercial/orders/purchase?status=all')->assertOk()->json('data'))->firstWhere('id', $id);
+        $this->assertTrue($row($order['id'])['untouched'], 'nothing received or billed yet');
+        $edited = $this->putJson('/commercial/purchase/'.$order['id'], $this->legacyOrder(['qty' => [7], 'business_date' => '2026-10-03', 'reason' => 'Supplier revised quantity']))
+            ->assertCreated()->json('data');
+        $this->assertSame(4, (int) DB::table('purchases')->where('id', $edited['id'])->value('status'), 'a full edit stays an order');
+        $this->assertNotNull(DB::table('purchases')->where('id', $order['id'])->value('reversed_at'), 'the old version is kept as reversed history');
+        $this->postJson('/commercial/purchase/'.$edited['id'].'/reverse', ['business_date' => '2026-10-02', 'reason' => 'Too early'])
+            ->assertStatus(422)->assertJsonValidationErrors('business_date');
+        $this->postJson('/commercial/purchase/'.$edited['id'].'/reverse', ['business_date' => '2026-10-03', 'reason' => 'Order dropped'])->assertOk();
+        $this->assertTrue($row($edited['id'])['reversed']);
+    }
+
     public function test_an_order_cannot_take_payment(): void
     {
         $this->postJson('/purchases', $this->legacyOrder(['paid_amount' => 5, 'paying_method' => 'Cash', 'account_id' => 1]))->assertStatus(422);

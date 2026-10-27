@@ -33,8 +33,14 @@ class IndustryFlowIntegrationTest extends ReturnsDocumentTestCase
             ['dispatch_line_id' => $line->id, 'accepted_qty' => 480, 'rejected_qty' => 0, 'loss_qty' => 20]]], 'grey-return', $this->context(), 1);
         $service = $this->gstProduct('service'); $service->forceFill(['qty' => 0])->save();
         DB::table('product_warehouse')->where('product_id', $service->id)->update(['qty' => 0]);
-        $job->serviceBill($receipt->id, ['business_date' => '2026-10-03', 'items' => [
-            ['product_id' => $service->id, 'qty' => 1, 'net_unit_cost' => 25]]], 'grey-service', $this->context(), 1);
+        $billId = $job->serviceBill($receipt->id, ['business_date' => '2026-10-03', 'items' => [
+            ['product_id' => $service->id, 'qty' => 1, 'net_unit_cost' => 25]]], 'grey-service', $this->context(), 1)->service_purchase_id;
+        // The job worker's bill prints as a job work service bill naming its GRN; the GRN prints its own receipt note.
+        $bill = app(DocumentRenderingService::class)->dto('purchase', $billId, $this->context());
+        $this->assertSame('Job work service bill', $bill['title']);
+        $this->assertStringContainsString('GRN '.$receipt->reference_no, $bill['source_number']);
+        $this->assertArrayNotHasKey('bale_no', $bill['transport'] ?? []);
+        $this->get('/operations/receipt/'.$receipt->id.'/print')->assertOk()->assertSee('Job Work GRN')->assertSee($receipt->reference_no)->assertSee($dispatch->reference_no);
         $sale = app(SaleApplicationService::class)->create(new SaleCommand($this->saleData($fabric, [
             'items' => [['product_id' => $fabric->id, 'qty' => 480, 'net_unit_price' => 3]],
             'transport_name' => 'Fixture carrier', 'lr_number' => 'LR-100', 'lr_date' => '2026-10-03', 'bale_count' => 5, 'bundle_count' => 10,

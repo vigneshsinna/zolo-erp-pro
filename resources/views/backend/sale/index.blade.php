@@ -67,6 +67,10 @@
                     app(\App\Services\Platform\CompanyContextResolver::class)->forActor(), (int) auth()->id());
             } catch (\Illuminate\Auth\Access\AuthorizationException) { return false; }
         })();
+        // Under GST a malformed GSTIN makes the party unregistered (no tax), so the party card flags it.
+        $usesGst = \App\Services\Tax\GstSetupService::usesGst();
+        $gstinInvalid = fn ($value) => $usesGst && trim((string) $value) !== ''
+            && !\App\Services\Tax\Gstin::parse($value)['is_valid'];
     @endphp
     <div class="comm-split-grid{{ $returnsTab && request('returns') == 1 ? ' is-returns' : '' }}" id="comm-split-grid">
         <!-- Main: Sales Entry Workspace (Matching Screenshot 3) -->
@@ -119,6 +123,7 @@
                                 @foreach($lims_customer_list as $customer)
                                     <option value="{{ $customer->id }}"
                                         data-tax-no="{{ $customer->tax_no ?? '' }}"
+                                        @if($gstinInvalid($customer->tax_no)) data-gstin-invalid="1" @endif
                                         data-address="{{ $customer->address ?? '' }}"
                                         data-city="{{ $customer->city ?? '' }}"
                                         data-state="{{ $customer->state ?? '' }}"
@@ -505,6 +510,20 @@
                             <p>No bills match these filters</p>
                         </div>
                     @endforelse
+                </div>
+
+                <!-- Sales Orders Side List (Active in Sales Orders mode) -->
+                <div class="side-list-container d-none" id="side-order-list">
+                    <div class="side-orders-header d-flex justify-content-between align-items-center mb-2 px-1">
+                        <label class="mb-0 small text-muted font-weight-bold">
+                            <input type="checkbox" id="side-orders-all-toggle"> Include closed
+                        </label>
+                        <button type="button" class="btn btn-xs btn-outline-primary font-weight-bold" id="btn-side-new-order">
+                            <i class="dripicons-plus"></i> New Order
+                        </button>
+                    </div>
+                    <div id="side-orders-status" class="small text-muted mb-2 px-1" role="status"></div>
+                    <div id="side-orders-cards"></div>
                 </div>
                 @if($returnsTab)
                     @include('backend.commercial.returns-side', ['kind' => 'sale'])
@@ -3401,7 +3420,9 @@
                 fullAddr = opt.text();
             }
 
-            $('#party-gst-badge').text(gstin || 'No GSTIN recorded');
+            var invalid = opt.data('gstin-invalid') == 1;
+            $('#party-gst-badge').text(gstin ? gstin + (invalid ? ' · invalid GSTIN: billed as unregistered, no GST. Fix it in the customer.' : '') : 'No GSTIN recorded')
+                .toggleClass('u-c-danger', invalid);
             $('#party-credit-badge').text('Credit: ' + credit + ' days');
             $('#party-address-text').text(fullAddr || 'Address not registered');
             $('#party-info-card').slideDown(150);
@@ -3694,9 +3715,9 @@
                 // Populate Header Inputs
                 $('#reference_no').val(s.reference_no || '');
                 $('#customer_po_no').val(s.customer_po_no || '');
-                if (s.created_at) {
-                    $('#bill_date').val(s.created_at.slice(0, 10));
-                    $('#entry_date').val(s.created_at.slice(0, 10));
+                if (res.business_date || s.created_at) {
+                    $('#bill_date').val(res.business_date || s.created_at.slice(0, 10));
+                    $('#entry_date').val(res.business_date || s.created_at.slice(0, 10));
                 }
                 
                 $('#customer_id').val(s.customer_id).trigger('change');

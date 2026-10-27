@@ -110,10 +110,16 @@
         if (busy || !form.reportValidity()) return;
         try {
             const data = payload(); busy = true;
+            const ordersMode = form.dataset.ordersMode === '1';
+            // A sales order is its own document (SalesOrder), not a pending bill; its Delivery Date is the promised date.
+            const salesOrder = ordersMode && !purchase;
             $(form).find('[type="submit"]').prop('disabled', true);
-            preview(data).then(checked => $.ajax({url: config.context?.post_url || form.action, method: $('#entry-form-method').val() === 'PUT' ? 'PUT' : 'POST',
-                dataType: 'json', data: {...checked, _token: token()}}))
-                .done(() => { window.zoloDocumentWorkspace?.leave?.(); window.location.href = config.listUrl; }).fail(failure)
+            preview(data).then(checked => salesOrder
+                ? $.ajax({url: config.ordersUrl, method: 'POST', dataType: 'json',
+                    data: {...checked, promised_date: fields().entry_date || null, note: fields().sale_note || '', _token: token()}})
+                : $.ajax({url: config.context?.post_url || form.action, method: $('#entry-form-method').val() === 'PUT' ? 'PUT' : 'POST',
+                    dataType: 'json', data: {...checked, _token: token()}}))
+                .done(() => { window.zoloDocumentWorkspace?.leave?.(); window.location.href = config.listUrl + (ordersMode ? '?orders=1' : ''); }).fail(failure)
                 .always(() => { busy = false; $(form).find('[type="submit"]').prop('disabled', false); });
         } catch (error) { busy = false; $(form).find('[type="submit"]').prop('disabled', false); failure(error); }
     });
@@ -133,7 +139,9 @@
     });
     // Posted GST documents print as the A4 tax invoice; anything else prints the details modal.
     let shown = null;
-    const invoiceUrl = doc => config.printUrl && doc?.posted_at && doc.document_snapshot_json ? config.printUrl + '/' + doc.id + '/print?format=a4' : null;
+    // Purchase orders (status 4) print on the same A4 layout, built from their current lines.
+    const invoiceUrl = doc => config.printUrl && ((doc?.posted_at && doc.document_snapshot_json) || (purchase && Number(doc?.status) === 4 && !doc.reversed_at))
+        ? config.printUrl + '/' + doc.id + '/print?format=a4' : null;
     $(document).on('click', '.btn-side-view, .btn-side-print', function (event) {
         event.preventDefault(); event.stopPropagation();
         const print = $(this).hasClass('btn-side-print');
@@ -144,9 +152,11 @@
             shown = doc;
             if (tab && invoiceUrl(doc)) { tab.location.href = invoiceUrl(doc); return; }
             tab?.close();
+            const order = purchase && Number(doc.status) === 4;
             const $heading = $('<div>');
+            if (order) $('<p class="text-uppercase font-weight-bold mb-1">').text('Purchase Order').appendTo($heading);
             $('<strong>').text(doc.reference_no).appendTo($heading);
-            $('<p>').text((doc[purchase ? 'supplier' : 'customer']?.name || '') + ' · ' + String(doc.created_at).slice(0, 10)).appendTo($heading);
+            $('<p>').text((doc[purchase ? 'supplier' : 'customer']?.name || '') + ' · ' + (result.business_date || String(doc.created_at).slice(0, 10))).appendTo($heading);
             $('#' + config.kind + '-content').empty().append($heading);
             result.items.forEach((item, i) => {
                 const $row = $('<tr>').appendTo($body);
@@ -154,7 +164,7 @@
                     item[purchase ? 'net_unit_cost' : 'net_unit_price'], item.tax, item.discount, item.total]
                     .forEach(value => $('<td>').text(value).appendTo($row));
             });
-            $('#' + config.kind + '-footer').text('Grand total: ₹ ' + Number(doc.grand_total).toFixed(2) + ' · Paid: ₹ ' + Number(doc.paid_amount || 0).toFixed(2));
+            $('#' + config.kind + '-footer').text('Grand total: ₹ ' + Number(doc.grand_total).toFixed(2) + (order ? '' : ' · Paid: ₹ ' + Number(doc.paid_amount || 0).toFixed(2)));
             if (doc.attributes_json?.source_documents?.length) $('#' + config.kind + '-footer').append($('<p>').text('Sources: ' + doc.attributes_json.source_documents.map(source => source.reference_no).join(', ')));
             if (print) $details.one('shown.bs.modal', printDetails);
             $details.modal('show');
@@ -201,7 +211,7 @@
 
     $(document).on('command-center-reset', () => {
         paymentError = ''; $message.hide(); $reason.prop('hidden', true).find('input').prop('required', false).val('');
-        $(form).find('[name="delivery_challan_id"], [name="goods_received_note_id"], [name="sales_order_id"], [name="purchase_order_id"], [name="quotation_id"], [name="draft_id"]').remove();
+        $(form).find('[name="delivery_challan_id"], [name="goods_received_note_id"], [name="sales_order_id"], [name="purchase_order_id"], [name="quotation_id"], [name="draft_id"], [name="replaces_order_id"]').remove();
         $(form).find('[name="idempotency_key"]').val(crypto.randomUUID());
         if (window.zoloDocumentWorkspace?.config) window.zoloDocumentWorkspace.config.context = {};
         $(form).find('[name="status"], [name="sale_status"]').val(1);

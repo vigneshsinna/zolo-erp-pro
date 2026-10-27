@@ -1,6 +1,6 @@
 {{-- Include once in each normal sales/purchase workspace. Entry always uses its existing grid. --}}
 @if(config('commercial.enabled'))
-<div class="d-none" id="commercial-orders" data-kind="{{ $orderKind }}" data-url="{{ url('/commercial/orders/'.$orderKind) }}">
+<div class="d-none" id="commercial-orders" data-kind="{{ $orderKind }}" data-url="{{ url('/commercial/orders/'.$orderKind) }}" data-print-url="{{ $orderKind === 'sale' && config('compliance.enabled') ? url('/compliance/documents/sales_order') : '' }}">
     <button type="button" class="btn btn-sm btn-outline-primary" data-order-save>Save {{ $orderKind === 'sale' ? 'Sales' : 'Purchase' }} Order</button>
     <span class="small text-muted" data-order-feedback role="status" aria-live="polite"></span>
 </div>

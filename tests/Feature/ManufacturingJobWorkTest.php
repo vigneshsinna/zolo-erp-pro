@@ -128,7 +128,52 @@ class ManufacturingJobWorkTest extends OperationsTestCase
         $this->assertEquals(985, DB::table('stock_movement_lines')->where('product_id', $packs->id)->sum('value'));
         $this->assertEquals(48, $packs->fresh()->qty);
         $this->assertEquals(25, DB::table('account_open_items')->where('source_type', 'purchase')->sum('original_amount'));
-        $this->rejected(fn () => $service->reverse('receipt', $receipt->id, '2026-10-03', 'Undo', $this->context(), 1), 'service purchase');
+        $this->rejected(fn () => $service->reverse('receipt', $receipt->id, '2026-10-03', 'Undo', $this->context(), 1), 'service bill');
+    }
+
+    public function test_service_bill_keeps_the_job_workers_own_name_for_the_material(): void
+    {
+        $material = $this->material(100, 2); [$order, $dispatch, $line] = $this->job($material, 100, false);
+        $service = app(JobWorkService::class);
+        $receipt = $service->receive($dispatch->id, ['warehouse_id' => 1, 'business_date' => '2026-10-03',
+            'lines' => [['dispatch_line_id' => $line->id, 'accepted_qty' => 100, 'rejected_qty' => 0, 'loss_qty' => 0]]], 'receive-alias', $this->context(), 1);
+        $serviceItem = $this->material(0); $serviceItem->forceFill(['type' => 'service'])->save();
+        $billed = $service->serviceBill($receipt->id, ['business_date' => '2026-10-03', 'their_names' => [$material->id => 'Cotton 3200s'],
+            'items' => [['product_id' => $serviceItem->id, 'qty' => 100, 'net_unit_cost' => 2]]], 'bill-alias', $this->context(), 1);
+        $this->assertStringContainsString('Their name: Cotton 3200s for '.$material->name, DB::table('purchases')->where('id', $billed->service_purchase_id)->value('note'));
+        if (\Illuminate\Support\Facades\Schema::hasTable('product_aliases')) $this->assertTrue(DB::table('product_aliases')->where(['product_id' => $material->id, 'party_type' => 'supplier',
+            'party_id' => $order->job_worker_party_id, 'name' => 'Cotton 3200s'])->exists(), 'saved as the job worker\'s alternate name');
+    }
+
+    public function test_a_wrong_service_bill_is_corrected_by_reversal_and_rebooking(): void
+    {
+        $material = $this->material(100, 2); [, $dispatch, $line] = $this->job($material, 100, false);
+        $service = app(JobWorkService::class);
+        $receipt = $service->receive($dispatch->id, ['warehouse_id' => 1, 'business_date' => '2026-10-03',
+            'lines' => [['dispatch_line_id' => $line->id, 'accepted_qty' => 100, 'rejected_qty' => 0, 'loss_qty' => 0]]], 'receive-fix', $this->context(), 1);
+        $serviceItem = $this->material(0); $serviceItem->forceFill(['type' => 'service'])->save();
+        $bill = fn ($rate) => ['business_date' => '2026-10-03', 'items' => [['product_id' => $serviceItem->id, 'qty' => 100, 'net_unit_cost' => $rate]]];
+        $wrong = $service->serviceBill($receipt->id, $bill(3), 'bill-wrong', $this->context(), 1)->service_purchase_id;
+        $stockValue = fn () => (float) DB::table('stock_movement_lines')->where('product_id', $material->id)->sum('value');
+        $this->assertEquals(500, $stockValue(), '200 material + 300 processing');
+
+        // Edit bill: the wrong bill is reversed with its reason and the corrected one is booked against the same GRN.
+        $fixed = $service->rebill($receipt->id, $bill(2) + ['bill_id' => $wrong, 'reason' => 'Agreed rate is 2'], 'bill-fixed', $this->context(), 1)->service_purchase_id;
+        $this->assertNotEquals($wrong, $fixed);
+        $this->assertNotNull(DB::table('purchases')->where('id', $wrong)->value('reversed_at'));
+        $this->assertEquals(400, $stockValue(), 'only the corrected charge stays on the processed stock');
+        $this->assertSame($fixed, $service->rebill($receipt->id, $bill(2) + ['bill_id' => $wrong, 'reason' => 'Agreed rate is 2'], 'bill-fixed', $this->context(), 1)->service_purchase_id,
+            'resubmitting the same correction changes nothing');
+
+        // Editing it as an ordinary purchase would lose the link, so Purchase Bills refuses it.
+        $this->rejected(fn () => app(\App\Services\Commercial\CommercialReversalService::class)->replace(\App\Models\Purchase::findOrFail($fixed), [],
+            'replace-jw', '2026-10-03', 'Edit', $this->context()), 'job work order');
+
+        // A plain reversal frees the GRN for a new bill.
+        app(\App\Services\Commercial\CommercialReversalService::class)->reverse(\App\Models\Purchase::findOrFail($fixed), '2026-10-03', 'Billed twice', $this->context());
+        $this->assertNull($receipt->fresh()->service_purchase_id);
+        $this->assertEquals(200, $stockValue());
+        $this->assertNotNull($service->serviceBill($receipt->id, $bill(2), 'bill-again', $this->context(), 1)->service_purchase_id);
     }
 
     public function test_migrations_resume_and_activation_gate_blocks_services(): void

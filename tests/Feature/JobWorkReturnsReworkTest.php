@@ -57,6 +57,19 @@ class JobWorkReturnsReworkTest extends OperationsTestCase
         $this->assertSame([], app(InventoryReconciliationService::class)->differences());
     }
 
+    public function test_grn_with_rejected_material_and_no_quarantine_warehouse_says_so(): void
+    {
+        $grey = $this->material(500, 2);
+        [$order, $dispatch, $line] = $this->job($grey, 500, false);
+        try {
+            app(JobWorkService::class)->receive($dispatch->id, ['warehouse_id' => 1, 'business_date' => '2026-10-03',
+                'lines' => [['dispatch_line_id' => $line->id, 'accepted_qty' => 499, 'rejected_qty' => 1, 'loss_qty' => 0]]], 'grn-no-quarantine', $this->context(), 1);
+            $this->fail('Rejected material without a quarantine warehouse must be refused.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('quarantine warehouse', $e->errors()['rejected_warehouse_id'][0]);
+        }
+    }
+
     public function test_grn_rework_sends_material_back_under_the_same_order_and_receives_it(): void
     {
         $grey = $this->material(500, 2); $dyed = $this->material(0); $quarantine = $this->quarantine();

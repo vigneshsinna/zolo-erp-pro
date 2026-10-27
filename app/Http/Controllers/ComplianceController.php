@@ -215,7 +215,7 @@ class ComplianceController extends Controller
 
     public function document(Request $request, string $kind, int $id)
     {
-        $context = $this->permit($request, $kind === 'sale_note' ? 'returns-index' : ($kind === 'purchase_note' ? 'purchase-return-index' : ($kind === 'sale' ? 'sales-index' : 'purchases-index')));
+        $context = $this->permit($request, $kind === 'sale_note' ? 'returns-index' : ($kind === 'purchase_note' ? 'purchase-return-index' : (in_array($kind, ['sale', 'sales_order'], true) ? 'sales-index' : 'purchases-index')));
         $document = app(DocumentRenderingService::class)->dto($kind, $id, $context);
         $profiles = DB::table('print_profiles')->where('company_id', $context->companyId)->where('document_type', $kind)->get();
         $dispatches = DB::table('document_dispatch_logs')->where('company_id', $context->companyId)->where('branch_id', $context->branchId)->where('document_type', $kind)->where('document_id', $id)->latest()->get();
@@ -225,7 +225,7 @@ class ComplianceController extends Controller
 
     public function printDocument(Request $request, string $kind, int $id)
     {
-        $context = $this->permit($request, $kind === 'sale_note' ? 'returns-index' : ($kind === 'purchase_note' ? 'purchase-return-index' : ($kind === 'sale' ? 'sales-index' : 'purchases-index')));
+        $context = $this->permit($request, $kind === 'sale_note' ? 'returns-index' : ($kind === 'purchase_note' ? 'purchase-return-index' : (in_array($kind, ['sale', 'sales_order'], true) ? 'sales-index' : 'purchases-index')));
         $request->validate(['format' => 'nullable|in:a4,thermal,dot_matrix', 'profile_id' => 'nullable|integer|min:1', 'output' => 'nullable|in:html,pdf,escp']);
         $renderer = app(DocumentRenderingService::class); $document = $renderer->dto($kind, $id, $context);
         $profile = $renderer->profile($kind, $context, $request->integer('profile_id') ?: null, $request->input('format', 'a4'));

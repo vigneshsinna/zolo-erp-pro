@@ -37,6 +37,8 @@
                     (data.data || []).forEach(order => {
                         if (!includeAll && (order.reversed || ['cancelled', 'fulfilled'].includes(order.status))) return;
                         count++;
+                        // An order nobody has received, delivered or billed against can be replaced in full or deleted.
+                        const fullEdit = !order.reversed && order.status !== 'cancelled' && order.untouched;
                         const statusClass = (order.status === 'fulfilled' ? 'received' : (order.status === 'partial' ? 'partial' : (order.status === 'cancelled' ? 'due' : 'ordered')));
                         const $card = $('<div class="side-bill-card side-order-card">').attr('data-order-id', order.id);
                         $card.html(`
@@ -57,12 +59,33 @@
                                         <i class="dripicons-download"></i> Load to bill
                                     </a>
                                 ` : ''}
-                                <a href="javascript:void(0)" class="side-action-btn view btn-side-order-details" data-order-id="${order.id}" title="View order lines">
-                                    <i class="dripicons-preview"></i> Details
-                                </a>
-                                ${(!order.reversed && (order.remaining_billing_base > 0 || order.remaining_delivery_base > 0)) ? `
-                                    <a href="javascript:void(0)" class="side-action-btn reverse btn-side-cancel-order" data-order-id="${order.id}" title="Cancel remainder">
-                                        <i class="dripicons-cross"></i> Cancel
+                                ${fullEdit ? `
+                                    <a href="javascript:void(0)" class="side-action-btn edit btn-side-edit-order" data-order-id="${order.id}" title="Change party, lines, rates or dates">
+                                        <i class="dripicons-document-edit"></i> Edit
+                                    </a>
+                                ` : `
+                                    <a href="javascript:void(0)" class="side-action-btn view btn-side-order-details" data-order-id="${order.id}" title="Change quantities or rates of the remaining lines, see history">
+                                        <i class="dripicons-document-edit"></i> ${order.reversed ? 'Details' : 'Amend qty/rate'}
+                                    </a>
+                                `}
+                                ${kind === 'purchase' && !order.reversed ? `
+                                    <a href="javascript:void(0)" class="side-action-btn print btn-side-print" data-id="${order.id}" title="Print purchase order">
+                                        <i class="dripicons-print"></i> Print
+                                    </a>
+                                ` : ''}
+                                ${kind === 'sale' && root.dataset.printUrl && order.status !== 'cancelled' ? `
+                                    <a href="${root.dataset.printUrl}/${order.id}/print?format=a4" target="_blank" rel="noopener" class="side-action-btn print" title="Print sales order">
+                                        <i class="dripicons-print"></i> Print
+                                    </a>
+                                ` : ''}
+                                ${fullEdit ? `
+                                    <a href="javascript:void(0)" class="side-action-btn reverse btn-side-delete-order" data-order-id="${order.id}" data-ref="${order.reference_no}" title="Delete this order (nothing ${kind === 'sale' ? 'delivered' : 'received'} or billed yet)">
+                                        <i class="dripicons-trash"></i> Delete
+                                    </a>
+                                ` : ''}
+                                ${(!fullEdit && !order.reversed && (order.remaining_billing_base > 0 || order.remaining_delivery_base > 0)) ? `
+                                    <a href="javascript:void(0)" class="side-action-btn reverse btn-side-cancel-order" data-order-id="${order.id}" title="Cancel the part not yet received or billed">
+                                        <i class="dripicons-cross"></i> Cancel rest
                                     </a>
                                 ` : ''}
                             </div>
@@ -114,10 +137,22 @@
 
             // 3. Document Field Labels
             $('label[for="reference_no"]').text(isOrders ? (kind === 'sale' ? 'Our Order No' : 'Our PO No') : 'Our Bill No');
-            $('#reference_no').attr('placeholder', isOrders ? 'Auto series (PO-...)' : 'Auto series');
+            $('#reference_no').attr('placeholder', isOrders ? (kind === 'sale' ? 'Auto series (SO-...)' : 'Auto series (PO-...)') : 'Auto series');
+            // Sales: the bill date input (name created_at) is the order date; Delivery Date (entry_date) becomes the promised date.
+            $('label[for="bill_date"]').text(isOrders ? 'Order Date' : 'Bill Date');
+            if (form) form.dataset.ordersMode = isOrders ? '1' : '';
             $('label[for="supplier_invoice_no"]').text(isOrders ? 'Quotation / Ref #' : 'Supplier Bill No');
-            $('label[for="supplier_invoice_date"]').text(isOrders ? 'PO Date' : 'Bill Date');
-            $('label[for="created_at"]').text(isOrders ? 'Delivery Date' : 'Entry Date');
+            // created_at is the document's business date: on an order it must be the PO date, or a bill dated before
+            // the delivery day is refused ("A fulfilment cannot precede its order"). The supplier invoice date has
+            // nothing to hold until the supplier bills, so an order uses it for the expected delivery date.
+            const $billDate = $('label[for="supplier_invoice_date"]'), $entryDate = $('label[for="created_at"]');
+            if (!$billDate.data('bill-help')) { $billDate.data('bill-help', $billDate.attr('data-help')); $entryDate.data('bill-help', $entryDate.attr('data-help')); }
+            $billDate.text(isOrders ? 'Delivery Date' : 'Bill Date')
+                .attr('data-help', isOrders ? 'Date you expect the supplier to deliver.|30-10-2026' : $billDate.data('bill-help'));
+            $entryDate.text(isOrders ? 'PO Date' : 'Entry Date')
+                .attr('data-help', isOrders ? 'Date of this purchase order. Bills against it must be on or after this date.|Today' : $entryDate.data('bill-help'));
+            const $billDateItem = $billDate.closest('.field-compact-item'), $entryDateItem = $entryDate.closest('.field-compact-item');
+            if (isOrders) $entryDateItem.insertBefore($billDateItem); else $billDateItem.insertBefore($entryDateItem);
             $('label[for="issue_date"]').text(isOrders ? 'Order Date' : 'Bill Date');
             $('label[for="entry_date"]').text(isOrders ? 'Delivery Date' : 'Entry Date');
 
@@ -274,6 +309,59 @@
                 data: {business_date: businessDate, reason: reason}
             }).done(() => {
                 feedback('Order remainder cancelled.');
+                fetchSideOrders();
+            }).fail(xhr => feedback(error(xhr)));
+        });
+
+        // Full edit: the order opens in the PO form; saving posts a replacement (old order reversed, reason kept).
+        // A sales order opens in the order form; saving posts the new version with replaces_order_id (old one cancelled, reason kept).
+        function loadSalesOrderToForm(id) {
+            const grid = window.commandCenterGrid;
+            $.getJSON(base + '/' + id).done(({data}) => {
+                const order = data.order;
+                grid.resetFormToNew();
+                switchCommercialTab('orders');
+                $(form).find('[name="customer_id"]').val(order.customer_id).trigger('change');
+                $(form).find('[name="warehouse_id"]').val(order.warehouse_id).trigger('change');
+                $('#bill_date').val(String(order.business_date).slice(0, 10));
+                if (order.promised_date) $('#entry_date').val(String(order.promised_date).slice(0, 10));
+                $('#order-table-body .order-item-row, #order-table-body .empty-placeholder-row').remove();
+                data.items.forEach(item => grid.addProductRow({preserve_line: true, product_id: item.product_id, product_name: item.product?.name,
+                    product_code: item.product?.code, qty: item.qty, price: item.unit_rate, rate: item.unit_rate, unit: item.unit?.unit_name,
+                    variant_id: item.variant_id, product_batch_id: item.product_batch_id, batch_no: item.batch_no}));
+                $(form).find('[name="replaces_order_id"]').remove();
+                $('<input type="hidden" name="replaces_order_id">').val(order.id).appendTo(form);
+                $('#replacement-reason').prop('required', true).closest('.form-group').prop('hidden', false);
+                grid.recalcTableSummary?.();
+                $('#doc-title-text').text('Edit Sales Order: ' + order.reference_no);
+                $('.selectpicker').selectpicker?.('refresh');
+            }).fail(xhr => feedback(error(xhr)));
+        }
+
+        $(document).on('click', '.btn-side-edit-order', async function (e) {
+            e.preventDefault();
+            const orderId = $(this).data('order-id');
+            if (!orderId) return;
+            if (window.zoloDocumentWorkspace && !(await window.zoloDocumentWorkspace.newDocument({}))) return;
+            if (kind === 'sale') { loadSalesOrderToForm(orderId); return; }
+            if (typeof window.loadPurchaseToForm !== 'function') return;
+            switchCommercialTab('orders');
+            window.loadPurchaseToForm(orderId);
+        });
+
+        $(document).on('click', '.btn-side-delete-order', function (e) {
+            e.preventDefault();
+            const orderId = $(this).data('order-id');
+            const reason = prompt('Delete ' + $(this).data('ref') + '? Reason (kept in the audit trail):');
+            if (!orderId || !reason) return;
+            // A purchase order is reversed; a sales order (its own document) is cancelled in full.
+            $.ajax({
+                url: kind === 'sale' ? base + '/' + orderId + '/cancel' : base.replace(/\/orders\/(sale|purchase)$/, '/$1') + '/' + orderId + '/reverse',
+                method: 'POST',
+                headers: {'X-CSRF-TOKEN': token},
+                data: {business_date: new Date().toLocaleDateString('en-CA'), reason: reason}
+            }).done(() => {
+                feedback('Order deleted.');
                 fetchSideOrders();
             }).fail(xhr => feedback(error(xhr)));
         });

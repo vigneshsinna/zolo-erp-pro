@@ -31,8 +31,9 @@
     $partyLabel = $sale ? 'Buyer (Bill to)' : 'Supplier';
     $contact = $d['party_contact'] ?? [];
     $meta = array_filter([
-        ($note ? 'Note No.' : ($kind === 'purchase' ? 'Bill No.' : 'Invoice No.')) => $d['number'],
+        ($note ? 'Note No.' : (!empty($d['order']) ? ($sale ? 'SO No.' : 'PO No.') : ($kind === 'purchase' ? 'Bill No.' : 'Invoice No.'))) => $d['number'],
         'Date' => \Carbon\Carbon::parse($d['date'])->format('d-m-Y'),
+        'Delivery Date' => !empty($d['delivery_date']) ? \Carbon\Carbon::parse($d['delivery_date'])->format('d-m-Y') : null,
         'Against' => $d['source_number'] ?? null,
         'Source DC / GRN' => implode(', ', array_column($d['material_documents'] ?? [], 'reference_no')),
         'Due Date' => !empty($d['due_date']) ? \Carbon\Carbon::parse($d['due_date'])->format('d-m-Y') : null,

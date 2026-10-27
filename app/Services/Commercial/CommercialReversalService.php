@@ -43,7 +43,10 @@ class CommercialReversalService
                     ->where($kind.'_id', $document->id)->whereNotNull('posted_at')->exists()) {
                 throw ValidationException::withMessages(['document' => 'A source with posted notes cannot be reversed again. Post a reviewed financial adjustment instead.']);
             }
-            if ((int) $document->branch_id !== $context->branchId || !$document->financial_year_id || $date < $document->created_at->toDateString()) {
+            if ($date < $document->created_at->toDateString()) {
+                throw ValidationException::withMessages(['business_date' => 'Reverse or edit on or after the document date ('.$document->created_at->format('d-m-Y').').']);
+            }
+            if ((int) $document->branch_id !== $context->branchId || !$document->financial_year_id) {
                 throw ValidationException::withMessages(['document' => 'Legacy documents require reviewed migration before reversal.']);
             }
             // All settlement journals reverse too; original payments stay as immutable source history.
@@ -67,6 +70,18 @@ class CommercialReversalService
             app(MaterialDocumentService::class)->release($document, $context);
             app(OrderLifecycleService::class)->release($document, $context);
             $document->forceFill(['reversed_at' => now(), 'reversal_reason' => $reason])->save();
+            // A reversed job work service bill frees its GRN, so the corrected bill can be booked against it.
+            $receiptId = $document instanceof Purchase ? (int) ($document->attributes_json['job_work_receipt_id'] ?? 0) : 0;
+            if ($receiptId) {
+                $receipt = DB::table('job_work_receipts')->where('company_id', $context->companyId)->where('id', $receiptId)
+                    ->where('service_purchase_id', $document->id)->first();
+                if ($receipt) {
+                    $details = json_decode($receipt->details_json ?? '{}', true) ?: [];
+                    unset($details['processing_cost']);
+                    DB::table('job_work_receipts')->where('id', $receiptId)->update(['service_purchase_id' => null,
+                        'details_json' => json_encode($details, JSON_THROW_ON_ERROR), 'updated_at' => now()]);
+                }
+            }
             app(\App\Services\Tax\GstProjectionService::class)->reverse($document, $kind, $date, $context);
             app(CommercialApplicationService::class)->audit('reversed', $document, $context, auth()->id(), ['date' => $date, 'reason' => $reason]);
             return $document;
@@ -79,6 +94,9 @@ class CommercialReversalService
         return DB::transaction(function () use ($document, $data, $key, $date, $reason, $context) {
             $kind = $document instanceof Sale ? 'sale' : 'purchase';
             $document = $document::visibleIn($context)->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($document instanceof Purchase && !empty($document->attributes_json['job_work_receipt_id'])) {
+                throw ValidationException::withMessages(['document' => 'This is a job work service bill. Edit it from its job work order (Job Work GRN › Edit bill) so the processing cost stays on the processed goods.']);
+            }
             if ($document->reversed_at) {
                 $retry = DB::table('idempotency_keys')->where('company_id', $context->companyId)->where('key', $key)
                     ->where('response_type', $kind)->value('response_ref');

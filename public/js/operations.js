@@ -187,6 +187,8 @@
             }
             panel.scrollIntoView({block: 'nearest', behavior: 'smooth'});
             panel.querySelector('input:not([type="hidden"]), select')?.focus({preventScroll: true});
+            const billForm = panel.querySelector('[data-bill-preview]')?.closest('form');
+            if (billForm) previewServiceBill(billForm);
         }
     }
 
@@ -238,6 +240,47 @@
             togglePanel(toggle.dataset.jwToggle);
             return;
         }
+    });
+
+    // Service bill: the server prices the charge with the job worker's GST (same rules as the bill it will post).
+    const previewTimers = new WeakMap();
+    function previewServiceBill(form) {
+        const out = form.querySelector('[data-bill-preview]');
+        if (!out) return;
+        const field = name => form.querySelector(`[name="${name}"]`)?.value || '';
+        const item = {product_id: field('items[0][product_id]'), qty: field('items[0][qty]'), net_unit_cost: field('items[0][net_unit_cost]')};
+        const gstField = form.querySelector('[data-bill-gst]'), totalField = form.querySelector('[data-bill-total]');
+        const setFields = (gst, total) => { if (gstField) gstField.value = gst; if (totalField) totalField.value = total; };
+        if (!item.product_id || !item.qty || item.net_unit_cost === '') {
+            out.className = 'small mt-2 mb-0 text-muted';
+            out.textContent = 'Pick the processing charge item and enter the rate to see GST and the bill total.';
+            setFields('', '');
+            return;
+        }
+        const money = n => '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        fetch(out.dataset.url, {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''},
+            body: JSON.stringify({supplier_id: out.dataset.supplier, business_date: field('business_date'), items: [item]})})
+            .then(response => response.json().then(body => ({ok: response.ok, body})))
+            .then(({ok, body}) => {
+                if (!ok) { out.className = 'small mt-2 mb-0 text-danger'; out.textContent = body.message || 'Could not price this bill.'; setFields('', ''); return; }
+                const line = body.data.items?.[0] || {}, snap = line._tax_snapshot || {};
+                const split = Number(snap.igst) > 0 ? 'IGST' : (Number(snap.cgst) > 0 ? `CGST ${line.tax_rate / 2}% + SGST ${line.tax_rate / 2}%` : '');
+                setFields(`${line.tax_rate ?? 0}% · ${money(body.data.total_tax)}`, money(body.data.grand_total));
+                out.className = 'small mt-2 mb-0';
+                out.textContent = `Charge ${money(Number(body.data.grand_total) - Number(body.data.total_tax))} + GST ${line.tax_rate ?? 0}%${split ? ' (' + split + ')' : ''} ${money(body.data.total_tax)} = Bill total ${money(body.data.grand_total)}`;
+            })
+            .catch(() => { out.textContent = ''; });
+    }
+    document.addEventListener('input', event => {
+        const form = event.target.closest('form');
+        if (!form?.querySelector('[data-bill-preview]')) return;
+        clearTimeout(previewTimers.get(form));
+        previewTimers.set(form, setTimeout(() => previewServiceBill(form), 300));
+    });
+    document.addEventListener('change', event => {
+        const form = event.target.closest('form');
+        if (form?.querySelector('[data-bill-preview]')) previewServiceBill(form);
     });
 
     document.addEventListener('keydown', event => {

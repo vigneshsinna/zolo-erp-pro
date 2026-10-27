@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -62,6 +63,26 @@ class DocumentEntryWebTest extends TestCase
             $this->assertGreaterThan($grid, strpos($html, 'js/command-center-form.js'), $path.$query);
             $this->assertGreaterThan($grid, strpos($html, 'js/document-workspace.js'), $path.$query);
         }
+    }
+
+    public function test_purchase_orders_stay_out_of_the_bill_list(): void
+    {
+        config(['compliance.enabled' => true]);
+        $this->assertSame(1, preg_match('/data-bill-id="(\d+)"/', $this->get('/purchases')->assertOk()->getContent(), $first));
+        DB::table('purchases')->where('id', $first[1])->update(['status' => 4]);
+        $this->assertStringNotContainsString('data-bill-id="'.$first[1].'"', $this->get('/purchases')->getContent());
+    }
+
+    public function test_a_purchase_order_prints_on_the_a4_bill_layout(): void
+    {
+        config(['compliance.enabled' => true]);
+        $this->assertSame(1, preg_match('/data-bill-id="(\d+)"/', $this->get('/purchases')->assertOk()->getContent(), $first));
+        DB::table('purchases')->where('id', $first[1])->update(['status' => 4, 'posted_at' => null, 'supplier_invoice_date' => '2026-11-05']);
+        $html = $this->get('/compliance/documents/purchase/'.$first[1].'/print?format=a4')->assertOk()->getContent();
+        $this->assertStringContainsString('Purchase order', $html);
+        $this->assertStringContainsString('PO No.', $html);
+        $this->assertStringContainsString('05-11-2026', $html, 'the expected delivery date prints');
+        $this->assertStringNotContainsString('Bill No.', $html);
     }
 
     #[DataProvider('kinds')]

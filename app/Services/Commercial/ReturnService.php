@@ -11,7 +11,7 @@ use App\Services\Inventory\{StockLine, StockMovementCommand, InventoryMovementSe
 use App\Services\Platform\{CompanyContext, CompanyContextResolver, DocumentNumberService};
 use App\Services\Tax\GstProjectionService;
 use App\Support\LedgerAmount;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{DB, Schema};
 use Illuminate\Validation\ValidationException;
 
 /** Existing return tables also own financial credit/debit notes. Source history is never edited. */
@@ -130,7 +130,11 @@ class ReturnService
             $disposition = $input['disposition'] ?? 'restock';
             $warehouse = (int) ($input['warehouse_id'] ?? $source->warehouse_id);
             app(CompanyWriteGuard::class)->warehouse($warehouse, $context, $actor);
-            if ($kind === 'purchase' && $warehouse !== (int) $source->warehouse_id) $this->invalid('warehouse_id', 'Purchase returns leave the source warehouse.');
+            // Goods go back to the supplier from the bill's warehouse, or from quarantine where rejected goods wait.
+            if ($kind === 'purchase' && $warehouse !== (int) $source->warehouse_id
+                && !(Schema::hasColumn('warehouses', 'is_quarantine') && DB::table('warehouses')->where('id', $warehouse)->where('is_quarantine', true)->exists())) {
+                $this->invalid('warehouse_id', 'Return goods from the bill\'s warehouse or from a quarantine warehouse.');
+            }
             $snapshot = $line->tax_snapshot_json;
             $baseOriginal = $snapshot ? $snapshot['taxable_value'] : (float) $line->total - (float) $line->tax;
             if (!$snapshot && $source->order_discount) {

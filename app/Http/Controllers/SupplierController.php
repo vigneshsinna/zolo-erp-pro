@@ -111,6 +111,7 @@ class SupplierController extends Controller
             'company_name' => \App\Support\CompanyUnique::rules('suppliers'),
             'email' => \App\Support\CompanyUnique::rules('suppliers'),
             'image' => 'image|mimes:jpg,jpeg,png,gif|max:100000',
+            'vat_number' => \App\Services\Tax\Gstin::rule(),
         ]);
 
         //validation for customer if create both user and supplier
@@ -273,6 +274,7 @@ class SupplierController extends Controller
 
             'email' => \App\Support\CompanyUnique::rules('suppliers', (int) $id),
             'image' => 'image|mimes:jpg,jpeg,png,gif|max:100000',
+            'vat_number' => \App\Services\Tax\Gstin::rule(),
         ] + Supplier::purchaseDefaultRules());
 
         $lims_supplier_data = Supplier::findOrFail($id);

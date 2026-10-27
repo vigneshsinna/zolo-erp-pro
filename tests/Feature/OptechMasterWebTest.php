@@ -457,6 +457,18 @@ class OptechMasterWebTest extends TestCase
         $this->assertEquals(120, (float) $ratesRes->json('last_purchase.cost'));
     }
 
+    public function test_under_gst_a_party_with_a_malformed_gstin_is_refused(): void
+    {
+        // A malformed GSTIN would make the party silently unregistered: no GST on any of its bills.
+        config(['compliance.enabled' => true]);
+        if (!\App\Services\Tax\GstSetupService::available()) $this->markTestSkipped('GST tables are not installed.');
+        $party = ['party_type' => 'supplier', 'name' => 'Short GSTIN Supplier', 'company_name' => 'Short GSTIN Traders',
+            'phone_number' => '9842100099', 'address' => '1 Mill Road', 'city' => 'Erode', 'country' => 'India'];
+        $this->actingAs($this->adminUser)->postJson('/parties/quick-store', $party + ['vat_number' => '33BAGP6366L1ZN'])
+            ->assertStatus(422)->assertJsonValidationErrors('vat_number');
+        $this->actingAs($this->adminUser)->postJson('/parties/quick-store', $party + ['vat_number' => '33ABCFS7714N1ZV'])->assertOk();
+    }
+
     public function test_quick_store_party_creates_supplier_inline(): void
     {
         $response = $this->actingAs($this->adminUser)

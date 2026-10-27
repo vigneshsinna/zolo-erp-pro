@@ -89,6 +89,7 @@
     <link rel="stylesheet" href="<?php echo versioned_asset('css/zolo-utilities.css') ?>" type="text/css">
     <link rel="stylesheet" href="<?php echo asset('css/zolo-erp-neo.css') . '?v=' . (file_exists(public_path('css/zolo-erp-neo.css')) ? filemtime(public_path('css/zolo-erp-neo.css')) : time()) ?>" type="text/css" id="zolo-neo-style">
     <link rel="stylesheet" href="<?php echo versioned_asset('css/field-help.css') ?>" type="text/css">
+    <link rel="stylesheet" href="<?php echo versioned_asset('css/error-help.css') ?>" type="text/css">
 
     @stack('css')
     <link rel="stylesheet" href="<?php echo versioned_asset('css/zolo-components.css') ?>" type="text/css">
@@ -377,5 +378,6 @@
       });
     </script>
     <script type="text/javascript" src="<?php echo versioned_asset('js/field-help.js') ?>"></script>
+    <script type="text/javascript" src="<?php echo versioned_asset('js/error-help.js') ?>" data-base="{{ url('/') }}"></script>
   </body>
 </html>

@@ -12,7 +12,7 @@ Route::prefix('settings/gst')->middleware(['auth', 'company.context', RequireCom
 });
 
 Route::prefix('compliance')->middleware(['auth', 'company.context', RequireSharedCommercial::class, RequireCompliance::class, 'common'])
-    ->where(['kind' => 'sale|purchase', 'documentKind' => 'sale|purchase|sale_note|purchase_note', 'id' => '[0-9]+'])->group(function () {
+    ->where(['kind' => 'sale|purchase', 'documentKind' => 'sale|purchase|sale_note|purchase_note|sales_order', 'id' => '[0-9]+'])->group(function () {
         Route::get('setup', [ComplianceController::class, 'setup']);
         Route::post('setup/{resource}', [ComplianceController::class, 'saveSetup']);
         Route::post('gst/lookup', [ComplianceController::class, 'lookup']);

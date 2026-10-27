@@ -166,7 +166,8 @@ class CommercialApplicationService
             if (!isset($attributes['cash_discount_percent']) && (float) ($party->cd_percent ?? 0) > 0) {
                 $attributes += ['cash_discount_percent' => (float) $party->cd_percent, 'cash_discount_days' => (int) ($party->cd_days ?? 0)];
             }
-            if (empty($attributes['bale_no']) && \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
+            // Textile bills default the bale number to the bill number; a job worker's service charge has no bales.
+            if (empty($attributes['bale_no']) && empty($attributes['job_work_receipt_id']) && \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
                 && DB::table('company_industry_settings')->where('company_id', $context->companyId)->value('profile_key') === 'textile') {
                 $attributes['bale_no'] = $document->reference_no;
             }

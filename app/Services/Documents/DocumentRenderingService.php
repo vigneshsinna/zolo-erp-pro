@@ -16,7 +16,9 @@ class DocumentRenderingService
             'purchase_note' => ReturnPurchase::class, default => throw ValidationException::withMessages(['document' => 'Unsupported document.']) };
         $source = in_array($kind, ['sale', 'purchase'], true) ? $model::visibleIn($context)->findOrFail($id)
             : $model::forCompany($context)->where('branch_id', $context->branchId)->findOrFail($id);
-        if (!$source->posted_at || (int) $source->branch_id !== $context->branchId) {
+        // A purchase order (purchases.status 4) is never posted but prints on the same A4 layout as a bill.
+        $order = $kind === 'purchase' && (int) $source->status === 4 && !$source->reversed_at;
+        if ((!$source->posted_at && !$order) || (int) $source->branch_id !== $context->branchId) {
             throw ValidationException::withMessages(['document' => 'Print and dispatch require a posted document in this branch.']);
         }
         return $source;
@@ -25,6 +27,7 @@ class DocumentRenderingService
     public function capture(Sale|Purchase|Returns|ReturnPurchase $source, string $kind, CompanyContext $context): array
     {
         $sale = str_starts_with($kind, 'sale'); $note = str_ends_with($kind, '_note');
+        $order = $kind === 'purchase' && (int) $source->status === 4;
         $company = Company::findOrFail($context->companyId);
         $party = ($sale ? \App\Models\Customer::class : \App\Models\Supplier::class)::forCompany($context)
             ->findOrFail($source->{$sale ? 'customer_id' : 'supplier_id'});
@@ -58,11 +61,13 @@ class DocumentRenderingService
             'party_contact' => ['company' => $party->company_name ?? null, 'phone' => $party->phone_number ?? null, 'email' => $party->email ?? null,
                 'city' => $party->city ?? null, 'postal_code' => $party->postal_code ?? null],
             'ship_to' => $shipTo, 'round_off' => (float) ($attributes['round_off'] ?? 0),
-            'due_date' => $attributes['due_date'] ?? null, 'paid_amount' => $note ? null : (float) ($source->paid_amount ?? 0),
+            // An order owes nothing yet; its supplier-invoice date field holds the expected delivery date.
+            'due_date' => $order ? null : ($attributes['due_date'] ?? null), 'paid_amount' => $note || $order ? null : (float) ($source->paid_amount ?? 0),
+            'order' => $order, 'delivery_date' => $order ? $source->supplier_invoice_date : null,
             'references' => array_intersect_key($attributes, array_flip(['order_no', 'lr_no', 'station_to', 'credit_days'])),
             'material_documents' => $attributes['source_documents'] ?? [],
             'note' => $note ? null : ($source->{$sale ? 'sale_note' : 'note'} ?? null),
-            'print' => $this->printSettings($context), 'title' => $note ? ucfirst($source->note_type).' note' : ($sale ? ($tax ? match ($tax['registration_type']) { 'composition' => 'Bill of supply', 'unregistered' => 'Invoice', default => 'Tax invoice' } : 'Invoice') : 'Purchase bill'),
+            'print' => $this->printSettings($context), 'title' => $note ? ucfirst($source->note_type).' note' : ($sale ? ($tax ? match ($tax['registration_type']) { 'composition' => 'Bill of supply', 'unregistered' => 'Invoice', default => 'Tax invoice' } : 'Invoice') : ($order ? 'Purchase order' : 'Purchase bill')),
             'number' => $source->reference_no, 'date' => $source->created_at->toDateString(),
             'company_name' => $tax[$sale ? 'seller_name' : 'buyer_name'] ?? $company->legal_name,
             'party_name' => $tax[$sale ? 'buyer_name' : 'seller_name'] ?? $party->name,
@@ -80,10 +85,76 @@ class DocumentRenderingService
 
     public function dto(string $kind, int $id, CompanyContext $context): array
     {
+        if ($kind === 'sales_order') return $this->salesOrder($id, $context);
         $source = $this->source($kind, $id, $context);
+        // An order can still be amended, so it prints from its current lines instead of a posting snapshot.
+        if (!$source->posted_at) return $this->capture($source, $kind, $context) + ['reversed_at' => null];
         if (!$source->document_snapshot_json) throw ValidationException::withMessages(['document' => 'Retained document needs reviewed print-snapshot migration.']);
         // Documents posted before print details existed show the current company print details.
-        return $source->document_snapshot_json + ['reversed_at' => $source->reversed_at?->toDateString(), 'print' => $this->printSettings($context)];
+        return $this->jobWorkBill($source, $source->document_snapshot_json, $context)
+            + ['reversed_at' => $source->reversed_at?->toDateString(), 'print' => $this->printSettings($context)];
+    }
+
+    /**
+     * A sales order prints on the A4 invoice layout. It is never posted, so GST is worked out now by the same
+     * determination the invoice will use, from the open order lines.
+     */
+    private function salesOrder(int $id, CompanyContext $context): array
+    {
+        $order = \App\Models\SalesOrder::visibleIn($context)->findOrFail($id);
+        if ((int) $order->branch_id !== $context->branchId) throw ValidationException::withMessages(['document' => 'Switch to the branch the order was entered in.']);
+        $items = DB::table('commercial_order_items')->where('company_id', $context->companyId)->where('order_kind', 'sale')
+            ->where('order_id', $order->id)->orderBy('id')->get();
+        $lines = $items->map(fn ($item) => ['product_id' => $item->product_id, 'qty' => (float) $item->qty, 'net_unit_price' => (float) $item->unit_rate,
+            'sale_unit_id' => $item->uom_id, 'variant_id' => $item->variant_id])->values()->all();
+        $priced = app(\App\Services\Commercial\CommercialPricing::class)->preview(['customer_id' => $order->customer_id, 'warehouse_id' => $order->warehouse_id,
+            'business_date' => $order->business_date->toDateString(), 'items' => $lines], false, $context);
+        $party = \App\Models\Customer::forCompany($context)->findOrFail($order->customer_id);
+        $company = Company::findOrFail($context->companyId);
+        $tax = DB::table('party_tax_profiles')->where('company_id', $context->companyId)->where('party_type', 'customer')->where('party_id', $party->id)->first();
+        $units = DB::table('units')->whereIn('id', $items->pluck('uom_id')->filter())->pluck('unit_code', 'id');
+        $rows = [];
+        foreach ($priced['items'] as $i => $line) {
+            $product = Product::forCompany($context)->findOrFail($line['product_id']); $snap = $line['_tax_snapshot'] ?? [];
+            $rows[] = ['name' => $product->name, 'code' => $product->code, 'unit' => $units[$items[$i]->uom_id] ?? '', 'discount' => 0,
+                'qty' => (float) $line['qty'], 'price' => (float) $line['net_unit_price'], 'dimensions' => null,
+                'taxable_value' => $snap['taxable_value'] ?? (float) $line['total'] - (float) $line['tax'], 'tax_rate' => (float) ($line['tax_rate'] ?? 0),
+                'cess_rate' => $snap['cess_rate'] ?? 0, 'tax' => (float) $line['tax'], 'total' => (float) $line['total'], 'hsn_sac' => $snap['hsn_sac'] ?? $product->hsn_code,
+                'cgst' => $snap['cgst'] ?? 0, 'sgst' => $snap['sgst'] ?? 0, 'igst' => $snap['igst'] ?? 0, 'cess' => $snap['cess'] ?? 0];
+        }
+        $header = $priced['items'][0]['_tax_snapshot'] ?? [];
+        $registration = \App\Services\Tax\GstSetupService::available()
+            ? app(\App\Services\Tax\GstSetupService::class)->registration($context, $order->business_date->toDateString()) : null;
+        $gstin = $registration->gstin ?? '';
+        return ['kind' => 'sales_order', 'order' => true, 'title' => 'Sales order', 'number' => $order->reference_no, 'date' => $order->business_date->toDateString(),
+            'delivery_date' => $order->promised_date ? \Carbon\Carbon::parse($order->promised_date)->toDateString() : null,
+            'company_trade_name' => $registration->trade_name ?? null ?: $company->trade_name, 'company_name' => $registration->legal_name ?? $company->legal_name,
+            'company_state' => $gstin ? substr($gstin, 0, 2) : ($company->state_code ?? ''),
+            'company_address' => ($registration->address ?? '') ?: app(\App\Services\Platform\CompanyProfileService::class)->fullAddress($company), 'company_gstin' => $gstin,
+            'party_name' => $party->name, 'party_address' => $party->address ?? '', 'party_gstin' => $tax->gstin ?? '', 'party_state' => (string) ($tax->state_code ?? ''),
+            'party_contact' => ['company' => $party->company_name ?? null, 'phone' => $party->phone_number ?? null, 'email' => $party->email ?? null,
+                'city' => $party->city ?? null, 'postal_code' => $party->postal_code ?? null],
+            'place_of_supply' => $header['place_of_supply'] ?? '', 'reverse_charge' => false, 'currency' => 'INR', 'lines' => $rows,
+            'total_tax' => (float) $priced['total_tax'], 'discount' => 0, 'shipping' => 0, 'grand_total' => (float) $priced['grand_total'],
+            'round_off' => (float) ($priced['round_off'] ?? 0), 'due_date' => null, 'paid_amount' => null, 'references' => [], 'material_documents' => [],
+            'note' => $order->note, 'ship_to' => null, 'source_number' => null, 'transport' => [], 'reversed_at' => null,
+            'quantity_scale' => \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
+                ? app(\App\Services\Industry\IndustryProfileService::class)->settings($context)['settings']['quantity_scale'] : 4,
+            'print' => $this->printSettings($context)];
+    }
+
+    /** A job worker's processing-charge bill prints as such, naming the GRN, DC and order it charges for. */
+    private function jobWorkBill(Sale|Purchase|Returns|ReturnPurchase $source, array $document, CompanyContext $context): array
+    {
+        $receiptId = $source instanceof Purchase ? (int) ($source->attributes_json['job_work_receipt_id'] ?? 0) : 0;
+        if (!$receiptId) return $document;
+        $refs = DB::table('job_work_receipts as r')->join('job_work_dispatches as d', 'd.id', '=', 'r.dispatch_id')
+            ->join('job_work_orders as o', 'o.id', '=', 'd.job_work_order_id')->where('r.company_id', $context->companyId)->where('r.id', $receiptId)
+            ->first(['r.reference_no as grn', 'd.reference_no as dc', 'o.reference_no as job_order']);
+        $document['title'] = 'Job work service bill';
+        if ($refs) $document['source_number'] = 'GRN '.$refs->grn.' · DC '.$refs->dc.' · Order '.$refs->job_order;
+        if (($document['transport']['bale_no'] ?? null) === $document['number']) unset($document['transport']['bale_no']);
+        return $document;
     }
 
     /** Letterhead for printed documents: contact and logo from Company profile, bank and terms from Settings › GST › Registration. */

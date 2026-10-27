@@ -28,7 +28,7 @@ final readonly class StockMovementCommand
         public bool $shadow = false,
         public string $purpose = 'ordinary',
     ) {
-        if (!in_array($purpose, ['ordinary', 'customer_return', 'purchase_return', 'disposal'], true)) {
+        if (!in_array($purpose, ['ordinary', 'customer_return', 'purchase_return', 'disposal', 'rework'], true)) {
             throw new InvalidArgumentException('Unsupported stock movement purpose.');
         }
         if ($lines === [] || array_filter($lines, fn ($line) => !$line instanceof StockLine) !== []) {

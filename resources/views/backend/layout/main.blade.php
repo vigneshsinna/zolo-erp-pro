@@ -191,6 +191,7 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
   <!-- One-screen app shell: compact header, viewport-locked page, lists sized to fit -->
   <link rel="stylesheet" href="<?php echo versioned_asset('css/app-shell.css') ?>" type="text/css">
   <link rel="stylesheet" href="<?php echo versioned_asset('css/field-help.css') ?>" type="text/css">
+  <link rel="stylesheet" href="<?php echo versioned_asset('css/error-help.css') ?>" type="text/css">
 
   @stack('css')
 
@@ -1704,6 +1705,7 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
   <script type="text/javascript" src="<?php echo versioned_asset('js/sidebar-state.js') ?>"></script>
   <script type="text/javascript" src="<?php echo versioned_asset('js/app-shell.js') ?>"></script>
   <script type="text/javascript" src="<?php echo versioned_asset('js/field-help.js') ?>"></script>
+  <script type="text/javascript" src="<?php echo versioned_asset('js/error-help.js') ?>" data-base="{{ url('/') }}"></script>
 </body>
 
 </html>

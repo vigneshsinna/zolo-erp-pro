@@ -123,6 +123,23 @@ class OperationsController extends Controller
             // Route defaults (output item, processing-charge item and rate) pre-fill the forms; every value stays editable.
             $data['route'] = DB::table('process_types')->where('company_id', $context->companyId)->find($record->process_type_id);
             $data['jobWorker'] = DB::table('suppliers')->where('company_id', $context->companyId)->find($record->job_worker_party_id);
+            // Every active service item (not cut by the 200-product list) for the processing-charge select.
+            $data['serviceProducts'] = Product::forCompany($context)->where('is_active', true)->where('type', 'service')->orderBy('name')->get(['id', 'name']);
+            // When the process has no default charge, start from the last bill of this process, else this job worker, else the company.
+            $lastCharge = fn ($orders) => DB::table('job_work_receipts as r')->join('job_work_dispatches as d', 'd.id', '=', 'r.dispatch_id')
+                ->join('product_purchases as l', 'l.purchase_id', '=', 'r.service_purchase_id')
+                ->where('r.company_id', $context->companyId)->whereIn('d.job_work_order_id', $orders)->orderByDesc('r.id')->first(['l.product_id', 'l.net_unit_cost']);
+            $sameProcess = DB::table('job_work_orders')->where('company_id', $context->companyId)->where('process_type_id', $record->process_type_id)->pluck('id');
+            $sameWorker = DB::table('job_work_orders')->where('company_id', $context->companyId)->where('job_worker_party_id', $record->job_worker_party_id)->pluck('id');
+            $last = $lastCharge($sameProcess) ?? $lastCharge($sameWorker)
+                ?? $lastCharge(DB::table('job_work_orders')->where('company_id', $context->companyId)->pluck('id'));
+            $data['chargeDefault'] = ['product_id' => $last->product_id ?? ($data['serviceProducts']->count() === 1 ? $data['serviceProducts']->first()->id : null),
+                'rate' => isset($last->net_unit_cost) ? (float) $last->net_unit_cost : null];
+            // The job worker's own name for a product (their bill wording), kept as a supplier-scoped alternate name.
+            $data['workerAliases'] = \Illuminate\Support\Facades\Schema::hasTable('product_aliases')
+                ? DB::table('product_aliases')->where('company_id', $context->companyId)->where('party_type', 'supplier')
+                    ->where('party_id', $record->job_worker_party_id)->orderByDesc('id')->get()->unique('product_id')->pluck('name', 'product_id')
+                : collect();
             $data['acceptedQty'] = DB::table('job_work_receipt_lines')->whereIn('receipt_id', $data['receipts']->pluck('id'))
                 ->groupBy('receipt_id')->selectRaw('receipt_id, SUM(accepted_qty) AS qty')->pluck('qty', 'receipt_id');
             // What each DC line still has outside: sent minus every active GRN / return settled against it.
@@ -136,8 +153,13 @@ class OperationsController extends Controller
                 ->where('l.company_id', $context->companyId)->where('l.qty_base', '>', 0)
                 ->whereIn('l.stock_movement_id', $data['receipts']->pluck('output_movement_id')->filter())
                 ->select('l.stock_movement_id', 'l.qty_base', 'p.name')->get()->groupBy('stock_movement_id');
-            $data['billNumbers'] = DB::table('purchases')->where('company_id', $context->companyId)
-                ->whereIn('id', $data['receipts']->pluck('service_purchase_id')->filter())->pluck('reference_no', 'id');
+            $bills = DB::table('purchases')->where('company_id', $context->companyId)
+                ->whereIn('id', $data['receipts']->pluck('service_purchase_id')->filter())->get(['id', 'reference_no', 'total_tax', 'grand_total', 'attributes_json'])->keyBy('id');
+            $data['billNumbers'] = $bills->pluck('reference_no', 'id');
+            $data['billTotals'] = $bills;
+            // Edit bill pre-fills from the booked charge line.
+            $data['billLines'] = DB::table('product_purchases')->where('company_id', $context->companyId)->whereIn('purchase_id', $bills->keys())
+                ->orderBy('id')->get(['purchase_id', 'product_id', 'qty', 'net_unit_cost'])->unique('purchase_id')->keyBy('purchase_id');
         } else {
             $data['serials'] = DB::table('stock_identities as i')->join('products as p', 'p.id', '=', 'i.product_id')
                 ->join('warehouses as w', 'w.id', '=', 'i.warehouse_id')->where('i.company_id', $context->companyId)
@@ -195,6 +217,7 @@ class OperationsController extends Controller
             'job-return' => app(JobWorkService::class)->returnMaterial($id, $data, $key, $context, $actor),
             'job-rework' => app(JobWorkService::class)->rework($id, $data, $key, $context, $actor),
             'job-bill' => app(JobWorkService::class)->serviceBill($id, $data, $key, $context, $actor),
+            'job-rebill' => app(JobWorkService::class)->rebill($id, $data, $key, $context, $actor),
             'job-reverse-dispatch' => app(JobWorkService::class)->reverse('dispatch', $id, $request->string('business_date')->toString(), $request->string('reason')->toString(), $context, $actor),
             'job-reverse-receipt' => app(JobWorkService::class)->reverse('receipt', $id, $request->string('business_date')->toString(), $request->string('reason')->toString(), $context, $actor),
             'project' => app(ProjectService::class)->create($data, $key, $context, $actor),
@@ -281,6 +304,31 @@ class OperationsController extends Controller
         }
         abort_unless(in_array($request->input('format', 'a4'), ['a4'], true), 422);
         return view('backend.operations.job_work_challan', ['dispatch' => $dispatch, 'order' => $order, 'c' => $challan]);
+    }
+
+    /** Job Work GRN print: material received back from the job worker (accepted / rejected / loss), no prices or GST. */
+    public function receiptDocument(Request $request, int $id)
+    {
+        $context = $this->context($request);
+        app(OperationPosting::class)->authorize('operations.job_work', 'job_work.read', $context, $request->user()->id);
+        $receipt = JobWorkReceipt::visibleIn($context)->findOrFail($id);
+        $dispatch = JobWorkDispatch::visibleIn($context)->findOrFail($receipt->dispatch_id);
+        $order = JobWorkOrder::visibleIn($context)->findOrFail($dispatch->job_work_order_id);
+        $c = $this->jobWorkChallan($dispatch, $order, $context); // company and job worker letterhead, same as the DC
+        $unitCode = \Illuminate\Support\Facades\Schema::hasColumn('units', 'unit_code') ? 'u.unit_code' : DB::raw('NULL AS unit_code');
+        $hsn = \Illuminate\Support\Facades\Schema::hasColumn('products', 'hsn_code') ? 'p.hsn_code' : DB::raw('NULL AS hsn_code');
+        $lines = DB::table('job_work_receipt_lines as l')->join('job_work_dispatch_lines as d', 'd.id', '=', 'l.dispatch_line_id')
+            ->join('products as p', 'p.id', '=', 'd.product_id')->leftJoin('units as u', 'u.id', '=', 'p.unit_id')
+            ->where('l.receipt_id', $receipt->id)->where('p.company_id', $context->companyId)->orderBy('d.line_no')
+            ->get(['p.name', 'p.code', $hsn, $unitCode, 'd.qty_base as sent', 'l.accepted_qty', 'l.rejected_qty', 'l.loss_qty']);
+        $outputs = $receipt->output_movement_id ? DB::table('stock_movement_lines as m')->join('products as p', 'p.id', '=', 'm.product_id')
+            ->leftJoin('units as u', 'u.id', '=', 'p.unit_id')->where('m.company_id', $context->companyId)
+            ->where('m.stock_movement_id', $receipt->output_movement_id)->where('m.qty_base', '>', 0)->get(['p.name', 'p.code', $unitCode, 'm.qty_base']) : collect();
+        $warehouse = fn ($wid) => $wid ? DB::table('warehouses')->where('company_id', $context->companyId)->where('id', $wid)->value('name') : null;
+        $bill = $receipt->service_purchase_id ? DB::table('purchases')->where('company_id', $context->companyId)->where('id', $receipt->service_purchase_id)->value('reference_no') : null;
+        return view('backend.operations.job_work_grn', ['receipt' => $receipt, 'dispatch' => $dispatch, 'order' => $order, 'c' => $c,
+            'lines' => $lines, 'outputs' => $outputs, 'receivedInto' => $warehouse($receipt->warehouse_id),
+            'quarantine' => $warehouse($receipt->details_json['rejected_warehouse_id'] ?? null), 'bill' => $bill]);
     }
 
     /** Everything Rule 55 asks of a delivery challan for goods sent to a job worker, from the dispatch and its masters. */

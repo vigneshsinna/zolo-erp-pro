@@ -33,11 +33,11 @@ class OperationStock
     }
 
     public function command(Model $source, string $date, array $lines, int $warehouse, CompanyContext $context,
-        int $actor, string $part, ?int $destination = null): StockMovementCommand
+        int $actor, string $part, ?int $destination = null, string $purpose = 'ordinary'): StockMovementCommand
     {
         return new StockMovementCommand(date: $date, lines: $lines, warehouseId: $warehouse, toWarehouseId: $destination,
             sourceType: $source->getTable(), sourceId: $source->id, sourceNo: $source->reference_no,
-            idempotencyKey: $source->getTable().':'.$source->id.':'.$part, userId: $actor, context: $context);
+            idempotencyKey: $source->getTable().':'.$source->id.':'.$part, userId: $actor, context: $context, purpose: $purpose);
     }
 
     public function value($movement): int

@@ -4,7 +4,7 @@ $entryAids = app(\App\Services\Industry\DocumentEntryAids::class)->forContext(re
 $commandCenterFormConfig = [
     'kind' => $kind, 'shared' => (bool) config('commercial.enabled'),
     'textile' => $entryAids['tracking']['profile'] === 'textile',
-    'baseUrl' => url('commercial/'.$kind), 'listUrl' => route($kind === 'sale' ? 'sales.index' : 'purchases.index'),
+    'baseUrl' => url('commercial/'.$kind), 'ordersUrl' => url('commercial/orders/'.$kind), 'listUrl' => route($kind === 'sale' ? 'sales.index' : 'purchases.index'),
     'units' => $lims_unit_list ?? \App\Models\Unit::where('is_active', true)->get(),
     'series' => $documentSeries,
     'context' => $documentContext ?? [],

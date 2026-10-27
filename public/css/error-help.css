@@ -1,0 +1,20 @@
+/* Error help: the "How to fix" bar error-help.js adds under an error. Collapsed to one line; opens for why + steps. */
+.error-help {
+    margin: 6px 0 2px; padding: 5px 9px; border: 1px solid var(--z-info-border); border-radius: var(--z-radius-sm);
+    background: var(--z-info-soft); color: var(--z-text); font-size: 12px; line-height: 1.45; font-weight: 500;
+    text-align: left; text-transform: none; letter-spacing: 0;
+}
+.error-help > summary { cursor: pointer; list-style: none; }
+.error-help > summary::-webkit-details-marker { display: none; }
+.error-help > summary::after { content: ' · more'; color: var(--z-info); font-weight: 600; }
+.error-help[open] > summary::after { content: ' · less'; }
+.error-help-tag {
+    display: inline-block; padding: 0 6px; margin-right: 2px; border-radius: var(--z-radius-sm);
+    background: var(--z-info); color: var(--z-primary-contrast); font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+}
+.error-help-why { margin: 6px 0 4px; color: var(--z-text-2); }
+.error-help-steps { margin: 0 0 4px; padding-left: 18px; }
+.error-help-steps li { margin: 1px 0; }
+.error-help-link { display: inline-block; margin-top: 2px; color: var(--z-info); font-weight: 700; }
+.error-help-link:hover { color: var(--z-primary); }
+li > .error-help { margin-left: -2px; }

@@ -132,7 +132,7 @@ class JobWorkService
                 $stock = app(OperationStock::class);
                 $lines = array_map(fn ($line) => $stock->line(array_diff_key($line, array_flip(['unit_cost'])), $context), $data['lines']);
                 $movement = app(InventoryMovementService::class)->transfer($stock->command($dispatch, $date, $lines, $warehouse->id,
-                    $context, $actor, 'dispatch', $order->external_warehouse_id));
+                    $context, $actor, 'dispatch', $order->external_warehouse_id, $reworkOf ? 'rework' : 'ordinary'));
                 // Persist actual base quantities, identities and values from the transfer, not product master costs.
                 foreach ($movement->lines->where('warehouse_id', $order->external_warehouse_id)->values() as $i => $line) {
                     $details = ['product_id' => $line->product_id, 'variant_id' => $line->variant_id,
@@ -238,7 +238,10 @@ class JobWorkService
                 if ($returns) $material = app(InventoryMovementService::class)->transfer($stock->command($receipt, $date, $returns,
                     $order->external_warehouse_id, $context, $actor, 'return', $warehouse->id));
                 if ($rejects) {
-                    $quarantine = $guard->warehouse($data['rejected_warehouse_id'] ?? null, $context, $actor);
+                    if (empty($data['rejected_warehouse_id'])) {
+                        throw ValidationException::withMessages(['rejected_warehouse_id' => 'Choose a quarantine warehouse for the rejected quantity, or enter 0 rejected.']);
+                    }
+                    $quarantine = $guard->warehouse($data['rejected_warehouse_id'], $context, $actor);
                     if ($quarantine->id === $warehouse->id || $quarantine->external_job_order_id) {
                         throw ValidationException::withMessages(['rejected_warehouse_id' => 'Rejected material needs a separate internal quarantine warehouse.']);
                     }
@@ -315,20 +318,55 @@ class JobWorkService
                 if (($receipt->receipt_kind ?? 'process') === 'material_return') {
                     throw ValidationException::withMessages(['receipt' => 'Material returned unprocessed carries no processing charge.']);
                 }
-                validator($data, ['items' => 'required|array|min:1|max:500', 'charge_mode' => 'sometimes|in:capitalise,expense'])->validate();
+                validator($data, ['items' => 'required|array|min:1|max:500', 'charge_mode' => 'sometimes|in:capitalise,expense',
+                    'their_names' => 'sometimes|array|max:50', 'their_names.*' => 'nullable|string|max:150'])->validate();
                 foreach ($data['items'] as $line) {
                     $product = app(CompanyWriteGuard::class)->owned(\App\Models\Product::class, $line['product_id'] ?? null, $context, 'product_id');
                     if ($product->type !== 'service') throw ValidationException::withMessages(['items' => 'Job work bills accept service items only.']);
                 }
+                // The job worker may bill the material under their own name: keep it as their alternate name and on the bill.
+                $theirNames = [];
+                $sent = DB::table('job_work_receipt_lines as l')->join('job_work_dispatch_lines as d', 'd.id', '=', 'l.dispatch_line_id')
+                    ->join('products as p', 'p.id', '=', 'd.product_id')->where('l.receipt_id', $receipt->id)->pluck('p.name', 'd.product_id');
+                foreach ($data['their_names'] ?? [] as $productId => $name) {
+                    $name = trim((string) $name);
+                    if ($name === '') continue;
+                    if (!$sent->has($productId)) throw ValidationException::withMessages(['their_names' => 'Name only the material on this receipt.']);
+                    $theirNames[] = $name.' for '.$sent[$productId];
+                    if (\Illuminate\Support\Facades\Schema::hasTable('product_aliases')
+                        && app(\App\Services\Commercial\CommercialPermission::class)->allows('products-edit', $context, $actor)) {
+                        app(\App\Services\Commercial\ProductAliasService::class)->create(['product_id' => (int) $productId, 'party_type' => 'supplier',
+                            'party_id' => $order->job_worker_party_id, 'name' => $name], $context, $actor);
+                    }
+                }
                 $purchase = app(PurchaseApplicationService::class)->create(new PurchaseCommand([
                     'supplier_id' => $order->job_worker_party_id, 'warehouse_id' => $receipt->warehouse_id,
                     'business_date' => $date, 'status' => 1, 'items' => $data['items'],
-                    'note' => 'Job work '.$order->reference_no.' / '.$receipt->reference_no,
+                    'note' => 'Job work '.$order->reference_no.' / '.$receipt->reference_no.($theirNames ? ' · Their name: '.implode('; ', $theirNames) : ''),
                     'job_work_receipt_id' => $receipt->id, 'job_work_charge_mode' => $data['charge_mode'] ?? 'capitalise',
                 ], 'job-work-bill:'.$key, $actor, $context));
                 DB::table('job_work_receipts')->where('id', $receiptId)->update(['service_purchase_id' => $purchase->id]);
                 return $receipt->fresh();
             });
+    }
+
+    /**
+     * Edit a booked service bill: reverse it (reason kept for audit) and book the corrected bill against the same GRN,
+     * in one transaction. bill_id names the bill being edited, so a resubmitted form never reverses its own correction.
+     */
+    public function rebill(int $receiptId, array $data, string $key, CompanyContext $context, int $actor): JobWorkReceipt
+    {
+        validator($data, ['bill_id' => 'required|integer|min:1', 'reason' => 'required|string|min:3|max:500'])->validate();
+        return DB::transaction(function () use ($receiptId, $data, $key, $context, $actor) {
+            $receipt = JobWorkReceipt::visibleIn($context)->lockForUpdate()->findOrFail($receiptId);
+            if ((int) $receipt->service_purchase_id !== (int) $data['bill_id']) {
+                if ($receipt->service_purchase_id) return $receipt; // already corrected by this form
+                throw ValidationException::withMessages(['bill_id' => 'This GRN has no service bill to edit. Book a new bill instead.']);
+            }
+            $bill = \App\Models\Purchase::visibleIn($context)->findOrFail($receipt->service_purchase_id);
+            app(\App\Services\Commercial\CommercialReversalService::class)->reverse($bill, (string) ($data['business_date'] ?? ''), $data['reason'], $context);
+            return $this->serviceBill($receiptId, \Illuminate\Support\Arr::except($data, ['bill_id', 'reason']), $key, $context, $actor);
+        });
     }
 
     public function pending(CompanyContext $context, int $actor): array
@@ -376,16 +414,17 @@ class JobWorkService
             $record = $model::visibleIn($context)->lockForUpdate()->findOrFail($id);
             if ($record->reversed_at) return $record;
             if ($date < $record->business_date) throw ValidationException::withMessages(['business_date' => 'Reversal cannot precede the operation.']);
-            if ($kind === 'dispatch' && JobWorkReceipt::where('dispatch_id', $id)->whereNull('reversed_at')->exists()) {
-                throw ValidationException::withMessages(['dispatch' => 'Reverse every receipt before reversing its dispatch.']);
+            $openReceipts = $kind === 'dispatch' ? JobWorkReceipt::where('dispatch_id', $id)->whereNull('reversed_at')->pluck('reference_no') : collect();
+            if ($openReceipts->isNotEmpty()) {
+                throw ValidationException::withMessages(['dispatch' => 'Reverse GRN '.$openReceipts->implode(', ').' before reversing this DC.']);
             }
             if ($kind === 'receipt' && self::supports('job_work_dispatches', 'rework_of_receipt_id')
-                && JobWorkDispatch::where('rework_of_receipt_id', $id)->whereNull('reversed_at')->exists()) {
-                throw ValidationException::withMessages(['receipt' => 'Reverse the rework DC sent against this GRN first.']);
+                && ($rework = JobWorkDispatch::where('rework_of_receipt_id', $id)->whereNull('reversed_at')->value('reference_no'))) {
+                throw ValidationException::withMessages(['receipt' => 'Reverse the rework DC '.$rework.' sent against this GRN first.']);
             }
             if ($kind === 'receipt' && $record->service_purchase_id) {
                 $purchase = \App\Models\Purchase::visibleIn($context)->findOrFail($record->service_purchase_id);
-                if (!$purchase->reversed_at) throw ValidationException::withMessages(['service_bill' => 'Reverse the linked service purchase first.']);
+                if (!$purchase->reversed_at) throw ValidationException::withMessages(['service_bill' => 'Reverse the job worker\'s service bill '.$purchase->reference_no.' first (Purchase Bills).']);
             }
             $ids = $kind === 'dispatch' ? [$record->movement_id] : [$record->output_movement_id,
                 $record->details_json['rejected_movement_id'] ?? null, $record->material_movement_id, $record->loss_movement_id];

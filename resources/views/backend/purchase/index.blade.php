@@ -67,6 +67,10 @@
                     app(\App\Services\Platform\CompanyContextResolver::class)->forActor(), (int) auth()->id());
             } catch (\Illuminate\Auth\Access\AuthorizationException) { return false; }
         })();
+        // Under GST a malformed GSTIN makes the party unregistered (no tax), so the party card flags it.
+        $usesGst = \App\Services\Tax\GstSetupService::usesGst();
+        $gstinInvalid = fn ($value) => $usesGst && trim((string) $value) !== ''
+            && !\App\Services\Tax\Gstin::parse($value)['is_valid'];
     @endphp
     <div class="comm-split-grid{{ $returnsTab && request('returns') == 1 ? ' is-returns' : '' }}" id="comm-split-grid">
         <!-- Main: Purchase Entry Workspace (Matching Screenshot 3) -->
@@ -118,6 +122,7 @@
                                 @foreach($lims_supplier_list as $supplier)
                                     <option value="{{ $supplier->id }}"
                                         data-tax-no="{{ $supplier->tax_no ?: ($supplier->vat_number ?? '') }}"
+                                        @if($gstinInvalid($supplier->vat_number)) data-gstin-invalid="1" @endif
                                         data-address="{{ $supplier->address ?? '' }}"
                                         data-city="{{ $supplier->city ?? '' }}"
                                         data-state="{{ $supplier->state ?? '' }}"
@@ -3195,7 +3200,9 @@
                 fullAddr = opt.text();
             }
 
-            $('#party-gst-badge').text(gstin || 'No GSTIN recorded');
+            var invalid = opt.data('gstin-invalid') == 1;
+            $('#party-gst-badge').text(gstin ? gstin + (invalid ? ' · invalid GSTIN: billed as unregistered, no GST. Fix it in the supplier.' : '') : 'No GSTIN recorded')
+                .toggleClass('u-c-danger', invalid);
             $('#party-credit-badge').text('Credit: ' + credit + ' days');
             $('#party-address-text').text(fullAddr || 'Address not registered');
             $('#party-info-card').slideDown(150);
@@ -3524,14 +3531,14 @@
 
                 // Update UI Labels
                 $('#doc-breadcrumb-mode').text('Edit: ' + (p.reference_no || '#' + p.id)).removeClass('text-primary').addClass('text-success');
-                $('#doc-title-text').text('Edit Purchase Bill: ' + (p.reference_no || '#' + p.id));
+                $('#doc-title-text').text((Number(p.status) === 4 ? 'Edit Purchase Order: ' : 'Edit Purchase Bill: ') + (p.reference_no || '#' + p.id));
                 $('#doc-sub-text').text('Editing saved purchase record');
 
                 // Populate Header Inputs
                 $('#reference_no').val(p.reference_no || '');
                 $('#supplier_invoice_no').val(p.supplier_invoice_no || '');
                 if (p.supplier_invoice_date) $('#supplier_invoice_date').val(p.supplier_invoice_date.slice(0, 10));
-                if (p.created_at) $('#created_at').val(p.created_at.slice(0, 10));
+                if (res.business_date || p.created_at) $('#created_at').val(res.business_date || p.created_at.slice(0, 10));
                 
                 $('#supplier_id').val(p.supplier_id).trigger('change');
                 $('.selectpicker').selectpicker('refresh');

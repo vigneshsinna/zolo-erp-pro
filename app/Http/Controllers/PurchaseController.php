@@ -96,12 +96,14 @@ class PurchaseController extends Controller
                 $field_name[] = str_replace(" ", "_", strtolower($fieldName));
             }
             $currency_list = Currency::where('is_active', true)->get();
-            $todayPurchasesAmount = Purchase::whereDate('created_at', date('Y-m-d'))->sum('grand_total');
-            $todayPurchasesCount = Purchase::whereDate('created_at', date('Y-m-d'))->count();
-            $totalPaid = Purchase::sum('paid_amount');
-            $totalDue = Purchase::selectRaw('SUM(grand_total - paid_amount) as due')->value('due') ?? 0;
+            // Purchase orders (status 4) live in the order register; they are not bills and owe nothing yet.
+            $bills = fn () => Purchase::query()->when(config('commercial.enabled'), fn ($q) => $q->where('status', '!=', 4));
+            $todayPurchasesAmount = $bills()->whereDate('created_at', date('Y-m-d'))->sum('grand_total');
+            $todayPurchasesCount = $bills()->whereDate('created_at', date('Y-m-d'))->count();
+            $totalPaid = $bills()->sum('paid_amount');
+            $totalDue = $bills()->selectRaw('SUM(grand_total - paid_amount) as due')->value('due') ?? 0;
             $lims_supplier_list = Supplier::where('is_active', true)->select('id', 'name', 'company_name', 'phone_number', 'tax_no', 'vat_number', 'address', 'city', 'state', 'postal_code', 'credit_days', 'purchase_defaults')->limit(200)->get();
-            $recent_bills = Purchase::with('supplier:id,name,company_name,phone_number')
+            $recent_bills = $bills()->with('supplier:id,name,company_name,phone_number')
                 ->latest('id')
                 ->limit(50)
                 ->get();
@@ -164,6 +166,8 @@ class PurchaseController extends Controller
         return response()->json([
             'success' => true,
             'purchase' => $purchase,
+            // created_at serialises as UTC; the form needs the company-local day or edits shift a day early.
+            'business_date' => $purchase->created_at?->toDateString(),
             'items' => $items,
         ]);
     }
