@@ -1,18 +1,17 @@
 @extends('backend.layout.main') @section('content')
-    @include('backend.hrm.partial.menu')
     <x-error-message key="name" />
     <x-error-message key="image" />
     <x-error-message key="email" />
     <x-success-message key="message" />
     <x-error-message key="not_permitted" />
 
-    <section>
+    <x-hrm-command-bar active="employees">
         @if (in_array('employees-add', $all_permission))
-            <div class="container-fluid">
-                <a href="{{ route('employees.create') }}" class="btn btn-info"><i class="dripicons-plus"></i>
-                    {{ __('db.Add Employee') }}</a>
-            </div>
+            <a href="{{ route('employees.create') }}" class="btn btn-primary"><i class="dripicons-plus"></i> {{ __('db.Add Employee') }}</a>
         @endif
+    </x-hrm-command-bar>
+
+    <section class="section-workspace-view">
         <div class="table-responsive">
             <table id="employee-table" class="table">
                 <thead>

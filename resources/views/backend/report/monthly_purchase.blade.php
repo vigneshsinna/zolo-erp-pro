@@ -51,7 +51,7 @@
             <li><a class="nav-link" href="{{ url('report/supplier_report') }}"><i class="dripicons-user"></i> Supplier Report</a></li>
         </ul>
         <div class="comm-actions">
-            <button class="btn btn-secondary btn-action-pill" onclick="window.print()">
+            <button class="btn btn-secondary btn-action-pill" data-erp-print>
                 <i class="dripicons-print"></i> Print
             </button>
         </div>

@@ -111,7 +111,12 @@ class CommercialApplicationService
                 }
                 // GST-rated products are priced by TaxDeterminationService below; the legacy VAT rate applies otherwise.
                 $rate = $product->tax_category_id ? 0.0 : app(CommercialPricing::class)->legacyRate($product, $context);
-                if (!$product->tax_category_id && isset($line['tax_rate']) && (float) $line['tax_rate'] !== $rate) {
+                // A rate the user changed on the line (tax_rate_override) replaces the product's; GST lines check it in TaxDeterminationService.
+                $override = $line['tax_rate_override'] ?? '';
+                if (!$product->tax_category_id && $override !== '' && $override !== null) {
+                    validator(['tax_rate_override' => $override], ['tax_rate_override' => 'numeric|min:0|max:100'])->validate();
+                    $rate = (float) $override;
+                } elseif (!$product->tax_category_id && isset($line['tax_rate']) && (float) $line['tax_rate'] !== $rate) {
                     throw ValidationException::withMessages(['items.tax_rate' => 'Tax rate differs from the configured product rate.']);
                 }
                 $line['tax_rate'] = $rate;
@@ -276,7 +281,7 @@ class CommercialApplicationService
     {
         $attributes = array_intersect_key($data, array_flip(['transport_name', 'lr_number', 'lr_date', 'vehicle_number', 'bale_count', 'bundle_count', 'landed_cost_method', 'capitalise_services', 'sales_order_id', 'purchase_order_id', 'goods_receipt_no',
             'bale_no', 'no_of_bales', 'lr_no', 'station_to', 'order_no', 'credit_days', 'agent_id', 'area_id', 'job_work_receipt_id',
-            'cash_discount_percent', 'cash_discount_days', 'job_work_charge_mode', 'supply_type', 'lut_number']));
+            'cash_discount_percent', 'cash_discount_days', 'job_work_charge_mode', 'job_work_remarks', 'supply_type', 'lut_number']));
         if (isset($attributes['job_work_receipt_id'])) validator($attributes, ['job_work_receipt_id' => 'integer|min:1'])->validate();
         if (($attributes['cash_discount_percent'] ?? '') === '') unset($attributes['cash_discount_percent'], $attributes['cash_discount_days']);
         validator($attributes, ['cash_discount_percent' => 'sometimes|numeric|gt:0|max:100', 'cash_discount_days' => 'sometimes|nullable|integer|min:0|max:365',

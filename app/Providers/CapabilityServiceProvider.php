@@ -35,8 +35,6 @@ class CapabilityServiceProvider extends ServiceProvider
                     'RepairController', 'RepairApiController' => 'service.repair',
                     'ProjectManagementController' => 'operations.projects',
                     'ProductionController', 'RecipeController', 'ManufacturingController' => 'manufacturing.production',
-                    'OptechJobWorkController' => 'operations.job_work',
-                    'OptechPrintingController' => 'printing.dot_matrix',
                     'DamageStockController' => 'inventory.damage_stock',
                     'ExchangeController' => 'sales.exchange',
                     'InstallmentController', 'InstallmentPlanController' => 'sales.installment_plans',
@@ -67,7 +65,7 @@ class CapabilityServiceProvider extends ServiceProvider
                     $route->middleware([$auth, 'company.context', RequireCapability::class.':'.$key]);
                     $operationsArea = match ($controller) {
                         'ProductionController', 'RecipeController', 'ManufacturingController' => 'manufacturing',
-                        'OptechJobWorkController' => 'job-work', 'ProjectManagementController' => 'projects', default => null,
+                        'ProjectManagementController' => 'projects', default => null,
                     };
                     if ($operationsArea) $route->middleware(\App\Http\Middleware\LegacyOperationsCutover::class.':'.$operationsArea);
                 }

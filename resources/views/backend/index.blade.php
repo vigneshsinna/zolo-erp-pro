@@ -112,13 +112,13 @@
                         <i class="dripicons-shopping-bag"></i> POS Terminal
                     </a>
                     @endif
-                    <a href="{{ route('sales.create') }}" class="zolo-quick-btn">
+                    <a href="{{ route('sales.index', ['new' => 1]) }}" class="zolo-quick-btn">
                         <i class="dripicons-plus"></i> New Sale
                     </a>
-                    <a href="{{ route('purchases.create') }}" class="zolo-quick-btn">
+                    <a href="{{ route('purchases.index', ['new' => 1]) }}" class="zolo-quick-btn">
                         <i class="dripicons-cart"></i> New Purchase
                     </a>
-                    <a href="{{ route('expenses.index') }}" class="zolo-quick-btn">
+                    <a href="{{ route('expenses.index', ['new' => 1]) }}" class="zolo-quick-btn">
                         <i class="dripicons-wallet"></i> Add Expense
                     </a>
                     @if (Route::has('accounting.coa'))
@@ -131,7 +131,7 @@
                         <i class="dripicons-document-edit"></i> General Ledger
                     </a>
                     @endif
-                    <a href="{{ url('products') }}" class="zolo-quick-btn">
+                    <a href="{{ url('/operations/stock') }}" class="zolo-quick-btn">
                         <i class="dripicons-stack"></i> Stock ({{ $total_products ?? 0 }})
                     </a>
                 </div>

@@ -2182,9 +2182,9 @@ body.dark-mode .zolo-product-grid .dropzone {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
   display: flex !important;
   align-items: center !important;
-  justify-content: space-between !important;
+  justify-content: flex-start !important;
   flex-wrap: wrap !important;
-  gap: 8px 14px !important;
+  gap: 6px 10px !important;
 }
 
 body.dark-mode .zolo-inventory-stripe {
@@ -2250,23 +2250,13 @@ body.dark-mode .zolo-inventory-stripe-title {
   border-radius: 6px !important;
 }
 
+/* The pills flow on the same rows as the title and alert quantity (no separate row, no stray divider when they wrap). */
 .zolo-inventory-stripe-divider {
-  width: 1px !important;
-  height: 24px !important;
-  background: var(--neo-border, #e2e8f0) !important;
-  flex-shrink: 0 !important;
-}
-
-body.dark-mode .zolo-inventory-stripe-divider {
-  background: rgba(255, 255, 255, 0.1) !important;
+  display: none !important;
 }
 
 .zolo-inventory-stripe-toggles {
-  display: flex !important;
-  align-items: center !important;
-  flex-wrap: wrap !important;
-  gap: 6px !important;
-  flex: 1 1 auto !important;
+  display: contents !important;
 }
 
 /* Individual Toggle Switch Button (matches iOS/Material modern toggle buttons) */
@@ -2287,6 +2277,11 @@ body.dark-mode .zolo-inventory-stripe-divider {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
   white-space: nowrap !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Product type hides options that do not apply (jQuery .hide() writes display:none inline). */
+.zolo-toggle-pill[style*="display: none"] {
+  display: none !important;
 }
 
 body.dark-mode .zolo-toggle-pill {

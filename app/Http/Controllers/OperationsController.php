@@ -154,7 +154,7 @@ class OperationsController extends Controller
                 ->whereIn('l.stock_movement_id', $data['receipts']->pluck('output_movement_id')->filter())
                 ->select('l.stock_movement_id', 'l.qty_base', 'p.name')->get()->groupBy('stock_movement_id');
             $bills = DB::table('purchases')->where('company_id', $context->companyId)
-                ->whereIn('id', $data['receipts']->pluck('service_purchase_id')->filter())->get(['id', 'reference_no', 'total_tax', 'grand_total', 'attributes_json'])->keyBy('id');
+                ->whereIn('id', $data['receipts']->pluck('service_purchase_id')->filter())->get(['id', 'reference_no', 'total_tax', 'grand_total', 'attributes_json', 'created_at', 'supplier_invoice_no', 'supplier_invoice_date'])->keyBy('id');
             $data['billNumbers'] = $bills->pluck('reference_no', 'id');
             $data['billTotals'] = $bills;
             // Edit bill pre-fills from the booked charge line.

@@ -1,0 +1,134 @@
+/* ====================================================================
+ * Report and list printing (erp-print.js)
+ *
+ * .erp-print-doc  the document erp-print.js prints from a hidden iframe: letterhead, report title,
+ *                 filters used, then the full table with totals.
+ * @media print    pages that print themselves (accounting statements) drop the app chrome, unlock the
+ *                 one-screen shell so every page prints, and show the same letterhead.
+ * ==================================================================== */
+
+@page {
+    size: A4;
+    margin: 10mm 10mm 12mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt "Inter", "Segoe UI", Arial, sans-serif; color: gray; }
+}
+@page wide { size: A4 landscape; }
+
+.page .erp-print-header { display: none; }
+.erp-print-frame { position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0; visibility: hidden; }
+
+/* ---------- Letterhead (both paths) ---------- */
+.erp-print-header {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--z-ink);
+    color: var(--z-text);
+}
+.erp-print-letterhead { display: flex; align-items: flex-start; gap: 12px; }
+.erp-print-logo { max-width: 110px; max-height: 50px; object-fit: contain; }
+.erp-print-company { flex: 1; min-width: 0; }
+.erp-print-company-name { font-size: 15pt; font-weight: 700; line-height: 1.2; color: var(--z-ink); }
+.erp-print-company-line { font-size: 8.5pt; line-height: 1.4; color: var(--z-text-2); }
+.erp-print-stamp { font-size: 8pt; line-height: 1.5; text-align: right; white-space: nowrap; color: var(--z-text-muted); }
+.erp-print-title {
+    margin: 8px 0 2px;
+    font-size: 12.5pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--z-ink);
+}
+.erp-print-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 18px; font-size: 8.5pt; color: var(--z-text); }
+.erp-print-meta b { font-weight: 600; color: var(--z-text-muted); }
+
+/* ---------- Printed document (iframe) ---------- */
+.erp-print-doc {
+    margin: 0;
+    background: var(--z-surface);
+    color: var(--z-text);
+    font: 9pt/1.35 "Inter", "Segoe UI", Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+.erp-print-doc.erp-print-wide { page: wide; }
+.erp-print-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+.erp-print-table thead { display: table-header-group; }
+.erp-print-table tfoot { display: table-row-group; }
+.erp-print-table tr { break-inside: avoid; }
+.erp-print-table th {
+    padding: 5px 6px;
+    border: 1px solid var(--z-border-strong);
+    background: var(--z-surface-2);
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-align: left;
+    text-transform: uppercase;
+    color: var(--z-ink);
+}
+.erp-print-table td { padding: 3px 6px; border: 1px solid var(--z-border); vertical-align: top; }
+.erp-print-table tbody tr:nth-child(even) td { background: var(--z-surface-2); }
+.erp-print-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.erp-print-table th.num { text-align: right; }
+.erp-print-table tfoot td { border-top: 2px solid var(--z-ink); background: var(--z-surface-2); font-weight: 700; }
+.erp-print-empty { padding: 14px; text-align: center; color: var(--z-text-muted); }
+.erp-print-end { display: flex; justify-content: space-between; margin-top: 6px; font-size: 8pt; color: var(--z-text-muted); }
+
+/* ---------- Pages that print themselves ---------- */
+@media print {
+    html.app-shell,
+    html.app-shell body,
+    html.app-shell .page,
+    html.app-shell #content {
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+    html.app-shell .page { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
+    html.app-shell #content { padding: 0 !important; margin: 0 !important; }
+    /* Paper is white in dark mode too. */
+    body, body.dark-mode { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    nav.side-navbar,
+    html.app-shell .page > header.container-fluid,
+    .page > header,
+    .reveal-topbar-strip,
+    .z-icon-tile,
+    footer.main-footer,
+    .comm-command-bar,
+    .desk-filter-card,
+    .dataTables_length,
+    .dataTables_filter,
+    .dataTables_paginate,
+    .dataTables_info,
+    .dt-buttons,
+    .d-print-none,
+    .modal,
+    .modal-backdrop,
+    .alert-dismissible .close,
+    .tooltip,
+    .popover { display: none !important; }
+
+    .page .erp-print-header { display: block !important; }
+    #content,
+    #content > section { background: white !important; padding: 0 !important; }
+    /* One-screen layouts clip their panels to the viewport; paper gets everything. */
+    html.app-shell body #content * { overflow: visible !important; max-height: none !important; }
+    html.app-shell body #content > section,
+    html.app-shell body #content > section > *,
+    html.app-shell body #content .table-responsive { height: auto !important; min-height: 0 !important; flex: none !important; }
+    #content .btn,
+    #content button { display: none !important; }
+    #content a { color: inherit !important; text-decoration: none !important; }
+    #content table thead th { background: var(--z-surface-2) !important; color: var(--z-ink) !important; border-color: var(--z-border-strong) !important; }
+    .kpi-card,
+    .desk-card-wrapper,
+    .card,
+    .comm-card { box-shadow: none !important; break-inside: avoid; }
+    .table-responsive { overflow: visible !important; }
+    table { break-inside: auto; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+}

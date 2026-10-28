@@ -23,6 +23,13 @@ class CommercialPricing
             $product = app(\App\Services\ERP\CompanyWriteGuard::class)->product($line, $context, $purchase ? 'purchase_unit_id' : 'sale_unit_id');
             $products[$product->id] = $product;
             $line['tax_rate'] = $product->tax_category_id ? 0 : $this->legacyRate($product, $context);
+            // A user-changed line rate (GST lines are checked in TaxDeterminationService).
+            if (!$product->tax_category_id && isset($line['tax_rate_override']) && $line['tax_rate_override'] !== '') {
+                $override = $this->number($line['tax_rate_override'], 'tax_rate_override');
+                if ($override > 100) $this->invalid('tax_rate_override', 'Use a tax rate between 0 and 100%.');
+                $line['product_tax_rate'] = $line['tax_rate'];
+                $line['tax_rate'] = $override;
+            }
             unset($line['tax'], $line['total'], $line['_tax_snapshot'], $line['recoverable_tax']);
         }
         unset($line, $data['grand_total'], $data['order_tax']);

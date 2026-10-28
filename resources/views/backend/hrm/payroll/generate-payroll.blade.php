@@ -1,5 +1,6 @@
 @extends('backend.layout.main')
 @section('content')
+<x-hrm-command-bar active="payroll" />
     <section>
         <div class="container-fluid">
             <h4 class="mt-3 mb-4">{{ __("db.HRM - Generate Payroll") }}</h4>

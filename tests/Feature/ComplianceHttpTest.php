@@ -35,9 +35,9 @@ class ComplianceHttpTest extends ReturnsDocumentTestCase
         $pdf = $this->get('/compliance/documents/sale_note/'.$id.'/print?output=pdf')->assertOk();
         $pdf->assertHeader('Content-Type', 'application/pdf');
         $this->assertStringStartsWith('%PDF-', $pdf->getContent());
-        // This fixture runs without the Common middleware and the legacy schema the full layout reads; a stand-in layout keeps the check on the return form.
-        app('view')->getFinder()->prependLocation(base_path('tests/Support/views'));
-        $this->get('/return-sale/create?reference_no='.urlencode($sale->reference_no))->assertOk()->assertSee('Return / note');
+        // The old return form now opens the Returns tab of the Sales workspace with this bill loaded.
+        $this->get('/return-sale/create?reference_no='.urlencode($sale->reference_no))
+            ->assertRedirect(route('sales.index', ['returns' => 1, 'bill' => $sale->id]));
         $this->deleteJson('/return-sale/'.$id)->assertStatus(409);
         $this->assertSame(1, DB::table('returns')->count());
     }

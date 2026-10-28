@@ -11,6 +11,13 @@
     var url = function (path) { return base + path; };
 
     var H = [
+        // ---- Developer switches ----
+        {m: /is switched off for this company\. Ask your developer/i,
+            why: 'The developer switched this section or screen off for the company you are working in.',
+            fix: ['Use another screen, or switch to a company where it is on (company picker at the top).', 'If you need it here, ask your developer to tick it again under Developer › Sections.']},
+        {m: /This is a developer login\. Only a developer can change it|Only a developer login can open the developer console/i,
+            why: 'Developer logins manage every admin and the company sections, so an admin account cannot change them.',
+            fix: ['Sign in with the developer login to make this change.', 'No developer login yet? Run: php artisan erp:developer you@example.com on the server.']},
         // ---- Job work ----
         {m: /Reverse the job worker's service bill (\S+) first/i,
             why: 'This GRN already has a processing-charge bill. A GRN cannot be undone while its bill stands.',

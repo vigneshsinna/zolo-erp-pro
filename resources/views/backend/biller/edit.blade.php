@@ -1,4 +1,5 @@
 @extends('backend.layout.main') @section('content')
+<x-people-command-bar active="billers" />
 <section class="forms">
     <div class="container-fluid">
         <div class="row">

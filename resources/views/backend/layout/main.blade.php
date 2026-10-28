@@ -192,6 +192,7 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
   <link rel="stylesheet" href="<?php echo versioned_asset('css/app-shell.css') ?>" type="text/css">
   <link rel="stylesheet" href="<?php echo versioned_asset('css/field-help.css') ?>" type="text/css">
   <link rel="stylesheet" href="<?php echo versioned_asset('css/error-help.css') ?>" type="text/css">
+  <link rel="stylesheet" href="<?php echo versioned_asset('css/erp-print.css') ?>" type="text/css">
 
   @stack('css')
 
@@ -204,6 +205,12 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
     {"selector_matches": "nav.side-navbar a[href]"},
     {"not": {"selector_matches": "[href^='#'], [href^='javascript'], [target], [download], [data-no-prefetch], [href*='logout'], [href*='backup']"}}
   ]}, "eagerness": "moderate"}]}
+  </script>
+  <script>
+    // crypto.randomUUID only exists on HTTPS / localhost; plain-HTTP hosts (e.g. http://*.test) still need idempotency keys.
+    if (window.crypto && !crypto.randomUUID) crypto.randomUUID = function () {
+      return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function (c) { return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16); });
+    };
   </script>
 
   <!-- Custom CSS from general settings -->
@@ -235,7 +242,8 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
         </div>
       </a>
     </span>
-    @include('backend.layout.sidebar')
+    {{-- Sections the developer switched off for this company are taken out of the rendered menu. --}}
+    {!! app(\App\Services\Platform\MenuSwitches::class)->filterSidebar($__env->make('backend.layout.sidebar', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render()) !!}
   </nav>
 
   <div class="page">
@@ -286,94 +294,6 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
             @if($activeYear)<span class="company-switch-year">{{ $activeYear }}</span>@endif
             <span class="company-switch-caret" aria-hidden="true">&#8645;</span></a></li>
           @endif
-          @unless($companyContext)
-          <div class="dropdown">
-
-            <a class="btn-pos btn-sm" type="button" data-toggle="dropdown" aria-expanded="false">
-              <i class="dripicons-plus"></i>
-            </a>
-            <ul class="dropdown-menu">
-              <?php
-              $category_permission_active = $role_has_permissions_list->where('name', 'category')->first();
-              ?>
-              @if($category_permission_active)
-              <li class="dropdown-item"><a data-toggle="modal" data-target="#category-modal">{{__('db.Add Category') }}</a></li>
-              @endif
-              <?php
-              $add_permission_active = $role_has_permissions_list->where('name', 'products-add')->first();
-              ?>
-              @if($add_permission_active)
-              <li class="dropdown-item"><a href="{{route('products.create') }}">{{__('db.add_product') }}</a></li>
-              @endif
-              <?php
-              $add_permission_active = $role_has_permissions_list->where('name', 'purchases-add')->first();
-              ?>
-              @if($add_permission_active)
-              <li class="dropdown-item"><a href="{{route('purchases.create') }}">{{ __('db.Add Purchase') }}</a></li>
-              @endif
-              <?php
-              $sale_add_permission_active = $role_has_permissions_list->where('name', 'sales-add')->first();
-              ?>
-              @if($sale_add_permission_active)
-              <li class="dropdown-item"><a href="{{route('sales.create') }}">{{ __('db.Add Sale') }}</a></li>
-              @endif
-              <?php
-              $expense_add_permission_active = $role_has_permissions_list->where('name', 'expenses-add')->first();
-              ?>
-              @if($expense_add_permission_active)
-              <li class="dropdown-item"><a data-toggle="modal" data-target="#expense-modal"> {{ __('db.Add Expense') }}</a></li>
-              @endif
-              <?php
-              $quotation_add_permission_active = $role_has_permissions_list->where('name', 'quotes-add')->first();
-              ?>
-              @if($quotation_add_permission_active)
-              <li class="dropdown-item"><a href="{{route('quotations.create') }}">{{ __('db.Add Quotation') }}</a></li>
-              @endif
-              <?php
-              $transfer_add_permission_active = $role_has_permissions_list->where('name', 'transfers-add')->first();
-              ?>
-              @if($transfer_add_permission_active)
-              <li class="dropdown-item"><a href="{{route('transfers.create') }}">{{ __('db.Add Transfer') }}</a></li>
-              @endif
-              <?php
-              $return_add_permission_active = $role_has_permissions_list->where('name', 'returns-add')->first();
-              ?>
-              @if($return_add_permission_active)
-              <li class="dropdown-item"><a href="#" data-toggle="modal" data-target="#add-sale-return"> {{ __('db.Add Return') }}</a></li>
-              @endif
-              <?php
-              $purchase_return_add_permission_active = $role_has_permissions_list->where('name', 'purchase-return-add')->first();
-              ?>
-              @if($purchase_return_add_permission_active)
-              <li class="dropdown-item"><a href="#" data-toggle="modal" data-target="#add-purchase-return"> {{ __('db.Add Purchase Return') }}</a></li>
-              @endif
-              <?php
-              $user_add_permission_active = $role_has_permissions_list->where('name', 'users-add')->first();
-              ?>
-              @if($user_add_permission_active)
-                <li class="dropdown-item"><a href="{{route('user.create') }}">{{ __('db.Add User') }}</a></li>
-              @endif
-              <?php
-              $customer_add_permission_active = $role_has_permissions_list->where('name', 'customers-add')->first();
-              ?>
-              @if($customer_add_permission_active)
-              <li class="dropdown-item"><a href="{{route('customer.create') }}">{{ __('db.Add Customer') }}</a></li>
-              @endif
-              <?php
-              $biller_add_permission_active = $role_has_permissions_list->where('name', 'billers-add')->first();
-              ?>
-              @if($biller_add_permission_active)
-              <li class="dropdown-item"><a href="{{route('biller.create') }}">{{ __('db.Add Biller') }}</a></li>
-              @endif
-              <?php
-              $supplier_add_permission_active = $role_has_permissions_list->where('name', 'suppliers-add')->first();
-              ?>
-              @if($supplier_add_permission_active)
-              <li class="dropdown-item"><a href="{{route('supplier.create') }}">{{ __('db.Add Supplier') }}</a></li>
-              @endif
-            </ul>
-          </div>
-          @endunless
           <?php
           $empty_database_permission_active = $role_has_permissions_list->where('name', 'empty_database')->first();
 
@@ -534,6 +454,7 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
 
 
     <div id="content">
+      @include('backend.layout.partials.print-letterhead')
       @yield('content')
     </div>
 
@@ -1295,6 +1216,7 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
   <script type="text/javascript" src="{{ versioned_asset('vendor/datatable/dataTables.responsive.min.js') }}"></script>
   <script type="text/javascript" src="{{ versioned_asset('vendor/datatable/responsive.bootstrap.min.js') }}"></script>
   <script type="text/javascript" src="{{ versioned_asset('js/table-polish.js') }}"></script>
+  <script type="text/javascript" src="{{ versioned_asset('js/erp-print.js') }}" data-css="{{ versioned_asset('css/zolo-tokens.css') }} {{ versioned_asset('css/erp-print.css') }}"></script>
   @endif
   @else
   <script type="text/javascript" src="<?php echo versioned_asset('vendor/jquery/jquery.min.js') ?>"></script>
@@ -1352,6 +1274,7 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
   <script type="text/javascript" src="{{ versioned_asset('vendor/datatable/dataTables.responsive.min.js') }}"></script>
   <script type="text/javascript" src="{{ versioned_asset('vendor/datatable/responsive.bootstrap.min.js') }}"></script>
   <script type="text/javascript" src="{{ versioned_asset('js/table-polish.js') }}"></script>
+  <script type="text/javascript" src="{{ versioned_asset('js/erp-print.js') }}" data-css="{{ versioned_asset('css/zolo-tokens.css') }} {{ versioned_asset('css/erp-print.css') }}"></script>
 
   <script type="text/javascript" src="{{ versioned_asset('js/barcode-qrcode-scanner_plugin.js') }}"></script>
 

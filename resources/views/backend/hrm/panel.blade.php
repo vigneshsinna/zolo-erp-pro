@@ -1,12 +1,10 @@
 @extends('backend.layout.main')
 @section('content')
-@include('backend.hrm.partial.menu')
+<x-hrm-command-bar />
 
-<section>
+<section class="section-workspace-view">
     <div class="container-fluid">
-        <h4 class="mt-3 mb-4">{{ __("db.HRM") }}</h4>
-
-        {{-- payroll multiple card here  --}}
+        <p class="text-muted">Pick an HRM screen above.</p>
     </div>
 </section>
 

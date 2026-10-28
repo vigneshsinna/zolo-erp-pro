@@ -16,6 +16,8 @@ $commandCenterFormConfig = [
 ];
 @endphp
 <script type="application/json" id="command-center-form-data">@json($commandCenterFormConfig)</script>
+<script src="{{ asset('js/unknown-product.js') }}?v={{ filemtime(public_path('js/unknown-product.js')) }}"></script>
+<script src="{{ asset('js/line-tax-override.js') }}?v={{ filemtime(public_path('js/line-tax-override.js')) }}"></script>
 <script src="{{ asset('js/command-center-form.js') }}?v={{ filemtime(public_path('js/command-center-form.js')) }}"></script>
 <script src="{{ asset('js/document-drafts.js') }}?v={{ filemtime(public_path('js/document-drafts.js')) }}"></script>
 <script src="{{ asset('js/document-workspace.js') }}?v={{ filemtime(public_path('js/document-workspace.js')) }}"></script>

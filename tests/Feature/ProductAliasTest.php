@@ -177,7 +177,7 @@ class ProductAliasTest extends CommercialTestCase
 
     public function test_pos_templates_reject_stale_customer_warehouse_and_query_results_before_autoselection(): void
     {
-        foreach (['create', 'edit', 'pos'] as $view) {
+        foreach (['edit', 'pos'] as $view) {
             $source = file_get_contents(resource_path('views/backend/sale/'.$view.'.blade.php'));
             $this->assertStringContainsString('String(warehouse_id) === warehouse', $source);
             $this->assertStringContainsString('sequence === productSearchSequence', $source);

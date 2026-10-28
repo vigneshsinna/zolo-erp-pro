@@ -188,28 +188,8 @@ class PurchaseController extends Controller
 
     public function create()
     {
-        $role = Role::find(Auth::user()->role_id);
-        if($role->hasPermissionTo('purchases-add')){
-            $lims_supplier_list = Supplier::where('is_active', true)->get();
-            if(Auth::user()->role_id > 2) {
-                $lims_warehouse_list = Warehouse::where([
-                    ['is_active', true],
-                    ['id', Auth::user()->warehouse_id]
-                ])->get();
-            }
-            else {
-                $lims_warehouse_list = Warehouse::where('is_active', true)->get();
-            }
-            $lims_tax_list = Tax::where('is_active', true)->get();
-            $lims_product_list_without_variant = $this->productWithoutVariant();
-            $lims_product_list_with_variant = $this->productWithVariant();
-            $currency_list = Currency::where('is_active', true)->get();
-            $custom_fields = CustomField::where('belongs_to', 'purchase')->get();
-            $lims_account_list = Account::select('id', 'name', 'account_no','total_balance', 'is_default')->where('is_active', true)->get();
-            return view('backend.purchase.create', compact('lims_supplier_list', 'lims_warehouse_list', 'lims_tax_list', 'lims_product_list_without_variant', 'lims_product_list_with_variant', 'currency_list', 'custom_fields', 'lims_account_list'));
-        }
-        else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
+        // The Purchase workspace is the only purchase entry screen; the old Add Purchase form was a duplicate.
+        return redirect()->route('purchases.index', ['new' => 1]);
     }
 
     public function store(Request $request)
@@ -398,12 +378,12 @@ class PurchaseController extends Controller
                     $imeis = array_map('trim', $imeis);
                     if (count($imeis) !== count(array_unique($imeis))) {
                         DB::rollBack();
-                        return redirect('purchases/create')->with('not_permitted', __('db.Duplicate IMEI not allowed!'));
+                        return redirect()->route('purchases.index', ['new' => 1])->with('not_permitted', __('db.Duplicate IMEI not allowed!'));
                     }
                     foreach ($imeis as $imei) {
                         if ($this->isImeiExist($imei, $id)) {
                             DB::rollBack();
-                            return redirect('purchases/create')->with('not_permitted', __('db.Duplicate IMEI not allowed!'));
+                            return redirect()->route('purchases.index', ['new' => 1])->with('not_permitted', __('db.Duplicate IMEI not allowed!'));
                         }
                     }
                 }
@@ -477,7 +457,7 @@ class PurchaseController extends Controller
             return redirect('purchases')->with('message', __('db.Purchase created successfully'));
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect('purchases/create')->with('not_permitted', 'Transaction failed: ' . $e->getMessage());
+            return redirect()->route('purchases.index', ['new' => 1])->with('not_permitted', 'Transaction failed: ' . $e->getMessage());
         }
     }
 
@@ -1055,12 +1035,6 @@ class PurchaseController extends Controller
                             ->whereNull('is_variant')
                             ->first();
         if(!$lims_product_data) {
-            $lims_product_data = Product::where([
-                                ['name', $product_code[1]],
-                                ['is_active', true]
-                            ])
-                            ->whereNotNull(['is_variant'])
-                            ->first();
             $lims_product_data = Product::join('product_variants', 'products.id', 'product_variants.product_id')
                 ->where([
                     ['product_variants.item_code', $product_code[0]],
@@ -1069,6 +1043,8 @@ class PurchaseController extends Controller
                 ->whereNotNull('is_variant')
                 ->select('products.*', 'product_variants.item_code', 'product_variants.additional_cost')
                 ->first();
+            // A typed name that is no product: the entry page offers to create it.
+            abort_unless($lims_product_data, 404);
             $lims_product_data->cost += $lims_product_data->additional_cost;
         }
         $product[] = $lims_product_data->name;

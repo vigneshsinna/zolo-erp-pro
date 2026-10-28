@@ -1,4 +1,5 @@
 @extends('backend.layout.main') @section('content')
+<x-people-command-bar active="users" />
 
 <x-error-message key="not_permitted" />
 

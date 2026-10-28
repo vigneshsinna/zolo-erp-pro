@@ -31,8 +31,10 @@
     $partyLabel = $sale ? 'Buyer (Bill to)' : 'Supplier';
     $contact = $d['party_contact'] ?? [];
     $meta = array_filter([
-        ($note ? 'Note No.' : (!empty($d['order']) ? ($sale ? 'SO No.' : 'PO No.') : ($kind === 'purchase' ? 'Bill No.' : 'Invoice No.'))) => $d['number'],
-        'Date' => \Carbon\Carbon::parse($d['date'])->format('d-m-Y'),
+        ($note ? 'Note No.' : (!empty($d['order']) ? ($sale ? 'SO No.' : 'PO No.') : ($kind === 'purchase' ? 'Bill No.' : 'Invoice No.'))) => $d['supplier_bill_no'] ?? $d['number'],
+        'Bill Date' => !empty($d['supplier_bill_date']) ? \Carbon\Carbon::parse($d['supplier_bill_date'])->format('d-m-Y') : null,
+        'Our Ref.' => !empty($d['supplier_bill_no']) ? $d['number'] : null,
+        (!empty($d['supplier_bill_no']) ? 'Entry Date' : 'Date') => \Carbon\Carbon::parse($d['date'])->format('d-m-Y'),
         'Delivery Date' => !empty($d['delivery_date']) ? \Carbon\Carbon::parse($d['delivery_date'])->format('d-m-Y') : null,
         'Against' => $d['source_number'] ?? null,
         'Source DC / GRN' => implode(', ', array_column($d['material_documents'] ?? [], 'reference_no')),

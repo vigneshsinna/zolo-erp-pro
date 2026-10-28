@@ -22,35 +22,35 @@
 .comm-actions .btn-secondary:hover, .comm-actions .btn-outline-secondary:hover, .comm-actions .btn-dark:hover, .comm-actions .btn-warning:hover { background: #334155 !important; color: #fff !important; }
 
 /* Page body */
-.product-workspace-view { padding: 0 12px 6px !important; }
-.product-workspace-view > .container-fluid:empty { display: none; }
-.product-workspace-view .table-responsive,
-.product-workspace-view .dataTables_wrapper {
+:is(.product-workspace-view, .section-workspace-view) { padding: 0 12px 6px !important; }
+:is(.product-workspace-view, .section-workspace-view) > .container-fluid:empty { display: none; }
+:is(.product-workspace-view, .section-workspace-view) .table-responsive,
+:is(.product-workspace-view, .section-workspace-view) .dataTables_wrapper {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
-.product-workspace-view .dataTables_wrapper { padding: 6px 10px; }
-.product-workspace-view .table-responsive > .dataTables_wrapper { border: 0; box-shadow: none; }
-.product-workspace-view table.table thead th {
+:is(.product-workspace-view, .section-workspace-view) .dataTables_wrapper { padding: 6px 10px; }
+:is(.product-workspace-view, .section-workspace-view) .table-responsive > .dataTables_wrapper { border: 0; box-shadow: none; }
+:is(.product-workspace-view, .section-workspace-view) table.table thead th {
     background: var(--z-table-head-bg) !important; color: var(--z-table-head-text) !important; border-color: #1e293b !important;
     font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
 }
-.product-workspace-view table.table tbody tr:nth-child(even) td { background: var(--z-table-stripe); }
-.product-workspace-view table.table tbody tr:hover td { background: var(--z-primary-soft); }
-.product-workspace-view .dataTables_wrapper > .row:first-child { margin-bottom: 4px; align-items: center; }
+:is(.product-workspace-view, .section-workspace-view) table.table tbody tr:nth-child(even) td { background: var(--z-table-stripe); }
+:is(.product-workspace-view, .section-workspace-view) table.table tbody tr:hover td { background: var(--z-primary-soft); }
+:is(.product-workspace-view, .section-workspace-view) .dataTables_wrapper > .row:first-child { margin-bottom: 4px; align-items: center; }
 
-body.dark-mode .product-workspace-view .table-responsive,
-body.dark-mode .product-workspace-view .dataTables_wrapper { background: #141c2e; border-color: #334155; }
-body.dark-mode .product-workspace-view table.table tbody tr:nth-child(even) td { background: #111827; }
-body.dark-mode .product-workspace-view table.table tbody tr:hover td { background: #1e293b; }
-.product-workspace-view .table-responsive { min-height: 0 !important; }
-.product-workspace-view .dataTables_wrapper { padding: 6px 10px !important; }
+body.dark-mode :is(.product-workspace-view, .section-workspace-view) .table-responsive,
+body.dark-mode :is(.product-workspace-view, .section-workspace-view) .dataTables_wrapper { background: #141c2e; border-color: #334155; }
+body.dark-mode :is(.product-workspace-view, .section-workspace-view) table.table tbody tr:nth-child(even) td { background: #111827; }
+body.dark-mode :is(.product-workspace-view, .section-workspace-view) table.table tbody tr:hover td { background: #1e293b; }
+:is(.product-workspace-view, .section-workspace-view) .table-responsive { min-height: 0 !important; }
+:is(.product-workspace-view, .section-workspace-view) .dataTables_wrapper { padding: 6px 10px !important; }
 /* Keep the bar on one line: drop the subtitle badge, then pill icons, as width shrinks. */
 @media (max-width: 1750px) { .product-command-bar .comm-title-badge { display: none; } }
 @media (max-width: 1750px) { .product-command-bar .comm-nav-pills .nav-link i { display: none; } }
 /* Pills wrap to a second line rather than slide under the action buttons on narrow screens. */
 .product-command-bar .comm-nav-pills { flex-wrap: wrap; flex: 0 1 auto; row-gap: 2px; }
 /* Product list filter panel: no empty card frame while the filters are closed. */
-.product-workspace-view .product-filter-card:not(:has(#filter-card[style*="block"])) { border: 0; margin: 0 !important; background: transparent; box-shadow: none; }
+:is(.product-workspace-view, .section-workspace-view) .product-filter-card:not(:has(#filter-card[style*="block"])) { border: 0; margin: 0 !important; background: transparent; box-shadow: none; }
 .product-command-bar .comm-title-group { flex: none; }
 .product-command-bar .comm-nav-pills { min-width: 0; }
 @media (max-width: 1350px) { .product-command-bar .comm-actions .btn-secondary i { display: none; } }

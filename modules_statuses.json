@@ -4,11 +4,5 @@
     "Middleware": true,
     "Manufacturing": true,
     "Restaurant": true,
-    "Project": true,
-    "OptechCompany": true,
-    "OptechMaster": true,
-    "OptechJobWork": true,
-    "OptechAccounting": true,
-    "OptechGST": true,
-    "OptechPrinting": true
+    "Project": true
 }

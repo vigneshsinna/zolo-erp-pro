@@ -72,14 +72,16 @@ Follow [document 29](documents/zolo_erp_implementation_docs/29_EXISTING_OPTECH_M
 
 | Module | Target disposition |
 |---|---|
-| `OptechCompany` | Retire or repurpose as generic platform context; no separate textile company authority |
-| `OptechMaster` | Retire duplicate master scaffolding; extend existing products and parties |
+| `OptechCompany` | Retired (2026-10-27, "Hello World" scaffold removed). Company context is the platform `CompanyContext` |
+| `OptechMaster` | Retired (2026-10-27, scaffold removed). Masters are the existing products and parties |
 | `OptechSpeedBilling` | Retired (empty scaffold). Sales/purchase entry is the normal `/sales` and `/purchases` pages; see `documents/DOCUMENT_ENTRY_CONSOLIDATION.md` |
-| `OptechJobWork` | Generic subcontracting/job work capability |
-| `OptechAccounting` | Retire or retain a thin UI over existing accounting |
-| `OptechGST` | Shared IndiaCompliance adapter/module |
-| `OptechPrinting` | Generic document rendering/print capability |
+| `OptechJobWork` | Retired (2026-10-27, scaffold removed). Job work is `/operations/job-work` (capability `operations.job_work`) |
+| `OptechAccounting` | Retired (2026-10-27, scaffold removed). Accounting is `/accounting/*` |
+| `OptechGST` | Retired (2026-10-27, scaffold removed). GST is the shared compliance layer under `/compliance/*` |
+| `OptechPrinting` | Retired (2026-10-27, scaffold removed). Printing is the shared document rendering service |
 | `Manufacturing` | Keep and refactor onto shared inventory/accounting services |
+
+The `Optech*` names still appear in `LegacyModuleAdapter` only to map old `general_setting.modules` values to capability keys during import.
 
 Trace aliases, routes, menus, data and integrations before retirement. Keep scaffold cleanup separate from high-risk transaction migration.
 
@@ -308,6 +310,8 @@ Drafts may be edited under permission. Posted commercial and financial history i
 
 Sales/purchase returns reference the original document and validate remaining returnable quantities, identities, rates, tax snapshots and settlement effects.
 
+Returns are entered only in the Returns tab of the Sales or Purchase workspace (`/sales?returns=1`, `/purchases?returns=1`, optionally `&bill=<id>` to load a bill). `/return-sale`, `/return-purchase`, their `create` URLs, `/compliance/returns` and `/compliance/{kind}/{id}/return` redirect there; their JSON forms remain the tab's data API. Shift+F2 / Shift+F12 open the tab. The tab has no draft tabs yet (the retired returns register had them).
+
 - Physical returns post stock movement according to disposition: restock, quarantine, damaged/expired or other supported treatment.
 - A financial credit/debit note without returned goods does not change stock.
 - An exchange consists of a return, a new sale and the settlement difference.
@@ -344,6 +348,10 @@ AR/AP control accounts reconcile to open items. Initial opening balances enter t
 
 Preserve F4 Contra, F5 Payment, F6 Receipt, F7 Journal and F9 Voucher Hub as a contextual accounting shortcut profile. Contra moves between cash/bank accounts; payments/receipts settle appropriate sources; journals record authorized adjustments. All use the shared posting engine and permissions.
 
+**Open duplicate (decision pending):** two voucher screens exist. Express Voucher Entry (`/accounting/voucher/entry`, sidebar "Voucher Entry · F9") posts through `AccountingService::postJournalEntry`. Voucher Hub (`/accounting/vouchers`) posts through `VoucherService` with open items, allocation, period events and day book. Both claim F9. One must absorb the other's features before the second is retired.
+
+Legacy cash/bank `accounts` (`/accounts`, "Account List (Cash)") and `/money-transfers` remain as legacy operational records that POS and payments still write; they overlap Chart of Accounts and Contra vouchers and are retired only after those writers move to the ledger.
+
 ## 09 Financial and operational reporting
 
 Sources: [accounting](documents/zolo_erp_implementation_docs/10_ACCOUNTING_DOUBLE_ENTRY_OPEN_ITEMS_AND_VOUCHERS.md), [inventory](documents/zolo_erp_implementation_docs/09_INVENTORY_STOCK_LEDGER_BATCH_SERIAL_DIMENSIONS.md), [traceability](documents/zolo_erp_implementation_docs/27_REQUIREMENT_TRACEABILITY_MATRIX.md).
@@ -371,7 +379,9 @@ GST is a shared compliance layer. Product/profile labels do not decide statutory
 
 Tax determination receives seller registration, buyer registration/address, ship-to/place of supply, HSN/SAC, document date and applicable supply flags. Resolve effective-dated categories/rates server-side, including supported intra/inter-state, exempt, non-GST, service and reverse-charge scenarios.
 
-Persist line tax snapshots: taxable value, rate, CGST, SGST, IGST, supported cess, HSN/SAC, place of supply and reverse-charge treatment. Rate changes must not rewrite posted documents. Returns/notes use the relevant original snapshot and required correction rules.
+Persist line tax snapshots: taxable value, rate, CGST, SGST, IGST, supported cess, HSN/SAC, place of supply and reverse-charge treatment. Rate changes must not rewrite posted documents.
+
+A user may change one line's GST rate on a sales or purchase bill (`tax_rate_override`). The server accepts only one of the company's own GST rates (`tax_rates`), refuses a non-zero rate on an exempt/nil/non-GST or unregistered line, and keeps the product's rate in the line snapshot as `product_rate`. The entry page warns on every line whose rate differs from its product. Legacy (non-GST) products accept any 0–100% override. Returns/notes use the relevant original snapshot and required correction rules.
 
 GSTIN format validation is distinct from verification of active registration. A lookup provider uses timeout, caching, audit and a manual fallback. Provider failure must not corrupt party data or invoices.
 
@@ -392,6 +402,29 @@ Use business navigation: Home, Sales, Purchases, Inventory, Accounts, People, Op
 Setup guides company details, authorized branch/FY selection, profile/capabilities, tax registration, account mappings, document series and opening-data validation. Technical module names must not dominate operator workflows.
 
 Fast-entry UI preserves line state, focus, accessible labels, visible validation and responsive behavior. Client-side totals are previews; the server authoritatively validates price, tax, stock and posting.
+
+### One entry point per screen
+
+Every document, register and report has exactly one page. Sidebar entries, dashboard quick actions, page tabs, command bars and shortcuts all link to that page; none links to an older copy. When a screen is replaced, its old URL redirects to the new page and the old view is deleted in the same change.
+
+Navigation has no flag fallbacks. Links never take the form `config('commercial.enabled') ? new : old`; they always point to the new page. Production must therefore run with `ERP_SHARED_COMMERCIAL_ENABLED`, `ERP_COMPLIANCE_ENABLED` and `ERP_OPERATIONS_ENABLED` set to `true`. Flag checks remain only in posting behavior (idempotency keys, shared services), not in which page a link opens.
+
+Retired screens:
+
+| Retired | Replaced by | Old URL now |
+|---|---|---|
+| Add Sale form `/sales/create` | Sales workspace `/sales?new=1` | Redirects |
+| Add Purchase form `/purchases/create` | Purchase workspace `/purchases?new=1` | Redirects |
+| Sales/purchase returns lists `/return-sale`, `/return-purchase` and their `create` forms | Workspace Returns tab | Redirects |
+| Returns register `/compliance/returns` and return form `/compliance/{kind}/{id}/return` | Workspace Returns tab | Redirects (JSON kept for the tab) |
+| Legacy P&L `/report/profit_loss` | `/accounting/profit-loss` | Removed |
+| Legacy balance sheet `/balancesheet` | `/accounting/balance-sheet` | Removed |
+| Topbar "+" quick-add menu | Each list page's own Add button | Removed |
+| `delivery-challans/create`, `goods-received-notes/create` (never implemented) | `?new=1` on the list page | Removed |
+| RTL layout copy `backend/layout/0main_rtl.blade.php` (unused) | `backend/layout/main.blade.php` | Removed |
+| `Optech*` scaffold modules (`/optech…` "Hello World" pages) | See module disposition in section 00 | Removed |
+
+Not duplicates, kept on purpose: Dispatch Register (one list over Customer DC, courier Challan, Delivery and Packing Slip, which are different documents); product list "All Product In Stock" (an e-commerce bulk action, not a stock page).
 
 ### API and integration
 

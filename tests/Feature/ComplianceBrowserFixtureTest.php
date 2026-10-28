@@ -12,8 +12,10 @@ class ComplianceBrowserFixtureTest extends ReturnsDocumentTestCase
     {
         $sale = $this->gstSale();
         $this->postedReturn($sale);
-        foreach (['/compliance/returns', '/compliance/setup', '/compliance/gst/report',
-            '/compliance/documents/sale/'.$sale->id, '/compliance/sale/'.$sale->id.'/return',
+        $this->get('/compliance/returns')->assertRedirect(route('sales.index', ['returns' => 1]));
+        $this->get('/compliance/sale/'.$sale->id.'/return')->assertRedirect(route('sales.index', ['returns' => 1, 'bill' => $sale->id]));
+        foreach (['/compliance/setup', '/compliance/gst/report',
+            '/compliance/documents/sale/'.$sale->id,
             '/compliance/documents/sale/'.$sale->id.'/print?format=a4', '/compliance/documents/sale/'.$sale->id.'/print?format=thermal'] as $url) {
             $this->get($url)->assertOk();
         }

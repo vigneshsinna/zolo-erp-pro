@@ -178,6 +178,14 @@ body.commercial-screen-lock nav.navbar .badge,
 
 .comm-navbar-actions { margin-left: auto; }
 
+/* The top bar is one row: a long document title ("New Purchase Bill (from GRN #...)") is cut with "…" instead of
+   wrapping the bar onto a second line, which pushed the breadcrumb out of view and the TOTAL pill down. */
+.navbar-center-area .comm-navbar-center-wrap { flex-wrap: nowrap !important; }
+.comm-navbar-center-wrap .comm-navbar-title-group { flex-wrap: nowrap; flex: 1 1 0; overflow: hidden; }
+.comm-navbar-center-wrap .comm-navbar-actions { flex-wrap: nowrap; flex-shrink: 0; }
+.comm-navbar-center-wrap .comm-title-badge,
+.comm-navbar-center-wrap .doc-mode-pill { flex-shrink: 0; }
+
 /* Title & Breadcrumb Styling */
 .comm-navbar-center-wrap .comm-title-badge {
     background: var(--z-ink) !important;
@@ -201,9 +209,11 @@ body.commercial-screen-lock nav.navbar .badge,
     font-weight: 700 !important;
     color: var(--z-primary) !important;
     white-space: nowrap !important;
-    line-height: 1 !important;
-    display: inline-flex !important;
-    align-items: center !important;
+    line-height: 1.2 !important;
+    display: block !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 .comm-navbar-center-wrap .doc-mode-pill {
@@ -3903,3 +3913,8 @@ body.dark-mode .comm-register-card .dataTables_wrapper > .row,
 body.dark-mode .comm-register-card .dataTables_wrapper > .row > [class*="col-"] { background: transparent !important; }
 body.dark-mode .comm-register-card .dataTables_wrapper label { color: #cbd5e1 !important; }
 body.dark-mode .comm-register-card .dataTables_wrapper .form-control { background: #0f172a !important; color: #f8fafc !important; border-color: #334155 !important; }
+
+/* Line GST changed from the product's rate (public/js/line-tax-override.js). */
+#order-table-body .row-tax-rate.is-tax-overridden { border-color: var(--z-warning-border); background: var(--z-warning-soft); color: var(--z-warning); font-weight: 700; }
+#order-table-body .row-tax-warning { display: block; margin-top: 2px; font-size: 10px; font-weight: 600; line-height: 1.2; color: var(--z-warning); white-space: nowrap; cursor: help; }
+.tax-override-note { margin-top: 2px; font-size: 10.5px; font-weight: 600; color: var(--z-warning); }

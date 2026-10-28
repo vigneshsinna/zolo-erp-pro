@@ -137,8 +137,8 @@ class ComplianceController extends Controller
         abort_unless($saleAccess || $purchaseAccess, 403);
         $query = fn ($model) => $model::forCompany($context)->where('branch_id', $context->branchId)->where('financial_year_id', $context->financialYearId)->latest()->limit(100)->get();
         $sales = $saleAccess ? $query(Returns::class) : collect(); $purchases = $purchaseAccess ? $query(ReturnPurchase::class) : collect();
-        return $request->expectsJson() ? response()->json(['data' => compact('sales', 'purchases')])
-            : view('backend.compliance.notes', compact('context', 'sales', 'purchases', 'side'));
+        if (!$request->expectsJson()) return redirect()->route($side === 'purchase' ? 'purchases.index' : 'sales.index', ['returns' => 1]);
+        return response()->json(['data' => compact('sales', 'purchases')]);
     }
 
     /** Posted, unreversed bills of this branch that a return tab can pick, newest first. */
@@ -167,8 +167,8 @@ class ComplianceController extends Controller
         $lines = ($kind === 'sale' ? $source->productSales() : $source->productPurchases())->forCompany($context)->with('product')->get();
         $warehouses = Warehouse::forCompany($context)->where('branch_id', $context->branchId)->get();
         $stock = \App\Models\Inventory\StockMovementLine::forCompany($context)->whereHas('movement', fn ($q) => $q->where('source_type', $kind)->where('source_id', $id)->where('projection_mode', 'applied')->whereNull('reversal_of_id'))->with('identity')->get();
-        if ($request->expectsJson()) return response()->json(['data' => $this->returnSource($kind, $source, $lines, $warehouses, $stock, $context)]);
-        return view('backend.compliance.return', compact('context', 'kind', 'source', 'lines', 'warehouses', 'stock'));
+        if (!$request->expectsJson()) return redirect()->route($kind === 'sale' ? 'sales.index' : 'purchases.index', ['returns' => 1, 'bill' => $id]);
+        return response()->json(['data' => $this->returnSource($kind, $source, $lines, $warehouses, $stock, $context)]);
     }
 
     /** The bill, its lines with quantity already returned by posted notes, and the warehouses a return may use. */
@@ -204,7 +204,7 @@ class ComplianceController extends Controller
         if (!$request->isJson()) $data['items'] = array_values(array_filter($data['items'] ?? [], fn ($line) => !empty($line['selected'])));
         $note = app(ReturnService::class)->create($kind, $id, $data, $request->header('Idempotency-Key', $request->input('idempotency_key', '')), $this->context($request), $request->user()->id);
         app(\App\Services\Commercial\CommercialDraftService::class)->forgetPosted($kind === 'sale' ? 'sreturn' : 'preturn', $request->integer('draft_id'), $request->user()->id);
-        return $request->expectsJson() ? response()->json(['data' => $note], 201) : redirect('/compliance/returns')->with('message', 'Note '.$note->reference_no.' is '.$note->status.'.');
+        return $request->expectsJson() ? response()->json(['data' => $note], 201) : redirect()->route($kind === 'sale' ? 'sales.index' : 'purchases.index', ['returns' => 1])->with('message', 'Note '.$note->reference_no.' is '.$note->status.'.');
     }
 
     public function approve(Request $request, string $kind, int $id)

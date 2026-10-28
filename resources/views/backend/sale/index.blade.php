@@ -99,24 +99,24 @@
                     <!-- Compact Row 1: Bill No, Customer PO, Dates, Party & Inline Info -->
                     <div class="fields-compact-row doc-row-a">
                         <div class="field-compact-item u-w-140px u-shrink-0">
-                            <label for="reference_no">Our Bill No</label>
+                            <label for="reference_no" data-help="Your invoice number for this sale, given by the Series. Leave blank to auto-number.|MJ-00004">Our Bill No</label>
                             <input type="text" id="reference_no" name="reference_no" class="form-control" placeholder="Auto series" autocomplete="off">
                         </div>
                         <div class="field-compact-item u-w-165px u-shrink-0">
-                            <label for="customer_po_no">Customer PO / Ref</label>
+                            <label for="customer_po_no" data-help="The customer's purchase order or reference number, printed on the invoice.|PO/2026/118">Customer PO / Ref</label>
                             <input type="text" id="customer_po_no" name="customer_po_no" class="form-control" placeholder="From purchase order">
                         </div>
                         <div class="field-compact-item u-w-125px u-shrink-0">
-                            <label for="bill_date">Bill Date</label>
+                            <label for="bill_date" data-help="Invoice date. GST, stock and accounts post on this date and the credit due date counts from it.|Today">Bill Date</label>
                             <input type="date" id="bill_date" name="created_at" class="form-control" value="{{ date('Y-m-d') }}">
                         </div>
                         <div class="field-compact-item u-w-125px u-shrink-0">
-                            <label for="entry_date">Entry Date</label>
+                            <label for="entry_date" data-help="Date the bill was keyed in. Normally the same as the bill date.|Today">Entry Date</label>
                             <input type="date" id="entry_date" name="entry_date" class="form-control" value="{{ date('Y-m-d') }}">
                         </div>
                         <div class="field-compact-item u-w-250px u-shrink-0">
                             <div class="d-flex align-items-center justify-content-between">
-                                <label for="customer_id">Party *</label>
+                                <label for="customer_id" data-help="Customer you are billing. Picking one fills GSTIN, address and the customer's standard credit days.|Trendline Garments">Party *</label>
                                 <button type="button" class="btn btn-link p-0 btn-open-party-modal u-fs-9_5px u-c-primary u-fw-700 u-tdec-none u-b-none u-bg-none u-cur-pointer" id="btn-quick-new-party" data-party-type="customer">+ New Party</button>
                             </div>
                             <select id="customer_id" name="customer_id" class="form-control selectpicker" data-live-search="true" data-container="body" title="Select Customer" required>
@@ -135,7 +135,7 @@
                             </select>
                         </div>
                         <div class="field-compact-item doc-party-details">
-                        <label>Party details</label>
+                        <label data-help="Read from the customer master. Credit = the customer's standard credit days. Edit the customer to change them.|GSTIN 33AAPFS9902L1ZM · Tiruppur">Party details</label>
                         <div class="party-info-compact-inline u-d-flex" id="party-info-card">
                             <span class="u-fs-10px u-fw-700 u-c-text-2 u-ws-nowrap">GSTIN: <span class="party-gst-badge" id="party-gst-badge">—</span></span>
                             <span id="party-address-text" class="u-fs-10_5px u-c-text-2 u-ov-hidden u-tov-ellipsis u-ws-nowrap u-flex-1">Select a party to see GSTIN and address</span>
@@ -147,14 +147,14 @@
                     <!-- Compact Row 2: Tax Classification, Series, Warehouse, Biller, Logistics Note -->
                     <div class="fields-compact-row doc-row-b has-biller">
                         <div class="field-compact-item doc-seg-item">
-                            <label>Payment</label>
+                            <label data-help="Cash = paid now, no due date. Credit = customer pays later within the Terms days.|Credit for regular customers, Cash for counter sales">Payment</label>
                             <div class="pill-segmented-compact doc-segment" role="group" aria-label="Payment Mode">
                                 <button type="button" class="segment-btn" id="pill-mode-cash" data-mode="Cash">Cash</button>
                                 <button type="button" class="segment-btn active" id="pill-mode-credit" data-mode="Credit">Credit</button>
                             </div>
                         </div>
                         <div class="field-compact-item doc-seg-item">
-                            <label>Items</label>
+                            <label data-help="Product = stock goods, reduces inventory. Service = no stock (freight, labour, job charges). Mixed = both on one bill.|Product for fabric and garments">Items</label>
                             <div class="pill-segmented-compact doc-segment" role="group" aria-label="Product Mode">
                                 <button type="button" class="segment-btn active" data-nature="product">Product</button>
                                 <button type="button" class="segment-btn" data-nature="service">Service</button>
@@ -176,7 +176,7 @@
                             </select>
                         </div>
                         <div class="field-compact-item u-w-145px u-shrink-0">
-                            <label for="series_id">Series</label>
+                            <label for="series_id" data-help="Numbering series that gives Our Bill No. Use separate series to keep e.g. exports apart.|Sale → MJ-00001, MJ-00002">Series</label>
                             <select id="series_id" name="series_id" class="form-control">
                                 <option value="0">Sale</option>
                                 @foreach($documentSeries as $ds)
@@ -185,7 +185,7 @@
                             </select>
                         </div>
                         <div class="field-compact-item u-w-200px u-shrink-0">
-                            <label for="form_warehouse_id">{{ \App\Services\Industry\IndustryProfileService::label('warehouse', 'Warehouse') }} *</label>
+                            <label for="form_warehouse_id" data-help="Godown the sold stock is taken from.|Main godown">{{ \App\Services\Industry\IndustryProfileService::label('warehouse', 'Warehouse') }} *</label>
                             <select id="form_warehouse_id" name="warehouse_id" class="form-control" required>
                                 @foreach($lims_warehouse_list as $wh)
                                     <option value="{{ $wh->id }}">{{ $wh->name }}</option>
@@ -193,7 +193,7 @@
                             </select>
                         </div>
                         <div class="field-compact-item u-w-200px u-shrink-0">
-                            <label for="form_biller_id">Biller *</label>
+                            <label for="form_biller_id" data-help="The business or counter issuing this invoice; its details print on the bill.|zoloERP Textiles">Biller *</label>
                             <select id="form_biller_id" name="biller_id" class="form-control" required>
                                 @foreach($lims_biller_list as $biller)
                                     <option value="{{ $biller->id }}">{{ $biller->name }}</option>
@@ -201,10 +201,10 @@
                             </select>
                         </div>
                         <div class="field-compact-item doc-terms">
-                        <label>Terms</label>
+                        <label for="header-credit-days" data-help="Credit days for this bill only; due date = bill date + days. Starts from the customer's standard days. Cash bills have no credit.|30">Terms</label>
                         <div class="terms-compact-inline">
-                            <span><strong class="u-c-text">Standard</strong></span>
-                            <span>Credit: <strong id="header-credit-days" class="u-c-text">—</strong></span>
+                            <span id="terms-credit">Credit <input type="number" id="header-credit-days" class="terms-days-input" min="0" max="3650" step="1" inputmode="numeric" placeholder="—" aria-label="Credit days"> days</span>
+                            <span id="terms-cash" hidden><strong>Cash</strong> · paid now, no due date</span>
                             <a href="javascript:void(0)" id="btn-quick-logistics" class="u-c-primary u-fw-600 u-ml-auto u-tdec-none u-ws-nowrap">
                                 + Transport &amp; Remarks &rarr;
                             </a>
@@ -2202,20 +2202,13 @@
                         qty: 1
                     });
                 } else {
-                    alert('Product not found: ' + searchTerm);
+                    window.zoloUnknownProduct(searchTerm.split('|')[1] || searchTerm);
                 }
             },
-            error: function() {
-                // Fallback manual line
-                addProductRow({
-                    product_id: 0,
-                    product_name: searchTerm.split('|')[1] || searchTerm,
-                    product_code: searchTerm.split('|')[0] || '',
-                    price: 0,
-                    tax_rate: 0,
-                    unit: 'Unit',
-                    qty: 1
-                });
+            error: function(xhr) {
+                // The search answers 404 for a name that is not a product.
+                if (xhr.status === 404) window.zoloUnknownProduct(searchTerm.split('|')[1] || searchTerm);
+                else alert('Product search failed. Try again.');
             }
         });
     }
@@ -2406,10 +2399,13 @@
                                         tax_rate: parseFloat(data[3]) || 0,
                                         unit: data[6] ? data[6].split(',')[0] : 'Unit'
                                     });
+                                } else if (window.zoloUnknownProduct(val, tr)) {
+                                    return;
                                 }
                                 tr.find('.row-qty').focus().select();
                             },
-                            error: function() {
+                            error: function(xhr) {
+                                if (xhr.status === 404 && window.zoloUnknownProduct(val, tr)) return;
                                 tr.find('.row-qty').focus().select();
                             }
                         });
@@ -3144,7 +3140,10 @@
                 allProducts.unshift(p);
                 lims_product_code.unshift(p.value);
 
-                addProductRow({
+                // A product added for an unknown typed name fills that row instead of adding another.
+                var $newProductRow = window.zoloUnknownProductRow ? window.zoloUnknownProductRow() : null;
+                if ($newProductRow) applyProductToRow($newProductRow, p);
+                else addProductRow({
                     product_id: p.id,
                     product_name: p.name,
                     product_code: p.code,
@@ -3426,15 +3425,51 @@
             $('#party-credit-badge').text('Credit: ' + credit + ' days');
             $('#party-address-text').text(fullAddr || 'Address not registered');
             $('#party-info-card').slideDown(150);
-            $('#header-credit-days').text(credit ? (credit + ' days') : 'Standard');
+            $('#header-credit-days').attr('placeholder', credit);
         } else {
             $('#party-gst-badge').text('—');
             $('#party-address-text').text('Select a party to see GSTIN and address');
             $('#party-credit-badge').text('Credit: — days');
-            $('#header-credit-days').text('—');
+            $('#header-credit-days').attr('placeholder', '—');
         }
     }
     $('#customer_id').on('change', updatePartyCard);
+
+    // --- Terms: credit days for this bill. Blank posts nothing, so the server uses the customer's standard days. ---
+    function setCreditDays(value) {
+        $('#header-credit-days, #hidden-credit-days, #drawer-credit-days').val(value);
+    }
+    $('#header-credit-days').on('input change', function () {
+        $('#hidden-credit-days, #drawer-credit-days').val(this.value);
+    });
+    $('#drawer-credit-days').on('input change', function () {
+        $('#header-credit-days').val(this.value);
+    });
+    function syncTerms() {
+        var method = $('#input-paying-method').val() || 'Credit', cash = method !== 'Credit';
+        $('#terms-credit').prop('hidden', cash);
+        $('#terms-cash').prop('hidden', !cash).find('strong').text(method);
+        $('#header-credit-days').prop('disabled', cash);
+        if (cash) {
+            if (!$('#header-credit-days').is('[data-credit-before-cash]')) $('#header-credit-days').attr('data-credit-before-cash', $('#header-credit-days').val());
+            $('#hidden-credit-days, #drawer-credit-days').val(0);
+        } else if ($('#header-credit-days').is('[data-credit-before-cash]')) {
+            setCreditDays($('#header-credit-days').attr('data-credit-before-cash'));
+            $('#header-credit-days').removeAttr('data-credit-before-cash');
+        }
+    }
+    // The drawer's own handler copies its method into the form first, so read it on the next tick.
+    $('#drawer-paying-method').on('change', function () { setTimeout(syncTerms); });
+    $(document).on('command-center-reset', function () { $('#header-credit-days').removeAttr('data-credit-before-cash'); setCreditDays(''); setTimeout(syncTerms); });
+    $(document).on('command-center-loaded', function () { setTimeout(function () { $('#header-credit-days').val($('#hidden-credit-days').val()); syncTerms(); }); });
+    // A user pick starts the bill from the customer's standard credit days; a restored bill or draft keeps its own.
+    // bootstrap-select passes the clicked index only for a user pick; programmatic .val().trigger('change') passes none.
+    $('#customer_id').on('changed.bs.select', function (event, clickedIndex) {
+        if (typeof clickedIndex !== 'number' || !$(this).val()) return;
+        $('#header-credit-days').removeAttr('data-credit-before-cash');
+        setCreditDays($('#customer_id option:selected').data('credit-days') || 0);
+        syncTerms();
+    });
     // No party is preselected: drop the browser's implicit first-option pick so the strip matches the "Select Customer" title.
     if (!$('#customer_id option[selected]').length) $('#customer_id').prop('selectedIndex', -1);
     updatePartyCard();
@@ -3862,6 +3897,7 @@
         var mode = $(this).data('mode');
         $('#input-paying-method, #drawer-paying-method').val(mode);
         $('#drawer-paying-method').selectpicker('refresh');
+        syncTerms();
     });
 
 

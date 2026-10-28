@@ -30,7 +30,7 @@ class ComplianceRouteAdapter
                             $request->validate(['return_id' => 'required|integer|min:1']);
                             return $controller->exchange($request, $request->integer('return_id'));
                         }
-                        return redirect('/compliance/returns');
+                        return redirect()->route('sales.index', ['returns' => 1]);
                     }
                     $kind = str_contains($name, 'ReturnPurchaseController') ? 'purchase' : 'sale';
                     // /return-purchase and /return-sale stay inside their command center: that side only.

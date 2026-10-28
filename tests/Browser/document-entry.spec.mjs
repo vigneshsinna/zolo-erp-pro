@@ -36,7 +36,7 @@ try {
     }
 
     /* ---------------------------------- the other documents open their existing page */
-    for (const [key, target, label] of [['Shift+F2', /\/return-sale/, 'Sales Return'], ['Alt+F2', /\/delivery-challans/, 'Delivery Challan'], ['Shift+F12', /\/return-purchase/, 'Purchase Return'],
+    for (const [key, target, label] of [['Shift+F2', /\/sales\?returns=1/, 'Sales Return'], ['Alt+F2', /\/delivery-challans/, 'Delivery Challan'], ['Shift+F12', /\/purchases\?returns=1/, 'Purchase Return'],
         ['Alt+F12', /\/goods-received-notes/, 'GRN'], ['Alt+F10', /\/quotations\/create/, 'Quotation']]) {
         await page.goto(BASE + '/dashboard', { waitUntil: 'domcontentloaded' });
         await page.keyboard.press(key);

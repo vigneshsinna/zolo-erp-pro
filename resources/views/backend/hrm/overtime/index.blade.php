@@ -4,12 +4,11 @@
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
-    <div class="container-fluid">
-        <button type="button" class="btn btn-info" data-toggle="modal" data-target="#createModal">
-            <i class="dripicons-plus"></i> {{__('db.Add Overtime')}}
-        </button>
-    </div>
+<x-hrm-command-bar active="overtime">
+    <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#createModal"><i class="dripicons-plus"></i> {{__('db.Add Overtime')}}</button>
+</x-hrm-command-bar>
+
+<section class="section-workspace-view">
     <div class="table-responsive">
         <table id="overtime-table" class="table">
             <thead>

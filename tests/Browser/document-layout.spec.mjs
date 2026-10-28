@@ -39,8 +39,6 @@ try {
             ['quotation','/quotations/create','#quotation-form','#submit-button'],
             ['transfer','/transfers/create','#transfer-form','#submit-button'],
             ['adjustment','/qty_adjustment/create','#adjustment-form','#submit-button'],
-            ['sale-classic','/sales/create','form.payment-form','#submit-button'],
-            ['purchase-classic','/purchases/create','#purchase-form','#submit-btn'],
             ['purchase-existing-edit','/purchases/1/edit','#purchase-form','#submit-button'],
             ['voucher','/accounting/voucher/entry','#voucherEntryForm','#btnSaveVoucher'],
             ['voucher-hub','/accounting/vouchers','#accounting-voucher-form','#post-voucher'],

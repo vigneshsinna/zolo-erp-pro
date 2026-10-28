@@ -15,7 +15,7 @@
             <li><a class="nav-link" href="{{ url('report/sale_report') }}"><i class="dripicons-cart"></i> Sales Report</a></li>
         </ul>
         <div class="comm-actions">
-            <button class="btn btn-secondary btn-action-pill" onclick="window.print()">
+            <button class="btn btn-secondary btn-action-pill" data-erp-print>
                 <i class="dripicons-print"></i> Print
             </button>
         </div>

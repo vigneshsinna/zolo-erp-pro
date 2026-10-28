@@ -19,7 +19,7 @@
             <li><a class="nav-link" href="{{ route('accounting.balance-sheet') }}"><i class="dripicons-document"></i> Balance Sheet</a></li>
         </ul>
         <div class="comm-actions">
-            <button onclick="window.print();" class="btn btn-outline-secondary btn-action-pill">
+            <button data-erp-print class="btn btn-outline-secondary btn-action-pill">
                 <i class="dripicons-print"></i> Print Statement
             </button>
         </div>

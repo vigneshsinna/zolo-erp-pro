@@ -439,7 +439,10 @@ class GstSetupService
         if (!$context || !$this->enabled($context)) return null;
         $registration = $this->registration($context);
         return ['enabled' => true, 'company_state' => $registration->state_code, 'gstin' => $registration->gstin,
-            'registration_type' => $registration->registration_type, 'states' => array_diff_key(Gstin::$states, ['97' => 1])];
+            'registration_type' => $registration->registration_type, 'states' => array_diff_key(Gstin::$states, ['97' => 1]),
+            // The rates a line's GST may be changed to: the company's own slabs (TaxDeterminationService accepts only these).
+            'slabs' => DB::table('tax_rates')->where('company_id', $context->companyId)->distinct()->orderBy('rate')->pluck('rate')
+                ->map(fn ($rate) => (float) $rate)->prepend(0.0)->unique()->values()->all()];
     }
 
     /** Tax rate a document line should start with: the GST slab when set, else the legacy VAT rate. */

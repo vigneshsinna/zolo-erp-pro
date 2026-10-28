@@ -6,13 +6,13 @@
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
+<x-people-command-bar active="sale-agents">
     @if (in_array('sale-agents', $all_permission))
-        <div class="container-fluid">
-            <a href="{{ route('sale-agents.create') }}" class="btn btn-info"><i class="dripicons-plus"></i>
-                {{ __('db.Add Sale Agent') }}</a>
-        </div>
+        <a href="{{ route('sale-agents.create') }}" class="btn btn-primary"><i class="dripicons-plus"></i> {{ __('db.Add Sale Agent') }}</a>
     @endif
+</x-people-command-bar>
+
+<section class="section-workspace-view">
     <div class="table-responsive">
         <table id="employee-table" class="table">
             <thead>

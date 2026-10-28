@@ -176,6 +176,16 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
     Route::post('settings/company', [\App\Http\Controllers\CompanyProfileController::class, 'update'])->name('settings.company.update');
 });
 
+// Developer console: admin logins and the sections switched off for the active company (developer accounts only).
+Route::middleware(['auth', 'company.context', 'common'])->prefix('developer')->name('developer.')->controller(\App\Http\Controllers\DeveloperController::class)->group(function () {
+    Route::get('/', 'index')->name('index');
+    Route::post('admins', 'storeAdmin')->name('admins.store');
+    Route::post('admins/{user}/status', 'status')->whereNumber('user')->name('admins.status');
+    Route::post('admins/{user}/password', 'password')->whereNumber('user')->name('admins.password');
+    Route::post('admins/{user}/companies', 'companies')->whereNumber('user')->name('admins.companies');
+    Route::post('switches', 'switches')->name('switches');
+});
+
 Route::group(['middleware' => 'auth'], function () {
     Route::controller(HomeController::class)->group(function () {
         Route::get('home', 'home');
@@ -323,9 +333,9 @@ Route::group(['middleware' => ['common', 'auth', 'active', 'legacy.company']], f
     Route::post('delivery-challans/{id}/convert-to-sale', [DeliveryChallanController::class, 'convertToSale'])->name('delivery-challans.convert-to-sale');
     Route::post('delivery-challans/{id}/return', [DeliveryChallanController::class, 'returnGoods'])->name('delivery-challans.return');
     Route::post('goods-received-notes/{id}/return', [GoodsReceivedNoteController::class, 'returnGoods'])->name('goods-received-notes.return');
-    Route::resource('delivery-challans', DeliveryChallanController::class);
+    Route::resource('delivery-challans', DeliveryChallanController::class)->except(['create', 'edit']);
     Route::post('goods-received-notes/{id}/convert-to-purchase', [GoodsReceivedNoteController::class, 'convertToPurchase'])->name('goods-received-notes.convert-to-purchase');
-    Route::resource('goods-received-notes', GoodsReceivedNoteController::class);
+    Route::resource('goods-received-notes', GoodsReceivedNoteController::class)->except(['create', 'edit']);
 
 
     Route::controller(TaxController::class)->group(function () {
@@ -586,7 +596,6 @@ Route::group(['middleware' => ['common', 'auth', 'active', 'legacy.company']], f
             Route::post('monthly_purchase/{year}', 'monthlyPurchaseByWarehouse')->name('report.monthlyPurchaseByWarehouse');
             Route::get('best_seller', 'bestSeller');
             Route::post('best_seller', 'bestSellerByWarehouse')->name('report.bestSellerByWarehouse');
-            Route::match(['get', 'post'], 'profit_loss', 'profitLoss')->name('report.profitLoss');
             Route::get('product_report', 'productReport')->name('report.product');
             Route::post('product_report_data', 'productReportData');
             Route::match(['get', 'post'], 'purchase', 'purchaseReport')->name('report.purchase');
@@ -752,7 +761,6 @@ Route::group(['middleware' => ['common', 'auth', 'active', 'legacy.company']], f
     //accounting routes
     Route::controller(AccountsController::class)->group(function () {
         Route::get('make-default/{id}', 'makeDefault');
-        Route::get('balancesheet', 'balanceSheet')->name('accounts.balancesheet');
         Route::post('account-statement', 'accountStatement')->name('accounts.statement');
         Route::get('accounts/all', 'accountsAll')->name('account.all');
     });

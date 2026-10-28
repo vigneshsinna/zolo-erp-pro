@@ -51,7 +51,7 @@ class Common
             View::share('subdomain', $subdomain);
         }
         //setting language
-        View::composer(['backend.layout.0main_rtl', 'backend.layout.main'], function ($view) {
+        View::composer(['backend.layout.main'], function ($view) {
             $languages = Cache::rememberForever('languages_list', function () {
                 if (Schema::hasTable('languages')) {
                     return Language::select('id', 'name')->orderBy('name')->get();

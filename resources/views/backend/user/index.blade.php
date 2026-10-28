@@ -22,12 +22,13 @@
     <div class="alert alert-danger alert-dismissible text-center"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>{{ session()->get('not_permitted') }}</div>
 @endif
 
-<section>
+<x-people-command-bar active="users">
     @if(in_array("users-add", $all_permission))
-        <div class="container-fluid">
-            <a href="{{route('user.create')}}" class="btn btn-info"><i class="dripicons-plus"></i> {{__('db.Add User')}}</a>
-        </div>
+        <a href="{{route('user.create')}}" class="btn btn-primary"><i class="dripicons-plus"></i> {{__('db.Add User')}}</a>
     @endif
+</x-people-command-bar>
+
+<section class="section-workspace-view">
     <div class="table-responsive">
         <table id="user-table" class="table">
             <thead>

@@ -96,7 +96,7 @@
                                                 <div class="input-group">
                                                     <select name="category_id" required class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Category...') }}">
                                                         @foreach($lims_category_list as $category)
-                                                            <option value="{{$category->id}}">{{$category->name}}</option>
+                                                            <option value="{{$category->id}}" data-hsn="{{ $category->default_hsn_code ?? '' }}">{{$category->name}}</option>
                                                         @endforeach
                                                     </select>
                                                     <div class="input-group-append">
@@ -171,7 +171,7 @@
                                         <div id="profit_margin" class="col-6">
                                             <div class="form-group">
                                                 <label>{{__('db.Profit Margin')}}</label>
-                                                <input type="number" name="profit_margin" required class="form-control" step="0.01" placeholder="0.00">
+                                                <input type="number" name="profit_margin" class="form-control" step="0.01" placeholder="0.00">
                                                 <span class="validation-msg text-danger small"></span>
                                             </div>
                                         </div>
@@ -194,7 +194,7 @@
                                         </div>
                                         <div class="col-6">
                                             <div class="form-group">
-                                                <label>{{__('db.Daily Sale Objective')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Minimum qty which must be sold in a day')}}"></i></label>
+                                                <label>{{__('db.Daily Sale Objective')}}</label>
                                                 <input type="number" name="daily_sale_objective" class="form-control" step="any" placeholder="0">
                                             </div>
                                         </div>
@@ -222,7 +222,7 @@
 
                                         <div class="col-6">
                                             <div class="form-group">
-                                                <label>{{__('db.Tax Method')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Exclusive: Poduct price = Actual product price + Tax Inclusive: Actual product price = Product price - Tax')}}"></i></label>
+                                                <label>{{__('db.Tax Method')}}</label>
                                                 <select name="tax_method" class="form-control selectpicker">
                                                     <option value="1">{{__('db.Exclusive')}}</option>
                                                     <option value="2">{{__('db.Inclusive')}}</option>
@@ -672,16 +672,6 @@
                                 </div>
                             </div>
 
-                            <!-- Bottom Action Bar -->
-                            <div class="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
-                                <span class="text-muted small"><i class="dripicons-information mr-1"></i> {{ __('db.The field labels marked with * are required input fields') }}.</span>
-                                <div class="d-flex align-items-center gap-2">
-                                    <a href="{{route('products.index')}}" class="btn btn-sm btn-outline-secondary">{{__('db.Cancel')}}</a>
-                                    <button type="button" class="btn btn-sm btn-primary zolo-btn-primary" onclick="$('#submit-btn').click();">
-                                        <i class="dripicons-checkmark mr-1"></i> {{__('db.add_product')}}
-                                    </button>
-                                </div>
-                            </div>
                         </form>
                     </div>
                 </div>
@@ -1399,12 +1389,15 @@
             $("#variant-section, #variant-option, #diffPrice-option, #diffPrice-section, #batch-option").hide(300);
         }
         else if($(this).val() == 'service') {
+            // A service is still bought and billed per unit (job work per metre, freight per trip), so unit and cost stay.
             $("input[name='cost']").prop('required',false);
-            $("select[name='unit_id']").prop('required',false);
-            $("input[name='file']").prop('required',true);
-            hide();
-            $("#profit_margin").hide(300);
-            $("#stock-section").show(300);
+            $("select[name='unit_id']").prop('required',true);
+            $("input[name='file']").prop('required',false);
+            $("#cost, #unit, #profit_margin").show(300);
+            $("#alert-qty").hide(300);
+            $("#stock-section").hide(300);
+            $("#chk_initial_stock").prop("checked", false);
+            $("#initial-stock-section").hide(300);
             $("#combo").hide(300);
             $("#digital").hide(300);
             $("input[name='price']").prop('disabled',false);
@@ -1427,6 +1420,14 @@
             $("input[name='price']").prop('disabled',false);
         }
         applyDynamicGridSpans();
+    });
+
+    // A blank HSN takes the category's default when the product is saved: show which code that will be.
+    $('select[name="category_id"]').on('change', function () {
+        var $option = $(this).find('option:selected');
+        var hsn = $option.attr('data-hsn') || '';
+        $('input[name="hsn_code"]').attr('placeholder', !$option.val() ? 'Blank: category default on creation'
+            : (hsn ? 'Blank: ' + hsn + ' (default of ' + $option.text().trim() + ')' : 'No default in ' + $option.text().trim() + ': type the code'));
     });
 
     $('select[name="unit_id"]').on('change', function() {
@@ -1644,7 +1645,8 @@
             marginType === "percentage" ? "% value" : "Flat amount"
         );
 
-        recalcPrice();
+        // Switching % / flat keeps the price already set and restates the margin in the new terms.
+        if (parseFloat($('input[name="price"]').val()) > 0) recalcMargin(); else recalcPrice();
     }).trigger("change");
 
     // Recalc price function
@@ -1664,6 +1666,8 @@
     function recalcMargin() {
         let price = parseFloat($('input[name="price"]').val()) || 0;
         let cost  = parseFloat($('input[name="cost"]').val()) || 0;
+        // Without a cost a percentage margin has no meaning (it would be Infinity and blank the field): keep it as is.
+        if (marginType === "percentage" && cost <= 0) return;
 
         let margin =
             marginType === "percentage"
@@ -2209,6 +2213,26 @@
             this.removeAllFiles(true);
         }
     });
+    // Quick-add (brand / category / unit): a refused save shows its reason inside the dialog; a saved one is picked
+    // on the form and the dialog is cleared for the next use.
+    function quickAddError(modal, xhr) {
+        var json = (xhr && xhr.responseJSON) || {};
+        var message = json.errors ? Object.values(json.errors)[0][0] : (json.message || 'Could not save. Check the fields and try again.');
+        var $box = $(modal).find('.quick-add-error');
+        if (!$box.length) $box = $('<div class="alert alert-danger small quick-add-error" role="alert"></div>').prependTo($(modal).find('.modal-body'));
+        $box.text(message).show();
+    }
+    function quickAddDone(modal, form) {
+        $(modal).find('.quick-add-error').remove();
+        if (form) form.reset();
+        $(modal).modal('hide');
+    }
+    function pickOption(name, id, label) {
+        var $select = $('select[name="' + name + '"]');
+        if (!$select.find('option[value="' + id + '"]').length) $select.append($('<option>').val(id).text(label));
+        $select.val(String(id)).selectpicker('refresh').trigger('change');
+    }
+    $('#addBrand, #category-modal, #createUnitModal').on('hidden.bs.modal', function () { $(this).find('.quick-add-error').remove(); });
     // brand create ajax start
     $('.brand-submit-btn').on("click", function() {
         $.ajax({
@@ -2216,13 +2240,10 @@
             url:'{{route('brand.store')}}',
             data: $("#brand-form").serialize(),
             success:function(response) {
-                key = response['id'];
-                value = response['title'];
-                $('select[name="brand_id"]').append('<option value="'+ key +'">'+ value +'</option>');
-                $('select[name="brand_id"]').val(key);
-                $('.selectpicker').selectpicker('refresh');
-                $("#addBrand").modal('hide');
-            }
+                pickOption('brand_id', response['id'], response['title']);
+                quickAddDone('#addBrand', $("#brand-form")[0]);
+            },
+            error: function (xhr) { quickAddError('#addBrand', xhr); }
         });
     });
     $('.category-model').on("click", function() {
@@ -2236,13 +2257,12 @@
             url:'{{route('category.store')}}',
             data: $("#category-form").serialize(),
             success:function(response) {
-                key = response['id'];
-                value = response['name'];
-                $('select[name="category_id"]').append('<option value="'+ key +'">'+ value +'</option>');
-                $('select[name="category_id"]').val(key);
-                $('.selectpicker').selectpicker('refresh');
-                $("#category-modal").modal('hide');
-            }
+                pickOption('category_id', response['id'], response['name']);
+                $('select[name="category_id"] option[value="' + response['id'] + '"]').attr('data-hsn', response['default_hsn_code'] || '');
+                $('select[name="category_id"]').trigger('change');
+                quickAddDone('#category-modal', $("#category-form")[0]);
+            },
+            error: function (xhr) { quickAddError('#category-modal', xhr); }
         });
     });
     // Tax Ajax Create
@@ -2279,23 +2299,20 @@ $(document).on('click', '#create_unit', function (e) {
             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
         },
         success: function (response) {
-            if (response.success) {
-                // close modal
-                $('#createUnitModal').modal('hide');
-
-                // clear form
-                form.trigger('reset');
-
-                // append new unit to dropdown (example)
-                if (response.unit) {
-                    $("select[name='unit_id']").append(
-                        `<option value="${response.unit.id}">${response.unit.unit_name}</option>`
-                    ).selectpicker('refresh');
-                }
-
+            if (!response.success || !response.unit) { quickAddError('#createUnitModal', null); return; }
+            var unit = response.unit;
+            // A base unit becomes the product unit; a sub-unit (Dozen of Piece) selects its base, whose sale and
+            // purchase lists then include the new sub-unit.
+            if (!unit.base_unit) {
+                pickOption('unit_id', unit.id, unit.unit_name);
+                $('#base_unit_create').append($('<option>').val(unit.id).text(unit.unit_name)).selectpicker('refresh');
             } else {
+                $("select[name='unit_id']").val(String(unit.base_unit)).selectpicker('refresh').trigger('change');
             }
-        }
+            quickAddDone('#createUnitModal', form[0]);
+            $('#base_unit_create').selectpicker('refresh');
+        },
+        error: function (xhr) { quickAddError('#createUnitModal', xhr); }
     });
 
     // Initial calculation of dynamic responsive grid spans

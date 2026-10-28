@@ -4,10 +4,11 @@
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
-    <div class="container-fluid">
-        <button class="btn btn-info" data-toggle="modal" data-target="#gift_card-modal"><i class="dripicons-plus"></i> {{__('db.Add Gift Card')}}</button>
-    </div>
+<x-settings-command-bar>
+    <button class="btn btn-primary" data-toggle="modal" data-target="#gift_card-modal"><i class="dripicons-plus"></i> {{__('db.Add Gift Card')}}</button>
+</x-settings-command-bar>
+
+<section class="settings-workspace-view">
     <div class="table-responsive">
         <table id="gift_card-table" class="table">
             <thead>

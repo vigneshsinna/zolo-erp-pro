@@ -18,7 +18,7 @@
         <a class="comm-nav-btn comm-nav-btn-secondary active" id="tab-all-purchases" href="javascript:void(0)"><i class="dripicons-list"></i> All</a>
         <a class="comm-nav-btn comm-nav-btn-secondary" href="{{ route('goods-received-notes.index') }}"><i class="dripicons-box"></i> Supplier GRN</a>
         <a class="comm-nav-btn comm-nav-btn-secondary" href="{{ route('transfers.index') }}"><i class="dripicons-swap"></i> Transfers</a>
-        <a class="comm-nav-btn comm-nav-btn-secondary" href="{{ config('commercial.enabled') && config('compliance.enabled') ? route('purchases.index', ['returns' => 1]) : route('return-purchase.index') }}"><i class="dripicons-return"></i> Returns</a>
+        <a class="comm-nav-btn comm-nav-btn-secondary" href="{{ route('purchases.index', ['returns' => 1]) }}"><i class="dripicons-return"></i> Returns</a>
     </div>
 
     <!-- Right Controls: Live Total, Details, Bill List, Add New, Hide Bar -->
@@ -1971,20 +1971,13 @@
                         qty: 1
                     });
                 } else {
-                    alert('Product not found: ' + searchTerm);
+                    window.zoloUnknownProduct(searchTerm.split('|')[1] || searchTerm);
                 }
             },
-            error: function() {
-                // Fallback manual line
-                addProductRow({
-                    product_id: 0,
-                    product_name: searchTerm.split('|')[1] || searchTerm,
-                    product_code: searchTerm.split('|')[0] || '',
-                    cost: 0,
-                    tax_rate: 0,
-                    unit: 'Unit',
-                    qty: 1
-                });
+            error: function(xhr) {
+                // The search answers 404 for a name that is not a product.
+                if (xhr.status === 404) window.zoloUnknownProduct(searchTerm.split('|')[1] || searchTerm);
+                else alert('Product search failed. Try again.');
             }
         });
     }
@@ -2176,10 +2169,13 @@
                                         tax_rate: parseFloat(data[3]) || 0,
                                         unit: data[6] ? data[6].split(',')[0] : 'Unit'
                                     });
+                                } else if (window.zoloUnknownProduct(val, tr)) {
+                                    return;
                                 }
                                 tr.find('.row-qty').focus().select();
                             },
-                            error: function() {
+                            error: function(xhr) {
+                                if (xhr.status === 404 && window.zoloUnknownProduct(val, tr)) return;
                                 tr.find('.row-qty').focus().select();
                             }
                         });
@@ -2918,7 +2914,10 @@
                 allProducts.unshift(p);
                 lims_product_code.unshift(p.value);
 
-                addProductRow({
+                // A product added for an unknown typed name fills that row instead of adding another.
+                var $newProductRow = window.zoloUnknownProductRow ? window.zoloUnknownProductRow() : null;
+                if ($newProductRow) applyProductToRow($newProductRow, p);
+                else addProductRow({
                     product_id: p.id,
                     product_name: p.name,
                     product_code: p.code,

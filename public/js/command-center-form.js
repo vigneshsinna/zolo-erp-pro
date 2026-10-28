@@ -32,7 +32,11 @@
             if (!Number(id)) {
                 id = grid.products.find(p => p.name.toLowerCase() === $row.find('.row-item-name').val().trim().toLowerCase())?.id;
             }
-            if (!Number(id)) throw new Error('Select a catalog product for every row. Use Create item for a new product.');
+            if (!Number(id)) {
+                const name = $row.find('.row-item-name').val().trim();
+                if (window.zoloUnknownProduct?.(name, $row)) throw new Error('Save the new product "' + name + '", then save the bill again.');
+                throw new Error('Select a catalog product for every row. Use Create item for a new product.');
+            }
             const unit = config.units.find(u => u.unit_name === $row.find('.row-unit-select').val());
             const line = {
                 product_id: id, product_name: $row.find('.row-item-name').val(), product_code: $row.find('.row-product-code').val(),
@@ -43,6 +47,8 @@
                 product_batch_id: $row.attr('data-batch-id') || null,
                 ...(purchase && $row.find('.row-batch-val').val() ? {batch: {batch_no: $row.find('.row-batch-val').val(), expired_date: $row.find('.row-expire-val').val() || null}} : {})
             };
+            const taxOverride = window.zoloLineTax?.override(row);
+            if (taxOverride !== undefined) line.tax_rate_override = taxOverride;
             if ($row.attr('data-order-item-id')) line.order_item_id = Number($row.attr('data-order-item-id'));
             if ($row.attr('data-variant-id')) line.variant_id = Number($row.attr('data-variant-id'));
             const orderBatch = $row.attr('data-order-batch-no');
@@ -80,6 +86,8 @@
                 const $row = $(this), $tax = $row.find('.row-tax-rate');
                 if (!$tax.find('option').toArray().some(option => Number(option.value) === Number(line.tax_rate))) $tax.append(new Option(line.tax_rate + '%', line.tax_rate));
                 $tax.val(String(Number(line.tax_rate)));
+                const productRate = line._tax_snapshot?.product_rate ?? line.product_tax_rate ?? (line.tax_rate_override === undefined ? line.tax_rate : undefined);
+                if (productRate !== undefined) window.zoloLineTax?.productRate(this, productRate);
                 $row.find('.row-tax-amount-input').val(line.tax.toFixed(4));
                 $row.find('.row-subtotal-input, .row-total').val(line.total.toFixed(4));
             });
@@ -189,10 +197,8 @@
         $('#quick-item-type').val($('[data-nature].active').data('nature') === 'service' ? 'service' : 'standard');
         $('#quick-item-type').selectpicker('refresh');
     });
-    $('#side-export-print, #side-export-pdf').on('click', () => {
-        $('body').addClass('command-center-printing-list'); window.print();
-    });
-    $('#side-export-excel, #side-export-csv').on('click', () => {
+    // The bills shown in the side list, header row first: the register that prints and exports.
+    const registerRows = () => {
         const rows = [['Bill number', purchase ? 'Supplier' : 'Customer', 'Date', 'Status', 'Amount']];
         const textile = !purchase && config.textile;
         if (textile) rows[0].push('Bale No', 'Transporter');
@@ -203,6 +209,17 @@
             if (textile) row.push($card.find('.side-card-transport').attr('data-bale-no') || '', $card.find('.side-card-transport').attr('data-transporter') || '');
             rows.push(row);
         });
+        return rows;
+    };
+    $('#side-export-print, #side-export-pdf').on('click', () => {
+        const [head, ...body] = registerRows();
+        if (!window.ErpPrint) { $('body').addClass('command-center-printing-list'); window.print(); return; }
+        const total = body.reduce((sum, row) => sum + (Number(row[4]) || 0), 0);
+        const footer = head.map((title, i) => i === 0 ? 'Total' : i === 4 ? total.toFixed(2) : '');
+        window.ErpPrint.table(head, body.map(row => row.map(value => String(value ?? ''))), footer, (purchase ? 'Purchase' : 'Sales') + ' Register');
+    });
+    $('#side-export-excel, #side-export-csv').on('click', () => {
+        const rows = registerRows();
         const csv = rows.map(row => row.map(value => '"' + String(value ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""') + '"').join(',')).join('\r\n');
         const url = URL.createObjectURL(new Blob(['\ufeff' + csv], {type: 'text/csv;charset=utf-8;'}));
         const link = document.createElement('a'); link.href = url; link.download = config.kind + '-register.csv'; link.click();

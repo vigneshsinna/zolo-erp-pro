@@ -4,15 +4,16 @@
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
-    <div class="container-fluid">
-        @can('billers-add')
-            <a href="{{route('biller.create')}}" class="btn btn-info"><i class="dripicons-plus"></i> {{__('db.Add Biller')}}</a>&nbsp;
-        @endcan
-        @can('billers-import')
-            <a href="#" data-toggle="modal" data-target="#importbiller" class="btn btn-primary"><i class="dripicons-copy"></i> {{__('db.Import Biller')}}</a>
-        @endcan
-    </div>
+<x-people-command-bar active="billers">
+    @can('billers-import')
+        <a href="#" data-toggle="modal" data-target="#importbiller" class="btn btn-secondary"><i class="dripicons-copy"></i> {{__('db.Import Biller')}}</a>
+    @endcan
+    @can('billers-add')
+        <a href="{{route('biller.create')}}" class="btn btn-primary"><i class="dripicons-plus"></i> {{__('db.Add Biller')}}</a>
+    @endcan
+</x-people-command-bar>
+
+<section class="section-workspace-view">
     <div class="table-responsive">
         <table id="biller-table" class="table">
             <thead>

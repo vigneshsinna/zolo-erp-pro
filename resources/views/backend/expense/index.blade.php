@@ -250,6 +250,9 @@
     $("ul#expense").siblings('a').attr('aria-expanded', 'true');
     $("ul#expense").addClass("show");
     $("ul#expense #exp-list-menu").addClass("active");
+    @if(request()->boolean('new'))
+    $(function () { $('#expense-modal').modal('show'); });
+    @endif
 
     var expense_id = [];
     var user_verified = <?php echo json_encode(config('app.user_verified')); ?>;

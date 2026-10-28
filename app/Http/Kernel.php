@@ -37,6 +37,8 @@ class Kernel extends HttpKernel
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            // Sorted after the company context (see $middlewarePriority): needs the active company.
+            \App\Http\Middleware\EnforceMenuSwitches::class,
         ],
 
         'api' => [
@@ -98,6 +100,7 @@ class Kernel extends HttpKernel
         \App\Http\Middleware\ResolveCompanyContext::class,
         \App\Http\Middleware\ResolveLegacyCompanyContext::class,
         \App\Http\Middleware\Common::class,
+        \App\Http\Middleware\EnforceMenuSwitches::class,
         \Illuminate\Routing\Middleware\SubstituteBindings::class,
         \Illuminate\Auth\Middleware\Authorize::class,
     ];

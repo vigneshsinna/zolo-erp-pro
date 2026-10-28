@@ -3,23 +3,17 @@
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
+<x-hrm-command-bar active="payroll">
+    <button class="btn btn-secondary" type="button" data-toggle="collapse" data-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+        <i class="dripicons-filter"></i> {{ __('db.Filter') }}
+    </button>
+    <button class="btn btn-primary" data-toggle="modal" data-target="#addMultipleModal">
+        <i class="dripicons-plus"></i> {{ __("db.Generate Payroll") }}
+    </button>
+</x-hrm-command-bar>
+
+<section class="section-workspace-view">
     <div class="container-fluid">
-        {{-- <button class="btn btn-info" data-toggle="modal" data-target="#createModal"><i class="dripicons-plus"></i>
-            {{ __('db.Add Payroll') }} </button> --}}
-
-        <!-- Add Multiple Payroll Button -->
-        <button class="btn btn-success" data-toggle="modal" data-target="#addMultipleModal">
-            <i class="dripicons-plus"></i> {{ __("db.Generate Payroll") }}
-        </button>
-
-        <div class="d-inline-block ml-2">
-            <button class="btn btn-secondary" type="button" data-toggle="collapse" data-target="#filterCollapse"
-                aria-expanded="false" aria-controls="filterCollapse">
-                <i class="dripicons-filter"></i> {{ __('db.Filter') }}
-            </button>
-        </div>
-
         <div class="collapse mt-3" id="filterCollapse">
             <div class="card card-body">
                 <div class="row g-3">

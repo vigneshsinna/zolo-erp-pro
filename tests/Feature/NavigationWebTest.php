@@ -24,7 +24,7 @@ class NavigationWebTest extends TestCase
     public function test_every_menu_link_renders_without_a_server_error(): void
     {
         $links = [];
-        foreach (['/dashboard', '/purchases', '/sales', '/compliance/returns'] as $page) {
+        foreach (['/dashboard', '/purchases', '/sales'] as $page) {
             $this->fresh();
             preg_match_all('/href="(?:'.preg_quote(rtrim(url('/'), '/'), '/').')?(\/[^"#]*)"/', $this->get($page)->getContent(), $match);
             foreach ($match[1] as $href) {

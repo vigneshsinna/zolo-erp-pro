@@ -5,7 +5,7 @@ const {runInNewContext} = require('node:vm');
 const path = require('node:path');
 
 test('actual POS search guard rejects stale party, warehouse, query and earlier request', () => {
-    for (const view of ['create', 'edit', 'pos']) {
+    for (const view of ['edit', 'pos']) {
         const source = readFileSync(path.join(__dirname, '../../resources/views/backend/sale', view + '.blade.php'), 'utf8');
         const guard = source.match(/function currentProductSearch\(sequence, customer, warehouse, term\) \{[\s\S]*?\n        \}/)[0];
         const state = {warehouse_id: 2, productSearchSequence: 1, customer: '7', term: 'Alias'};

@@ -204,4 +204,23 @@ class GstSetupTest extends ReturnsDocumentTestCase
         DB::table('tax_registrations')->update(['effective_to' => '2026-01-31']);
         $this->assertNull($this->gst()->entryConfig($this->context()));
     }
+
+    public function test_line_gst_may_be_changed_to_another_company_slab_and_keeps_the_product_rate(): void
+    {
+        $product = $this->gstProduct();
+        // A second slab (5%) in its own category, copied from the fixture's 18% one.
+        $category = (array) DB::table('tax_categories')->where('id', $product->tax_category_id)->first();
+        unset($category['id']); $category['name'] = 'GST 5% test';
+        $categoryId = DB::table('tax_categories')->insertGetId($category);
+        $rate = (array) DB::table('tax_rates')->where('tax_category_id', $product->tax_category_id)->first();
+        unset($rate['id']); DB::table('tax_rates')->insert(['tax_category_id' => $categoryId, 'rate' => 5] + $rate);
+        $this->assertContains(5.0, $this->gst()->entryConfig($this->context())['slabs']);
+
+        $line = ['product_id' => $product->id, 'qty' => 2, 'net_unit_cost' => 5, 'purchase_unit_id' => $product->purchase_unit_id];
+        $request = fn (array $extra) => $this->postJson('/commercial/purchase/preview', ['supplier_id' => 1, 'business_date' => '2026-10-03', 'items' => [$line + $extra]]);
+        $request(['tax_rate_override' => 5])->assertOk()->assertJsonPath('data.items.0.tax', 0.5)
+            ->assertJsonPath('data.items.0._tax_snapshot.rate', 5)->assertJsonPath('data.items.0._tax_snapshot.product_rate', 18);
+        $request([])->assertOk()->assertJsonPath('data.items.0.tax', 1.8)->assertJsonPath('data.items.0._tax_snapshot.product_rate', 18);
+        $request(['tax_rate_override' => 7])->assertStatus(422)->assertJsonFragment(['GST 7% is not one of your GST rates (Settings › GST).']);
+    }
 }

@@ -158,11 +158,16 @@ class ManufacturingJobWorkTest extends OperationsTestCase
         $this->assertEquals(500, $stockValue(), '200 material + 300 processing');
 
         // Edit bill: the wrong bill is reversed with its reason and the corrected one is booked against the same GRN.
-        $fixed = $service->rebill($receipt->id, $bill(2) + ['bill_id' => $wrong, 'reason' => 'Agreed rate is 2'], 'bill-fixed', $this->context(), 1)->service_purchase_id;
+        $theirs = ['supplier_invoice_no' => 'KGF/JW/118', 'supplier_invoice_date' => '2026-10-02', 'due_date' => '2026-11-02', 'remarks' => 'Shade OK'];
+        $fixed = $service->rebill($receipt->id, $bill(2) + $theirs + ['bill_id' => $wrong, 'reason' => 'Agreed rate is 2'], 'bill-fixed', $this->context(), 1)->service_purchase_id;
         $this->assertNotEquals($wrong, $fixed);
+        $row = DB::table('purchases')->where('id', $fixed)->first();
+        $this->assertSame(['KGF/JW/118', '2026-10-02'], [$row->supplier_invoice_no, substr((string) $row->supplier_invoice_date, 0, 10)]);
+        $this->assertSame(['2026-11-02', 'Shade OK'], [json_decode($row->attributes_json, true)['due_date'], json_decode($row->attributes_json, true)['job_work_remarks']]);
+        $this->assertStringEndsWith(' · Shade OK', $row->note);
         $this->assertNotNull(DB::table('purchases')->where('id', $wrong)->value('reversed_at'));
         $this->assertEquals(400, $stockValue(), 'only the corrected charge stays on the processed stock');
-        $this->assertSame($fixed, $service->rebill($receipt->id, $bill(2) + ['bill_id' => $wrong, 'reason' => 'Agreed rate is 2'], 'bill-fixed', $this->context(), 1)->service_purchase_id,
+        $this->assertSame($fixed, $service->rebill($receipt->id, $bill(2) + $theirs + ['bill_id' => $wrong, 'reason' => 'Agreed rate is 2'], 'bill-fixed', $this->context(), 1)->service_purchase_id,
             'resubmitting the same correction changes nothing');
 
         // Editing it as an ordinary purchase would lose the link, so Purchase Bills refuses it.

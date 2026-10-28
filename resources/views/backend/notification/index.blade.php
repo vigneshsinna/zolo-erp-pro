@@ -1,4 +1,5 @@
 @extends('backend.layout.main') @section('content')
+<x-settings-command-bar />
 
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />

@@ -4,10 +4,11 @@
 <x-error-message key="not_permitted" />
 <x-error-message key="coupon_no" />
 
-<section>
-    <div class="container-fluid">
-        <button class="btn btn-info" data-toggle="modal" data-target="#create-modal"><i class="dripicons-plus"></i> {{__('db.Add Coupon')}}</button>
-    </div>
+<x-settings-command-bar>
+    <button class="btn btn-primary" data-toggle="modal" data-target="#create-modal"><i class="dripicons-plus"></i> {{__('db.Add Coupon')}}</button>
+</x-settings-command-bar>
+
+<section class="settings-workspace-view">
     <div class="table-responsive">
         <table id="coupon-table" class="table u-w-100pct">
             <thead>

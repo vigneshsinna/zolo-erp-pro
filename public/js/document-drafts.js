@@ -10,7 +10,7 @@
  * payments or a document number. Pages keep posting through their own forms; the server drops the draft on success.
  *
  * Adapter: {kind, label, baseUrl, enabled, form?, snapshot(), restore(payload), reset(options), party(), focus(),
- *   inDocument(target), rows?, handles(entry), stable?(state), closed?(), idle?(), legacy?(payload),
+ *   inDocument(target), rows?, handles(entry), stable?(state), empty?(state), closed?(), idle?(), legacy?(payload),
  *   foreign?(payload) -> url when the draft must open on another page, startNew?() -> page-owned new start,
  *   listOnly? (a register page that only lists the drafts), localShortcuts?}
  */
@@ -173,6 +173,8 @@
             if (!explicit && state === tab.baseline) return Promise.resolve(true);
             if (!tab.draftId && tabs.filter(other => other.draftId).length >= limit) { showBanner(limitMessage()); return Promise.resolve(false); }
             const sent = snapshot();
+            // Autosave never creates a draft for a form holding only its defaults (no party, no item).
+            if (!tab.draftId && !explicit && adapter.empty && adapter.empty(sent)) { tab.baseline = stable(sent); edited = false; return Promise.resolve(true); }
             return new Promise(resolve => {
                 request('POST', '/drafts', {payload: sent, id: tab.draftId, version: tab.version || 0, ...adapter.party()}).done(response => {
                     const saved = response.data;
@@ -247,7 +249,8 @@
             if (!enabled || listOnly) return true;
             const tab = current();
             const dirty = isDirty();
-            if (tab && !tab.draftId && !dirty) { tabs.splice(tabs.indexOf(tab), 1); activeId = null; render(); return true; }
+            const unused = tab && !tab.draftId && (!dirty || (adapter.empty && adapter.empty(snapshot())));
+            if (unused) { tabs.splice(tabs.indexOf(tab), 1); activeId = null; render(); return true; }
             if (!dirty) return true;
             return saveActive();
         }
@@ -363,7 +366,9 @@
          */
         async function newDocument(options = {}) {
             const tab = current();
-            if (isDirty()) {
+            // A never-saved form holding only defaults is simply dropped, not kept as an empty draft.
+            const emptyNew = !(tab && tab.draftId) && !!adapter.empty && !listOnly && adapter.empty(snapshot());
+            if (isDirty() && !emptyNew) {
                 if (!(await saveActive({explicit: true}))) {
                     const choice = await ask();
                     if (choice === 'cancel') return false;
@@ -441,6 +446,7 @@
             if (!tab && state === untabbedBaseline) return;
             if (tab && (tab.conflict || tab.blocking.length || state === tab.baseline)) return;
             if (!tab && tabs.length >= limit) return;
+            if (!(tab && tab.draftId) && adapter.empty && adapter.empty(snapshot())) return;
             const target = tab || ensureTab();
             try {
                 fetch(adapter.baseUrl + '/drafts', {method: 'POST', keepalive: true, credentials: 'same-origin',

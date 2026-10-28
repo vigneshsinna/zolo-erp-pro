@@ -120,12 +120,21 @@ class TaxDeterminationService
             $chargeable = $category->supply_type === 'taxable' && ($sellerRegistered || $reverse) && !$underLut;
             $gstRate = $chargeable ? $pricing->number($rate->rate, 'rate') : 0;
             $cessRate = $chargeable ? $pricing->number($rate->cess_rate, 'cess_rate') : 0;
+            // The user may change a line's GST rate; it must be one of the company's own GST rates, and the snapshot keeps the product's rate.
+            $productRate = $gstRate;
+            if (isset($line['tax_rate_override']) && $line['tax_rate_override'] !== '') {
+                $override = $pricing->number($line['tax_rate_override'], 'tax_rate_override');
+                if (!$chargeable && $override > 0) $this->invalid('tax_rate', $product->name.' carries no GST on this bill ('.str_replace('_', ' ', $category->supply_type).' or unregistered), so its rate cannot be changed.');
+                $slabs = DB::table('tax_rates')->where('company_id', $context->companyId)->distinct()->pluck('rate')->map(fn ($slab) => (float) $slab)->push(0.0)->all();
+                if (!in_array($override, $slabs, true)) $this->invalid('tax_rate', 'GST '.$override.'% is not one of your GST rates (Settings › GST).');
+                $gstRate = $override;
+            }
             if ($gstRate + $cessRate > 100) $this->invalid('rate', 'Total tax rate exceeds supported range.');
             $tax = (int) round($taxable * $gstRate / 100);
             $cess = (int) round($taxable * $cessRate / 100);
             $cgst = $intra ? (int) round($tax / 2) : 0;
             $snapshot = ['taxable_value' => $taxable / 10000, 'discount' => $discounts[$i] / 10000,
-                'rate' => $gstRate, 'cess_rate' => $cessRate, 'cgst' => $cgst / 10000,
+                'rate' => $gstRate, 'product_rate' => $productRate, 'cess_rate' => $cessRate, 'cgst' => $cgst / 10000,
                 'sgst' => $intra ? ($tax - $cgst) / 10000 : 0, 'igst' => $intra ? 0 : $tax / 10000,
                 'cess' => $cess / 10000, 'hsn_sac' => $code, 'place_of_supply' => $place, 'reverse_charge' => $reverse,
                 'supply_type' => $zeroRated && $category->supply_type === 'taxable' ? 'zero_rated' : $category->supply_type, 'input_credit_allowed' => (bool) $category->input_credit_allowed && $registration->registration_type === 'regular',

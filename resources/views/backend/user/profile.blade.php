@@ -1,5 +1,6 @@
 @extends('backend.layout.main')
 @section('content')
+<x-settings-command-bar />
 
 <x-success-message key="message3" />
 <x-error-message key="message2" />

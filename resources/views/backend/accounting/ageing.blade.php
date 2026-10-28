@@ -19,7 +19,7 @@
         <div class="comm-actions">
             <a href="{{ route('accounting.collections') }}" class="btn btn-outline-primary btn-sm">Collections</a>
             <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="btn btn-outline-secondary btn-sm">Export all filtered rows</a>
-            <button onclick="window.print();" class="btn btn-outline-secondary btn-sm u-h-28px u-fs-11px">
+            <button data-erp-print class="btn btn-outline-secondary btn-sm u-h-28px u-fs-11px">
                 <i class="dripicons-print"></i> Print Report
             </button>
         </div>

@@ -4,12 +4,11 @@
     <x-success-message key="message" />
     <x-error-message key="not_permitted" />
 
-    <section>
-        <div class="container-fluid mb-3">
-            <button type="button" class="btn btn-info" data-toggle="modal" data-target="#createModal">
-                <i class="dripicons-plus"></i> {{ __('db.Add Leave') }}
-            </button>
-        </div>
+    <x-hrm-command-bar active="leave">
+        <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#createModal"><i class="dripicons-plus"></i> {{ __('db.Add Leave') }}</button>
+    </x-hrm-command-bar>
+
+    <section class="section-workspace-view">
 
         <div class="table-responsive">
             <table id="leave-table" class="table table-striped">

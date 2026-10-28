@@ -319,11 +319,14 @@ class JobWorkService
                     throw ValidationException::withMessages(['receipt' => 'Material returned unprocessed carries no processing charge.']);
                 }
                 validator($data, ['items' => 'required|array|min:1|max:500', 'charge_mode' => 'sometimes|in:capitalise,expense',
-                    'their_names' => 'sometimes|array|max:50', 'their_names.*' => 'nullable|string|max:150'])->validate();
+                    'their_names' => 'sometimes|array|max:50', 'their_names.*' => 'nullable|string|max:150',
+                    'supplier_invoice_no' => 'nullable|string|max:60', 'supplier_invoice_date' => 'nullable|date_format:Y-m-d',
+                    'due_date' => 'nullable|date_format:Y-m-d', 'remarks' => 'nullable|string|max:500'])->validate();
                 foreach ($data['items'] as $line) {
                     $product = app(CompanyWriteGuard::class)->owned(\App\Models\Product::class, $line['product_id'] ?? null, $context, 'product_id');
                     if ($product->type !== 'service') throw ValidationException::withMessages(['items' => 'Job work bills accept service items only.']);
                 }
+                $remarks = trim((string) ($data['remarks'] ?? ''));
                 // The job worker may bill the material under their own name: keep it as their alternate name and on the bill.
                 $theirNames = [];
                 $sent = DB::table('job_work_receipt_lines as l')->join('job_work_dispatch_lines as d', 'd.id', '=', 'l.dispatch_line_id')
@@ -342,9 +345,14 @@ class JobWorkService
                 $purchase = app(PurchaseApplicationService::class)->create(new PurchaseCommand([
                     'supplier_id' => $order->job_worker_party_id, 'warehouse_id' => $receipt->warehouse_id,
                     'business_date' => $date, 'status' => 1, 'items' => $data['items'],
-                    'note' => 'Job work '.$order->reference_no.' / '.$receipt->reference_no.($theirNames ? ' · Their name: '.implode('; ', $theirNames) : ''),
+                    'note' => 'Job work '.$order->reference_no.' / '.$receipt->reference_no.($theirNames ? ' · Their name: '.implode('; ', $theirNames) : '')
+                        .($remarks !== '' ? ' · '.$remarks : ''),
                     'job_work_receipt_id' => $receipt->id, 'job_work_charge_mode' => $data['charge_mode'] ?? 'capitalise',
-                ], 'job-work-bill:'.$key, $actor, $context));
+                    // The job worker's own bill number and date print as the Bill No.; blank due date falls back to their credit days.
+                    'supplier_invoice_no' => trim((string) ($data['supplier_invoice_no'] ?? '')) ?: null,
+                    'supplier_invoice_date' => ($data['supplier_invoice_date'] ?? null) ?: null,
+                    'job_work_remarks' => $remarks !== '' ? $remarks : null,
+                ] + (!empty($data['due_date']) ? ['due_date' => $data['due_date']] : []), 'job-work-bill:'.$key, $actor, $context));
                 DB::table('job_work_receipts')->where('id', $receiptId)->update(['service_purchase_id' => $purchase->id]);
                 return $receipt->fresh();
             });

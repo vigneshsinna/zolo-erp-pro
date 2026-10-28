@@ -1,5 +1,5 @@
 /* GST mode for the Sales and Purchase entry pages.
- * The server decides every line's GST (rate from the product, CGST+SGST or IGST from the states). This script asks the
+ * The server decides every line's GST (rate from the product unless the user changed it, CGST+SGST or IGST from the states). This script asks the
  * shared preview endpoint for those figures, shows them on the rows and in the footer, and holds Save until they are fresh. */
 (function ($) {
     'use strict';
@@ -36,10 +36,9 @@
         '</div>');
     $slot.after($gstField);
 
-    // 2. Row rates come from the product's GST rate; they are shown, not chosen.
+    // 2. Row rates start at the product's GST rate; the user may pick another of the company's slabs (line-tax-override.js warns).
     $form.addClass('gst-mode');
-    $('<style>.gst-mode .row-tax-rate{pointer-events:none!important;background:#f1f5f9!important;color:#475569!important;}' +
-        'body.dark-mode .gst-mode .row-tax-rate{background:#1e293b!important;color:#cbd5e1!important;}' +
+    $('<style>' +
         '#gst-breakdown{font-size:10.5px;color:#64748b;line-height:1.3;}#gst-preview-status{font-size:11px;}</style>').appendTo('head');
     var $taxDisplay = $('#display-tax-amount');
     $taxDisplay.parent().append('<div id="gst-breakdown"></div>');
@@ -60,6 +59,8 @@
             line[purchase ? 'net_unit_cost' : 'net_unit_price'] = rate;
             var discount = parseFloat($row.find('.row-discount-val').val());
             if (discount > 0) line.discount = discount;
+            var override = window.zoloLineTax ? window.zoloLineTax.override(this) : undefined;
+            if (override !== undefined) line.tax_rate_override = override;
             items.push(line);
             map.push(index);
         });
@@ -94,6 +95,7 @@
             $row.find('.row-subtotal-input').val(Number(item.total || 0).toFixed(4));
             $row.find('.row-total').val(Number(item.total || 0).toFixed(decimals));
             var snapshot = item._tax_snapshot;
+            if (snapshot && snapshot.product_rate !== undefined && window.zoloLineTax) window.zoloLineTax.productRate($row, snapshot.product_rate);
             if (snapshot) {
                 cgst += Number(snapshot.cgst || 0); sgst += Number(snapshot.sgst || 0);
                 igst += Number(snapshot.igst || 0); cess += Number(snapshot.cess || 0);

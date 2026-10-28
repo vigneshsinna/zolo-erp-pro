@@ -165,31 +165,6 @@ class AccountsController extends Controller
         return redirect('accounts')->with('message', __('db.Account updated successfully'));
     }
 
-    public function balanceSheet()
-    {
-        $role = Role::find(Auth::user()->role_id);
-        if ($role->hasPermissionTo('balance-sheet')) {
-            $lims_account_list = Account::where('is_active', true)->get();
-            $debit = [];
-            $credit = [];
-            foreach ($lims_account_list as $account) {
-                $payment_recieved = Payment::whereNotNull('sale_id')->where('account_id', $account->id)->sum('amount');
-                $payment_sent = Payment::whereNotNull('purchase_id')->where('account_id', $account->id)->sum('amount');
-                $returns = DB::table('returns')->where('account_id', $account->id)->sum('grand_total');
-                $return_purchase = DB::table('return_purchases')->where('account_id', $account->id)->sum('grand_total');
-                $expenses = DB::table('expenses')->where('account_id', $account->id)->sum('amount');
-                $payrolls = DB::table('payrolls')->where('account_id', $account->id)->sum('amount');
-                $sent_money_via_transfer = MoneyTransfer::where('from_account_id', $account->id)->sum('amount');
-                $recieved_money_via_transfer = MoneyTransfer::where('to_account_id', $account->id)->sum('amount');
-
-                $credit[] = $payment_recieved + $return_purchase + $recieved_money_via_transfer + $account->initial_balance;
-                $debit[] = $payment_sent + $returns + $expenses + $payrolls + $sent_money_via_transfer;
-            }
-            return view('backend.account.balance_sheet', compact('lims_account_list', 'debit', 'credit'));
-        } else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
-    }
-
     public function accountStatement(Request $request)
     {
         $data = $request->all();

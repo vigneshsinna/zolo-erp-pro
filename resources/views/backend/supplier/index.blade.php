@@ -14,7 +14,7 @@
         <li><a class="nav-link active" href="{{ route('supplier.index') }}"><i class="dripicons-list"></i> All Suppliers</a></li>
         <li><a class="nav-link" href="{{ route('purchases.index') }}"><i class="dripicons-card"></i> Purchase Bills</a></li>
         <li><a class="nav-link" href="{{ route('purchases.index', ['view' => 'orders', 'purchase_status' => 4]) }}"><i class="dripicons-clipboard"></i> Purchase Orders</a></li>
-        <li><a class="nav-link" href="{{ route('return-purchase.index') }}"><i class="dripicons-return"></i> Returns</a></li>
+        <li><a class="nav-link" href="{{ route('purchases.index', ['returns' => 1]) }}"><i class="dripicons-return"></i> Returns</a></li>
     </ul>
     <div class="comm-actions">
         @can('suppliers-add')

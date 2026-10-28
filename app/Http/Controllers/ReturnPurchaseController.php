@@ -36,33 +36,7 @@ class ReturnPurchaseController extends Controller
 
     public function index(Request $request)
     {
-        $role = Role::find(Auth::user()->role_id);
-        if($role->hasPermissionTo('returns-index')) {
-            $permissions = Role::findByName($role->name)->permissions;
-            foreach ($permissions as $permission)
-                $all_permission[] = $permission->name;
-            if(empty($all_permission))
-                $all_permission[] = 'dummy text';
-
-            if($request->input('warehouse_id'))
-                $warehouse_id = $request->input('warehouse_id');
-            else
-                $warehouse_id = 0;
-
-            if($request->input('starting_date')) {
-                $starting_date = $request->input('starting_date');
-                $ending_date = $request->input('ending_date');
-            }
-            else {
-                $starting_date = date("Y-m-d", strtotime(date('Y-m-d', strtotime('-1 year', strtotime(date('Y-m-d') )))));
-                $ending_date = date("Y-m-d");
-            }
-
-            $lims_warehouse_list = Warehouse::where('is_active', true)->get();
-            return view('backend.return_purchase.index',compact('starting_date', 'ending_date', 'warehouse_id', 'all_permission', 'lims_warehouse_list'));
-        }
-        else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
+        return redirect()->route('purchases.index', ['returns' => 1]);
     }
 
     public function returnData(Request $request)
@@ -260,20 +234,9 @@ class ReturnPurchaseController extends Controller
 
     public function create(Request $request)
     {
-        $role = Role::find(Auth::user()->role_id);
-        if($role->hasPermissionTo('purchase-return-add')) {
-            $lims_purchase_data = Purchase::select('id')->where('reference_no', $request->input('reference_no'))->first();
-            if(!$lims_purchase_data)
-                return redirect()->back()->with('not_permitted', __('db.This reference no does not exist!'));
-            $lims_product_purchase_data = ProductPurchase::where('purchase_id', $lims_purchase_data->id)->get();
-            $lims_product_purchase_payment_acc_id = Payment::select('account_id')->where('purchase_id', $lims_purchase_data->id)->first();
-            $lims_warehouse_list = Warehouse::where('is_active',true)->get();
-            $lims_tax_list = Tax::where('is_active',true)->get();
-            $lims_account_list = Account::where('is_active',true)->get();
-            return view('backend.return_purchase.create', compact('lims_product_purchase_payment_acc_id','lims_warehouse_list', 'lims_tax_list', 'lims_account_list', 'lims_purchase_data', 'lims_product_purchase_data'));
-        }
-        else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
+        // Purchase returns are the Returns tab of the Purchase workspace; this old form was a duplicate.
+        $purchaseId = \App\Models\Purchase::where('reference_no', $request->input('reference_no', ''))->value('id');
+        return redirect()->route('purchases.index', array_filter(['returns' => 1, 'bill' => $purchaseId]));
     }
 
     public function getProduct($id)

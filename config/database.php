@@ -66,7 +66,7 @@ return [
                 'NO_ENGINE_SUBSTITUTION',
                  ],
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) + (env('DB_EMULATE_PREPARES') ? [
                 // Native prepares cost three packets per query; over the Windows -> WSL localhost relay each one waits
                 // ~40 ms for a delayed ACK. Emulated prepares send one packet (values are still escaped by PDO).

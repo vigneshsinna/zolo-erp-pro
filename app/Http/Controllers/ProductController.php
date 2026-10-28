@@ -515,8 +515,13 @@ class ProductController extends Controller
                 //$data['cost'] = $data['unit_id'] = $data['purchase_unit_id'] = $data['sale_unit_id'] = 0;
             }
 
-            elseif($data['type'] == 'digital' || $data['type'] == 'service')
+            // A service keeps its unit and cost: it is bought and billed per unit like goods (job work charges, freight).
+            elseif($data['type'] == 'digital')
                 $data['cost'] = $data['unit_id'] = $data['purchase_unit_id'] = $data['sale_unit_id'] = 0;
+            elseif($data['type'] == 'service' && ($data['cost'] ?? '') === '')
+                $data['cost'] = 0;
+            // The margin only restates price against cost; a blank one (no cost yet) is stored as 0.
+            $data['profit_margin'] = $data['profit_margin'] ?? 0;
 
             $data['product_details'] = str_replace('"', '@', $data['product_details']);
 
@@ -1298,7 +1303,7 @@ class ProductController extends Controller
             $data = $request->except('image', 'file', 'prev_img', 'qty');
             $data['name'] = htmlspecialchars(trim($data['name']), ENT_QUOTES);
             $data['profit_margin_type'] = $request->input('profit_margin_type', 'percentage');
-            $data['profit_margin'] = $request->input('profit_margin', 0);
+            $data['profit_margin'] = $request->input('profit_margin') ?? 0;
 
             $general_setting = DB::table('general_settings')->select('modules')->first();
             if(in_array('ecommerce', explode(',',$general_setting->modules))) {
@@ -1349,8 +1354,11 @@ class ProductController extends Controller
                 $data['combo_unit_id'] = implode(",", $data['combo_unit_id']);
                 //$data['cost'] = $data['unit_id'] = $data['purchase_unit_id'] = $data['sale_unit_id'] = 0;
             }
-            elseif($data['type'] == 'digital' || $data['type'] == 'service')
+            // A service keeps its unit and cost: it is bought and billed per unit like goods (job work charges, freight).
+            elseif($data['type'] == 'digital')
                 $data['cost'] = $data['unit_id'] = $data['purchase_unit_id'] = $data['sale_unit_id'] = 0;
+            elseif($data['type'] == 'service' && ($data['cost'] ?? '') === '')
+                $data['cost'] = 0;
 
             if(!isset($data['featured']))
                 $data['featured'] = 0;

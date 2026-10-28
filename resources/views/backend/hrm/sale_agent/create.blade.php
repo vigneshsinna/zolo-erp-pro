@@ -1,5 +1,6 @@
 @extends('backend.layout.main')
 @section('content')
+<x-people-command-bar active="sale-agents" />
     <x-error-message key="not_permitted" />
 
     <section class="forms">

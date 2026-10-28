@@ -1,10 +1,9 @@
 @extends('backend.layout.main')
 @section('content')
-@include('backend.hrm.partial.menu')
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<x-settings-command-bar active="hrm" />
+<x-hrm-command-bar active="settings" />
 
 <section class="settings-workspace-view forms">
     <div class="settings-form-card card">

@@ -34,7 +34,9 @@ class UserController extends Controller
             // Only the active company's users; other companies' staff stay private.
             $context = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
             $lims_user_list = User::where('is_deleted', false)
-                ->when($context && \Illuminate\Support\Facades\Schema::hasTable('company_user'), fn ($q) => $q->whereIn('id', \Illuminate\Support\Facades\DB::table('company_user')->where('company_id', $context->companyId)->select('user_id')))->get();
+                ->when($context && \Illuminate\Support\Facades\Schema::hasTable('company_user'), fn ($q) => $q->whereIn('id', \Illuminate\Support\Facades\DB::table('company_user')->where('company_id', $context->companyId)->select('user_id')))
+                // Developer logins are managed from the developer console and stay out of an admin's list.
+                ->when(!\App\Services\Platform\MenuSwitches::isDeveloper() && \Illuminate\Support\Facades\Schema::hasColumn('users', 'is_developer'), fn ($q) => $q->where('is_developer', false))->get();
             $numberOfUserAccount = User::where('is_active', true)->count();
             return view('backend.user.index', compact('lims_user_list', 'all_permission', 'numberOfUserAccount'));
         }
@@ -198,6 +200,7 @@ class UserController extends Controller
         $user = User::find($request->id);
 
         if ($user) {
+            $this->guardDeveloper($user);
             $user->is_active = $request->is_active;
             $user->save();
 
@@ -216,6 +219,7 @@ class UserController extends Controller
     public function profile($id)
     {
         $lims_user_data = User::findOrFail($id);
+        $this->guardDeveloper($lims_user_data);
         return view('backend.user.profile', compact('lims_user_data'));
     }
 
@@ -226,6 +230,7 @@ class UserController extends Controller
 
         $input = $request->all();
         $lims_user_data = User::findOrFail($id);
+        $this->guardDeveloper($lims_user_data);
         $lims_user_data->update($input);
         return redirect()->back()->with('message3', __('db.Data updated successfullly'));
     }
@@ -237,6 +242,7 @@ class UserController extends Controller
 
         $input = $request->all();
         $lims_user_data = User::findOrFail($id);
+        $this->guardDeveloper($lims_user_data);
         if($input['new_pass'] != $input['confirm_pass'])
             return redirect("user/" .  "profile/" . $id )->with('message2', __("db.Please Confirm your new password"));
 
@@ -257,6 +263,7 @@ class UserController extends Controller
         
         foreach ($user_id as $id) {
             $lims_user_data = User::find($id);
+            $this->guardDeveloper($lims_user_data);
             $lims_user_data->is_deleted = true;
             $lims_user_data->is_active = false;
             $lims_user_data->save();
@@ -270,6 +277,7 @@ class UserController extends Controller
             return redirect()->back()->with('not_permitted', __('db.This feature is disable for demo!'));
 
         $lims_user_data = User::findOrFail($id);
+        $this->guardDeveloper($lims_user_data);
         $lims_user_data->is_deleted = true;
         $lims_user_data->is_active = false;
         $lims_user_data->save();
@@ -309,9 +317,17 @@ class UserController extends Controller
         return response()->json($html);
     }
     /** A user can be viewed or changed only from a company the user belongs to. */
+    /** Only a developer may change a developer login (an admin cannot edit, block or delete it). */
+    private function guardDeveloper(?User $user): void
+    {
+        abort_if($user && ($user->is_developer ?? false) && !\App\Services\Platform\MenuSwitches::isDeveloper(), 403,
+            'This is a developer login. Only a developer can change it.');
+    }
+
     private function companyUser($id): User
     {
         $user = User::findOrFail($id);
+        $this->guardDeveloper($user);
         $context = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
         if ($context && \Illuminate\Support\Facades\Schema::hasTable('company_user')) {
             abort_unless(\Illuminate\Support\Facades\DB::table('company_user')->where('company_id', $context->companyId)->where('user_id', $user->id)->exists(), 404);

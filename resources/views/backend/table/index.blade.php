@@ -4,10 +4,11 @@
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
-    <div class="container-fluid">
-        <button type="button" class="btn btn-info" data-toggle="modal" data-target="#createModal"><i class="dripicons-plus"></i> {{__('db.Add Table')}}</button>
-    </div>
+<x-settings-command-bar>
+    <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#createModal"><i class="dripicons-plus"></i> {{__('db.Add Table')}}</button>
+</x-settings-command-bar>
+
+<section class="settings-workspace-view">
     <div class="table-responsive">
         <table id="table-table" class="table">
             <thead>

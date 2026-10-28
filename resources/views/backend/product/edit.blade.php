@@ -174,7 +174,7 @@
                                         <div id="profit_margin" class="col-6">
                                             <div class="form-group">
                                                 <label>{{__('db.Profit Margin')}}</label>
-                                                <input type="number" name="profit_margin" value="{{$lims_product_data->profit_margin}}" required class="form-control" step="0.01">
+                                                <input type="number" name="profit_margin" value="{{$lims_product_data->profit_margin}}" class="form-control" step="0.01">
                                                 <span class="validation-msg text-danger small"></span>
                                             </div>
                                         </div>
@@ -197,7 +197,7 @@
                                         </div>
                                         <div class="col-6">
                                             <div class="form-group">
-                                                <label>{{__('db.Daily Sale Objective')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Minimum qty which must be sold in a day')}}"></i></label>
+                                                <label>{{__('db.Daily Sale Objective')}}</label>
                                                 <input type="number" name="daily_sale_objective" class="form-control" step="any" value="{{$lims_product_data->daily_sale_objective}}">
                                             </div>
                                         </div>
@@ -222,7 +222,7 @@
                                         <div class="col-6">
                                             <div class="form-group">
                                                 <input type="hidden" name="tax_method_id" value="{{$lims_product_data->tax_method}}">
-                                                <label>{{__('db.Tax Method')}} <i class="dripicons-question" data-toggle="tooltip" title="{{__('db.Exclusive: Poduct price = Actual product price + Tax Inclusive: Actual product price = Product price - Tax')}}"></i></label>
+                                                <label>{{__('db.Tax Method')}}</label>
                                                 <select name="tax_method" class="form-control selectpicker">
                                                     <option value="1">{{__('db.Exclusive')}}</option>
                                                     <option value="2">{{__('db.Inclusive')}}</option>
@@ -715,16 +715,6 @@
                                 </div>
                             </div>
 
-                            <!-- Bottom Action Bar -->
-                            <div class="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
-                                <span class="text-muted small"><i class="dripicons-information mr-1"></i> {{ __('db.The field labels marked with * are required input fields') }}.</span>
-                                <div class="d-flex align-items-center gap-2">
-                                    <a href="{{route('products.index')}}" class="btn btn-sm btn-outline-secondary">{{__('db.Cancel')}}</a>
-                                    <button type="button" class="btn btn-sm btn-primary zolo-btn-primary" onclick="$('#submit-btn').click();">
-                                        <i class="dripicons-checkmark mr-1"></i> {{__('db.Update Product')}}
-                                    </button>
-                                </div>
-                            </div>
                         </form>
                     </div>
                 </div>
@@ -897,9 +887,9 @@
         $("#digital").show();
     }
     else if($("input[name='type_hidden']").val() == "service"){
+        // A service keeps its unit and cost (billed per metre, per trip ...); only stock-only options hide.
         $("input[name='cost']").prop('required',false);
-        $("select[name='unit_id']").prop('required',false);
-        hide();
+        $("#alert-qty").hide();
         $("#variant-section, #variant-option").hide();
     }
     else if($("input[name='type_hidden']").val() == "combo"){
@@ -1462,10 +1452,12 @@
             $("input[name='price']").prop('disabled',false);
         }
         else if($(this).val() == 'service') {
+            // A service is still bought and billed per unit (job work per metre, freight per trip), so unit and cost stay.
             $("input[name='cost']").prop('required',false);
-            $("select[name='unit_id']").prop('required',false);
-            $("input[name='file']").prop('required',true);
-            hide();
+            $("select[name='unit_id']").prop('required',true);
+            $("input[name='file']").prop('required',false);
+            $("#cost, #unit").show(300);
+            $("#alert-qty").hide(300);
             $("#combo").hide(300);
             $("#digital").hide(300);
             $("input[name='price']").prop('disabled',false);
@@ -1706,7 +1698,8 @@
             marginType === "percentage" ? "% value" : "Flat amount"
         );
 
-        recalcPrice();
+        // Opening the page or switching % / flat keeps the saved price and restates the margin in the new terms.
+        if (parseFloat($('input[name="price"]').val()) > 0) recalcMargin(); else recalcPrice();
     }).trigger("change");
 
     // Recalculate price based on cost & margin
@@ -1726,6 +1719,8 @@
     function recalcMargin() {
         let cost = parseFloat($('input[name="cost"]').val()) || 0;
         let price = parseFloat($('input[name="price"]').val()) || 0;
+        // Without a cost a percentage margin has no meaning (it would be Infinity and blank the field): keep it as is.
+        if (marginType === "percentage" && cost <= 0) return;
 
         let margin =
             marginType === "percentage"

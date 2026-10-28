@@ -43,33 +43,7 @@ class ReturnController extends Controller
 
     public function index(Request $request)
     {
-        $role = Role::find(Auth::user()->role_id);
-        if($role->hasPermissionTo('returns-index')) {
-            $permissions = Role::findByName($role->name)->permissions;
-            foreach ($permissions as $permission)
-                $all_permission[] = $permission->name;
-            if(empty($all_permission))
-                $all_permission[] = 'dummy text';
-
-            if($request->input('warehouse_id'))
-                $warehouse_id = $request->input('warehouse_id');
-            else
-                $warehouse_id = 0;
-
-            if($request->input('starting_date')) {
-                $starting_date = $request->input('starting_date');
-                $ending_date = $request->input('ending_date');
-            }
-            else {
-                $starting_date = date("Y-m-d", strtotime(date('Y-m-d', strtotime('-1 year', strtotime(date('Y-m-d') )))));
-                $ending_date = date("Y-m-d");
-            }
-
-            $lims_warehouse_list = Warehouse::where('is_active', true)->get();
-            return view('backend.return.index',compact('starting_date', 'ending_date', 'warehouse_id', 'all_permission', 'lims_warehouse_list'));
-        }
-        else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
+        return redirect()->route('sales.index', ['returns' => 1]);
     }
 
     public function returnData(Request $request)
@@ -295,34 +269,9 @@ class ReturnController extends Controller
 
     public function create(Request $request)
     {
-        $role = Role::find(Auth::user()->role_id);
-        if($role->hasPermissionTo('returns-add')) {
-            $lims_sale_data = Sale::where([
-                ['reference_no', $request->input('reference_no')],
-                ['sale_status', 1]
-            ])->whereNull('deleted_at')->select('id', 'sale_status','order_discount')->first();
-            if(!$lims_sale_data){
-                $lims_sale_data = Sale::where('reference_no', $request->input('reference_no'))->whereNull('deleted_at')->first();
-                $lims_return_data = Returns::where('sale_id',$lims_sale_data->id)->first();
-                $lims_product_sale_data = Product_Sale::where('sale_id', $lims_sale_data->id)->get();
-                if($lims_return_data && $role->hasPermissionTo('returns-edit')){
-                    $lims_customer_list = Customer::where('is_active',true)->get();
-                    $lims_warehouse_list = Warehouse::where('is_active',true)->get();
-                    $lims_biller_list = Biller::where('is_active',true)->get();
-                    $lims_tax_list = Tax::where('is_active',true)->get();
-                    $lims_product_return_data = ProductReturn::where('return_id', $lims_return_data->id)->get();
-                    return view('backend.return.edit',compact('lims_customer_list', 'lims_product_sale_data','lims_warehouse_list', 'lims_biller_list', 'lims_tax_list', 'lims_return_data','lims_product_return_data','lims_sale_data'));
-                }else{
-                    return redirect()->back()->with('not_permitted', __('db.This reference either does not exist or status not completed!'));
-                }
-            }
-            $lims_product_sale_data = Product_Sale::where('sale_id', $lims_sale_data->id)->get();
-            $lims_tax_list = Tax::where('is_active',true)->get();
-            $lims_warehouse_list = Warehouse::where('is_active',true)->get();
-            return view('backend.return.create', compact('lims_tax_list', 'lims_sale_data', 'lims_product_sale_data', 'lims_warehouse_list'));
-        }
-        else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
+        // Sales returns are the Returns tab of the Sales workspace; this old form was a duplicate.
+        $saleId = \App\Models\Sale::where('reference_no', $request->input('reference_no', ''))->value('id');
+        return redirect()->route('sales.index', array_filter(['returns' => 1, 'bill' => $saleId]));
     }
 
 

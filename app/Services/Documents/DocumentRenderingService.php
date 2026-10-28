@@ -87,11 +87,14 @@ class DocumentRenderingService
     {
         if ($kind === 'sales_order') return $this->salesOrder($id, $context);
         $source = $this->source($kind, $id, $context);
+        // A purchase bill prints the supplier's own bill number; ours stays as the reference. (On an order the field holds their quotation.)
+        $supplierBill = $kind === 'purchase' && (int) $source->status !== 4 ? array_filter(['supplier_bill_no' => $source->supplier_invoice_no ?? null,
+            'supplier_bill_date' => $source->supplier_invoice_date ? substr((string) $source->supplier_invoice_date, 0, 10) : null]) : [];
         // An order can still be amended, so it prints from its current lines instead of a posting snapshot.
-        if (!$source->posted_at) return $this->capture($source, $kind, $context) + ['reversed_at' => null];
+        if (!$source->posted_at) return $supplierBill + $this->capture($source, $kind, $context) + ['reversed_at' => null];
         if (!$source->document_snapshot_json) throw ValidationException::withMessages(['document' => 'Retained document needs reviewed print-snapshot migration.']);
         // Documents posted before print details existed show the current company print details.
-        return $this->jobWorkBill($source, $source->document_snapshot_json, $context)
+        return $supplierBill + $this->jobWorkBill($source, $source->document_snapshot_json, $context)
             + ['reversed_at' => $source->reversed_at?->toDateString(), 'print' => $this->printSettings($context)];
     }
 

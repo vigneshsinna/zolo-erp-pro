@@ -34,7 +34,7 @@
         <span class="comm-title-badge"><i class="dripicons-shield"></i> Sales &amp; Purchase Control · Company {{ $context->companyId ?? 1 }} / Branch {{ $context->branchId ?? 1 }}</span>
     </div>
     <ul class="comm-nav-pills">
-        <li><a class="nav-link {{ request()->is('*compliance/returns*') || request()->is('*return-purchase*') || request()->is('*return-sale*') ? 'active' : '' }}" href="{{ url('/compliance/returns') }}"><i class="dripicons-return"></i> Returns &amp; Notes</a></li>
+        <li><a class="nav-link" href="{{ route('sales.index', ['returns' => 1]) }}"><i class="dripicons-return"></i> Returns &amp; Notes</a></li>
         <li><a class="nav-link {{ request()->is('*compliance/gst/report*') ? 'active' : '' }}" href="{{ url('/compliance/gst/report') }}"><i class="dripicons-graph-bar"></i> GST Review</a></li>
         <li><a class="nav-link {{ request()->is('*compliance/gst/returns*') ? 'active' : '' }}" href="{{ url('/compliance/gst/returns') }}"><i class="dripicons-document"></i> GST Returns</a></li>
         <li><a class="nav-link {{ request()->is('*compliance/setup*') ? 'active' : '' }}" href="{{ url('/compliance/setup') }}"><i class="dripicons-gear"></i> Settings</a></li>

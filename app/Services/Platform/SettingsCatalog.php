@@ -80,8 +80,10 @@ final class SettingsCatalog
         ];
 
         $visible = [];
+        $switches = app(MenuSwitches::class);
         foreach ($sections as [$title, $icon, $items]) {
-            $items = array_values(array_filter($items));
+            // Pages the developer switched off for this company are not offered at all.
+            $items = array_values(array_filter($items, fn ($item) => $item && $switches->allowsUrl($item['url'])));
             if ($items) $visible[] = compact('title', 'icon', 'items');
         }
         return $visible;

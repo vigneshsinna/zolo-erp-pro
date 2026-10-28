@@ -1,29 +1,22 @@
 @extends('backend.layout.main')
 @section('content')
-@include('backend.hrm.partial.menu')
 <x-success-message key="message" />
 <x-error-message key="not_permitted" />
 
-<section>
-    <div class="container-fluid mt-4">
+<x-hrm-command-bar active="attendance">
+    <button class="btn btn-secondary" type="button" data-toggle="collapse" data-target="#filterSection" aria-expanded="false" aria-controls="filterSection">
+        <i class="fa fa-filter"></i> {{ __('db.Filter') }}
+    </button>
+    <button class="btn btn-secondary" type="button" data-toggle="collapse" data-target="#importCsv" aria-expanded="false" aria-controls="importCsv">
+        <i class="fa fa-upload"></i> {{ __('db.Import CSV') }}
+    </button>
+    <button class="btn btn-primary" data-toggle="modal" data-target="#createModal">
+        <i class="dripicons-plus"></i> {{ __('db.Add Attendance') }}
+    </button>
+</x-hrm-command-bar>
 
-        <!-- Buttons -->
-        <div class="mb-3 d-flex">
-            <button class="btn btn-info mr-2" data-toggle="modal" data-target="#createModal">
-                <i class="dripicons-plus"></i> {{ __('db.Add Attendance') }}
-            </button>
-
-            <button class="btn btn-secondary mr-2" type="button" data-toggle="collapse" data-target="#importCsv"
-                aria-expanded="false" aria-controls="importCsv">
-                <i class="fa fa-upload"></i> {{ __('db.Import CSV') }}
-            </button>
-
-            <!-- Filter Button -->
-            <button class="btn btn-warning" type="button" data-toggle="collapse" data-target="#filterSection"
-                aria-expanded="false" aria-controls="filterSection">
-                <i class="fa fa-filter"></i> {{ __('db.Filter') }}
-            </button>
-        </div>
+<section class="section-workspace-view">
+    <div class="container-fluid">
 
         <!-- Filter Collapsible -->
         <div class="collapse mb-4" id="filterSection">

@@ -22,7 +22,7 @@
             <li><a class="nav-link" href="{{ route('report.paymentByDate') }}"><i class="dripicons-wallet"></i> Payments</a></li>
         </ul>
         <div class="comm-actions">
-            <button class="btn btn-secondary btn-action-pill" onclick="window.print()">
+            <button class="btn btn-secondary btn-action-pill" data-erp-print>
                 <i class="dripicons-print"></i> Print
             </button>
         </div>

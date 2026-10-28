@@ -739,63 +739,8 @@ class SaleController extends Controller
 
     public function create()
     {
-        $role = Role::find(Auth::user()->role_id);
-        if($role->hasPermissionTo('sales-add')) {
-            $lims_customer_list = Customer::where('is_active', true)->get();
-            if(Auth::user()->role_id > 2) {
-                $lims_warehouse_list = Warehouse::where([
-                    ['is_active', true],
-                    ['id', Auth::user()->warehouse_id]
-                ])->get();
-                $lims_biller_list = Biller::where([
-                    ['is_active', true],
-                    ['id', Auth::user()->biller_id]
-                ])->get();
-            }
-            else {
-                $lims_warehouse_list = Warehouse::where('is_active', true)->get();
-                $lims_biller_list = Biller::where('is_active', true)->get();
-            }
-
-            $lims_tax_list = Tax::where('is_active', true)->get();
-            $lims_pos_setting_data = PosSetting::latest()->first();
-            $lims_reward_point_setting_data = RewardPointSetting::latest()->first();
-            if($lims_pos_setting_data)
-                $options = explode(',', $lims_pos_setting_data->payment_options);
-            else
-                $options = [];
-
-            $currency_list = Currency::where('is_active', true)->get();
-            $numberOfInvoice = Sale::whereNull('deleted_at')->count();
-            $custom_fields = CustomField::where('belongs_to', 'sale')->get();
-            $lims_customer_group_all = CustomerGroup::where('is_active', true)->get();
-
-            $lims_account_list = Account::select('id', 'name','is_default','is_active')->where('is_active', true)->get();
-
-            if(cache()->has('general_setting'))
-            {
-                $general_setting = cache()->get('general_setting');
-            }else {
-                $general_setting = GeneralSetting::select('modules')->first();
-                cache()->put('general_setting', $general_setting, 60 * 60 * 24);
-            }
-            if(in_array('restaurant',explode(',',$general_setting->modules))){
-                $lims_table_list = Table::join('floors','tables.floor_id','=','floors.id')
-                        ->select('tables.id as id','tables.name','tables.number_of_person','floors.name as floor')
-                        ->get();
-
-                $service_list = DB::table('services')->where('is_active',1)->get();
-                $waiter_list = DB::table('users')->where('service_staff',1)->where('is_active',1)->get();
-
-                return view('backend.sale.create',compact('currency_list', 'lims_customer_list', 'lims_warehouse_list', 'lims_biller_list', 'lims_pos_setting_data', 'lims_tax_list', 'lims_reward_point_setting_data','options', 'numberOfInvoice', 'custom_fields', 'lims_customer_group_all', 'lims_table_list', 'service_list', 'waiter_list'));
-
-            }
-
-            return view('backend.sale.create',compact('currency_list', 'lims_customer_list', 'lims_warehouse_list', 'lims_biller_list', 'lims_pos_setting_data', 'lims_tax_list', 'lims_reward_point_setting_data','options', 'numberOfInvoice', 'custom_fields', 'lims_customer_group_all', 'lims_account_list'));
-
-        }
-        else
-            return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
+        // The Sales workspace is the only sales entry screen; the old Add Sale form was a duplicate.
+        return redirect()->route('sales.index', ['new' => 1]);
     }
 
     public function store(StoreSaleRequest $request)

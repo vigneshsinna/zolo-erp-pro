@@ -6,7 +6,7 @@
     <div class="cx-field"><label for="route-date">Date</label><input id="route-date" name="date" type="date" value="{{ $date }}" required></div>
     <div class="cx-field"><label for="route-area">Route / area</label><select id="route-area" name="area_id"><option value="">All routes</option>@foreach($areas as $area)<option value="{{ $area->id }}" @selected($areaId === $area->id)>{{ $area->name }}</option>@endforeach</select></div>
     <button type="submit" class="cx-btn"><i class="dripicons-search"></i> Show</button>
-    <button type="button" class="cx-btn ghost" onclick="window.print()"><i class="dripicons-print"></i> Print</button>
+    <button type="button" class="cx-btn ghost" data-erp-print><i class="dripicons-print"></i> Print</button>
 </form>
 <p class="cx-lead">Routes are the Areas master; put each customer on a route in the customer master. Overdue is what is past its due date on {{ \Carbon\Carbon::parse($date)->format('d-m-Y') }}.</p>
 <div class="cx-grid">

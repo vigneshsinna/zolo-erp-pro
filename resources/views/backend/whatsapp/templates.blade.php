@@ -3,13 +3,13 @@
     <x-success-message key="message" />
     <x-error-message key="not_permitted" />
 
-    <section>
+    <x-settings-command-bar>
         @if (!empty($asset_id))
-        <div class="container-fluid">
-            <a href="https://business.facebook.com/latest/whatsapp_manager/message_templates?asset_id={{ $asset_id }}" target="_blank" class="btn btn-info">
-            <i class="dripicons-plus"></i> {{ __('db.manage_template') }}</a>
-        </div>
+            <a href="https://business.facebook.com/latest/whatsapp_manager/message_templates?asset_id={{ $asset_id }}" target="_blank" rel="noopener" class="btn btn-primary"><i class="dripicons-plus"></i> {{ __('db.manage_template') }}</a>
         @endif
+    </x-settings-command-bar>
+
+    <section class="settings-workspace-view">
 
         <div class="table-responsive">
             <table id="templates-table" class="table">

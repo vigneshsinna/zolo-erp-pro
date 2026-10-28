@@ -3,6 +3,7 @@
 
 @endpush
 @section('content')
+<x-settings-command-bar />
 
     @include('includes.session_message')
     

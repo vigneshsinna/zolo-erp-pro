@@ -198,7 +198,7 @@ class LegacyStockShadowWebTest extends TestCase
         $reservations = DB::table('document_number_reservations')->count();
         $this->actingAs($this->admin)
             ->post(route('purchases.store'), $this->purchasePayload([[$a, 2, 'piece'], [$b, 1, 'no such unit']]))
-            ->assertRedirect(url('purchases/create'));
+            ->assertRedirect(route('purchases.index', ['new' => 1]));
 
         $this->assertSame($before, $this->snapshot());
         $this->assertSame($last, StockMovement::max('id'));

@@ -94,10 +94,9 @@ class DocumentEntryWebTest extends TestCase
         $this->get($path.'?new=1&exchange_return_id=999999')->assertStatus(404);
     }
 
-    public function test_challan_grn_return_and_quotation_pages_open_in_their_new_state_with_draft_tabs(): void
+    public function test_challan_grn_and_quotation_pages_open_in_their_new_state_with_draft_tabs(): void
     {
-        $pages = ['/delivery-challans?new=1' => 'documents/dc', '/goods-received-notes?new=1' => 'documents/grn', '/return-sale?new=1' => 'documents/sreturn',
-            '/return-purchase?new=1' => 'documents/preturn', '/quotations/create' => 'documents/quotation'];
+        $pages = ['/delivery-challans?new=1' => 'documents/dc', '/goods-received-notes?new=1' => 'documents/grn', '/quotations/create' => 'documents/quotation'];
         foreach ($pages as $path => $drafts) {
             $html = $this->get($path)->assertOk()->getContent();
             $this->assertStringContainsString('id="document-tabs"', $html, $path);
@@ -106,28 +105,12 @@ class DocumentEntryWebTest extends TestCase
         }
     }
 
-    public function test_classic_return_forms_keep_their_posting_fields_and_share_the_entry_layout(): void
+    public function test_old_return_pages_open_the_returns_tab_of_their_workspace(): void
     {
-        // Populate the normal shell data, then render source-bound forms without posting business records.
-        $this->get('/sales')->assertOk();
-        $source = (object) ['id' => 999999, 'reference_no' => 'LAYOUT-TEST', 'order_discount' => 0];
-        foreach (['return', 'return_purchase'] as $kind) {
-            $html = view('backend.'.$kind.'.create', [
-                'lims_sale_data' => $source, 'lims_purchase_data' => $source,
-                'lims_product_sale_data' => collect(), 'lims_product_purchase_data' => collect(),
-                'lims_tax_list' => collect(), 'lims_warehouse_list' => collect(),
-                'lims_account_list' => collect(), 'lims_product_purchase_payment_acc_id' => null,
-            ])->render();
-            $this->assertStringContainsString('css/document-entry-layout.css', $html);
-            $this->assertStringContainsString('js/document-keyboard.js', $html);
-            $this->assertStringContainsString('document-lines-row', $html);
-            $this->assertStringContainsString('name="return_note"', $html);
-            $this->assertStringContainsString('name="staff_note"', $html);
-            $this->assertStringContainsString('id="submit-button"', $html);
-            if (getenv('ERP_EXPORT_DOCUMENT_LAYOUT') === '1') {
-                if (!is_dir(base_path('scratch'))) mkdir(base_path('scratch'), 0777, true);
-                file_put_contents(base_path('scratch/document-'.$kind.'-fixture.html'), $html);
-            }
-        }
+        $this->get('/return-sale?new=1')->assertRedirect(route('sales.index', ['returns' => 1]));
+        $this->get('/return-purchase?new=1')->assertRedirect(route('purchases.index', ['returns' => 1]));
+        $this->get('/return-sale/create?reference_no=NO-SUCH-BILL')->assertRedirect(route('sales.index', ['returns' => 1]));
+        $this->get('/sales/create')->assertRedirect(route('sales.index', ['new' => 1]));
+        $this->get('/purchases/create')->assertRedirect(route('purchases.index', ['new' => 1]));
     }
 }

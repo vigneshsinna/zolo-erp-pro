@@ -11,10 +11,9 @@
     };
     $links = [
         ['key' => 'bills', 'permission' => 'purchases-index', 'url' => route('purchases.index'), 'icon' => 'dripicons-card', 'label' => 'Bills'],
-        ['key' => 'orders', 'permission' => 'purchases-index', 'url' => config('commercial.enabled') ? route('purchases.index', ['orders' => 1])
-            : route('purchases.index', ['view' => 'orders', 'purchase_status' => 4]), 'icon' => 'dripicons-clipboard', 'label' => 'Orders'],
-        ['key' => 'grn', 'permission' => 'purchases-index', 'url' => Route::has('goods-received-notes.index') ? route('goods-received-notes.index') : null, 'icon' => 'dripicons-download', 'label' => 'Supplier GRN'],
-        ['key' => 'returns', 'permission' => 'purchase-return-index', 'url' => route('return-purchase.index'), 'icon' => 'dripicons-return', 'label' => 'Returns'],
+        ['key' => 'orders', 'permission' => 'purchases-index', 'url' => route('purchases.index', ['orders' => 1]), 'icon' => 'dripicons-clipboard', 'label' => 'Orders'],
+        ['key' => 'grn', 'permission' => 'purchases-index', 'url' => route('goods-received-notes.index'), 'icon' => 'dripicons-download', 'label' => 'Supplier GRN'],
+        ['key' => 'returns', 'permission' => 'purchase-return-index', 'url' => route('purchases.index', ['returns' => 1]), 'icon' => 'dripicons-return', 'label' => 'Returns'],
         ['key' => 'import', 'permission' => 'purchases-import', 'url' => url('purchases/purchase_by_csv'), 'icon' => 'dripicons-upload', 'label' => 'Import CSV'],
         ['key' => 'suppliers', 'permission' => 'suppliers-index', 'url' => route('supplier.index'), 'icon' => 'dripicons-user', 'label' => 'Suppliers'],
     ];

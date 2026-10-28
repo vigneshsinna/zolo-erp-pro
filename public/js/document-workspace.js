@@ -49,8 +49,15 @@
         return fields;
     }
 
+    // A row with neither a product nor a typed item name is an unused blank row: never kept in a draft.
+    const blankRow = row => !Number($(row).find('.row-product-id').val()) && !String($(row).find('.row-item-name').val() || '').trim();
+    const blankLine = line => {
+        const get = name => (line.controls.find(control => control.name === name) || {}).value;
+        return !Number(get('product_id[]')) && !String(get('product_name_text[]') || '').trim();
+    };
+
     function captureLines() {
-        return $('#order-table-body tr.order-item-row').toArray().map(row => ({
+        return $('#order-table-body tr.order-item-row').toArray().filter(row => !blankRow(row)).map(row => ({
             data: Object.fromEntries(Array.from(row.attributes).filter(a => a.name.startsWith('data-')).map(a => [a.name, a.value])),
             controls: Array.from(row.querySelectorAll('input, select')).map(element => ({name: element.name || '', value: element.value})),
         }));
@@ -100,7 +107,7 @@
     }
 
     function restoreLines(lines) {
-        for (const line of lines) {
+        for (const line of lines.filter(line => !blankLine(line))) {
             const get = name => (line.controls.find(control => control.name === name) || {}).value;
             const rate = Number(get(purchase ? 'net_unit_cost[]' : 'net_unit_price[]')) || 0;
             grid.addProductRow({
@@ -216,6 +223,9 @@
     const workspace = window.ZoloDocumentDrafts.attach({
         kind: config.kind, label: purchase ? 'Purchase' : 'Sales', baseUrl: config.baseUrl, enabled: shared, form,
         snapshot, restore, stable, reset, party: partyMeta, focus: focusFirst, inDocument, legacy: legacySnapshot,
+        // No party and no item yet: only defaults on screen (payment pill, dates), so no auto-saved draft for it.
+        empty: state => !state.form.fields[partySelector.slice(1)] && !state.form.lines.length
+            && !['supplier_invoice_no', 'reference_no'].some(key => String(state.form.fields[key] || '').trim()),
         rows: document.getElementById('order-table-body'),
         handles: entry => entry.id === config.kind || (entry.id === 'purchase-order' && purchase && !!config.purchaseOrders),
         // Split view (blank bill + bill list) is the home screen: opening the page or closing a tab lands there,

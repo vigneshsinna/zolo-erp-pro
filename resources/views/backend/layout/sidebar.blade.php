@@ -6,6 +6,7 @@
     $isAdmin = $nav->isAdmin;
     $canNavigate = fn ($permission) => $nav->can($permission);
     $documentShortcuts = app(\App\Services\Platform\DocumentShortcutRegistry::class)->forUser($canNavigate, $isAdmin);
+    // Visibility only: a module that is switched off hides its links. Links never fall back to an older page.
     $complianceOn = config('commercial.enabled') && config('compliance.enabled');
     $canMasters = $nav->allows('sidebar_product');
     $canSelling = $nav->allows('sidebar_sale', 'packing_slip_challan', 'delivery', 'delivery-challans-index', 'quotes-index');
@@ -144,10 +145,10 @@
             <ul id="purchase" class="collapse list-unstyled">
                 @if($nav->allows('purchases-index'))
                     <li id="purchase-list-menu"><a href="{{route('purchases.index')}}" data-keywords="grn purchase">Purchase Bills</a></li>
-                    <li><a href="{{ config('commercial.enabled') ? route('purchases.index', ['orders' => 1]) : route('purchases.index', ['view' => 'orders', 'purchase_status' => 4]) }}" data-keywords="po">Purchase Orders</a></li>
+                    <li><a href="{{ route('purchases.index', ['orders' => 1]) }}" data-keywords="po">Purchase Orders</a></li>
                 @endif
                 @if($nav->allows('purchase-return-index'))
-                    <li id="purchase-return-menu"><a href="{{ $complianceOn ? route('purchases.index', ['returns' => 1]) : route('return-purchase.index') }}">Purchase Returns &amp; Debit Notes</a></li>
+                    <li id="purchase-return-menu"><a href="{{ route('purchases.index', ['returns' => 1]) }}">Purchase Returns &amp; Debit Notes</a></li>
                 @endif
                 @if($nav->allows('purchases-import'))
                     <li id="purchase-import-menu"><a href="{{url('purchases/purchase_by_csv')}}" data-keywords="csv">Import Purchases</a></li>
@@ -167,7 +168,7 @@
                     @if(config('commercial.enabled'))<li><a href="{{ route('sales.index', ['orders' => 1]) }}" data-keywords="so">Sales Orders</a></li>@endif
                 @endif
                 @if($nav->allows('returns-index'))
-                    <li id="sale-return-menu"><a href="{{ $complianceOn ? route('sales.index', ['returns' => 1]) : route('return-sale.index') }}">Sales Returns &amp; Credit Notes</a></li>
+                    <li id="sale-return-menu"><a href="{{ route('sales.index', ['returns' => 1]) }}">Sales Returns &amp; Credit Notes</a></li>
                 @endif
                 @if($nav->allows('quotes-index'))
                     <li id="quotation-list-menu"><a href="{{route('quotations.index')}}" data-keywords="estimate">Quotations</a></li>
@@ -526,6 +527,10 @@
     @if($settingsSections)
         <li class="sidebar-heading"><span>Administration</span></li>
         <li id="settings-menu"><a href="{{ route('settings.workspace') }}"><i class="dripicons-gear"></i><span>Settings</span></a></li>
+    @endif
+    @if(\App\Services\Platform\MenuSwitches::isDeveloper())
+        @if(!$settingsSections)<li class="sidebar-heading"><span>Administration</span></li>@endif
+        <li id="developer-menu"><a href="{{ route('developer.index') }}"><i class="dripicons-code"></i><span>Developer</span></a></li>
     @endif
 </ul>
 

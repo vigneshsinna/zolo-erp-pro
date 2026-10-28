@@ -17,7 +17,7 @@
             <li><a class="nav-link" href="{{ route('accounting.general-ledger') }}"><i class="dripicons-view-thumb"></i> General Ledger</a></li>
         </ul>
         <div class="comm-actions">
-            <button onclick="window.print();" class="btn btn-outline-secondary btn-sm u-h-28px u-fs-11px">
+            <button data-erp-print class="btn btn-outline-secondary btn-sm u-h-28px u-fs-11px">
                 <i class="dripicons-print"></i> Print Book
             </button>
         </div>

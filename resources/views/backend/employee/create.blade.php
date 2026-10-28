@@ -1,5 +1,6 @@
 @extends('backend.layout.main')
 @section('content')
+<x-hrm-command-bar active="employees" />
 <section class="forms">
     <div class="container-fluid">
         <div class="row">
