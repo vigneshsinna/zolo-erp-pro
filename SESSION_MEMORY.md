@@ -2236,3 +2236,13 @@ User rule: one page per screen; list duplicates with file:line and wait for conf
 - Best Seller report never loaded Chart.js (missing `@section('charts', '1')`) - fixed.
 - Not changed: dedicated document templates (A4/80mm/58mm invoices, tax invoice, challans, labels, barcodes).
 - Verified with Playwright -> page.pdf on 23 report pages + 11 list pages + sales register.
+
+## 106. Developer login, per-company section switches, People/HRM/Settings command bars (2026-10-28, branch ui)
+
+User: People, HRM and Settings did not follow the modern UI; add a developer role login that manages all admins and can switch sections / subsections off (e.g. HRM) — user chose **per company** and an **artisan command** for the login.
+- Developer = Admin account with `users.is_developer` (migration 2026_10_27_000001, also `company_menu_switches`). `php artisan erp:developer email [--password=]` creates/updates it and grants every company + branch. Local login: developer@zoloerp.local (password printed once on 2026-10-28; reset with the command).
+- `/developer` (DeveloperController, view backend/developer/index, css/pages/developer.css): admin logins (add with companies, block/activate, set password, companies) + section/screen ticks for the ACTIVE company. Admins never see/edit developer accounts (UserController guardDeveloper + hidden from list).
+- `App\Services\Platform\MenuSwitches`: catalog = rendered sidebar (sections `a[href=#key]`, screens `li[id]`, Settings pages from the search index); OFF rows store blocked paths (+query). Enforced by sidebar DOM filter (main.blade.php), `EnforceMenuSwitches` middleware in the web group (sorted after company context: redirect /dashboard with reason, AJAX 403), SettingsCatalog and command-bar pills. Developers are exempt. Never blocked: /, /login, /dashboard, /settings, /developer, own profile/password.
+- New components: x-section-command-bar (generic), x-people-command-bar, x-hrm-command-bar. All 3 People + 10 HRM pages (+ create/edit forms, HRM settings, HRM panel) use them with btn-primary actions; old `hrm.partial.menu` + its CSS deleted (user OK 2026-10-28). Settings bar added to Gift Cards, Coupons, Tables, WhatsApp x3, Notifications, Languages, My Profile, Document Series.
+- Not changed (different shells): Financial Year setup (standalone HTML, overflows), Business Profile (operations layout), Addons; Settings › Backup Database links to a retired page (410) — reported, not removed.
+- Tests: tests/Feature/MenuSwitchesTest.php (4). DesignTokens, DocumentEntryWeb, ProductCreateSmoke, LegacyCatalogIsolation, SwitchableCapability, CompanyProfile green. NavigationWebTest passes but needs ~478 MB (same with my hooks removed: pre-existing), so it dies under the default 128M CLI limit.

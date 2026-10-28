@@ -423,6 +423,7 @@ Retired screens:
 | `delivery-challans/create`, `goods-received-notes/create` (never implemented) | `?new=1` on the list page | Removed |
 | RTL layout copy `backend/layout/0main_rtl.blade.php` (unused) | `backend/layout/main.blade.php` | Removed |
 | `Optech*` scaffold modules (`/optech…` "Hello World" pages) | See module disposition in section 00 | Removed |
+| Old light HRM menu `backend/hrm/partial/menu.blade.php` (+ `css/pages/hrm-partial-menu.css`) | `<x-hrm-command-bar>` on every HRM page | Removed |
 
 Not duplicates, kept on purpose: Dispatch Register (one list over Customer DC, courier Challan, Delivery and Packing Slip, which are different documents); product list "All Product In Stock" (an e-commerce bulk action, not a stock page).
 

@@ -25,11 +25,18 @@ class MenuSwitches
     private const NEVER_UNDER = ['/user/profile', '/user/update_profile', '/user/changepass', '/developer'];
 
     private array $offByCompany = [];
+    /** Schema answers do not change while the app runs; asked once instead of once per menu link. */
+    private static array $schema = [];
+
+    private static function ready(string $what): bool
+    {
+        return self::$schema[$what] ??= $what === 'column' ? Schema::hasColumn('users', 'is_developer') : Schema::hasTable('company_menu_switches');
+    }
 
     public static function isDeveloper($user = null): bool
     {
         $user ??= Auth::user();
-        return $user && Schema::hasColumn('users', 'is_developer') && (bool) ($user->is_developer ?? false);
+        return $user && (bool) ($user->is_developer ?? false) && self::ready('column');
     }
 
     public function companyId(): ?int
@@ -42,7 +49,7 @@ class MenuSwitches
     public function off(?int $companyId = null): array
     {
         $companyId ??= $this->companyId();
-        if (!$companyId || !Schema::hasTable('company_menu_switches')) return [];
+        if (!$companyId || !self::ready('table')) return [];
         return $this->offByCompany[$companyId] ??= DB::table('company_menu_switches')->where('company_id', $companyId)->get()
             ->mapWithKeys(fn ($row) => [$row->menu_key => ['label' => $row->label, 'paths' => json_decode($row->paths, true) ?: []]])->all();
     }

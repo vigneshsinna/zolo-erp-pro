@@ -36,6 +36,8 @@ class AppServiceProvider extends ServiceProvider
         // Company / branch scoping consults these on almost every query; both are dropped as soon as what they hold can change.
         $this->app->singleton(\App\Support\Database\SchemaCache::class);
         $this->app->singleton(\App\Services\Platform\BranchAccess::class);
+        // Asked for every menu link and pill: one instance per request keeps the company's switches loaded once.
+        $this->app->scoped(\App\Services\Platform\MenuSwitches::class);
         Event::listen(\Illuminate\Database\Events\QueryExecuted::class, function ($query) {
             if (preg_match('/^\s*(create|alter|drop|rename|truncate)\b/i', $query->sql)) {
                 $this->app->make(\App\Support\Database\SchemaCache::class)->flush();
