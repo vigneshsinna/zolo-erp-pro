@@ -148,6 +148,62 @@ class AiChatController extends Controller
         ]);
     }
 
+    public function proposals(Request $request): JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        /** @var \App\Ai\Services\ActionProposalService $service */
+        $service = app(\App\Ai\Services\ActionProposalService::class);
+        $pending = $service->listPending($principal);
+
+        return response()->json([
+            'status' => 'ok',
+            'proposals' => $pending,
+            'scope' => $this->scope($principal),
+        ]);
+    }
+
+    public function approveProposal(Request $request, string $id): JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        $notes = $request->input('notes');
+        /** @var \App\Ai\Services\ActionProposalService $service */
+        $service = app(\App\Ai\Services\ActionProposalService::class);
+
+        try {
+            $result = $service->approve($principal, $id, $notes);
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return $this->error('AI_PROPOSAL_EXECUTION_FAILED', $e->getMessage(), 422);
+        }
+    }
+
+    public function rejectProposal(Request $request, string $id): JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        $reason = $request->input('reason');
+        /** @var \App\Ai\Services\ActionProposalService $service */
+        $service = app(\App\Ai\Services\ActionProposalService::class);
+
+        try {
+            $result = $service->reject($principal, $id, $reason);
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return $this->error('AI_PROPOSAL_REJECTION_FAILED', $e->getMessage(), 422);
+        }
+    }
+
     public function createThread(Request $request): JsonResponse
     {
         $principal = $this->principal($request);
@@ -267,26 +323,41 @@ class AiChatController extends Controller
                 }
             }
 
+            $activeEntities = DB::table('ai_thread_entities')
+                ->where('thread_id', $threadId)
+                ->where('company_id', $principal->companyId)
+                ->where('branch_id', $principal->branchId)
+                ->latest('updated_at')
+                ->limit(5)
+                ->get(['entity_type', 'entity_id', 'entity_name', 'as_of'])
+                ->map(fn (stdClass $r): array => (array) $r)
+                ->all();
+
             $copilot = new ErpCopilot(
                 $principal,
                 $history,
                 fn (PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
+                $activeEntities
             );
             $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
 
             $evidence = $this->evidence($response);
             $rawText = trim($response->text);
 
+            $answerStatus = 'unsupported';
             if (!empty($evidence['facts'])) {
+                $answerStatus = 'verified';
                 $answer = $rawText !== ''
                     ? $rawText
                     : 'Verified ERP facts have been retrieved for this request. Review the summary card below.';
             } elseif (!empty($evidence['warnings'])) {
+                $answerStatus = 'tool_error';
                 $warningDetails = implode(' ', $evidence['warnings']);
                 $answer = $rawText !== ''
                     ? $rawText . "\n\n> [!WARNING]\n> {$warningDetails}"
                     : "The copilot attempted to query ERP records, but could not complete the check: {$warningDetails}";
             } else {
+                $answerStatus = 'unsupported';
                 $answer = 'The copilot could not produce a verified answer. Review any available ERP results below.';
             }
 
@@ -300,6 +371,7 @@ class AiChatController extends Controller
                 'run_id' => $principal->requestId,
                 'thread_id' => $threadId,
                 'status' => 'completed',
+                'answer_status' => $answerStatus,
                 'message' => $answer,
                 ...$evidence,
                 'scope' => $this->scope($principal),
@@ -320,6 +392,8 @@ class AiChatController extends Controller
                 'company_id' => $principal->companyId,
                 'error_code' => $code,
                 'exception_type' => $error::class,
+                'error_message' => $error->getMessage(),
+                'file' => $error->getFile() . ':' . $error->getLine(),
             ]);
 
             return $this->error($code, $message, $status);
@@ -400,8 +474,10 @@ class AiChatController extends Controller
             if (($payload['status'] ?? null) !== 'ok') {
                 $errorCode = $payload['error_code'] ?? null;
                 $specificWarning = match ($errorCode) {
+                    'INVALID_FINANCIAL_YEAR_DATE' => 'Requested date is outside the active financial year.',
+                    'ENTITY_NOT_FOUND' => 'Target customer, invoice, or entity was not found in this company/branch.',
                     'AI_INPUT_VALIDATION_FAILED' => 'Query parameters were outside allowable limits.',
-                    'AI_TOOL_FORBIDDEN' => 'Access denied: insufficient permissions to query this report.',
+                    'AI_TOOL_FORBIDDEN' => 'Access denied: insufficient permissions to query this report or warehouse.',
                     'AI_PRINCIPAL_INACTIVE' => 'Authentication expired: user or company session is inactive.',
                     'AI_DOMAIN_EXECUTION_FAILURE' => 'Financial reporting service could not complete calculation for the requested date or parameters.',
                     default => 'An ERP tool could not complete its check.',
@@ -422,6 +498,19 @@ class AiChatController extends Controller
             $toolTitle = match ($payload['tool'] ?? '') {
                 'inventory.stock_summary.v1' => 'Warehouse stock report',
                 'receivables.outstanding.v1' => 'Customer receivables ageing',
+                'receivables.invoices.v1' => 'Customer invoice breakdown',
+                'receivables.invoice_allocations.v1' => 'Invoice payment allocations',
+                'sales.summary.v1' => 'Sales & POS analytics',
+                'payables.summary.v1' => 'Accounts payable ageing',
+                'accounting.statements.v1' => 'Financial statements',
+                'tax.gst_summary.v1' => 'GST tax breakdown',
+                'copilot.help.v1' => 'Copilot capabilities catalog',
+                'manufacturing.boms.v1' => 'Manufacturing Bill of Materials',
+                'jobwork.status.v1' => 'Job work processing report',
+                'orders.open.v1' => 'Open orders & fulfilment report',
+                'proposals.draft.v1' => 'Action proposal review draft',
+                'documents.preview.v1' => 'Document preview',
+                'knowledge.query.v1' => 'Company policy & terms',
                 default => 'Authoritative ERP report',
             };
             foreach ($payload['source_refs'] ?? [] as $href) {
@@ -468,6 +557,100 @@ class AiChatController extends Controller
                 'meta' => json_encode($evidence, JSON_THROW_ON_ERROR),
             ],
         ]);
+
+        // Persist verified entities into ai_thread_entities for multi-turn grounding (AI-005)
+        foreach ($evidence['facts'] ?? [] as $fact) {
+            $tool = $fact['tool'] ?? '';
+            $data = $fact['data'] ?? [];
+            $asOf = $fact['as_of'] ?? null;
+
+            if ($tool === 'receivables.outstanding.v1') {
+                foreach ($data['top_customers'] ?? [] as $cust) {
+                    if (!empty($cust['customer_id'])) {
+                        DB::table('ai_thread_entities')->updateOrInsert(
+                            [
+                                'thread_id' => $threadId,
+                                'company_id' => $principal->companyId,
+                                'entity_type' => 'customer',
+                                'entity_id' => $cust['customer_id'],
+                            ],
+                            [
+                                'branch_id' => $principal->branchId,
+                                'financial_year_id' => $principal->financialYearId,
+                                'entity_name' => $cust['customer_name'] ?? null,
+                                'as_of' => $asOf,
+                                'metadata' => json_encode($cust, JSON_THROW_ON_ERROR),
+                                'updated_at' => now(),
+                                'created_at' => now(),
+                            ]
+                        );
+                    }
+                }
+            } elseif ($tool === 'receivables.invoices.v1') {
+                if (!empty($data['customer']['id'])) {
+                    DB::table('ai_thread_entities')->updateOrInsert(
+                        [
+                            'thread_id' => $threadId,
+                            'company_id' => $principal->companyId,
+                            'entity_type' => 'customer',
+                            'entity_id' => $data['customer']['id'],
+                        ],
+                        [
+                            'branch_id' => $principal->branchId,
+                            'financial_year_id' => $principal->financialYearId,
+                            'entity_name' => $data['customer']['name'] ?? null,
+                            'as_of' => $asOf,
+                            'metadata' => json_encode($data['customer'], JSON_THROW_ON_ERROR),
+                            'updated_at' => now(),
+                            'created_at' => now(),
+                        ]
+                    );
+                }
+                foreach ($data['invoices'] ?? [] as $inv) {
+                    if (!empty($inv['open_item_id'])) {
+                        DB::table('ai_thread_entities')->updateOrInsert(
+                            [
+                                'thread_id' => $threadId,
+                                'company_id' => $principal->companyId,
+                                'entity_type' => 'invoice',
+                                'entity_id' => $inv['open_item_id'],
+                            ],
+                            [
+                                'branch_id' => $principal->branchId,
+                                'financial_year_id' => $principal->financialYearId,
+                                'entity_name' => $inv['invoice_number'] ?? null,
+                                'as_of' => $asOf,
+                                'metadata' => json_encode($inv, JSON_THROW_ON_ERROR),
+                                'updated_at' => now(),
+                                'created_at' => now(),
+                            ]
+                        );
+                    }
+                }
+            } elseif ($tool === 'payables.summary.v1') {
+                foreach ($data['top_suppliers'] ?? [] as $sup) {
+                    if (!empty($sup['supplier_id'])) {
+                        DB::table('ai_thread_entities')->updateOrInsert(
+                            [
+                                'thread_id' => $threadId,
+                                'company_id' => $principal->companyId,
+                                'entity_type' => 'supplier',
+                                'entity_id' => $sup['supplier_id'],
+                            ],
+                            [
+                                'branch_id' => $principal->branchId,
+                                'financial_year_id' => $principal->financialYearId,
+                                'entity_name' => $sup['name'] ?? null,
+                                'as_of' => $asOf,
+                                'metadata' => json_encode($sup, JSON_THROW_ON_ERROR),
+                                'updated_at' => now(),
+                                'created_at' => now(),
+                            ]
+                        );
+                    }
+                }
+            }
+        }
     }
 
     private function threadNotFound(): JsonResponse

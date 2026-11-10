@@ -10,8 +10,7 @@ class Warehouse extends Model
     use ScopesCompanyQueries;
 
     protected $fillable =[
-
-        "name", "phone", "email", "address", "is_active"
+        "company_id", "branch_id", "name", "phone", "email", "address", "is_active"
     ];
 
     public function product()

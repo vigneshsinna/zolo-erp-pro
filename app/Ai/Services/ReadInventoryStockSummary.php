@@ -36,15 +36,48 @@ class ReadInventoryStockSummary
         $companyId = $principal->companyId;
         $warnings = [];
 
-        // 1. Validate warehouse if provided
+        // 1. Authoritative Warehouse Scope Resolution (SEC-01 & SEC-02)
         $warehouseName = null;
         if ($warehouseId !== null) {
             $warehouse = Warehouse::where('company_id', $companyId)->find($warehouseId);
             if (!$warehouse) {
-                $warnings[] = "Warehouse ID {$warehouseId} does not exist for this company. Showing stock across all company warehouses.";
-                $warehouseId = null;
-            } else {
-                $warehouseName = $warehouse->name;
+                return ErpToolResult::error(
+                    toolKey: 'inventory.stock_summary.v1',
+                    errorCode: 'AI_TOOL_FORBIDDEN',
+                    message: "Warehouse ID {$warehouseId} does not exist or is not accessible.",
+                    scope: [
+                        'company_id' => $companyId,
+                        'branch_id' => $principal->branchId,
+                        'warehouse_id' => $warehouseId,
+                    ]
+                );
+            }
+            if ($warehouse->branch_id !== null && (int) $warehouse->branch_id !== (int) $principal->branchId) {
+                return ErpToolResult::error(
+                    toolKey: 'inventory.stock_summary.v1',
+                    errorCode: 'AI_TOOL_FORBIDDEN',
+                    message: "Warehouse '{$warehouse->name}' belongs to a different branch and is not accessible.",
+                    scope: [
+                        'company_id' => $companyId,
+                        'branch_id' => $principal->branchId,
+                        'warehouse_id' => $warehouseId,
+                    ]
+                );
+            }
+            $warehouseName = $warehouse->name;
+            $targetWarehouses = collect([$warehouse]);
+        } else {
+            // Default to warehouses authorized for the actor's branch (fail-closed against cross-branch aggregation)
+            $targetWarehouses = Warehouse::where('company_id', $companyId)
+                ->where('is_active', true)
+                ->where(function ($q) use ($principal) {
+                    $q->where('branch_id', $principal->branchId)
+                      ->orWhereNull('branch_id');
+                })
+                ->get();
+
+            if ($targetWarehouses->isEmpty()) {
+                $warnings[] = "No active warehouses are assigned to the current branch.";
             }
         }
 
@@ -98,8 +131,7 @@ class ReadInventoryStockSummary
                     ? ["No active products matched query '{$productQuery}'."]
                     : ['No active physical products found for this company.'],
                 asOf: $reportDate,
-                reconciled: true,
-                rowCount: 0
+                reconciled: true
             );
         }
 
@@ -112,15 +144,36 @@ class ReadInventoryStockSummary
         $hasLedgerVariance = false;
 
         foreach ($allProducts as $product) {
-            $avail = $this->availabilityService->forProduct(
-                productId: $product->id,
-                warehouseId: $warehouseId
-            );
+            $onHand = 0.0;
+            $reserved = 0.0;
+            $available = 0.0;
+            $ledger = 0.0;
 
-            $onHand = (float) $avail['on_hand'];
-            $reserved = (float) $avail['reserved'];
-            $available = (float) $avail['available'];
-            $ledger = (float) $avail['ledger_on_hand'];
+            if ($warehouseId !== null) {
+                $avail = $this->availabilityService->forProduct(
+                    productId: $product->id,
+                    warehouseId: $warehouseId
+                );
+                $onHand = (float) $avail['on_hand'];
+                $reserved = (float) $avail['reserved'];
+                $available = (float) $avail['available'];
+                $ledger = (float) $avail['ledger_on_hand'];
+            } else {
+                if ($targetWarehouses->isEmpty()) {
+                    $onHand = $reserved = $available = $ledger = 0.0;
+                } else {
+                    foreach ($targetWarehouses as $targetWh) {
+                        $avail = $this->availabilityService->forProduct(
+                            productId: $product->id,
+                            warehouseId: $targetWh->id
+                        );
+                        $onHand += (float) $avail['on_hand'];
+                        $reserved += (float) $avail['reserved'];
+                        $available += (float) $avail['available'];
+                        $ledger += (float) $avail['ledger_on_hand'];
+                    }
+                }
+            }
 
             if ($onHand != $ledger) {
                 $hasLedgerVariance = true;

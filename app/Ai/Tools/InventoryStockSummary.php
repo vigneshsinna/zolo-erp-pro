@@ -68,6 +68,8 @@ class InventoryStockSummary implements Tool
             'source_refs' => $result->sourceRefs,
             'error_code' => $result->errorCode,
             'error_message' => $result->errorMessage,
+            'message' => $result->errorMessage,
         ], JSON_THROW_ON_ERROR);
     }
 }
+

@@ -7,7 +7,7 @@ namespace App\Ai\DTOs;
 /**
  * Immutable typed result returned by authoritative ERP tool handlers.
  */
-final readonly class ErpToolResult
+final readonly class ErpToolResult implements \JsonSerializable
 {
     /**
      * @param string $toolKey The registered identifier of the tool
@@ -22,6 +22,8 @@ final readonly class ErpToolResult
      * @param string|null $errorCode Machine-readable error taxonomy code
      * @param string|null $errorMessage Human-readable message
      */
+    public ?string $message;
+
     public function __construct(
         public string $toolKey,
         public string $status,
@@ -34,7 +36,10 @@ final readonly class ErpToolResult
         public int $rowCount = 0,
         public ?string $errorCode = null,
         public ?string $errorMessage = null,
-    ) {}
+        ?string $message = null,
+    ) {
+        $this->message = $message ?? $this->errorMessage;
+    }
 
     /**
      * Create a successful execution result.
@@ -46,7 +51,8 @@ final readonly class ErpToolResult
         array $sourceRefs = [],
         array $warnings = [],
         ?string $asOf = null,
-        bool $reconciled = true
+        bool $reconciled = true,
+        ?int $rowCount = null
     ): self {
         return new self(
             toolKey: $toolKey,
@@ -57,7 +63,7 @@ final readonly class ErpToolResult
             warnings: $warnings,
             asOf: $asOf,
             reconciled: $reconciled,
-            rowCount: count($data),
+            rowCount: $rowCount ?? count($data),
         );
     }
 
@@ -67,17 +73,19 @@ final readonly class ErpToolResult
     public static function denied(
         string $toolKey,
         string $reason,
-        string $errorCode = 'AI_TOOL_FORBIDDEN'
+        string $errorCode = 'AI_TOOL_FORBIDDEN',
+        array $scope = []
     ): self {
         return new self(
             toolKey: $toolKey,
             status: 'denied',
-            scope: [],
+            scope: $scope,
             data: [],
             sourceRefs: [],
             warnings: [],
             errorCode: $errorCode,
             errorMessage: $reason,
+            message: $reason,
         );
     }
 
@@ -87,18 +95,46 @@ final readonly class ErpToolResult
     public static function error(
         string $toolKey,
         string $message,
-        string $errorCode = 'AI_DOMAIN_ERROR'
+        string $errorCode = 'AI_DOMAIN_ERROR',
+        array $scope = []
     ): self {
         return new self(
             toolKey: $toolKey,
             status: 'error',
-            scope: [],
+            scope: $scope,
             data: [],
             sourceRefs: [],
             warnings: [],
             errorCode: $errorCode,
             errorMessage: $message,
+            message: $message,
         );
+    }
+
+    /**
+     * Array representation for JSON serialization and tool responses.
+     */
+    public function toArray(): array
+    {
+        return [
+            'status' => $this->status,
+            'tool' => $this->toolKey,
+            'scope' => $this->scope,
+            'as_of' => $this->asOf,
+            'data' => $this->data,
+            'source_refs' => $this->sourceRefs,
+            'warnings' => $this->warnings,
+            'reconciled' => $this->reconciled,
+            'row_count' => $this->rowCount,
+            'error_code' => $this->errorCode,
+            'error_message' => $this->errorMessage,
+            'message' => $this->message,
+        ];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 }
 

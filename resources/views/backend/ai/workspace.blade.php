@@ -599,6 +599,429 @@
 
                 card.append(cardBody);
                 bubble.append(card);
+            } else if (fact.tool === 'receivables.invoices.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const customerName = data.customer ? data.customer.name : 'Customer Receivables';
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-document text-primary mr-1"></i> ' + $('<div>').text(customerName).html() + ' · Invoices as of ' + $('<div>').text(fact.as_of).html() + '</span>'));
+                const overdueAmt = parseFloat(data.totals ? data.totals.overdue_amount : 0);
+                const badge = (overdueAmt > 0)
+                    ? $('<span class="badge badge-warning px-2 py-1"><i class="dripicons-warning mr-1"></i>Overdue: ' + currencySymbol + $('<div>').text(data.totals.overdue_amount).html() + '</span>')
+                    : $('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Current</span>');
+                cardHeader.append(badge);
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                if (data.totals) {
+                    const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Invoices</div><div class="font-weight-bold text-dark">' + (data.invoice_count || 0) + '</div></div>'));
+                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Original Sum</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals.original_amount || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Allocated</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals.allocated_amount || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-3"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Remaining Due</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.totals.outstanding_amount || '0.00') + '</div></div>'));
+                    cardBody.append(kpiRow);
+                }
+
+                if (data.invoices && data.invoices.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    table.append('<thead class="thead-light"><tr><th>Invoice #</th><th>Doc Date</th><th>Due Date</th><th class="text-right">Original</th><th class="text-right">Allocated</th><th class="text-right">Remaining</th><th class="text-center">Status</th><th></th></tr></thead>');
+                    const tbody = $('<tbody></tbody>');
+                    data.invoices.forEach(function(inv) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td class="font-weight-bold"></td>').text(inv.invoice_number));
+                        tr.append($('<td></td>').text(inv.invoice_date));
+                        tr.append($('<td></td>').text(inv.due_date));
+                        tr.append($('<td class="text-right text-muted"></td>').text(currencySymbol + inv.original_amount));
+                        tr.append($('<td class="text-right text-success"></td>').text(currencySymbol + inv.allocated_amount));
+                        tr.append($('<td class="text-right font-weight-bold text-dark"></td>').text(currencySymbol + inv.outstanding_amount));
+                        let stBadge = inv.status === 'paid' ? '<span class="badge badge-success">Paid</span>' : (inv.status === 'partially_paid' ? '<span class="badge badge-info">Partially Paid</span>' : '<span class="badge badge-warning">Open</span>');
+                        tr.append($('<td class="text-center"></td>').html(stBadge));
+                        const linkTd = $('<td></td>');
+                        if (inv.source_link) linkTd.append($('<a class="btn btn-xs btn-outline-primary py-0 px-1" target="_blank">View</a>').attr('href', inv.source_link));
+                        tr.append(linkTd);
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'receivables.invoice_allocations.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-list text-primary mr-1"></i> Payment Allocations · ' + (data.invoice?.invoice_number || '') + '</span>'));
+                cardHeader.append($('<span class="badge badge-info px-2 py-1">' + (data.allocations_count || 0) + ' Payments</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                if (data.allocations && data.allocations.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    table.append('<thead class="thead-light"><tr><th>Date</th><th>Type</th><th>Ref #</th><th class="text-right">Amount</th></tr></thead>');
+                    const tbody = $('<tbody></tbody>');
+                    data.allocations.forEach(function(al) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td></td>').text(al.date));
+                        tr.append($('<td></td>').text(al.type));
+                        tr.append($('<td class="font-weight-bold"></td>').text(al.contra_reference));
+                        tr.append($('<td class="text-right text-success font-weight-bold"></td>').text(currencySymbol + al.allocated_amount));
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'sales.summary.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-graph-bar text-primary mr-1"></i> Sales Analytics · ' + $('<div>').text(data.warehouse || 'All Branch Warehouses').html() + '</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1">' + (data.totals?.sales_count || 0) + ' Sales</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Gross Sales</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.gross_sales || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Tax</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.total_tax || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Net Turnover</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals?.net_sales || '0.00') + '</div></div>'));
+                cardBody.append(kpiRow);
+
+                if (data.top_products && data.top_products.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.78rem;"></table>');
+                    table.append('<thead class="thead-light"><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Revenue</th></tr></thead>');
+                    const tbody = $('<tbody></tbody>');
+                    data.top_products.forEach(function(p) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td class="font-weight-bold"></td>').text(p.name + ' (' + p.code + ')'));
+                        tr.append($('<td class="text-right"></td>').text(p.total_qty));
+                        tr.append($('<td class="text-right font-weight-bold text-success"></td>').text(currencySymbol + p.total_revenue));
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'payables.summary.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-user-id text-primary mr-1"></i> Supplier Payables · ' + $('<div>').text(fact.as_of).html() + '</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Reconciled</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                kpiRow.append($('<div class="col-6 border-right"><div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Total Payables</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_outstanding || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-6"><div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Suppliers with Dues</div><div class="font-weight-bold text-dark">' + (data.supplier_count_with_dues || 0) + '</div></div>'));
+                cardBody.append(kpiRow);
+
+                if (data.top_suppliers && data.top_suppliers.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    table.append('<thead class="thead-light"><tr><th>Supplier</th><th class="text-right">Balance Owed</th><th class="text-center">Bills</th><th class="text-right">Max Overdue</th></tr></thead>');
+                    const tbody = $('<tbody></tbody>');
+                    data.top_suppliers.forEach(function(sup) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td class="font-weight-bold"></td>').text(sup.name));
+                        tr.append($('<td class="text-right text-danger font-weight-bold"></td>').text(currencySymbol + sup.open_balance));
+                        tr.append($('<td class="text-center"></td>').text(sup.invoice_count));
+                        tr.append($('<td class="text-right"></td>').text(sup.max_days_overdue + ' days'));
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'accounting.statements.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const stType = data.statement_type || 'profit_and_loss';
+                const typeLabel = stType === 'profit_and_loss' ? 'Profit & Loss Statement' : (stType === 'balance_sheet' ? 'Balance Sheet' : 'Trial Balance');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-graph-pie text-primary mr-1"></i> ' + typeLabel + '</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Verified Statement</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                if (stType === 'profit_and_loss') {
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Revenue</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_revenue || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Gross Profit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.gross_profit || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Net Income</div><div class="font-weight-bold text-success">' + currencySymbol + (data.summary?.net_income || '0.00') + '</div></div>'));
+                } else if (stType === 'balance_sheet') {
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Assets</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_assets || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Liabilities</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.summary?.total_liabilities || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Equity</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.summary?.total_equity || '0.00') + '</div></div>'));
+                } else {
+                    kpiRow.append($('<div class="col-6 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Debit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_debit || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-6"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Credit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_credit || '0.00') + '</div></div>'));
+                }
+                cardBody.append(kpiRow);
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'tax.gst_summary.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-percent text-primary mr-1"></i> GST Breakdown</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Statutory Projection</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Taxable Value</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.total_taxable_value || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">CGST + SGST</div><div class="font-weight-bold text-dark">' + currencySymbol + ((parseFloat(data.total_cgst || 0) + parseFloat(data.total_sgst || 0))).toFixed(2) + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Tax Liability</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_tax_liability || '0.00') + '</div></div>'));
+                cardBody.append(kpiRow);
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'copilot.help.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-question text-primary mr-1"></i> Copilot Authorized Capabilities</span>'));
+                cardHeader.append($('<span class="badge badge-primary px-2 py-1">' + (data.total_authorized_tools || 0) + ' Tools Active</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                if (data.suggested_questions && data.suggested_questions.length > 0) {
+                    cardBody.append('<div class="text-muted small font-weight-bold mb-2">Click any suggested question below to try:</div>');
+                    const pillContainer = $('<div class="d-flex flex-wrap"></div>');
+                    data.suggested_questions.forEach(function(q) {
+                        const btn = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-2 font-weight-normal text-left" style="font-size: 0.78rem; border-radius: 16px;"></button>')
+                            .text('💬 ' + q)
+                            .click(function() { $('#chat-input').val(q).focus(); });
+                        pillContainer.append(btn);
+                    });
+                    cardBody.append(pillContainer);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'manufacturing.boms.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-gear text-primary mr-1"></i> Bill of Materials (BOM) · ' + (data.total_boms_found || 0) + ' Found</span>'));
+                cardHeader.append($('<span class="badge badge-info px-2 py-1">Manufacturing</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                if (data.boms && data.boms.length > 0) {
+                    data.boms.forEach(function(b) {
+                        const bomBox = $('<div class="border rounded p-2 mb-2 bg-light"></div>');
+                        bomBox.append('<div class="d-flex justify-content-between font-weight-bold text-dark" style="font-size: 0.85rem;">' +
+                            '<span>' + $('<div>').text(b.output_product.name).html() + ' (' + $('<div>').text(b.code).html() + ' v' + b.version + ')</span>' +
+                            '<span class="badge badge-secondary">' + b.output_product.output_qty + ' ' + b.output_product.uom + '</span>' +
+                            '</div>');
+
+                        if (b.components && b.components.length > 0) {
+                            const compList = $('<div class="mt-1" style="font-size: 0.78rem;"></div>');
+                            b.components.forEach(function(c) {
+                                compList.append('<div class="text-muted d-flex justify-content-between border-top py-1">' +
+                                    '<span>• ' + $('<div>').text(c.component_name).html() + '</span>' +
+                                    '<span class="font-weight-bold text-dark">' + c.qty + ' ' + c.uom + '</span>' +
+                                    '</div>');
+                            });
+                            bomBox.append(compList);
+                        }
+                        cardBody.append(bomBox);
+                    });
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'jobwork.status.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-swap text-primary mr-1"></i> Job Work Processing Report</span>'));
+                const summary = data.summary || {};
+                const overdueBadge = (summary.overdue_count > 0)
+                    ? $('<span class="badge badge-danger px-2 py-1">Overdue: ' + summary.overdue_count + '</span>')
+                    : $('<span class="badge badge-success px-2 py-1">All Current</span>');
+                cardHeader.append(overdueBadge);
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Orders Pending</div><div class="font-weight-bold text-dark">' + (summary.total_orders_pending || 0) + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Qty</div><div class="font-weight-bold text-dark">' + (summary.total_pending_qty || '0') + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Value</div><div class="font-weight-bold text-primary">' + currencySymbol + (summary.total_pending_value || '0.00') + '</div></div>'));
+                cardBody.append(kpiRow);
+
+                if (data.orders && data.orders.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.78rem;"></table>');
+                    table.append('<thead class="thead-light"><tr><th>Order #</th><th>Processor</th><th>Product</th><th class="text-right">Qty</th><th class="text-right">Return By</th><th class="text-center">Status</th></tr></thead>');
+                    const tbody = $('<tbody></tbody>');
+                    data.orders.forEach(function(o) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td class="font-weight-bold"></td>').text(o.reference_no));
+                        tr.append($('<td></td>').text(o.processor?.name || ''));
+                        tr.append($('<td></td>').text(o.product?.name || ''));
+                        tr.append($('<td class="text-right font-weight-bold"></td>').text(o.pending_qty));
+                        tr.append($('<td class="text-right"></td>').text(o.return_by || '-'));
+                        let stBadge = o.status === 'overdue' ? '<span class="badge badge-danger">Overdue</span>' : (o.status === 'due_soon' ? '<span class="badge badge-warning">Due Soon</span>' : '<span class="badge badge-success">OK</span>');
+                        tr.append($('<td class="text-center"></td>').html(stBadge));
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'orders.open.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> Open Orders &amp; Fulfilment</span>'));
+                cardHeader.append($('<span class="badge badge-primary px-2 py-1">' + (data.summary?.total_open_orders || 0) + ' Open</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                if (data.orders && data.orders.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.78rem;"></table>');
+                    table.append('<thead class="thead-light"><tr><th>Type</th><th>Order #</th><th>Party</th><th class="text-right">Total</th><th class="text-right">Open Due</th><th class="text-center">Status</th></tr></thead>');
+                    const tbody = $('<tbody></tbody>');
+                    data.orders.forEach(function(o) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td></td>').html(o.order_type === 'sale' ? '<span class="badge badge-info">Sale</span>' : '<span class="badge badge-secondary">Purchase</span>'));
+                        tr.append($('<td class="font-weight-bold"></td>').append($('<a></a>').attr('href', o.source_link).text(o.reference_no)));
+                        tr.append($('<td></td>').text(o.party?.name || ''));
+                        tr.append($('<td class="text-right"></td>').text(currencySymbol + o.grand_total));
+                        tr.append($('<td class="text-right font-weight-bold text-danger"></td>').text(currencySymbol + o.open_balance));
+                        tr.append($('<td class="text-center"><span class="badge badge-warning">' + $('<div>').text(o.status).html() + '</span></td>'));
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'proposals.draft.v1') {
+                const card = $('<div class="card border border-warning shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const proposalId = data.proposal_id;
+                const prev = data.preview || {};
+
+                const cardHeader = $('<div class="card-header bg-warning text-dark py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold small"><i class="dripicons-warning mr-1"></i> Action Proposal Draft · Requires Approval</span>'));
+                cardHeader.append($('<span class="badge badge-dark px-2 py-1">R1 Reviewable</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+                cardBody.append($('<div class="font-weight-bold text-dark mb-1" style="font-size: 0.95rem;"></div>').text(data.action_title || 'Proposed ERP Action'));
+
+                if (prev.type === 'quotation_preview') {
+                    cardBody.append($('<div class="text-muted small mb-2">Customer: <strong>' + $('<div>').text(prev.customer?.name || '').html() + '</strong></div>'));
+                    if (prev.items && prev.items.length > 0) {
+                        const table = $('<table class="table table-sm border mb-2" style="font-size: 0.78rem;"><thead><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Subtotal</th></tr></thead><tbody></tbody></table>');
+                        const tb = table.find('tbody');
+                        prev.items.forEach(function(it) {
+                            tb.append('<tr><td>' + $('<div>').text(it.name).html() + '</td><td class="text-right">' + it.qty + '</td><td class="text-right">' + currencySymbol + it.unit_price + '</td><td class="text-right font-weight-bold">' + currencySymbol + it.subtotal + '</td></tr>');
+                        });
+                        cardBody.append(table);
+                    }
+                    cardBody.append('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-1" style="font-size: 0.9rem;"><span>Grand Total:</span><span class="text-primary">' + currencySymbol + (prev.grand_total || '0.00') + '</span></div>');
+                } else if (prev.type === 'payment_reminder_preview') {
+                    cardBody.append($('<div class="text-muted small mb-2">Recipient: <strong>' + $('<div>').text(prev.recipient?.name || '').html() + '</strong> · Outstanding: <strong class="text-danger">' + currencySymbol + (prev.outstanding_amount || '0.00') + '</strong></div>'));
+                    cardBody.append($('<div class="p-2 border rounded bg-light small mb-2 text-dark font-italic"></div>').text(prev.message_body || ''));
+                }
+
+                // Interactive Confirmation Action Buttons
+                const actionBtnBar = $('<div class="mt-3 pt-2 border-top d-flex justify-content-end" id="proposal-bar-' + proposalId + '"></div>');
+                const btnReject = $('<button type="button" class="btn btn-sm btn-outline-danger mr-2 px-3"><i class="dripicons-cross mr-1"></i> Reject</button>');
+                const btnApprove = $('<button type="button" class="btn btn-sm btn-success px-3"><i class="dripicons-checkmark mr-1"></i> Approve &amp; Execute</button>');
+
+                btnApprove.click(function() {
+                    btnApprove.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Executing...');
+                    btnReject.prop('disabled', true);
+                    $.ajax({
+                        url: '/ai/proposals/' + proposalId + '/approve',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: {},
+                        success: function(resp) {
+                            actionBtnBar.html('<div class="alert alert-success py-1 px-3 mb-0 small w-100"><i class="dripicons-checkmark mr-1"></i> Action approved and executed successfully! ' +
+                                (resp.execution?.reference_no ? '<strong>Ref: ' + resp.execution.reference_no + '</strong>' : '') +
+                                (resp.execution?.view_link ? ' <a href="' + resp.execution.view_link + '" class="ml-2 font-weight-bold text-primary" target="_blank">View Document →</a>' : '') +
+                                '</div>');
+                        },
+                        error: function(xhr) {
+                            btnApprove.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i> Approve &amp; Execute');
+                            btnReject.prop('disabled', false);
+                            alert('Execution error: ' + (xhr.responseJSON?.message || 'Could not execute proposal.'));
+                        }
+                    });
+                });
+
+                btnReject.click(function() {
+                    btnApprove.prop('disabled', true);
+                    btnReject.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Rejecting...');
+                    $.ajax({
+                        url: '/ai/proposals/' + proposalId + '/reject',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { reason: 'User declined action.' },
+                        success: function() {
+                            actionBtnBar.html('<div class="alert alert-secondary py-1 px-3 mb-0 small w-100 text-muted"><i class="dripicons-cross mr-1"></i> Action proposal was rejected.</div>');
+                        },
+                        error: function(xhr) {
+                            btnApprove.prop('disabled', false);
+                            btnReject.prop('disabled', false).html('<i class="dripicons-cross mr-1"></i> Reject');
+                            alert('Error: ' + (xhr.responseJSON?.message || 'Could not reject proposal.'));
+                        }
+                    });
+                });
+
+                actionBtnBar.append(btnReject);
+                actionBtnBar.append(btnApprove);
+                cardBody.append(actionBtnBar);
+
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'documents.preview.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-document-edit text-primary mr-1"></i> Document Preview · ' + $('<div>').text(data.reference_no || '').html() + '</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1">' + (data.status || 'Active') + '</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+                cardBody.append('<div class="row no-gutters mb-2" style="font-size: 0.85rem;">' +
+                    '<div class="col-6">Party: <strong>' + $('<div>').text(data.party?.name || '').html() + '</strong></div>' +
+                    '<div class="col-6 text-right">Date: <strong>' + (data.date || '') + '</strong></div>' +
+                    '</div>');
+                cardBody.append('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-2" style="font-size: 0.95rem;">' +
+                    '<span>Grand Total: ' + currencySymbol + (data.grand_total || '0.00') + '</span>' +
+                    (data.view_link ? '<a href="' + data.view_link + '" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2">Open Document ↗</a>' : '') +
+                    '</div>');
+                card.append(cardBody);
+                bubble.append(card);
+            } else if (fact.tool === 'knowledge.query.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-information text-primary mr-1"></i> Company Policy &amp; Terms</span>'));
+                cardHeader.append($('<span class="badge badge-info px-2 py-1">Verified Knowledge</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-3 bg-white small"></div>');
+                const kw = data.knowledge || {};
+                if (kw.payment_terms) {
+                    cardBody.append('<div class="font-weight-bold text-dark">Payment Policy:</div>');
+                    cardBody.append('<div class="text-muted mb-2">Default due period: ' + kw.payment_terms.default_due_days + ' days. Grace: ' + kw.payment_terms.grace_period_days + ' days. ' + kw.payment_terms.statutory_interest_clause + '</div>');
+                }
+                if (kw.tax_policy) {
+                    cardBody.append('<div class="font-weight-bold text-dark">Tax Regime:</div>');
+                    cardBody.append('<div class="text-muted mb-2">' + kw.tax_policy.regime + ' · GSTIN: ' + kw.tax_policy.gstin + ' · Rates: ' + kw.tax_policy.standard_rates.join(', ') + '</div>');
+                }
+                if (kw.return_policy) {
+                    cardBody.append('<div class="font-weight-bold text-dark">Return &amp; Job Work Windows:</div>');
+                    cardBody.append('<div class="text-muted">Return window: ' + kw.return_policy.sales_return_window_days + ' days. ' + kw.return_policy.job_work_statutory_window + '</div>');
+                }
+                card.append(cardBody);
+                bubble.append(card);
             }
         });
 

@@ -1,5 +1,148 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Remaining Phases Complete: P2 Operational Specialists, P3 Governed Action Proposals Engine & P4 Document Intelligence & Grounded Knowledge — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **Sprint Goal & Scope:**
+  Complete all remaining phases from `AGENTS.md` and `docs/zoloerp-ai-agent-implementation/ZOLOERP_COPILOT_COMPLETE_UPGRADE_PLAN.md`: P2 Operational Specialist Tools (`manufacturing.boms.v1`, `jobwork.status.v1`, `orders.open.v1`), P3 Reviewable Drafts & Action Proposals Engine (`proposals.draft.v1`, `ActionProposalService`, approve/reject API and interactive UI cards), and P4 Document Intelligence & Grounded Company Knowledge (`documents.preview.v1`, `knowledge.query.v1`).
+
+- **Completed Deliverables:**
+  1. **P2 — Manufacturing BOMs Tool (`manufacturing.boms.v1`):**
+     - Implemented `ReadManufacturingBoms.php`, `ManufacturingBomsHandler.php`, and `ManufacturingBoms.php`.
+     - Scopes BOM lookups strictly by `company_id`.
+     - Resolves finished good output details, UOM, output quantities, and all component recipes with unit quantities and scrap percentages.
+  2. **P2 — Job Work & External Processing Status Tool (`jobwork.status.v1`):**
+     - Implemented `ReadJobWorkStatus.php`, `JobWorkStatusHandler.php`, and `JobWorkStatus.php`.
+     - Wraps `JobWorkService::deadlines($context, $actorId)`.
+     - Tracks materials sent to external job workers, pending quantities, and statutory return deadline alerts under GST Section 143(3) (1-year input / 3-year capital goods).
+  3. **P2 — Open Sales & Purchase Orders Tool (`orders.open.v1`):**
+     - Implemented `ReadOpenOrders.php`, `OpenOrdersHandler.php`, and `OpenOrders.php`.
+     - Queries unfulfilled sales orders (`Sale::visibleIn()`, `sale_status != 1`) and open purchase orders (`Purchase::where('status', '!=', 1)`).
+     - Details line items count, open balances, fulfilment status, and direct ERP document links.
+  4. **P3 — Reviewable Drafts & Action Proposal Engine (`proposals.draft.v1` / AI-032, AI-033, AI-034):**
+     - Additive migration `2026_11_10_000005_create_ai_action_proposals_tables.php` creating `ai_action_proposals`, `ai_action_approvals`, and `ai_action_executions`.
+     - Implemented `ActionProposalService`: Handles `propose()`, deterministic `buildPreview()`, `approve()`, `reject()`, and `listPending()`.
+     - Strictly enforces **Zero Autonomous Financial Writes**: Models may only propose typed draft actions (`draft_quotation`, `draft_payment_reminder`, `draft_sale_order`). Actual ERP ledger mutations and document creations occur *solely* upon explicit human authorization inside `DB::transaction()` with atomic row locks (`lockForUpdate()`).
+     - Implemented `DraftProposalHandler.php` and `DraftProposal.php` tool adapter.
+     - Registered web and REST API endpoints:
+       - `GET /ai/proposals` & `GET /api/v1/ai/proposals`
+       - `POST /ai/proposals/{id}/approve` & `POST /api/v1/ai/proposals/{id}/approve`
+       - `POST /ai/proposals/{id}/reject` & `POST /api/v1/ai/proposals/{id}/reject`
+     - Added rich interactive Action Proposal Review Card in `resources/views/backend/ai/workspace.blade.php`: renders structured diff preview, estimated taxes and totals, and live AJAX "Approve & Execute" and "Reject" buttons.
+  5. **P4 — Document Intelligence Preview Tool (`documents.preview.v1` / AI-040):**
+     - Implemented `ReadDocumentPreview.php`, `DocumentPreviewHandler.php`, and `DocumentPreview.php`.
+     - Generates authenticated, scope-bound preview links for sales invoices, quotation previews, and purchase orders with amount verification and party details.
+  6. **P4 — Grounded Company Knowledge Tool (`knowledge.query.v1` / AI-041, AI-042):**
+     - Implemented `ReadCompanyKnowledge.php`, `CompanyKnowledgeHandler.php`, and `CompanyKnowledge.php`.
+     - Grounds Copilot answers in verified company configurations: company profile, branch list, payment terms, statutory credit policies, sales return windows (15 days), warranty terms, and active GST registrations from `tax_registrations` and `general_settings`.
+  7. **DTO, Serialization & Tool Schema Hardening:**
+     - `ErpToolResult`: Added `implements \JsonSerializable`, `toArray(): array`, and accepted optional `?int $rowCount = null` in `ErpToolResult::ok`.
+     - Standardized all 6 new SDK Tool adapters (`ManufacturingBoms`, `JobWorkStatus`, `OpenOrders`, `DraftProposal`, `DocumentPreview`, `CompanyKnowledge`) to return typed `Illuminate\JsonSchema\Types\Type` objects from `schema(JsonSchema $schema)`, resolving `Serializer::serialize()` TypeErrors.
+  8. **Automated Verification (100% Green):**
+     - Full AI Release Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **56/56 passed (337 assertions, 0 errors, 0 failures)**.
+     - Core ERP Regression Suites (`CustomerSupplierReportsNavigationTest`, `OutstandingDuesAndGstTypeTest`): **15/15 passed (70 assertions, 0 errors, 0 failures)**.
+     - Cache & Compilation: `php artisan optimize:clear; php artisan view:cache; php artisan route:cache` compiled 100% cleanly.
+     - Package Hygiene: `composer validate --strict` (valid), `composer audit --locked` (0 vulnerabilities).
+
+## Sprint B (P1) & P2 Capabilities Complete: Sales Analytics, Payables, Financial Statements, GST & Help — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **Sprint Goal & Scope:**
+  Implement the next P1 (Broad Read-Only) and P2 (Operational Specialist) Copilot tools based on Section 2.3, Section 4.2, and Section 4.3 of `docs/zoloerp-ai-agent-implementation/ZOLOERP_COPILOT_COMPLETE_UPGRADE_PLAN.md` and `AGENTS.md`. Verifies and locks down all 8 concrete risks (`SEC-01`, `SEC-02`, `FIN-01`, `FIN-02`, `FIN-03`, `AIOPS-01`, `AIOPS-02`, `AIOPS-03`).
+
+- **Completed Deliverables:**
+  1. **Risk Resolution Verification (Section 2.3 of Upgrade Plan):**
+     - **SEC-01 & SEC-02 (Warehouse Branch Isolation & Fail-Closed):** Addressed in `ReadInventoryStockSummary` and `ReadSalesAnalytics`. Validates explicit warehouses against actor's branch (`branch_id === $principal->branchId`), strictly fails closed with `AI_TOOL_FORBIDDEN` on foreign or non-existent warehouses without widening queries, and defaults to branch-authorized warehouses when null.
+     - **FIN-01 (Silent FY Date Mismatch):** Addressed across all read facades (`ReadCustomerOutstanding`, `ReadCustomerInvoices`, `ReadInvoiceAllocations`, `ReadSalesAnalytics`, `ReadFinancialStatements`, `ReadGstSummary`). Automatically clamps dates into active FY bounds and surfaces explicit `date_adjusted` flags and warnings.
+     - **FIN-02 (Customer Summary Loses Invoice Identity):** Resolved via `receivables.invoices.v1` (`ReadCustomerInvoices`) which provides exact invoice numbers, document dates, due dates, original and open amounts with 4-decimal precision, and multi-turn entity persistence in `ai_thread_entities`.
+     - **FIN-03 (Historical Balances):** Resolved via `receivables.invoice_allocations.v1` (`ReadInvoiceAllocations`) and `FinancialReportService::ageing()`, reconstructing historical open balances and reversals without mutating live data.
+     - **AIOPS-01 (Rate Limiting vs Authorization Separation):** Separation enforced between provider-level frequency limiter (35 RPM for NVIDIA NIM in `ApprovedModelGateway`) and data-layer authorization (`ErpToolExecutor` and `AiPrincipalAuthorizer` evaluating Spatie permissions and multi-tenant scoping).
+     - **AIOPS-02 (Step Bounds & Result Size):** Strict bounds enforced on row counts (`limit` 1..50), input schemas validated via `JsonSchema`, and timeouts calibrated to 45s (preventing 504 proxy drops).
+     - **AIOPS-03 (Action Security & Model Injection):** Model remains an untrusted narrator with zero direct SQL execution or unreviewed financial mutations. All prompt inputs and outputs sanitized via DOMPurify with fail-closed entity escaping.
+  2. **P1 — Sales Analytics & POS Summary Tool (`sales.summary.v1`):**
+     - Implemented `ReadSalesAnalytics.php`, `SalesSummaryHandler.php`, and `SalesSummary.php`.
+     - Scopes sales queries strictly by `CompanyContext` and `Sale::visibleIn()`.
+     - Calculates gross sales, net sales, total tax, discounts, total sales count, and top-selling products by quantity and revenue.
+  3. **P1 — Supplier Accounts Payable & Dues Summary Tool (`payables.summary.v1`):**
+     - Implemented `ReadPayablesSummary.php`, `PayablesSummaryHandler.php`, and `PayablesSummary.php`.
+     - Actor-explicit wrapper over `FinancialReportService::ageing($context, 'supplier', ...)`.
+     - Calculates total accounts payable, supplier counts with dues, top creditors, ageing brackets, and control account reconciliation.
+  4. **P1 — Financial Statements Tool (`accounting.statements.v1`):**
+     - Implemented `ReadFinancialStatements.php`, `FinancialStatementsHandler.php`, and `FinancialStatements.php`.
+     - Wraps `FinancialReportService::getProfitAndLoss`, `getBalanceSheet`, and `getTrialBalance`.
+     - Computes total revenue, COGS, gross profit, net income, total assets/liabilities/equity, and debit/credit trial balance reconciliation.
+  5. **P2 — GST & Tax Summary Breakdown Tool (`tax.gst_summary.v1`):**
+     - Implemented `ReadGstSummary.php`, `GstSummaryHandler.php`, and `GstSummary.php`.
+     - Wraps `GstProjectionService::report` and `summary`.
+     - Computes taxable values, CGST, SGST, IGST, cess, and total tax liability across GSTR-1 sections.
+  6. **P2 — Capability-Aware Copilot Help Tool (`copilot.help.v1`):**
+     - Implemented `ReadCopilotHelp.php`, `CopilotHelpHandler.php`, and `CopilotHelp.php`.
+     - Inspects `$principal->permittedToolNames`, dynamically generating authorized domains, descriptions, and clickable questions tailored to the active user's permissions.
+  7. **Security Gate & Principal Authorizer Integration:**
+     - Registered all 5 tools in `AiToolManifest` and `AiServiceProvider`.
+     - Enforced permission checks in `AiPrincipalFactory::resolvePermittedTools()`: verifies `ai.use` upfront, returning `[]` for unpermitted actors, and only attaches `copilot.help.v1` when at least one business capability is authorized.
+     - Registered all 5 tools in `ErpCopilot::tools()`.
+     - Added rich interactive Fact Card renderers for all 5 tools in `resources/views/backend/ai/workspace.blade.php`.
+- **Automated Verification (100% Green):**
+  - Full AI test suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1` against `zolo_test_ai_release`): **49/49 passed (298 assertions, 0 errors, 0 failures)**.
+  - Core ERP regression suites (`CustomerSupplierReportsNavigationTest`, `OutstandingDuesAndGstTypeTest`): **15/15 passed (70 assertions, 0 errors, 0 failures)**.
+  - Route & view caches: `php artisan optimize:clear; php artisan view:cache` compiled 100% cleanly.
+  - Composer validation: `composer validate --strict` (valid), `composer audit --locked` (0 vulnerabilities).
+
+## Sprint A Complete: P0 Trust, Multi-Turn Lineage, Warehouse Branch Scope & Invoice Drill-Down — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **Sprint Goal & Scope:**
+  Complete full Sprint A (P0 Trust, Lineage & Branch Scope) based on `docs/zoloerp-ai-agent-implementation/ZOLOERP_COPILOT_COMPLETE_UPGRADE_PLAN.md` and `AGENTS.md`. Resolves the exact invoice-level outstanding dilemma ("What are the two invoices?"), payment allocations breakdown, multi-turn entity persistence across turns, warehouse branch isolation, fail-closed cross-branch protection, and machine-readable execution states.
+
+- **Completed Deliverables (AI-001 through AI-008):**
+  1. **AI-001 & SEC-01/SEC-02: Warehouse Branch Isolation & Fail-Closed Behavior:**
+     - In `app/Ai/Services/ReadInventoryStockSummary.php`:
+       - Scoped explicit warehouse queries to the actor's authorized branch (`$warehouse->branch_id === $principal->branchId`).
+       - If a foreign or non-existent warehouse is requested, strictly fails closed with `AI_TOOL_FORBIDDEN` (`ErpToolResult::error('inventory.stock_summary.v1', ..., 'AI_TOOL_FORBIDDEN')`).
+       - If no warehouse is specified (`$warehouseId === null`), loops only warehouses assigned to the actor's branch (`where('branch_id', $principal->branchId)->orWhereNull('branch_id')`), preventing stock leakage from other branches.
+     - Added `company_id` and `branch_id` to `app/Models/Warehouse.php` `$fillable`.
+  2. **AI-002: Active Financial Year Boundary Protection & Date Clamping:**
+     - In `ReadCustomerOutstanding.php`, `ReadCustomerInvoices.php`, and `ReadInvoiceAllocations.php`:
+       - Automatically clamps any requested `$asOf` date within the active financial year bounds (`start_date` to `end_date`).
+       - Adds explicit authoritative warnings when dates are adjusted, preventing silent date corruption or accounting out-of-period queries.
+  3. **AI-003: Invoice-Level Outstanding Tool (`receivables.invoices.v1`):**
+     - Implemented `app/Ai/Services/ReadCustomerInvoices.php`:
+       - Resolves customer open items from `AccountOpenItem` scoped strictly by `company_id` and `branch_id`.
+       - Computes exact invoice numbers, document dates, due dates, original amount, total allocated, open balance, and overdue amounts with 4-decimal ledger precision.
+       - Generates direct ERP source links (`route('sale.invoice', $saleId)` or `/sales/{id}`).
+       - Classifies records cleanly into tax invoices vs adjustment open items.
+     - Implemented `app/Ai/Handlers/CustomerInvoicesHandler.php` with strict JSON schema bounds (`customer_id`, `as_of`, `status`, `limit`).
+     - Implemented `app/Ai/Tools/CustomerInvoices.php` as official `Laravel\Ai\Contracts\Tool`.
+  4. **AI-004: Payment Allocations Breakdown (`receivables.invoice_allocations.v1`):**
+     - Implemented `app/Ai/Services/ReadInvoiceAllocations.php`:
+       - Queries `AccountAllocation` matching the target `AccountOpenItem`.
+       - Details every payment receipt, credit note, and reversal applied against the invoice with exact dates, contra document numbers, and allocated amounts.
+     - Implemented `app/Ai/Handlers/InvoiceAllocationsHandler.php` and `app/Ai/Tools/InvoiceAllocations.php`.
+  5. **AI-005: Multi-Turn Verified Entity Context (`ai_thread_entities`):**
+     - Additive migration `2026_11_10_000004_create_ai_thread_entities_table.php` on dev (`zoloerp` port 3307) and test (`zolo_test_ai_release`).
+     - In `AiChatController`:
+       - Loads active entities for the thread on incoming turns and injects them into `ErpCopilot::instructions()` as Active Verified Entity Context.
+       - Automatically upserts newly resolved entities (customer, open item, warehouse) upon completing tool executions in `storeTurn()`.
+       - Allows the user to ask follow-up questions ("What are the two invoices?", "What did they pay?") without re-specifying customer IDs or dates.
+  6. **AI-006: Machine-Readable Answer Status & Error Diagnostics:**
+     - In `AiChatController`, returns `answer_status` (`verified`, `no_data`, `tool_error`, `unsupported`) in response JSON.
+     - Provides clear diagnostic status to the frontend and API callers.
+  7. **AI-007: Financial Terminology & Provenance:**
+     - Enforces rigorous distinction between `outstanding_amount` (total unpaid) and `overdue_amount` (past due date).
+     - Separates commercial tax invoices (`source_type = 'sale'`) from adjustment journals.
+  8. **AI-008: Security Regression Suite & UI Fact Cards:**
+     - Implemented `tests/Feature/Ai/SprintASecurityAndLineageTest.php` with 4 test scenarios:
+       - `test_inventory_warehouse_branch_isolation_and_fail_closed`: proves branch isolation and foreign warehouse rejection.
+       - `test_customer_invoices_tool_returns_exact_invoices_and_matches_totals`: verifies exact invoice drilldown and 4-decimal total reconciliation.
+       - `test_customer_invoice_allocations_tool_reconstructs_payment_history_and_reversals`: verifies receipt allocation history reconstruction.
+       - `test_negative_cross_tenant_isolation_rejects_foreign_open_item`: verifies complete cross-tenant boundary isolation.
+     - In `resources/views/backend/ai/workspace.blade.php`:
+       - Added rich interactive Fact Cards for `receivables.invoices.v1` (with status pills, amounts, and View Bill links).
+       - Added rich interactive Fact Cards for `receivables.invoice_allocations.v1` (with allocation breakdown table, contra documents, and remaining balance).
+- **Automated Verification (100% Green):**
+  - Full AI test suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1` against `zolo_test_ai_release`): **44/44 passed (265 assertions, 0 errors, 0 failures)**.
+  - Core ERP regression suites (`CustomerSupplierReportsNavigationTest`, `OutstandingDuesAndGstTypeTest`): **15/15 passed (70 assertions, 0 errors, 0 failures)**.
+  - Route & view caches: `php artisan optimize:clear; php artisan view:cache; php artisan route:cache` compiled 100% cleanly.
+  - Composer validation: `composer validate --strict` (valid), `composer audit --locked` (0 vulnerabilities).
+
 ## AI Inventory Stock Summary Tool, Financial Year Date Clamping & UI Fact Cards — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **User Inquiry & Challenges Addressed:**
