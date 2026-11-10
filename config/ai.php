@@ -92,7 +92,14 @@ return [
 
         'deepseek' => [
             'driver' => 'deepseek',
-            'key' => env('DEEPSEEK_API_KEY'),
+            'key' => env('DEEPSEEK_API_KEY', env('NVIDIA_API_KEY')),
+            'url' => env('DEEPSEEK_URL', env('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1')),
+        ],
+
+        'nvidia' => [
+            'driver' => 'openai-compatible',
+            'key' => env('NVIDIA_API_KEY'),
+            'url' => env('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1'),
         ],
 
         'eleven' => [

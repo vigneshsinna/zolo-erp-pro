@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Ai\Agents\DeepSeekAgent;
 use App\Ai\Agents\ErpCopilot;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Gateway\ApprovedModelGateway;
@@ -111,6 +112,7 @@ class AiChatController extends Controller
         $validated = $request->validate([
             'message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
             'thread_id' => 'nullable|uuid',
+            'image' => 'nullable|string',
         ]);
         $principal = $this->principal($request);
         if ($denial = $this->accessDenial($principal)) {
@@ -120,6 +122,7 @@ class AiChatController extends Controller
         $existingThreadId = $validated['thread_id'] ?? null;
         $threadId = $existingThreadId ?? (string) Str::uuid();
         $question = $validated['message'];
+        $imageInput = $validated['image'] ?? null;
         $quotaDate = now('UTC')->toDateString();
         $model = $this->modelGateway->resolveApprovedModel();
 
@@ -170,12 +173,21 @@ class AiChatController extends Controller
                 ->map(fn (stdClass $message) => new Message($message->role, mb_substr($message->content, 0, 2000)))
                 ->values()->all();
 
+            $attachments = [];
+            if (filled($imageInput)) {
+                try {
+                    $attachments[] = DeepSeekAgent::createImageAttachment($imageInput);
+                } catch (Throwable) {
+                    // Fall back gracefully if image payload is unparseable
+                }
+            }
+
             $copilot = new ErpCopilot(
                 $principal,
                 $history,
                 fn (PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
             );
-            $response = $copilot->prompt($question, provider: $model['provider'], model: $model['model'], timeout: 25);
+            $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: 25);
 
             $evidence = $this->evidence($response);
             $answer = $evidence['facts'] === [] || trim($response->text) === ''

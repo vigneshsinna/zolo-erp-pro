@@ -35,6 +35,8 @@ return [
     |
     | Default approved provider and model key. Client requests cannot specify
     | or override these server-selected providers.
+    | Approved providers: openai, nvidia, deepseek, gemini, anthropic.
+    | Default models include gpt-4o-mini and deepseek-ai/deepseek-v4.1-flash.
     |
     */
 

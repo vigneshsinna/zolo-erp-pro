@@ -22,6 +22,15 @@ class ApprovedModelGateway
 {
     protected array $allowedModels = [
         'openai' => ['gpt-4o-mini', 'gpt-4o'],
+        'nvidia' => ['deepseek-ai/deepseek-v4.1-flash'],
+        'deepseek' => [
+            'deepseek-ai/deepseek-v4.1-flash',
+            'deepseek-chat',
+            'deepseek-reasoner',
+            'deepseek-flash',
+            'deepseek-v4-pro',
+        ],
+        'openai-compatible' => ['deepseek-ai/deepseek-v4.1-flash'],
         'gemini' => ['gemini-1.5-flash', 'gemini-2.0-flash'],
         'anthropic' => ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022'],
     ];

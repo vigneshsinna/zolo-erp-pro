@@ -1,5 +1,41 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## DeepSeek Agent & NVIDIA NIM Multimodal Setup — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Request Addressed:**
+  - Configured DeepSeek agent using NVIDIA NIM OpenAI-compatible endpoint (`https://integrate.api.nvidia.com/v1`) with model `deepseek-ai/deepseek-v4.1-flash`, supporting multimodal vision and structured reasoning matching the user-specified payload:
+    ```python
+    client = OpenAI(
+      base_url = "https://integrate.api.nvidia.com/v1",
+      api_key = os.environ["NVIDIA_API_KEY"]
+    )
+    completion = client.chat.completions.create(
+      model="deepseek-ai/deepseek-v4.1-flash",
+      messages=[{"role":"user","content":[{"type":"text","text":"..."},{"type":"image_url","image_url":{"url":"..."}}]}]
+    )
+    ```
+- **Architectural Deliverables:**
+  1. **Provider Configuration (`config/ai.php`):**
+     - Configured `nvidia` provider with driver `openai-compatible`, `key => env('NVIDIA_API_KEY')`, and `url => env('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1')`.
+     - Configured `deepseek` provider with driver `deepseek`, `key => env('DEEPSEEK_API_KEY', env('NVIDIA_API_KEY'))`, and `url => env('DEEPSEEK_URL', env('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1'))`.
+  2. **Model Gateway Whitelist (`app/Ai/Gateway/ApprovedModelGateway.php`):**
+     - Added `nvidia`, `deepseek`, and `openai-compatible` providers with model `deepseek-ai/deepseek-v4.1-flash` (plus `deepseek-chat` and `deepseek-reasoner`).
+  3. **Dedicated DeepSeek Agent (`app/Ai/Agents/DeepSeekAgent.php`):**
+     - Implements `Agent`, `Conversational`, `HasMiddleware`, `HasTools` with attributes `#[Provider('nvidia')]` and `#[Model('deepseek-ai/deepseek-v4.1-flash')]`.
+     - Multimodal helper methods: `ask()`, `askWithImage()`, and `createImageAttachment()` resolving data URIs (`data:image/jpeg;base64,...`), remote URLs, and local files into `Laravel\Ai\Files\Base64Image` / `RemoteImage`.
+     - Exposes `DeepSeekAgent::makeClientConfig()` returning `base_url`, `api_key`, and `model` compliant with OpenAI Python SDK specification.
+     - Supports bound `AiPrincipal` for ERP tool execution (`CustomerOutstanding`) or standalone operation.
+  4. **Multimodal Chat Support (`app/Http/Controllers/Api/V1/AiChatController.php`):**
+     - Accepts optional `image` payload (data URI / base64 string) across `/api/v1/ai/chat` and `/ai/chat`, passing attachments through `ErpCopilot` / `DeepSeekAgent`.
+  5. **CLI Artisan Command (`app/Console/Commands/AiDeepSeekCommand.php`):**
+     - Added `php artisan ai:deepseek {--prompt=} {--image=} {--model=} {--provider=}` for instant terminal testing and verification of text and image reasoning.
+  6. **Configuration & Documentation (`config/erp_ai.php`, `.env.example`):**
+     - Documented `NVIDIA_API_KEY`, `NVIDIA_BASE_URL`, `DEEPSEEK_API_KEY`, `DEEPSEEK_URL`.
+  7. **Automated Verification (100% Green):**
+     - `tests/Unit/Ai/DeepSeekAgentTest.php`: 5/5 passed (27 assertions).
+     - Full AI release suite (`phpunit.ai.xml` against disposable MySQL): 32/32 passed (172 assertions, 0 errors, 0 failures).
+     - `composer validate --strict` and `composer audit --locked`: 0 vulnerabilities.
+
 ## PH0/PH1 release corrections — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - Closed the release review gaps against `70a46ad`. Thread reads and continuations require the active company, branch, financial year, and owner. The SDK receives up to eight authorized prior messages and uses the gateway-approved provider and model. The workspace rejects requests from stale ERP contexts.
