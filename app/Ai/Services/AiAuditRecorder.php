@@ -70,7 +70,38 @@ class AiAuditRecorder
         // Redacts input and output references
         $redactedInput = $this->redact($input);
 
-        // In database mode, this will persist to ai_tool_invocations table.
+        if (function_exists('app') && app()->bound('db')) {
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('ai_tool_invocations')) {
+                    $decision = ($result->status === 'denied') ? 'denied' : 'authorized';
+                    $scopeHash = !empty($result->scope) ? hash('sha256', json_encode($result->scope)) : null;
+                    $outputRef = !empty($result->sourceRefs) ? (string) $result->sourceRefs[0] : null;
+
+                    \Illuminate\Support\Facades\DB::table('ai_tool_invocations')->insert([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'run_id' => $runId,
+                        'tool_key' => $toolKey,
+                        'schema_version' => 'v1',
+                        'scope_hash' => $scopeHash,
+                        'input_redacted' => json_encode($redactedInput),
+                        'output_ref' => $outputRef,
+                        'authorization_decision' => $decision,
+                        'status' => $result->status,
+                        'duration_ms' => $durationMs,
+                        'error_code' => $result->errorCode,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                if (app()->bound('log')) {
+                    \Illuminate\Support\Facades\Log::warning('Failed to persist AI tool audit log: ' . $e->getMessage(), [
+                        'run_id' => $runId,
+                        'tool_key' => $toolKey,
+                    ]);
+                }
+            }
+        }
     }
 }
 

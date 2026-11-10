@@ -71,6 +71,9 @@ class ReceivablesVerticalSliceTest extends TestCase
             'branch_id' => $this->branchId,
             'financial_year_id' => $this->financialYearId,
         ]);
+
+        config(['erp_ai.enabled' => true]);
+        app(\App\Ai\Services\AiFeatureGate::class)->setCompanySetting($this->company->id, true, true);
     }
 
     public function test_erp_copilot_registers_only_authorized_tools(): void
@@ -132,8 +135,25 @@ class ReceivablesVerticalSliceTest extends TestCase
 
     public function test_customer_outstanding_tool_denies_unauthorized_principal(): void
     {
+        $restrictedUser = User::create([
+            'name' => 'Restricted Viewer',
+            'email' => 'restricted_' . uniqid() . '@example.com',
+            'phone' => '8888888888',
+            'password' => bcrypt('secret'),
+            'role_id' => 99, // Non-admin role without reporting permissions
+            'is_active' => true,
+            'is_deleted' => false,
+        ]);
+
+        $this->company->users()->attach($restrictedUser->id, ['is_default' => true]);
+        DB::table('company_user_branches')->insert([
+            'company_id' => $this->company->id,
+            'user_id' => $restrictedUser->id,
+            'branch_id' => $this->branchId,
+        ]);
+
         $unauthorizedPrincipal = new AiPrincipal(
-            actorId: $this->user->id,
+            actorId: $restrictedUser->id,
             companyId: $this->company->id,
             branchId: $this->branchId,
             financialYearId: $this->financialYearId,

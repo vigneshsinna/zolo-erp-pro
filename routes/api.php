@@ -215,6 +215,15 @@ Route::prefix('v1')->group(function () {
             Route::get('stock', [ReportApiController::class, 'stock'])->name('api.v1.reports.stock');
             Route::get('customers/{id}/ledger', [ReportApiController::class, 'customerLedger'])->name('api.v1.reports.customer-ledger');
         });
+
+        // AI Operating Layer
+        Route::prefix('ai')->middleware('company.context')->group(function () {
+            Route::get('settings', [\App\Http\Controllers\Api\V1\AiChatController::class, 'settings'])->name('api.v1.ai.settings');
+            Route::get('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'threads'])->name('api.v1.ai.threads.index');
+            Route::post('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'createThread'])->name('api.v1.ai.threads.store');
+            Route::get('threads/{id}', [\App\Http\Controllers\Api\V1\AiChatController::class, 'showThread'])->name('api.v1.ai.threads.show');
+            Route::post('chat', [\App\Http\Controllers\Api\V1\AiChatController::class, 'chat'])->name('api.v1.ai.chat');
+        });
     });
 });
 

@@ -6,15 +6,16 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
-use App\Models\User;
+use App\Models\Company;
+use App\Models\Currency;
 use App\Services\Accounting\FinancialReportService;
 use App\Services\Platform\CompanyContext;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
-use Illuminate\Support\Facades\Auth;
 
 /**
  * Authoritative, actor-explicit read facade for Customer Outstanding / AR Aging.
+ * Does NOT modify global Auth state; passes actor explicitly to accounting services.
  */
 class ReadCustomerOutstanding
 {
@@ -38,24 +39,25 @@ class ReadCustomerOutstanding
             financialYearId: $principal->financialYearId
         );
 
-        // 2. Ensure authentication state reflects actor for CompanyWriteGuard
-        if (Auth::id() !== $principal->actorId) {
-            $user = User::find($principal->actorId);
-            if ($user) {
-                Auth::setUser($user);
-            }
-        }
-
-        // 3. Call authoritative ERP financial reporting service
+        // 2. Call authoritative ERP financial reporting service with explicit actor ID
         $report = $this->financialReportService->ageing(
             context: $context,
             partyType: 'customer',
-            asOf: $asOf
+            asOf: $asOf,
+            filters: [],
+            actorId: $principal->actorId
         );
 
         $asOfDate = $report['as_of_date'];
         $rawRows = $report['rows'] ?? [];
         $reconciliation = $report['reconciliation'] ?? [];
+
+        // 3. Resolve Company Base Currency
+        $company = Company::find($principal->companyId);
+        $currencyCode = 'INR';
+        if ($company && $company->base_currency_id) {
+            $currencyCode = Currency::find($company->base_currency_id)?->code ?? 'INR';
+        }
 
         // 4. Aggregate open items per party
         $customerTotals = [];
@@ -106,13 +108,23 @@ class ReadCustomerOutstanding
             ];
         }
 
-        $difference = (string) ($reconciliation['difference'] ?? '0.00');
-        $isReconciled = $difference === '0.00';
+        // 7. Robust Reconciliation & Warning Verification
+        $hasReconciliation = isset($reconciliation['difference']);
+        $difference = $hasReconciliation ? (string) $reconciliation['difference'] : null;
+        $isReconciled = $hasReconciliation && BigDecimal::of($difference)->isZero();
         $warnings = [];
 
-        if (!$isReconciled) {
-            $warnings[] = "Control account variance detected: open items differ from AR ledger by {$difference}.";
+        if (!$hasReconciliation) {
+            $warnings[] = 'Reconciliation data unavailable for this calculation period.';
+        } elseif (!$isReconciled) {
+            $warnings[] = "Control account variance detected: open items differ from AR control ledger by {$difference}.";
         }
+
+        // 8. Generate accurate report links using query parameters consumed by ReportController
+        $sourceRefs = [
+            url('/report/customer-due-report') . "?end_date={$asOfDate}",
+            url('/report/customer_report') . "?end_date={$asOfDate}",
+        ];
 
         return ErpToolResult::ok(
             toolKey: 'receivables.outstanding.v1',
@@ -125,21 +137,18 @@ class ReadCustomerOutstanding
                 'total_outstanding' => (string) $grandTotalUnits->toScale(2, RoundingMode::HalfUp),
                 'total_customers_with_dues' => count($customerTotals),
                 'top_customers' => $topCustomers,
-                'currency' => 'INR',
+                'currency' => $currencyCode,
                 'reconciliation' => [
                     'is_reconciled' => $isReconciled,
-                    'control_balance' => $reconciliation['control_balance'] ?? '0.00',
-                    'open_item_balance' => $reconciliation['open_item_balance'] ?? '0.00',
+                    'control_balance' => $reconciliation['control_balance'] ?? null,
+                    'open_item_balance' => $reconciliation['open_item_balance'] ?? null,
                     'difference' => $difference,
                 ],
             ],
-            sourceRefs: [
-                url('/report/customer_report') . "?as_of={$asOfDate}",
-            ],
+            sourceRefs: $sourceRefs,
             warnings: $warnings,
             asOf: $asOfDate,
             reconciled: $isReconciled
         );
     }
 }
-

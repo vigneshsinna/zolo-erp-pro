@@ -57,14 +57,34 @@ class AiPrincipalFactory
      *
      * @return array<string>
      */
-    protected function resolvePermittedTools(User $user, int $companyId): array
+    public function resolvePermittedTools(User $user, int $companyId): array
     {
-        // Default read tool list for authorized company users
         $tools = [];
 
-        // Check if user has permission to view financial / customer reports
-        // In zoloERP, users authorized for report views can view receivables
-        $tools[] = 'receivables.outstanding.v1';
+        $hasReceivablesAccess = false;
+
+        // Admin / SuperAdmin role bypass
+        if ((int) $user->role_id === 1) {
+            $hasReceivablesAccess = true;
+        } else {
+            try {
+                if ($user->can('accounting.reports.view') || $user->can('customer-report') || $user->can('due-report')) {
+                    $hasReceivablesAccess = true;
+                } elseif ($user->role_id) {
+                    $role = \Spatie\Permission\Models\Role::find($user->role_id);
+                    if ($role && ($role->hasPermissionTo('due-report') || $role->hasPermissionTo('customer-report') || $role->hasPermissionTo('accounting.reports.view'))) {
+                        $hasReceivablesAccess = true;
+                    }
+                }
+            } catch (\Throwable) {
+                // Fail closed on authorization lookup exceptions
+                $hasReceivablesAccess = false;
+            }
+        }
+
+        if ($hasReceivablesAccess) {
+            $tools[] = 'receivables.outstanding.v1';
+        }
 
         return $tools;
     }

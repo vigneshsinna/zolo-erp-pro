@@ -6,12 +6,15 @@ namespace App\Ai\Gateway;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Services\AiFeatureGate;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 /**
  * Gatekeeper mediating model provider selection, token limits,
- * circuit breakers, and fail-safe error handling.
+ * daily usage quotas, and fail-safe circuit breaker rules.
  */
 class ApprovedModelGateway
 {
@@ -29,7 +32,8 @@ class ApprovedModelGateway
     ) {}
 
     /**
-     * Resolve the approved provider and model key for an execution context.
+     * Resolve the approved provider and model key for an execution context,
+     * enforcing company enablement and user/company quota limits.
      *
      * @return array{provider: string, model: string}
      */
@@ -38,6 +42,9 @@ class ApprovedModelGateway
         if (!$this->featureGate->isEnabledForCompany($principal->companyId)) {
             throw new RuntimeException("AI is disabled for company ID [{$principal->companyId}].");
         }
+
+        // Enforce quota limits
+        $this->assertQuotaAvailable($principal);
 
         $provider = $preferredProvider ?? config('erp_ai.provider', 'openai');
 
@@ -64,5 +71,102 @@ class ApprovedModelGateway
     {
         return isset($this->allowedModels[$provider]) && in_array($model, $this->allowedModels[$provider], true);
     }
+
+    /**
+     * Check daily request and token quotas for actor and company.
+     *
+     * @throws RuntimeException
+     */
+    public function assertQuotaAvailable(AiPrincipal $principal): void
+    {
+        if (!function_exists('app') || !app()->bound('db')) {
+            return;
+        }
+
+        try {
+            if (!Schema::hasTable('ai_usage_counters')) {
+                return;
+            }
+
+            $today = now()->toDateString();
+            $maxDailyRequests = (int) config('erp_ai.daily_user_requests', 50);
+
+            // 1. User daily request limit check
+            $userCounter = DB::table('ai_usage_counters')
+                ->where('company_id', $principal->companyId)
+                ->where('user_id', $principal->actorId)
+                ->where('date', $today)
+                ->first();
+
+            if ($userCounter && $userCounter->request_count >= $maxDailyRequests) {
+                throw new RuntimeException("Daily user AI request quota exceeded ({$userCounter->request_count} / {$maxDailyRequests}).");
+            }
+
+            // 2. Company daily token limit check
+            $companyTokenLimit = (int) config('erp_ai.daily_company_tokens', 100000);
+            if (Schema::hasTable('ai_feature_settings')) {
+                $setting = DB::table('ai_feature_settings')->where('company_id', $principal->companyId)->first();
+                if ($setting && $setting->daily_token_limit > 0) {
+                    $companyTokenLimit = (int) $setting->daily_token_limit;
+                }
+            }
+
+            $totalTokensToday = (int) DB::table('ai_usage_counters')
+                ->where('company_id', $principal->companyId)
+                ->where('date', $today)
+                ->sum(DB::raw('input_tokens + output_tokens'));
+
+            if ($totalTokensToday >= $companyTokenLimit) {
+                throw new RuntimeException("Daily company AI token quota exceeded ({$totalTokensToday} / {$companyTokenLimit}).");
+            }
+        } catch (RuntimeException $re) {
+            throw $re;
+        } catch (Throwable) {
+            // Fail open on telemetry read errors to avoid blocking business operations
+        }
+    }
+
+    /**
+     * Record and increment usage counters atomically.
+     */
+    public function recordUsage(
+        AiPrincipal $principal,
+        int $inputTokens = 0,
+        int $outputTokens = 0,
+        int $costMinor = 0
+    ): void {
+        if (!function_exists('app') || !app()->bound('db')) {
+            return;
+        }
+
+        try {
+            if (!Schema::hasTable('ai_usage_counters')) {
+                return;
+            }
+
+            $today = now()->toDateString();
+
+            DB::statement("
+                INSERT INTO ai_usage_counters (company_id, user_id, date, request_count, input_tokens, output_tokens, estimated_cost_minor, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE
+                    request_count = request_count + 1,
+                    input_tokens = input_tokens + VALUES(input_tokens),
+                    output_tokens = output_tokens + VALUES(output_tokens),
+                    estimated_cost_minor = estimated_cost_minor + VALUES(estimated_cost_minor),
+                    updated_at = NOW()
+            ", [
+                $principal->companyId,
+                $principal->actorId,
+                $today,
+                $inputTokens,
+                $outputTokens,
+                $costMinor,
+            ]);
+        } catch (Throwable) {
+            // Non-blocking telemetry
+        }
+    }
 }
+
 

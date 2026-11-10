@@ -30,6 +30,12 @@ class AiServiceProvider extends ServiceProvider
             return $manifest;
         });
 
+        $this->app->singleton(AiPrincipalAuthorizer::class, function ($app) {
+            return new AiPrincipalAuthorizer(
+                contextResolver: $app->make(\App\Services\Platform\CompanyContextResolver::class),
+                principalFactory: $app->make(AiPrincipalFactory::class)
+            );
+        });
         $this->app->bind(AiPrincipalAuthorizerInterface::class, AiPrincipalAuthorizer::class);
 
         $this->app->singleton(AiFeatureGate::class, function () {

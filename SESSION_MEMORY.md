@@ -1,5 +1,37 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 0 Security Hardening & Phase 1 End-to-End Chat API & Workspace Complete — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Request Addressed:**
+  - Resolved all P0 and P1 review findings and completed Phase 1 end-to-end chat flow:
+    1. **Permission Gating (P0):** `AiPrincipalFactory::resolvePermittedTools()` enforces real company-aware permissions (`due-report`, `customer-report`, `accounting.reports.view`, admin bypass `role_id === 1`).
+    2. **Principal Revalidation (P0):** `AiPrincipalAuthorizer::refresh()` performs real database re-validation via `CompanyContextResolver::resolve()` and `User` status, instantly deactivating invalid or revoked principals.
+    3. **Company AI Governance (P0):** `AiFeatureGate` enforces per-company records in `ai_feature_settings` and global `AI_ENABLED` killswitch.
+    4. **Execution Guardrails (P0):** `ErpToolExecutor` enforces live principal refresh, company feature gate check, read-only policy guard, JSON-schema validation and parameter bounding, and safe error message redaction (sanitized error codes without leaking domain internals/SQL).
+    5. **Actor-Explicit Read Facade (P0):** `ReadCustomerOutstanding` completely eliminated `Auth::setUser()` impersonation, passing explicit `$actorId` to `FinancialReportService::ageing()`.
+    6. **Audit Telemetry Persistence (P1):** `AiAuditRecorder::recordInvocation()` writes redacted records into `ai_tool_invocations` with duration, UUID, status, and input masking.
+    7. **Operational Quotas & Model Limits (P1):** `ApprovedModelGateway` enforces `daily_user_requests` (50) and company token limits using atomic upserts on `ai_usage_counters`.
+    8. **Financial Accuracy (P1):** Dynamic company currency lookup via `Company->base_currency_id`, robust reconciliation check (no default to true when missing), and report links consuming `end_date`.
+    9. **PH1 End-to-End Chat API & Blade Workspace:**
+       - Authenticated REST endpoints in `app/Http/Controllers/Api/V1/AiChatController.php`:
+         - `GET /api/v1/ai/settings`
+         - `GET /api/v1/ai/threads`
+         - `POST /api/v1/ai/threads`
+         - `GET /api/v1/ai/threads/{id}`
+         - `POST /api/v1/ai/chat`
+       - Blade AI Workspace in `resources/views/backend/ai/workspace.blade.php` at `GET /ai` (`ai.workspace`), styled with design tokens, responsive desk layout, and sidebar navigation entry.
+       - Integrated `ErpCopilot` with prompt execution, conversation history persistence in `agent_conversation_messages`, and telemetry in `ai_runs`.
+    10. **Automated Verification (100% Green):**
+       - `tests/Unit/Ai/AiFoundationTest.php`: 7/7 passed.
+       - `tests/Feature/Ai/ReceivablesVerticalSliceTest.php`: 3/3 passed.
+       - `tests/Feature/Ai/ReceivablesSecurityAndAccuracyTest.php`: 5/5 passed.
+       - `tests/Feature/Ai/AiChatApiAndWorkspaceTest.php`: 6/6 passed.
+       - Total AI test suite: 21/21 passed (101 assertions, 0 errors, 0 failures).
+       - Core ERP suites regression: 15/15 passed (70 assertions, 0 errors, 0 failures).
+       - `composer validate --strict` (valid), `composer audit --locked` (0 security vulnerabilities).
+- **Repository State:**
+  - Active branch: `feature/ai-agent-foundation`.
+
 ## Phase 0 Foundation & Customer Outstanding Vertical Slice Implemented — 2026-11-10 (`feature/ai-agent-foundation` at `19b006d`)
 
 - **User Request Addressed:**

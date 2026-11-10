@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace App\Ai\Services;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
+
 /**
  * Feature flag and emergency killswitch manager for AI capabilities.
+ * Enforces global AI_ENABLED killswitch and per-company ai_feature_settings records.
  */
 class AiFeatureGate
 {
@@ -23,8 +28,28 @@ class AiFeatureGate
             return false;
         }
 
-        // In database mode, checks ai_feature_settings for the company
-        return true;
+        if (!function_exists('app') || !app()->bound('db')) {
+            return true;
+        }
+
+        try {
+            if (!Schema::hasTable('ai_feature_settings')) {
+                return true;
+            }
+
+            $setting = DB::table('ai_feature_settings')
+                ->where('company_id', $companyId)
+                ->first();
+
+            if ($setting !== null) {
+                return (bool) $setting->enabled;
+            }
+
+            // By default, companies require an explicit enabled record in ai_feature_settings
+            return false;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -32,7 +57,51 @@ class AiFeatureGate
      */
     public function isReadOnly(int $companyId): bool
     {
-        return $this->readOnlyGlobally;
+        if ($this->readOnlyGlobally) {
+            return true;
+        }
+
+        if (!function_exists('app') || !app()->bound('db')) {
+            return true;
+        }
+
+        try {
+            if (!Schema::hasTable('ai_feature_settings')) {
+                return true;
+            }
+
+            $setting = DB::table('ai_feature_settings')
+                ->where('company_id', $companyId)
+                ->first();
+
+            if ($setting !== null) {
+                return (bool) $setting->read_only;
+            }
+
+            return true;
+        } catch (Throwable) {
+            return true;
+        }
+    }
+
+    /**
+     * Update or initialize feature settings for a specific company.
+     */
+    public function setCompanySetting(int $companyId, bool $enabled, bool $readOnly = true, array $extra = []): void
+    {
+        if (!function_exists('app') || !app()->bound('db')) {
+            return;
+        }
+
+        DB::table('ai_feature_settings')->updateOrInsert(
+            ['company_id' => $companyId],
+            array_merge([
+                'enabled' => $enabled,
+                'read_only' => $readOnly,
+                'updated_at' => now(),
+            ], $extra)
+        );
     }
 }
+
 
