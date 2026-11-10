@@ -1,5 +1,21 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Chat UI Flexbox Layout & Message Overlap Fix — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Query Addressed:**
+  - *"Chat UI is the problem, can you see the output gets overlapped"* with screenshot showing the input footer floating over the middle of the chat message and the cards/tables bleeding behind and beneath it.
+- **Root Cause Analysis:**
+  1. `.overflow-auto` utility class does not exist in `public/css/app.css` (older compiled Bootstrap 4 build).
+  2. `#chat-messages` had inline `max-height: 520px;`, but without `overflow-y: auto !important`, the browser defaulted to `overflow: visible`.
+  3. The card footer was positioned at the 520px mark, while message content taller than 520px overflowed past the boundary, bleeding directly under and behind the input form.
+- **Fix Applied:**
+  1. Updated `workspace.blade.php`: Wrapped `.ai-chat-card` and `.ai-sidebar-card` in a dedicated viewport flex column (`height: calc(100vh - 170px); min-height: 560px; max-height: 860px; overflow: hidden;`).
+  2. Applied `min-height: 0; flex: 1 1 auto; overflow-y: auto !important; overflow-x: hidden;` directly to `#chat-messages` and `#thread-list`.
+  3. Added `flex-shrink: 0; position: relative; z-index: 5;` to `.card-footer` and `.card-header`.
+  4. Messages now scroll smoothly inside `#chat-messages` with clean separation from the input footer.
+- **Verification:**
+  - 32/32 tests passed (173 assertions) on disposable MySQL.
+
 ## Fail-Safe Sanitization & Structured Financial Fact Cards — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **Security Hardening Applied:**

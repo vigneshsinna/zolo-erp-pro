@@ -5,30 +5,30 @@
     <div class="row">
         <!-- Sidebar: Conversation Threads & Context -->
         <div class="col-md-3 col-lg-3 mb-3">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">
+            <div class="card shadow-sm border-0 ai-sidebar-card">
+                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2 flex-shrink-0">
                     <span class="font-weight-bold text-dark"><i class="dripicons-conversation mr-1"></i> AI Sessions</span>
                     <button id="btn-new-thread" class="btn btn-sm btn-outline-primary" title="Start new conversation">
                         <i class="dripicons-plus"></i> New
                     </button>
                 </div>
-                <div class="card-body p-2 d-flex flex-column" style="min-height: 500px;">
+                <div class="card-body p-2 d-flex flex-column" style="min-height: 0;">
                     <!-- Active Scope Badge -->
-                    <div class="p-2 mb-2 rounded bg-light border" style="font-size: 0.8rem;">
+                    <div class="p-2 mb-2 rounded bg-light border flex-shrink-0" style="font-size: 0.8rem;">
                         <div class="text-muted small text-uppercase font-weight-bold">Active Tenancy</div>
                         <div class="font-weight-bold text-truncate">{{ $company->legal_name ?? $company->name }}</div>
                         <div class="text-secondary small">FY ID: {{ $context->financialYearId }} &bull; Branch: {{ $context->branchId }}</div>
                     </div>
 
                     <!-- Threads List -->
-                    <div id="thread-list" class="list-group list-group-flush flex-grow-1 overflow-auto" style="max-height: 420px;">
+                    <div id="thread-list" class="list-group list-group-flush flex-grow-1" style="overflow-y: auto; min-height: 0;">
                         <div class="text-center text-muted py-4 small" id="thread-loading">
                             <span class="spinner-border spinner-border-sm text-primary mr-1"></span> Loading sessions...
                         </div>
                     </div>
 
                     <!-- Guardrail Status & Privacy Notice -->
-                    <div class="mt-auto pt-2 border-top" style="font-size: 0.75rem;">
+                    <div class="mt-auto pt-2 border-top flex-shrink-0" style="font-size: 0.75rem;">
                         <div class="d-flex align-items-center mb-1">
                             <span class="badge {{ $isAiEnabled ? 'badge-success' : 'badge-danger' }} mr-1">
                                 {{ $isAiEnabled ? 'Active' : 'Disabled' }}
@@ -47,9 +47,9 @@
 
         <!-- Main Chat Area -->
         <div class="col-md-9 col-lg-9 mb-3">
-            <div class="card shadow-sm border-0 d-flex flex-column" style="min-height: 600px;">
+            <div class="card shadow-sm border-0 ai-chat-card">
                 <!-- Header -->
-                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2">
+                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2 flex-shrink-0">
                     <div>
                         <h5 class="mb-0 font-weight-bold text-dark">
                             <i class="dripicons-sparkles text-primary mr-1"></i> zoloERP Copilot
@@ -66,7 +66,7 @@
                 </div>
 
                 <!-- Messages Feed -->
-                <div id="chat-messages" class="card-body p-3 flex-grow-1 overflow-auto" style="max-height: 520px; background-color: #f8f9fa;">
+                <div id="chat-messages" class="card-body p-3 flex-grow-1" style="overflow-y: auto; overflow-x: hidden; min-height: 0; background-color: #f8f9fa;">
                     <!-- Welcome Hero / Default Message -->
                     <div class="ai-welcome-box p-4 text-center my-auto">
                         <div class="mb-3">
@@ -93,7 +93,7 @@
                 </div>
 
                 <!-- Input Footer -->
-                <div class="card-footer bg-white border-top p-2">
+                <div class="card-footer bg-white border-top p-2 flex-shrink-0">
                     <form id="chat-form" class="m-0">
                         @csrf
                         <div class="input-group">
@@ -123,6 +123,37 @@
 
 @push('css')
 <style>
+.ai-workspace-container .ai-chat-card,
+.ai-workspace-container .ai-sidebar-card {
+    height: calc(100vh - 170px);
+    min-height: 560px;
+    max-height: 860px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    border-radius: 8px;
+}
+.ai-workspace-container #chat-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    background-color: #f8f9fa;
+    scroll-behavior: smooth;
+}
+.ai-workspace-container #thread-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto !important;
+    overflow-x: hidden;
+}
+.ai-workspace-container .card-footer {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+    background-color: #ffffff;
+}
 .ai-workspace-container .chat-bubble {
     max-width: 85%;
     border-radius: 12px;
