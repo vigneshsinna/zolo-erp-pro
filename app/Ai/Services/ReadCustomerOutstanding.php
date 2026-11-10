@@ -11,7 +11,6 @@ use App\Models\Currency;
 use App\Services\Accounting\FinancialReportService;
 use App\Services\Platform\CompanyContext;
 use Brick\Math\BigDecimal;
-use Brick\Math\RoundingMode;
 
 /**
  * Authoritative, actor-explicit read facade for Customer Outstanding / AR Aging.
@@ -102,7 +101,7 @@ class ReadCustomerOutstanding
             $topCustomers[] = [
                 'customer_id' => $cust['customer_id'],
                 'customer_name' => $cust['customer_name'],
-                'outstanding_amount' => (string) $cust['outstanding_amount']->toScale(2, RoundingMode::HalfUp),
+                'outstanding_amount' => $this->amount($cust['outstanding_amount']),
                 'invoice_count' => $cust['invoice_count'],
                 'max_days_overdue' => $cust['max_days_overdue'],
             ];
@@ -120,10 +119,8 @@ class ReadCustomerOutstanding
             $warnings[] = "Control account variance detected: open items differ from AR control ledger by {$difference}.";
         }
 
-        // 8. Generate accurate report links using query parameters consumed by ReportController
         $sourceRefs = [
-            url('/report/customer-due-report') . "?end_date={$asOfDate}",
-            url('/report/customer_report') . "?end_date={$asOfDate}",
+            route('accounting.ageing', ['party_type' => 'customer', 'as_of_date' => $asOfDate], absolute: false),
         ];
 
         return ErpToolResult::ok(
@@ -134,7 +131,7 @@ class ReadCustomerOutstanding
                 'financial_year_id' => $principal->financialYearId,
             ],
             data: [
-                'total_outstanding' => (string) $grandTotalUnits->toScale(2, RoundingMode::HalfUp),
+                'total_outstanding' => $this->amount($grandTotalUnits),
                 'total_customers_with_dues' => count($customerTotals),
                 'top_customers' => $topCustomers,
                 'currency' => $currencyCode,
@@ -150,5 +147,12 @@ class ReadCustomerOutstanding
             asOf: $asOfDate,
             reconciled: $isReconciled
         );
+    }
+
+    private function amount(BigDecimal $value): string
+    {
+        $value = $value->strippedOfTrailingZeros();
+
+        return (string) $value->toScale(max(2, $value->getScale()));
     }
 }

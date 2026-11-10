@@ -7,6 +7,8 @@ namespace App\Ai\Services;
 use App\Ai\Contracts\AiPrincipalAuthorizerInterface;
 use App\Ai\DTOs\AiPrincipal;
 use App\Models\User;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
 
 /**
@@ -23,13 +25,24 @@ class AiPrincipalAuthorizer implements AiPrincipalAuthorizerInterface
     /**
      * Authorize whether the principal can execute the given tool key.
      */
-    public function authorize(AiPrincipal $principal, string $toolKey): bool
+    public function authorize(AiPrincipal $principal, string $toolKey, array $requiredPermissions = []): bool
     {
-        if (!$principal->isActive) {
+        if (!$principal->isActive || !$principal->hasTool($toolKey)) {
             return false;
         }
 
-        return $principal->hasTool($toolKey);
+        if ($requiredPermissions === []) {
+            return true;
+        }
+
+        try {
+            $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
+            $allowed = app(CommercialPermission::class)->allowed($requiredPermissions, $context, $principal->actorId);
+
+            return array_diff($requiredPermissions, $allowed) === [];
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -70,7 +83,10 @@ class AiPrincipalAuthorizer implements AiPrincipalAuthorizerInterface
                 financialYearId: $principal->financialYearId
             );
 
-            $permittedTools = $factory->resolvePermittedTools($user, $context->companyId);
+            $permittedTools = array_values(array_intersect(
+                $principal->permittedToolNames,
+                $factory->resolvePermittedTools($user, $context)
+            ));
 
             return new AiPrincipal(
                 actorId: $principal->actorId,

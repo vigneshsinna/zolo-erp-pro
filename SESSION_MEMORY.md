@@ -1,5 +1,14 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## PH0/PH1 release corrections — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- Closed the release review gaps against `70a46ad`. Thread reads and continuations require the active company, branch, financial year, and owner. The SDK receives up to eight authorized prior messages and uses the gateway-approved provider and model. The workspace rejects requests from stale ERP contexts.
+- Separated CSRF-protected workspace routes under `/ai/*` from Sanctum routes under `/api/v1/ai/*`. The feature gate requires an enabled company record. Tool discovery and execution enforce the company role, `ai.use`, and report permission. The existing administrator permission bypass still applies through the company permission service.
+- Added `2026_11_10_000002_add_ai_token_reservations.php` to register `ai.use` and track in-flight token reservations. Quota admission locks the company settings row. Each SDK step reserves an input allowance and capped output, then records reported usage and releases the reservation. If the provider reports no usage after a failure, the reservation remains for that UTC quota day.
+- Chat returns and persists receivables facts, source links, and reconciliation warnings from the ERP tool. Decimal amounts preserve ledger precision. The browser displays these results on new responses and reopened threads.
+- Verification on disposable MySQL 8.4 passed. `php vendor/bin/phpunit -c phpunit.ai.xml` passed 27 tests and 145 assertions. The SDK transport fixture exercised a real tool call and matched a nonzero, four-decimal ERP ageing balance. The two targeted ERP report suites passed 15 tests and 70 assertions after seeding legacy roles and permissions in the disposable fixture. The new migration rolled back and reapplied, route caching succeeded, and Composer validation and audit passed.
+- Local Playwright smoke used a synthetic company and a stub provider. It verified login, chat, follow-up history, persisted evidence, and rejection of a cross-site POST without a CSRF token. The acceptance workflow now includes the AI suite. GitHub CI and a staging run against a live provider remain pending before PH0/PH1 release signoff and PH1+ work.
+
 ## Phase 0 Security Hardening & Phase 1 End-to-End Chat API & Workspace Complete — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **User Request Addressed:**

@@ -76,7 +76,8 @@ class ErpToolExecutor
         }
 
         // 4. Authorize principal against tool key and handler permissions
-        if (!$this->authorizer->authorize($principal, $toolKey) || !$handler->authorize($principal, $rawInput)) {
+        if (!$this->authorizer->authorize($principal, $toolKey, $handler->requiredPermissions())
+            || !$handler->authorize($principal, $rawInput)) {
             $result = ErpToolResult::denied($toolKey, "Principal is not authorized to execute tool [{$toolKey}].", 'AI_TOOL_FORBIDDEN');
             $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
             return $result;
@@ -95,11 +96,10 @@ class ErpToolExecutor
             $result = $handler->execute($principal, $rawInput);
         } catch (Throwable $e) {
             if (function_exists('app') && app()->bound('log')) {
-                Log::error("ERP Tool Execution Failure [{$toolKey}] for user {$principal->actorId}: " . $e->getMessage(), [
-                    'exception' => $e,
+                Log::error('ERP tool execution failed.', [
+                    'exception_type' => $e::class,
                     'run_id' => $runId,
                     'tool_key' => $toolKey,
-                    'principal' => $principal->toArray(),
                 ]);
             }
 

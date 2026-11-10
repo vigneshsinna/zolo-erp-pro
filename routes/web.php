@@ -179,15 +179,16 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 
     // AI Operating Layer Workspace
     Route::get('ai', [\App\Http\Controllers\Ai\AiWorkspaceController::class, 'index'])->name('ai.workspace');
+});
 
-    // Web Session AI API Aliases
-    Route::prefix('api/v1/ai')->name('api.v1.ai.')->controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
-        Route::get('settings', 'settings')->name('settings');
-        Route::get('threads', 'threads')->name('threads.index');
-        Route::post('threads', 'createThread')->name('threads.store');
-        Route::get('threads/{id}', 'showThread')->name('threads.show');
-        Route::post('chat', 'chat')->name('chat');
-    });
+// Session-authenticated endpoints used by the workspace.
+Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')
+    ->controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
+    Route::get('settings', 'settings')->name('settings');
+    Route::get('threads', 'threads')->name('threads.index');
+    Route::post('threads', 'createThread')->name('threads.store');
+    Route::get('threads/{id}', 'showThread')->whereUuid('id')->name('threads.show');
+    Route::post('chat', 'chat')->name('chat');
 });
 
 // Developer console: admin logins and the sections switched off for the active company (developer accounts only).

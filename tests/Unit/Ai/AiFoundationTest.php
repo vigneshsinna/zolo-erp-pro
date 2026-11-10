@@ -120,7 +120,7 @@ class AiFoundationTest extends TestCase
                     ],
                 ];
             }
-            public function requiredPermissions(): array { return ['ai.use']; }
+            public function requiredPermissions(): array { return []; }
             public function authorize(AiPrincipal $principal, array $input): bool { return true; }
             public function execute(AiPrincipal $principal, array $validatedInput): ErpToolResult {
                 return ErpToolResult::ok('receivables.outstanding.v1', ['company_id' => $principal->companyId], ['total' => '500.00']);
@@ -187,7 +187,7 @@ class AiFoundationTest extends TestCase
         $this->assertFalse($gate->isEnabledForCompany(14));
 
         $enabledGate = new AiFeatureGate(enabledGlobally: true, readOnlyGlobally: true);
-        $this->assertTrue($enabledGate->isEnabledForCompany(14));
+        $this->assertFalse($enabledGate->isEnabledForCompany(14));
         $this->assertTrue($enabledGate->isReadOnly(14));
     }
 }

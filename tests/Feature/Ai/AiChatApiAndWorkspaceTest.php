@@ -4,19 +4,28 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Ai;
 
-use App\Ai\Agents\ErpCopilot;
+use App\Ai\DTOs\AiPrincipal;
+use App\Ai\Gateway\ApprovedModelGateway;
 use App\Ai\Services\AiFeatureGate;
+use App\Models\Accounting\ChartOfAccount;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
+use App\Models\Customer;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use App\Services\Accounting\FinancialReportService;
+use App\Services\Accounting\PartyOpeningBalanceService;
+use App\Services\Platform\CompanyContext;
+use Illuminate\Http\Client\Request as ProviderRequest;
 use Illuminate\Support\Facades\DB;
-use Laravel\Ai\Ai;
+use Illuminate\Support\Facades\Http;
+use Laravel\Ai\PendingStep;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
+use Tests\Support\UsesAiMysql;
 use Tests\TestCase;
 
 class AiChatApiAndWorkspaceTest extends TestCase
 {
-    use DatabaseTransactions;
+    use UsesAiMysql;
 
     protected Company $company;
     protected User $adminUser;
@@ -94,6 +103,10 @@ class AiChatApiAndWorkspaceTest extends TestCase
 
     public function test_workspace_view_renders_for_authenticated_actor(): void
     {
+        DB::table('general_settings')->insert([
+            'site_title' => 'ERP fixture', 'currency' => $this->company->base_currency_id,
+            'staff_access' => 'all', 'date_format' => 'd/m/Y', 'theme' => 'default.css', 'currency_position' => 'prefix',
+        ]);
         $response = $this->actingAs($this->adminUser)
             ->withSession([
                 'company_id' => $this->company->id,
@@ -116,7 +129,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->getJson(route('api.v1.ai.settings'));
+            ->getJson(route('ai.settings'));
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -136,7 +149,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->postJson(route('api.v1.ai.threads.store'), [
+            ->postJson(route('ai.threads.store'), [
                 'title' => 'Receivables Investigation Thread',
             ]);
 
@@ -151,7 +164,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->getJson(route('api.v1.ai.threads.index'));
+            ->getJson(route('ai.threads.index'));
 
         $listRes->assertStatus(200);
         $this->assertCount(1, $listRes->json('threads'));
@@ -164,19 +177,20 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->getJson(route('api.v1.ai.threads.show', ['id' => $threadId]));
+            ->getJson(route('ai.threads.show', ['id' => $threadId]));
 
         $showRes->assertStatus(200);
         $this->assertSame($threadId, $showRes->json('thread.id'));
 
         // 4. Other user cannot access this thread
+        $this->unpermittedUser->update(['role_id' => 1]);
         $otherRes = $this->actingAs($this->unpermittedUser)
             ->withSession([
                 'company_id' => $this->company->id,
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->getJson(route('api.v1.ai.threads.show', ['id' => $threadId]));
+            ->getJson(route('ai.threads.show', ['id' => $threadId]));
 
         $otherRes->assertStatus(404);
         $this->assertSame('AI_THREAD_NOT_FOUND', $otherRes->json('error_code'));
@@ -190,7 +204,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->postJson(route('api.v1.ai.chat'), [
+            ->postJson(route('ai.chat'), [
                 'message' => 'Show me the customer balance.',
             ]);
 
@@ -210,7 +224,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'branch_id' => $this->branchId,
                 'financial_year_id' => $this->fyId,
             ])
-            ->postJson(route('api.v1.ai.chat'), [
+            ->postJson(route('ai.chat'), [
                 'message' => 'Show me the customer balance.',
             ]);
 
@@ -220,66 +234,224 @@ class AiChatApiAndWorkspaceTest extends TestCase
         ]);
     }
 
+    public function test_feature_gate_fails_closed_when_company_settings_table_is_unavailable(): void
+    {
+        $gate = app(AiFeatureGate::class);
+        $connection = DB::connection();
+        $prefix = $connection->getTablePrefix();
+        try {
+            $connection->setTablePrefix('missing_ai_fixture_');
+            $this->assertFalse($gate->isEnabledForCompany($this->company->id));
+        } finally {
+            $connection->setTablePrefix($prefix);
+        }
+    }
+
+    public function test_legacy_turn_orders_the_question_before_its_answer_on_timestamp_ties(): void
+    {
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $id = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $common = [
+            'conversation_id' => $id, 'agent' => 'erp_copilot', 'status' => 'completed',
+            'attachments' => '[]', 'steps' => '[]', 'usage' => '[]', 'meta' => '[]', 'created_at' => now(),
+        ];
+        DB::table('agent_conversation_messages')->insert([
+            $common + ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'role' => 'user', 'content' => 'Original question'],
+            $common + ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'role' => 'assistant', 'content' => 'Original answer'],
+        ]);
+
+        $this->getJson(route('ai.threads.show', $id))->assertOk()
+            ->assertJsonPath('messages.0.role', 'user')->assertJsonPath('messages.1.role', 'assistant');
+    }
+
+    public function test_sanctum_routes_accept_bearer_tokens_and_workspace_routes_require_sessions(): void
+    {
+        $token = $this->adminUser->createToken('AI fixture')->plainTextToken;
+        $this->withToken($token)->withHeaders([
+            'X-Company-ID' => (string) $this->company->id,
+            'X-Branch-ID' => (string) $this->branchId,
+            'X-Financial-Year-ID' => (string) $this->fyId,
+        ]);
+        $this->getJson('/ai/settings')->assertUnauthorized();
+        $this->getJson('/api/v1/ai/settings')->assertOk()->assertJsonPath('scope', $this->workspaceContext());
+    }
+
+    public function test_threads_are_bound_to_their_active_branch_and_financial_year(): void
+    {
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $id = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $branch = $this->company->branches()->create(['name' => 'Other branch', 'code' => 'AI-OTHER', 'is_active' => true]);
+        DB::table('company_user_branches')->insert([
+            'company_id' => $this->company->id, 'user_id' => $this->adminUser->id, 'branch_id' => $branch->id,
+        ]);
+        $year = $this->company->fiscalYears()->create([
+            'name' => 'AI historical fixture', 'start_date' => '2020-04-01', 'end_date' => '2021-03-31', 'status' => 'closed',
+        ]);
+
+        foreach ([['branch_id' => $branch->id], ['financial_year_id' => $year->id]] as $change) {
+            $this->withSession(array_replace($this->workspaceContext(), $change));
+            $this->getJson(route('ai.threads.index'))->assertOk()->assertJsonCount(0, 'threads');
+            $this->getJson(route('ai.threads.show', $id))->assertNotFound();
+            $this->postJson(route('ai.chat'), ['thread_id' => $id, 'message' => 'Continue'])->assertNotFound();
+            $this->getJson(route('ai.threads.index'), ['X-AI-Scope' => implode('/', $this->workspaceContext())])->assertConflict();
+        }
+
+        DB::table('company_user_branches')->where('company_id', $this->company->id)
+            ->where('user_id', $this->adminUser->id)->where('branch_id', $this->branchId)->delete();
+        $this->withSession($this->workspaceContext())->getJson(route('ai.threads.show', $id))->assertForbidden();
+    }
+
+    public function test_report_role_requires_ai_permission_and_company_override_applies_to_admin(): void
+    {
+        DB::table('roles')->insert(['id' => 99, 'name' => 'AI reporting fixture', 'guard_name' => 'web', 'is_active' => true]);
+        $this->company->users()->updateExistingPivot($this->adminUser->id, ['role_id_override' => 99]);
+        $grant = function (string $name): void {
+            DB::table('role_has_permissions')->insert([
+                'role_id' => 99, 'permission_id' => DB::table('permissions')->where('name', $name)->value('id'),
+            ]);
+        };
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $grant('accounting.reports.view');
+        $this->postJson(route('ai.threads.store'))->assertForbidden();
+        $grant('ai.use');
+        $id = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        DB::table('role_has_permissions')->where('role_id', 99)->delete();
+        $this->getJson(route('ai.threads.show', $id))->assertForbidden();
+    }
+
+    public function test_step_reservation_blocks_an_overlapping_company_call_and_releases_unused_tokens(): void
+    {
+        config(['erp_ai.daily_company_tokens' => 4000]);
+        $this->configureProvider();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $date = now('UTC')->toDateString();
+        $gateway = app(ApprovedModelGateway::class);
+        $otherActor = new AiPrincipal($this->unpermittedUser->id, $this->company->id, $this->branchId, $this->fyId);
+        Http::fake(['https://provider.example/v1/responses' => function () use ($date, $gateway, $otherActor) {
+            $step = new PendingStep(0, true, 'openai', 'gpt-4o', 'instructions', [], [], null, null);
+            $this->assertGreaterThan(0, DB::table('ai_usage_counters')->where('company_id', $this->company->id)->sum('reserved_tokens'));
+            try {
+                $gateway->budgetStep($otherActor, $date, $step, fn () => $this->fail('Overlapping step exceeded quota'));
+                $this->fail('Expected company quota denial');
+            } catch (TooManyRequestsHttpException $error) {
+                $this->assertStringContainsString('company AI token quota', $error->getMessage());
+            }
+
+            return Http::response($this->providerResponse($this->providerMessage('Unverified answer'), 150, 25));
+        }]);
+
+        $this->postJson(route('ai.chat'), ['message' => 'Show customer dues'])->assertOk()->assertJsonPath('facts', [])
+            ->assertJsonPath('message', 'The copilot could not produce a verified answer. Review any available ERP results below.');
+        $this->assertDatabaseHas('ai_usage_counters', [
+            'company_id' => $this->company->id, 'input_tokens' => 150, 'output_tokens' => 25, 'reserved_tokens' => 0,
+        ]);
+        config(['erp_ai.daily_user_requests' => 1]);
+        $this->postJson(route('ai.chat'), ['message' => 'Try again'])->assertTooManyRequests();
+        Http::assertSentCount(1);
+    }
+
     public function test_chat_endpoint_executes_copilot_and_persists_telemetry(): void
     {
-        // Fake ErpCopilot prompt response using SDK
-        Ai::fakeAgent(ErpCopilot::class, [
-            'Total receivables balance is 45,000 INR across 3 customers.',
+        $this->configureProvider();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $context = new CompanyContext($this->company->id, $this->branchId, $this->fyId);
+        $groupId = DB::table('customer_groups')->where('company_id', $this->company->id)->value('id');
+        $customer = Customer::create([
+            'company_id' => $this->company->id, 'customer_group_id' => $groupId,
+            'name' => 'AI fixture customer', 'phone_number' => '5550100', 'is_active' => true,
         ]);
+        app(PartyOpeningBalanceService::class)->post($customer, 45000.2512, $context);
+        // An unmatched control opening amount proves reconciliation warnings come from the ERP tool.
+        (new ChartOfAccount)->forceFill([
+            'company_id' => $this->company->id, 'code' => 'AI-FIXTURE-AR', 'name' => 'AI reconciliation fixture',
+            'type' => 'asset', 'sub_type' => 'current_asset', 'control_type' => 'ar', 'opening_balance' => '20.00', 'is_active' => true,
+        ])->save();
+        $report = app(FinancialReportService::class)->ageing($context, 'customer', actorId: $this->adminUser->id);
+        $this->assertFalse($report['reconciliation']['is_reconciled']);
 
-        $response = $this->actingAs($this->adminUser)
-            ->withSession([
-                'company_id' => $this->company->id,
-                'branch_id' => $this->branchId,
-                'financial_year_id' => $this->fyId,
-            ])
-            ->postJson(route('api.v1.ai.chat'), [
-                'message' => 'What is my total customer outstanding balance?',
-            ]);
+        $question = 'What is my total customer outstanding balance?';
+        $answer = 'Total receivables balance is 45,000.2512 INR.';
+        $followUp = 'What about the same date?';
+        Http::fake(['https://provider.example/v1/responses' => Http::sequence()
+            ->push($this->providerResponse([
+                'type' => 'function_call', 'call_id' => 'call_receivables', 'name' => 'CustomerOutstanding',
+                'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
+            ], 111, 17))
+            ->push($this->providerResponse($this->providerMessage($answer), 303, 23))
+            ->push($this->providerResponse([
+                'type' => 'function_call', 'call_id' => 'call_followup', 'name' => 'CustomerOutstanding', 'arguments' => '{}',
+            ], 175, 13))
+            ->push($this->providerResponse($this->providerMessage($answer), 370, 22))]);
 
-        $response->assertStatus(200);
+        $response = $this->postJson(route('ai.chat'), ['message' => $question, 'options' => ['model' => 'unapproved']]);
+        $response->assertOk();
         $response->assertJson([
             'status' => 'completed',
-            'message' => 'Total receivables balance is 45,000 INR across 3 customers.',
-            'scope' => [
-                'company_id' => $this->company->id,
-                'branch_id' => $this->branchId,
-                'financial_year_id' => $this->fyId,
-            ],
+            'message' => $answer,
+            'scope' => $this->workspaceContext(),
+            'usage' => ['input_tokens' => 414, 'output_tokens' => 40, 'tool_count' => 1],
         ]);
+        $response->assertJsonPath('facts.0.data.total_outstanding', '45000.2512');
+        $response->assertJsonPath('facts.0.data.reconciliation.open_item_balance', $report['reconciliation']['open_item_balance']);
+        $response->assertJsonPath('facts.0.data.reconciliation.difference', $report['reconciliation']['difference']);
+        $response->assertJsonPath('facts.0.data.top_customers.0.customer_name', $customer->name);
+        $this->assertStringContainsString('Control account variance detected', $response->json('warnings.0'));
+        $this->assertStringStartsWith('/accounting/ageing?', $response->json('sources.0.href'));
 
         $runId = $response->json('run_id');
         $threadId = $response->json('thread_id');
+        $this->assertDatabaseHas('ai_runs', [
+            'id' => $runId, 'status' => 'completed', 'model_provider' => 'openai', 'model_key' => 'gpt-4o',
+            'input_tokens' => 414, 'output_tokens' => 40,
+        ]);
+        $this->assertDatabaseHas('ai_tool_invocations', ['run_id' => $runId, 'tool_key' => 'receivables.outstanding.v1', 'status' => 'ok']);
+        $this->assertDatabaseHas('ai_usage_counters', [
+            'company_id' => $this->company->id, 'user_id' => $this->adminUser->id, 'request_count' => 1,
+            'input_tokens' => 414, 'output_tokens' => 40, 'reserved_tokens' => 0,
+        ]);
+        $this->getJson(route('ai.threads.show', $threadId))->assertOk()
+            ->assertJsonPath('messages.0.content', $question)
+            ->assertJsonPath('messages.1.facts.0.data.total_outstanding', '45000.2512')
+            ->assertJsonPath('messages.1.warnings.0', $response->json('warnings.0'));
 
-        // Assert run record persisted
-        $run = DB::table('ai_runs')->where('id', $runId)->first();
-        $this->assertNotNull($run);
-        $this->assertSame('completed', $run->status);
-        $this->assertSame('erp_copilot', $run->agent_key);
+        $this->postJson(route('ai.chat'), ['thread_id' => $threadId, 'message' => $followUp])->assertOk();
+        $requests = Http::recorded()->map(fn (array $exchange): ProviderRequest => $exchange[0]);
+        $this->assertCount(4, $requests);
+        foreach ($requests as $request) {
+            $this->assertSame('gpt-4o', $request['model']);
+        }
+        $history = json_encode($requests[2]['input']);
+        $this->assertStringContainsString($question, $history);
+        $this->assertStringContainsString($answer, $history);
+        $this->assertSame(1, substr_count($history, $followUp));
+    }
 
-        // Assert messages persisted in conversation history
-        $userMsg = DB::table('agent_conversation_messages')
-            ->where('conversation_id', $threadId)
-            ->where('role', 'user')
-            ->first();
-        $this->assertNotNull($userMsg);
-        $this->assertSame('What is my total customer outstanding balance?', $userMsg->content);
+    private function providerResponse(array $output, int $inputTokens, int $outputTokens): array
+    {
+        return [
+            'id' => 'resp_fixture', 'status' => 'completed', 'model' => 'gpt-4o',
+            'output' => [$output + ['status' => 'completed']],
+            'usage' => ['input_tokens' => $inputTokens, 'output_tokens' => $outputTokens],
+        ];
+    }
 
-        $assistantMsg = DB::table('agent_conversation_messages')
-            ->where('conversation_id', $threadId)
-            ->where('role', 'assistant')
-            ->first();
-        $this->assertNotNull($assistantMsg);
-        $this->assertSame('Total receivables balance is 45,000 INR across 3 customers.', $assistantMsg->content);
+    private function configureProvider(): void
+    {
+        config([
+            'erp_ai.provider' => 'openai', 'erp_ai.model' => 'gpt-4o',
+            'ai.providers.openai.key' => 'fixture-key', 'ai.providers.openai.store' => false,
+            'ai.providers.openai.url' => 'https://provider.example/v1',
+        ]);
+        Http::preventStrayRequests();
+    }
 
-        // Assert usage counter recorded
-        $counter = DB::table('ai_usage_counters')
-            ->where('company_id', $this->company->id)
-            ->where('user_id', $this->adminUser->id)
-            ->where('date', now()->toDateString())
-            ->first();
+    private function providerMessage(string $text): array
+    {
+        return ['type' => 'message', 'role' => 'assistant', 'content' => [['type' => 'output_text', 'text' => $text]]];
+    }
 
-        $this->assertNotNull($counter);
-        $this->assertGreaterThanOrEqual(1, $counter->request_count);
+    private function workspaceContext(): array
+    {
+        return ['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId];
     }
 }

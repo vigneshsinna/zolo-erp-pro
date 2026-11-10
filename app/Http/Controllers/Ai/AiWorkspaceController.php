@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Ai;
 
+use App\Ai\Gateway\ApprovedModelGateway;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalFactory;
 use App\Http\Controllers\Controller;
@@ -17,7 +18,8 @@ class AiWorkspaceController extends Controller
     public function __construct(
         protected CompanyContextResolver $contextResolver,
         protected AiPrincipalFactory $principalFactory,
-        protected AiFeatureGate $featureGate
+        protected AiFeatureGate $featureGate,
+        protected ApprovedModelGateway $modelGateway,
     ) {}
 
     /**
@@ -42,9 +44,10 @@ class AiWorkspaceController extends Controller
         return view('backend.ai.workspace', [
             'company' => $company,
             'context' => $context,
-            'principal' => $principal,
             'isAiEnabled' => $isAiEnabled,
+            'canUseCopilot' => $isAiEnabled && $principal->permittedToolNames !== [],
             'isReadOnly' => $isReadOnly,
+            'model' => $isAiEnabled ? $this->modelGateway->resolveApprovedModel()['model'] : null,
         ]);
     }
 }

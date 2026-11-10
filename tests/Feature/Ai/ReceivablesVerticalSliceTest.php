@@ -11,14 +11,14 @@ use App\Ai\Tools\CustomerOutstanding;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Support\UsesAiMysql;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Tools\Request;
 use Tests\TestCase;
 
 class ReceivablesVerticalSliceTest extends TestCase
 {
-    use DatabaseTransactions;
+    use UsesAiMysql;
 
     protected User $user;
     protected Company $company;
@@ -151,6 +151,7 @@ class ReceivablesVerticalSliceTest extends TestCase
             'user_id' => $restrictedUser->id,
             'branch_id' => $this->branchId,
         ]);
+        $this->actingAs($restrictedUser);
 
         $unauthorizedPrincipal = new AiPrincipal(
             actorId: $restrictedUser->id,

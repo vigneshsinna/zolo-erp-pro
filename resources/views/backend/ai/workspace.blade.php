@@ -56,11 +56,13 @@
                         </h5>
                         <small class="text-muted" id="active-thread-title">New Conversation</small>
                     </div>
+                    @if($model)
                     <div>
                         <span class="badge badge-light border text-muted" style="font-size: 0.75rem;">
-                            Model: {{ config('erp_ai.model', 'gpt-4o-mini') }}
+                            Model: {{ $model }}
                         </span>
                     </div>
+                    @endif
                 </div>
 
                 <!-- Messages Feed -->
@@ -157,20 +159,29 @@
 (function($) {
     'use strict';
 
+    if (!@json($canUseCopilot)) {
+        $('#thread-list').text('Copilot access is unavailable in this context.');
+        $('#btn-new-thread, #chat-input, #btn-send, .prompt-suggestion').prop('disabled', true);
+        return;
+    }
+
     let currentThreadId = null;
+    let loadingHistory = false;
+    let sending = false;
     const csrfToken = $('meta[name="csrf-token"]').attr('content');
 
     // Headers for API calls
     const headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'X-CSRF-TOKEN': csrfToken
+        'X-CSRF-TOKEN': csrfToken,
+        'X-AI-Scope': '{{ $context->companyId }}/{{ $context->branchId }}/{{ $context->financialYearId }}'
     };
 
     // Load available threads on boot
     function loadThreads() {
         $.ajax({
-            url: '{{ route("api.v1.ai.threads.index") }}',
+            url: '{{ route("ai.threads.index") }}',
             method: 'GET',
             headers: headers,
             success: function(res) {
@@ -197,6 +208,7 @@
 
     // Switch or create thread
     $('#btn-new-thread').on('click', function() {
+        if (sending || loadingHistory) return;
         currentThreadId = null;
         $('#active-thread-title').text('New Conversation');
         $('#thread-list .thread-item').removeClass('active');
@@ -208,6 +220,8 @@
 
     $(document).on('click', '.thread-item', function(e) {
         e.preventDefault();
+        if (sending || loadingHistory) return;
+        loadingHistory = true;
         const id = $(this).data('id');
         currentThreadId = id;
         $('#thread-list .thread-item').removeClass('active');
@@ -217,18 +231,24 @@
         $('#chat-messages').html('<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm"></span> Loading history...</div>');
 
         $.ajax({
-            url: '{{ url("/api/v1/ai/threads") }}/' + id,
+            url: '{{ route("ai.threads.index") }}/' + encodeURIComponent(id),
             method: 'GET',
             headers: headers,
             success: function(res) {
                 $('#chat-messages').empty();
                 if (res.messages && res.messages.length > 0) {
                     res.messages.forEach(function(msg) {
-                        appendMessage(msg.role, msg.content);
+                        appendMessage(msg.role, msg.content, msg.sources, msg.warnings, msg.facts);
                     });
                 } else {
                     $('#chat-messages').html('<div class="text-center text-muted py-3 small">No messages in this session.</div>');
                 }
+            },
+            error: function() {
+                $('#chat-messages').empty().append($('<div class="text-danger p-3"></div>').text('Could not load this conversation.'));
+            },
+            complete: function() {
+                loadingHistory = false;
             }
         });
     });
@@ -255,7 +275,7 @@
     });
 
     // Append Message helper
-    function appendMessage(role, text, sources, warnings, data) {
+    function appendMessage(role, text, sources, warnings, facts) {
         $('.ai-welcome-box').remove();
         const isUser = (role === 'user');
         const container = $('<div class="d-flex mb-3 ' + (isUser ? 'justify-content-end' : 'justify-content-start') + '"></div>');
@@ -265,11 +285,32 @@
         const textDiv = $('<div></div>').text(text);
         bubble.append(textDiv);
 
+        (facts || []).forEach(function(fact) {
+            if (fact.tool !== 'receivables.outstanding.v1') return;
+            const data = fact.data;
+            const results = $('<div class="mt-2 pt-2 border-top small"></div>');
+            results.append($('<strong></strong>').text('Verified receivables · ' + fact.as_of));
+            results.append($('<div></div>').text(data.currency + ' ' + data.total_outstanding + ' outstanding · '
+                + data.total_customers_with_dues + ' customers with dues'));
+            if (data.top_customers.length) {
+                const customers = $('<ul class="mb-0 pl-3"></ul>');
+                data.top_customers.forEach(function(customer) {
+                    customers.append($('<li></li>').text(customer.customer_name + ' · ' + data.currency + ' ' + customer.outstanding_amount));
+                });
+                results.append(customers);
+            }
+            bubble.append(results);
+        });
+
         // Sources
         if (sources && sources.length > 0) {
             const sourcesDiv = $('<div class="mt-2 pt-2 border-top small"><strong>Verified Sources:</strong></div>');
             sources.forEach(function(s) {
-                sourcesDiv.append('<div><a href="' + s.href + '" target="_blank" class="text-primary"><i class="dripicons-link mr-1"></i> ' + $('<div>').text(s.title).html() + '</a></div>');
+                const source = new URL(s.href, window.location.origin);
+                if (source.origin === window.location.origin) {
+                    sourcesDiv.append($('<div></div>').append($('<a class="text-primary" target="_blank" rel="noopener"></a>')
+                        .attr('href', source.href).text(s.title)));
+                }
             });
             bubble.append(sourcesDiv);
         }
@@ -288,9 +329,11 @@
     // Submit Chat
     $('#chat-form').on('submit', function(e) {
         e.preventDefault();
+        if (sending || loadingHistory) return;
         const input = $('#chat-input');
         const message = input.val().trim();
         if (!message) return;
+        sending = true;
 
         appendMessage('user', message);
         input.val('');
@@ -302,7 +345,7 @@
         $('#btn-send').prop('disabled', true);
 
         $.ajax({
-            url: '{{ route("api.v1.ai.chat") }}',
+            url: '{{ route("ai.chat") }}',
             method: 'POST',
             headers: headers,
             data: JSON.stringify({
@@ -310,27 +353,25 @@
                 thread_id: currentThreadId
             }),
             success: function(res) {
-                $('#btn-send-text').show();
-                $('#btn-send-spinner').hide();
-                $('#btn-send').prop('disabled', false);
-
                 if (res.thread_id && !currentThreadId) {
                     currentThreadId = res.thread_id;
                     loadThreads();
                 }
 
-                appendMessage('assistant', res.message, res.sources, res.warnings, res.data);
+                appendMessage('assistant', res.message, res.sources, res.warnings, res.facts);
             },
             error: function(xhr) {
-                $('#btn-send-text').show();
-                $('#btn-send-spinner').hide();
-                $('#btn-send').prop('disabled', false);
-
                 const err = xhr.responseJSON || {};
-                const errMsg = err.error_message || 'An error occurred processing your request.';
+                const errMsg = err.error_message || err.message || 'An error occurred processing your request.';
                 const errCode = err.error_code || 'AI_ERROR';
 
                 appendMessage('assistant', '[' + errCode + '] ' + errMsg);
+            },
+            complete: function() {
+                sending = false;
+                $('#btn-send-text').show();
+                $('#btn-send-spinner').hide();
+                $('#btn-send').prop('disabled', false);
             }
         });
     });

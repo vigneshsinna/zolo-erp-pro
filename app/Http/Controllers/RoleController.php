@@ -74,7 +74,7 @@ class RoleController extends Controller
             if(empty($all_permission))
                 $all_permission[] = 'dummy text';
             return view('backend.role.permission', ['lims_role_data' => $lims_role_data, 'all_permission' => $all_permission, 'operation_permissions' => Permission::where(function ($query) {
-                foreach (['accounting.%', 'manufacturing.%', 'job_work.%', 'profiles.%', 'projects.%'] as $prefix) $query->orWhere('name', 'like', $prefix);
+                foreach (['accounting.%', 'manufacturing.%', 'job_work.%', 'profiles.%', 'projects.%', 'ai.%'] as $prefix) $query->orWhere('name', 'like', $prefix);
             })->orderBy('name')->pluck('name')]);
         }
         else

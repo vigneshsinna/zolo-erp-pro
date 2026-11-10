@@ -11,12 +11,19 @@ use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalFactory;
 use App\Http\Controllers\Controller;
 use App\Services\Platform\CompanyContextResolver;
-use Carbon\CarbonImmutable;
+use Closure;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Ai\Messages\Message;
+use Laravel\Ai\PendingStep;
+use Laravel\Ai\Responses\AgentResponse;
+use stdClass;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Throwable;
 
 class AiChatController extends Controller
@@ -25,398 +32,324 @@ class AiChatController extends Controller
         protected CompanyContextResolver $contextResolver,
         protected AiPrincipalFactory $principalFactory,
         protected AiFeatureGate $featureGate,
-        protected ApprovedModelGateway $modelGateway
+        protected ApprovedModelGateway $modelGateway,
     ) {}
 
-    /**
-     * Get current AI operating settings and permitted tools for the authenticated company.
-     */
     public function settings(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error_code' => 'AI_UNAUTHENTICATED', 'error_message' => 'Authentication required.'], 401);
-        }
+        $principal = $this->principal($request);
 
-        try {
-            $context = $this->contextResolver->forActor(userId: $user->id);
-            $principal = $this->principalFactory->createForUser($user->id, $context->companyId, $context->branchId, $context->financialYearId);
-            $modelConfig = $this->modelGateway->resolveApprovedModel($principal);
-
-            return response()->json([
-                'enabled' => $this->featureGate->isEnabledForCompany($context->companyId),
-                'read_only' => $this->featureGate->isReadOnly($context->companyId),
-                'allowed_tools' => $principal->permittedToolNames,
-                'provider' => $modelConfig['provider'],
-                'model' => $modelConfig['model'],
-                'scope' => [
-                    'company_id' => $context->companyId,
-                    'branch_id' => $context->branchId,
-                    'financial_year_id' => $context->financialYearId,
-                ],
-            ]);
-        } catch (Throwable $e) {
-            return response()->json(['error_code' => 'AI_SCOPE_INVALID', 'error_message' => $e->getMessage()], 403);
-        }
+        return response()->json([
+            'enabled' => $this->featureGate->isEnabledForCompany($principal->companyId),
+            'read_only' => $this->featureGate->isReadOnly($principal->companyId),
+            'allowed_tools' => $principal->permittedToolNames,
+            ...$this->modelGateway->resolveApprovedModel(),
+            'scope' => $this->scope($principal),
+        ]);
     }
 
-    /**
-     * List owned conversation threads for the current company context.
-     */
     public function threads(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error_code' => 'AI_UNAUTHENTICATED', 'error_message' => 'Authentication required.'], 401);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
         }
 
-        try {
-            $context = $this->contextResolver->forActor(userId: $user->id);
-
-            $threads = DB::table('ai_thread_scopes')
-                ->where('user_id', $user->id)
-                ->where('company_id', $context->companyId)
-                ->where('status', 'active')
-                ->orderBy('updated_at', 'desc')
-                ->select(['id', 'title', 'created_at', 'updated_at'])
-                ->limit(50)
-                ->get();
-
-            return response()->json([
-                'threads' => $threads,
-                'scope' => [
-                    'company_id' => $context->companyId,
-                    'branch_id' => $context->branchId,
-                ],
-            ]);
-        } catch (Throwable $e) {
-            return response()->json(['error_code' => 'AI_SCOPE_INVALID', 'error_message' => $e->getMessage()], 403);
-        }
+        return response()->json([
+            'threads' => $this->ownedThreads($principal)->latest('updated_at')->limit(50)
+                ->get(['id', 'title', 'created_at', 'updated_at']),
+            'scope' => $this->scope($principal),
+        ]);
     }
 
-    /**
-     * Create a new owned conversation thread.
-     */
     public function createThread(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error_code' => 'AI_UNAUTHENTICATED', 'error_message' => 'Authentication required.'], 401);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
         }
 
-        try {
-            $context = $this->contextResolver->forActor(userId: $user->id);
+        $validated = $request->validate(['title' => 'nullable|string|max:100']);
+        $id = (string) Str::uuid();
+        $title = $validated['title'] ?? 'New AI Session';
+        $this->insertThread($principal, $id, $title);
 
-            $title = $request->input('title', 'New AI Session');
-            $threadId = (string) Str::uuid();
-
-            DB::table('ai_thread_scopes')->insert([
-                'id' => $threadId,
-                'sdk_conversation_id' => $threadId,
-                'user_id' => $user->id,
-                'company_id' => $context->companyId,
-                'branch_id' => $context->branchId,
-                'financial_year_id' => $context->financialYearId,
-                'title' => Str::limit((string) $title, 100),
-                'status' => 'active',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            return response()->json([
-                'id' => $threadId,
-                'title' => $title,
-                'created_at' => now()->toIso8601String(),
-            ], 201);
-        } catch (Throwable $e) {
-            return response()->json(['error_code' => 'AI_SCOPE_INVALID', 'error_message' => $e->getMessage()], 403);
-        }
+        return response()->json(['id' => $id, 'title' => $title, 'created_at' => now()->toIso8601String()], 201);
     }
 
-    /**
-     * Fetch owned conversation thread and its message history.
-     */
     public function showThread(string $id, Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error_code' => 'AI_UNAUTHENTICATED', 'error_message' => 'Authentication required.'], 401);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
         }
 
-        try {
-            $context = $this->contextResolver->forActor(userId: $user->id);
-
-            $thread = DB::table('ai_thread_scopes')
-                ->where('id', $id)
-                ->where('user_id', $user->id)
-                ->where('company_id', $context->companyId)
-                ->first();
-
-            if (!$thread) {
-                return response()->json(['error_code' => 'AI_THREAD_NOT_FOUND', 'error_message' => 'Thread not found or access denied.'], 404);
-            }
-
-            $messages = DB::table('agent_conversation_messages')
-                ->where('conversation_id', $id)
-                ->orderBy('created_at', 'asc')
-                ->select(['id', 'role', 'content', 'created_at'])
-                ->get();
-
-            return response()->json([
-                'thread' => $thread,
-                'messages' => $messages,
-            ]);
-        } catch (Throwable $e) {
-            return response()->json(['error_code' => 'AI_SCOPE_INVALID', 'error_message' => $e->getMessage()], 403);
+        $thread = $this->ownedThreads($principal)->where('id', $id)->first();
+        if (!$thread) {
+            return $this->threadNotFound();
         }
+
+        $messages = $this->messages($thread->id)
+            ->get(['id', 'role', 'content', 'created_at', 'meta'])
+            ->map(function (stdClass $message): array {
+                $metadata = json_decode($message->meta, true) ?? [];
+                unset($message->meta);
+
+                return [
+                    ...(array) $message,
+                    'facts' => $metadata['facts'] ?? [],
+                    'sources' => $metadata['sources'] ?? [],
+                    'warnings' => $metadata['warnings'] ?? [],
+                ];
+            });
+
+        return response()->json(['thread' => $thread, 'messages' => $messages]);
     }
 
-    /**
-     * Send a question to ErpCopilot, executing authoritative tools and persisting thread state.
-     */
     public function chat(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['error_code' => 'AI_UNAUTHENTICATED', 'error_message' => 'Authentication required.'], 401);
+        $validated = $request->validate([
+            'message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
+            'thread_id' => 'nullable|uuid',
+        ]);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
         }
 
-        $validated = $request->validate([
-            'message' => 'required|string|max:4000',
-            'thread_id' => 'nullable|string|size:36',
-            'options' => 'nullable|array',
-        ]);
+        $existingThreadId = $validated['thread_id'] ?? null;
+        $threadId = $existingThreadId ?? (string) Str::uuid();
+        $question = $validated['message'];
+        $quotaDate = now('UTC')->toDateString();
+        $model = $this->modelGateway->resolveApprovedModel();
 
         try {
-            $context = $this->contextResolver->forActor(userId: $user->id);
-
-            // 1. Feature Gate check
-            if (!$this->featureGate->isEnabledForCompany($context->companyId)) {
-                return response()->json([
-                    'error_code' => 'AI_DISABLED',
-                    'error_message' => 'AI capabilities are currently disabled for this company or system-wide.',
-                ], 503);
-            }
-
-            // 2. Resolve principal
-            $principal = $this->principalFactory->createForUser(
-                userId: $user->id,
-                companyId: $context->companyId,
-                branchId: $context->branchId,
-                financialYearId: $context->financialYearId
-            );
-
-            if (!$principal->isActive || empty($principal->permittedToolNames)) {
-                return response()->json([
-                    'error_code' => 'AI_TOOL_FORBIDDEN',
-                    'error_message' => 'You do not have permission to execute AI tools for this company.',
-                ], 403);
-            }
-
-            // 3. Quota check
-            try {
-                $this->modelGateway->assertQuotaAvailable($principal);
-            } catch (\RuntimeException $re) {
-                return response()->json([
-                    'error_code' => 'AI_QUOTA_EXCEEDED',
-                    'error_message' => $re->getMessage(),
-                ], 429);
-            }
-
-            // 4. Resolve Approved Model
-            $modelConfig = $this->modelGateway->resolveApprovedModel($principal);
-
-            // 5. Thread verification or creation
-            $threadId = $validated['thread_id'] ?? null;
-            if ($threadId !== null) {
-                $thread = DB::table('ai_thread_scopes')
-                    ->where('id', $threadId)
-                    ->where('user_id', $user->id)
-                    ->where('company_id', $context->companyId)
-                    ->first();
-
-                if (!$thread) {
-                    return response()->json([
-                        'error_code' => 'AI_THREAD_NOT_FOUND',
-                        'error_message' => 'Specified conversation thread does not exist or access was denied.',
-                    ], 404);
+            $admitted = DB::transaction(function () use ($principal, $existingThreadId, $threadId, $question, $quotaDate, $model): bool {
+                if ($existingThreadId && !$this->ownedThreads($principal)->where('id', $threadId)->lockForUpdate()->first()) {
+                    return false;
                 }
-            } else {
-                $threadId = (string) Str::uuid();
-                DB::table('ai_thread_scopes')->insert([
-                    'id' => $threadId,
-                    'sdk_conversation_id' => $threadId,
-                    'user_id' => $user->id,
-                    'company_id' => $context->companyId,
-                    'branch_id' => $context->branchId,
-                    'financial_year_id' => $context->financialYearId,
-                    'title' => Str::limit($validated['message'], 60),
-                    'status' => 'active',
+
+                $this->modelGateway->admitRequest($principal, $quotaDate, $threadId);
+                if ($existingThreadId === null) {
+                    $this->insertThread($principal, $threadId, Str::limit($question, 60));
+                }
+
+                DB::table('ai_runs')->insert([
+                    'id' => $principal->requestId,
+                    'thread_id' => $threadId,
+                    'actor_id' => $principal->actorId,
+                    ...$this->scope($principal),
+                    'agent_key' => 'erp_copilot',
+                    'model_provider' => $model['provider'],
+                    'model_key' => $model['model'],
+                    'prompt_version' => 'v1',
+                    'status' => 'running',
+                    'request_hash' => hash('sha256', $question),
+                    'started_at' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
-            }
 
-            // 6. Record Run
-            $runId = (string) Str::uuid();
-            DB::table('ai_runs')->insert([
-                'id' => $runId,
+                return true;
+            }, 3);
+        } catch (TooManyRequestsHttpException $error) {
+            return $this->error('AI_QUOTA_EXCEEDED', $error->getMessage(), 429);
+        } catch (ServiceUnavailableHttpException $error) {
+            return $this->error('AI_DISABLED', $error->getMessage(), 503);
+        }
+
+        if (!$admitted) {
+            return $this->threadNotFound();
+        }
+
+        $run = DB::table('ai_runs')->where('company_id', $principal->companyId)->where('id', $principal->requestId);
+
+        try {
+            $history = $this->messages($threadId, newestFirst: true)->limit(8)
+                ->get(['role', 'content'])->reverse()
+                ->map(fn (stdClass $message) => new Message($message->role, mb_substr($message->content, 0, 2000)))
+                ->values()->all();
+
+            $copilot = new ErpCopilot(
+                $principal,
+                $history,
+                fn (PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
+            );
+            $response = $copilot->prompt($question, provider: $model['provider'], model: $model['model'], timeout: 25);
+
+            $evidence = $this->evidence($response);
+            $answer = $evidence['facts'] === [] || trim($response->text) === ''
+                ? 'The copilot could not produce a verified answer. Review any available ERP results below.'
+                : $response->text;
+
+            DB::transaction(function () use ($principal, $threadId, $question, $answer, $response, $evidence, $run): void {
+                $this->storeTurn($principal, $threadId, $question, $answer, $response, $evidence);
+                $this->ownedThreads($principal)->where('id', $threadId)->update(['updated_at' => now()]);
+                $run->update(['status' => 'completed', 'completed_at' => now(), 'updated_at' => now()]);
+            }, 3);
+
+            return response()->json([
+                'run_id' => $principal->requestId,
                 'thread_id' => $threadId,
-                'actor_id' => $user->id,
-                'company_id' => $context->companyId,
-                'branch_id' => $context->branchId,
-                'financial_year_id' => $context->financialYearId,
-                'agent_key' => 'erp_copilot',
-                'model_provider' => $modelConfig['provider'],
-                'model_key' => $modelConfig['model'],
-                'prompt_version' => 'v1',
-                'status' => 'running',
-                'request_hash' => hash('sha256', $validated['message']),
-                'started_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
+                'status' => 'completed',
+                'message' => $answer,
+                ...$evidence,
+                'scope' => $this->scope($principal),
+                'usage' => [
+                    ...$response->usage->toArray(),
+                    'tool_count' => $response->toolResults->count(),
+                ],
+            ]);
+        } catch (Throwable $error) {
+            [$code, $message, $status] = match (true) {
+                $error instanceof TooManyRequestsHttpException => ['AI_QUOTA_EXCEEDED', $error->getMessage(), 429],
+                $error instanceof ServiceUnavailableHttpException => ['AI_DISABLED', $error->getMessage(), 503],
+                default => ['AI_PROVIDER_UNAVAILABLE', 'The copilot could not complete this request. Try again later.', 502],
+            };
+            $run->update(['status' => 'failed', 'error_code' => $code, 'completed_at' => now(), 'updated_at' => now()]);
+            Log::warning('AI chat run failed.', [
+                'run_id' => $principal->requestId,
+                'company_id' => $principal->companyId,
+                'error_code' => $code,
+                'exception_type' => $error::class,
             ]);
 
-            // Save user message in message history
-            DB::table('agent_conversation_messages')->insert([
-                'id' => (string) Str::uuid(),
-                'conversation_id' => $threadId,
+            return $this->error($code, $message, $status);
+        }
+    }
+
+    private function principal(Request $request): AiPrincipal
+    {
+        $actor = $request->user()->id;
+        $context = $this->contextResolver->forActor(userId: $actor);
+        $workspaceScope = $request->header('X-AI-Scope');
+        abort_if($workspaceScope !== null && $workspaceScope !== implode('/', [
+            $context->companyId, $context->branchId, $context->financialYearId,
+        ]), 409, 'The active ERP context changed. Reload the copilot workspace.');
+
+        return $this->principalFactory->createForUser($actor, $context->companyId, $context->branchId, $context->financialYearId);
+    }
+
+    private function accessDenial(AiPrincipal $principal): ?JsonResponse
+    {
+        if (!$this->featureGate->isEnabledForCompany($principal->companyId)) {
+            return $this->error('AI_DISABLED', 'AI capabilities are disabled for this company.', 503);
+        }
+        if (!$principal->isActive || $principal->permittedToolNames === []) {
+            return $this->error('AI_TOOL_FORBIDDEN', 'You do not have permission to use AI tools for this company.', 403);
+        }
+
+        return null;
+    }
+
+    private function scope(AiPrincipal $principal): array
+    {
+        return [
+            'company_id' => $principal->companyId,
+            'branch_id' => $principal->branchId,
+            'financial_year_id' => $principal->financialYearId,
+        ];
+    }
+
+    private function ownedThreads(AiPrincipal $principal): Builder
+    {
+        return DB::table('ai_thread_scopes')->where($this->scope($principal))
+            ->where('user_id', $principal->actorId)->where('status', 'active')
+            ->where(fn (Builder $query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()));
+    }
+
+    private function insertThread(AiPrincipal $principal, string $id, string $title): void
+    {
+        DB::table('ai_thread_scopes')->insert([
+            'id' => $id,
+            'sdk_conversation_id' => $id,
+            'user_id' => $principal->actorId,
+            ...$this->scope($principal),
+            'title' => $title,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function messages(string $authorizedThreadId, bool $newestFirst = false): Builder
+    {
+        $direction = $newestFirst ? 'desc' : 'asc';
+
+        return DB::table('agent_conversation_messages')->where('conversation_id', $authorizedThreadId)
+            ->where('agent', 'erp_copilot')->where('status', 'completed')->whereIn('role', ['user', 'assistant'])
+            ->orderBy('created_at', $direction)
+            // Old UUIDv4 turns could share one timestamp. Put the user before the assistant on ties.
+            ->orderByRaw("CASE WHEN SUBSTRING(id, 15, 1) = '7' THEN 2 WHEN role = 'user' THEN 0 ELSE 1 END {$direction}")
+            ->orderBy('id', $direction);
+    }
+
+    private function evidence(AgentResponse $response): array
+    {
+        $facts = $sources = $warnings = [];
+        foreach ($response->toolResults as $result) {
+            $payload = $result->successful() ? json_decode($result->text(), true) : null;
+            if (($payload['status'] ?? null) !== 'ok') {
+                $warnings[] = 'An ERP tool could not complete its check.';
+                continue;
+            }
+
+            $facts[] = [
+                'tool' => $payload['tool'],
+                'as_of' => $payload['as_of'],
+                'data' => $payload['data'],
+            ];
+            foreach ($payload['source_refs'] as $href) {
+                $sources[$href] = ['title' => 'Customer receivables ageing', 'href' => $href];
+            }
+            array_push($warnings, ...$payload['warnings']);
+        }
+
+        return ['facts' => $facts, 'sources' => array_values($sources), 'warnings' => array_values(array_unique($warnings))];
+    }
+
+    private function storeTurn(AiPrincipal $principal, string $threadId, string $question, string $answer, AgentResponse $response, array $evidence): void
+    {
+        $common = [
+            'conversation_id' => $threadId,
+            'agent' => 'erp_copilot',
+            'attachments' => '[]',
+            'steps' => '[]',
+            'status' => 'completed',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+        DB::table('agent_conversation_messages')->insert([
+            [
+                ...$common,
+                'id' => (string) Str::uuid7(),
                 'participant_type' => 'user',
-                'participant_id' => $user->id,
-                'agent' => 'erp_copilot',
+                'participant_id' => $principal->actorId,
                 'role' => 'user',
-                'content' => $validated['message'],
-                'attachments' => '[]',
-                'steps' => '[]',
+                'content' => $question,
                 'usage' => '[]',
                 'meta' => '[]',
-                'status' => 'completed',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // 7. Execute Copilot Agent
-            $scopedPrincipal = new AiPrincipal(
-                actorId: $principal->actorId,
-                companyId: $principal->companyId,
-                branchId: $principal->branchId,
-                financialYearId: $principal->financialYearId,
-                permittedToolNames: $principal->permittedToolNames,
-                requestId: $runId,
-                effectiveRole: $principal->effectiveRole,
-                isActive: $principal->isActive
-            );
-
-            $copilot = new ErpCopilot($scopedPrincipal);
-
-            try {
-                $response = $copilot->prompt($validated['message']);
-                $assistantText = (string) $response;
-            } catch (Throwable $modelError) {
-                Log::warning("AI Provider execution encountered an error: " . $modelError->getMessage(), [
-                    'run_id' => $runId,
-                    'company_id' => $context->companyId,
-                    'user_id' => $user->id,
-                ]);
-
-                DB::table('ai_runs')->where('id', $runId)->update([
-                    'status' => 'failed',
-                    'error_code' => 'AI_PROVIDER_UNAVAILABLE',
-                    'updated_at' => now(),
-                ]);
-
-                return response()->json([
-                    'error_code' => 'AI_PROVIDER_UNAVAILABLE',
-                    'error_message' => 'The AI language model provider is currently unreachable or unconfigured. Please ensure provider API keys are active.',
-                ], 502);
-            }
-
-            // 8. Extract tool execution telemetry from ai_tool_invocations
-            $invocations = DB::table('ai_tool_invocations')->where('run_id', $runId)->get();
-
-            $facts = [];
-            $sources = [];
-            $warnings = [];
-
-            foreach ($invocations as $inv) {
-                if ($inv->output_ref) {
-                    $sources[] = [
-                        'title' => 'Authorised ERP Report',
-                        'href' => $inv->output_ref,
-                    ];
-                }
-            }
-
-            // Save assistant response message in message history
-            DB::table('agent_conversation_messages')->insert([
-                'id' => (string) Str::uuid(),
-                'conversation_id' => $threadId,
+            ],
+            [
+                ...$common,
+                'id' => (string) Str::uuid7(),
                 'participant_type' => 'agent',
                 'participant_id' => null,
-                'agent' => 'erp_copilot',
                 'role' => 'assistant',
-                'content' => $assistantText,
-                'attachments' => '[]',
-                'steps' => '[]',
-                'usage' => '[]',
-                'meta' => '[]',
-                'status' => 'completed',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+                'content' => $answer,
+                'usage' => json_encode($response->usage, JSON_THROW_ON_ERROR),
+                'meta' => json_encode($evidence, JSON_THROW_ON_ERROR),
+            ],
+        ]);
+    }
 
-            // Update thread updated_at
-            DB::table('ai_thread_scopes')->where('id', $threadId)->update([
-                'updated_at' => now(),
-            ]);
+    private function threadNotFound(): JsonResponse
+    {
+        return $this->error('AI_THREAD_NOT_FOUND', 'Thread not found in the active ERP context.', 404);
+    }
 
-            // Complete run
-            DB::table('ai_runs')->where('id', $runId)->update([
-                'status' => 'completed',
-                'completed_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // Record Usage
-            $this->modelGateway->recordUsage($principal, inputTokens: 50, outputTokens: 50);
-
-            return response()->json([
-                'run_id' => $runId,
-                'thread_id' => $threadId,
-                'status' => 'completed',
-                'message' => $assistantText,
-                'facts' => $facts,
-                'scope' => [
-                    'company_id' => $context->companyId,
-                    'branch_id' => $context->branchId,
-                    'financial_year_id' => $context->financialYearId,
-                ],
-                'sources' => $sources,
-                'warnings' => $warnings,
-                'usage' => [
-                    'tool_count' => count($invocations),
-                ],
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $ve) {
-            return response()->json([
-                'error_code' => 'AI_INPUT_INVALID',
-                'error_message' => $ve->getMessage(),
-                'errors' => $ve->errors(),
-            ], 422);
-        } catch (\Illuminate\Auth\Access\AuthorizationException $ae) {
-            return response()->json([
-                'error_code' => 'AI_SCOPE_INVALID',
-                'error_message' => $ae->getMessage(),
-            ], 403);
-        } catch (Throwable $e) {
-            Log::error("AI Chat Controller Unhandled Exception: " . $e->getMessage(), [
-                'exception' => $e,
-            ]);
-
-            return response()->json([
-                'error_code' => 'AI_SYSTEM_ERROR',
-                'error_message' => 'An unexpected internal error occurred.',
-            ], 500);
-        }
+    private function error(string $code, string $message, int $status): JsonResponse
+    {
+        return response()->json(['error_code' => $code, 'error_message' => $message], $status);
     }
 }

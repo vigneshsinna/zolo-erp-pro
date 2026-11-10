@@ -28,15 +28,7 @@ class AiFeatureGate
             return false;
         }
 
-        if (!function_exists('app') || !app()->bound('db')) {
-            return true;
-        }
-
         try {
-            if (!Schema::hasTable('ai_feature_settings')) {
-                return true;
-            }
-
             $setting = DB::table('ai_feature_settings')
                 ->where('company_id', $companyId)
                 ->first();

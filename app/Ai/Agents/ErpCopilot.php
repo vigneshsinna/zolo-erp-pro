@@ -6,8 +6,10 @@ namespace App\Ai\Agents;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Tools\CustomerOutstanding;
+use Closure;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
+use Laravel\Ai\Contracts\HasMiddleware;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
@@ -16,12 +18,14 @@ use Stringable;
 /**
  * Authoritative, read-only ERP Copilot agent.
  */
-class ErpCopilot implements Agent, Conversational, HasTools
+class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
 {
     use Promptable;
 
     public function __construct(
-        protected readonly AiPrincipal $principal
+        protected readonly AiPrincipal $principal,
+        protected readonly array $history = [],
+        protected readonly ?Closure $budgetStep = null,
     ) {}
 
     /**
@@ -43,7 +47,17 @@ class ErpCopilot implements Agent, Conversational, HasTools
      */
     public function messages(): iterable
     {
-        return [];
+        return $this->history;
+    }
+
+    public function middleware(): array
+    {
+        return $this->budgetStep === null ? [] : [$this->budgetStep];
+    }
+
+    public function maxSteps(): int
+    {
+        return min(5, max(2, (int) config('erp_ai.max_steps', 5)));
     }
 
     /**

@@ -6,167 +6,145 @@ namespace App\Ai\Gateway;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Services\AiFeatureGate;
+use Closure;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
-use RuntimeException;
-use Throwable;
+use Laravel\Ai\Gateway\StepResponse;
+use Laravel\Ai\Gateway\StepResult;
+use Laravel\Ai\PendingStep;
+use Laravel\Ai\Responses\Data\TextUsage;
+use stdClass;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
-/**
- * Gatekeeper mediating model provider selection, token limits,
- * daily usage quotas, and fail-safe circuit breaker rules.
- */
 class ApprovedModelGateway
 {
-    /**
-     * @var array<string, array<string>>
-     */
     protected array $allowedModels = [
         'openai' => ['gpt-4o-mini', 'gpt-4o'],
         'gemini' => ['gemini-1.5-flash', 'gemini-2.0-flash'],
         'anthropic' => ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022'],
     ];
 
-    public function __construct(
-        protected AiFeatureGate $featureGate
-    ) {}
+    public function __construct(protected AiFeatureGate $featureGate) {}
 
-    /**
-     * Resolve the approved provider and model key for an execution context,
-     * enforcing company enablement and user/company quota limits.
-     *
-     * @return array{provider: string, model: string}
-     */
-    public function resolveApprovedModel(AiPrincipal $principal, ?string $preferredProvider = null): array
+    /** @return array{provider: string, model: string} */
+    public function resolveApprovedModel(): array
     {
-        if (!$this->featureGate->isEnabledForCompany($principal->companyId)) {
-            throw new RuntimeException("AI is disabled for company ID [{$principal->companyId}].");
+        $provider = config('erp_ai.provider', 'openai');
+        if (!isset($this->allowedModels[$provider])) {
+            throw new InvalidArgumentException('AI provider is outside the approved allowlist.');
         }
 
-        // Enforce quota limits
-        $this->assertQuotaAvailable($principal);
-
-        $provider = $preferredProvider ?? config('erp_ai.provider', 'openai');
-
-        if (!array_key_exists($provider, $this->allowedModels)) {
-            throw new InvalidArgumentException("Provider [{$provider}] is not in the approved AI gateway allowlist.");
-        }
-
-        $defaultModel = config('erp_ai.model', $this->allowedModels[$provider][0]);
-
-        if (!in_array($defaultModel, $this->allowedModels[$provider], true)) {
-            $defaultModel = $this->allowedModels[$provider][0];
-        }
+        $model = config('erp_ai.model');
 
         return [
             'provider' => $provider,
-            'model' => $defaultModel,
+            'model' => $this->isApproved($provider, $model ?? '') ? $model : $this->allowedModels[$provider][0],
         ];
     }
 
-    /**
-     * Check if a specific provider and model pair is permitted.
-     */
     public function isApproved(string $provider, string $model): bool
     {
-        return isset($this->allowedModels[$provider]) && in_array($model, $this->allowedModels[$provider], true);
+        return in_array($model, $this->allowedModels[$provider] ?? [], true);
     }
 
-    /**
-     * Check daily request and token quotas for actor and company.
-     *
-     * @throws RuntimeException
-     */
-    public function assertQuotaAvailable(AiPrincipal $principal): void
+    /** Call inside the transaction that creates the run. */
+    public function admitRequest(AiPrincipal $principal, string $date, string $threadId): void
     {
-        if (!function_exists('app') || !app()->bound('db')) {
-            return;
+        $setting = $this->lockCompany($principal);
+        $counter = $this->counter($principal, $date);
+
+        if (($counter->lockForUpdate()->value('request_count') ?? 0) >= config('erp_ai.daily_user_requests')) {
+            throw new TooManyRequestsHttpException(message: 'Daily user AI request quota exceeded.');
+        }
+        if ($this->remainingTokens($principal, $date, $setting) <= 0) {
+            throw new TooManyRequestsHttpException(message: 'Daily company AI token quota exceeded.');
+        }
+        if (DB::table('ai_runs')->where('company_id', $principal->companyId)->where('thread_id', $threadId)
+            ->where('status', 'running')->where('started_at', '>', now()->subMinutes(10))->lockForUpdate()->first()) {
+            throw new TooManyRequestsHttpException(message: 'This conversation already has a request in progress.');
         }
 
-        try {
-            if (!Schema::hasTable('ai_usage_counters')) {
-                return;
-            }
-
-            $today = now()->toDateString();
-            $maxDailyRequests = (int) config('erp_ai.daily_user_requests', 50);
-
-            // 1. User daily request limit check
-            $userCounter = DB::table('ai_usage_counters')
-                ->where('company_id', $principal->companyId)
-                ->where('user_id', $principal->actorId)
-                ->where('date', $today)
-                ->first();
-
-            if ($userCounter && $userCounter->request_count >= $maxDailyRequests) {
-                throw new RuntimeException("Daily user AI request quota exceeded ({$userCounter->request_count} / {$maxDailyRequests}).");
-            }
-
-            // 2. Company daily token limit check
-            $companyTokenLimit = (int) config('erp_ai.daily_company_tokens', 100000);
-            if (Schema::hasTable('ai_feature_settings')) {
-                $setting = DB::table('ai_feature_settings')->where('company_id', $principal->companyId)->first();
-                if ($setting && $setting->daily_token_limit > 0) {
-                    $companyTokenLimit = (int) $setting->daily_token_limit;
-                }
-            }
-
-            $totalTokensToday = (int) DB::table('ai_usage_counters')
-                ->where('company_id', $principal->companyId)
-                ->where('date', $today)
-                ->sum(DB::raw('input_tokens + output_tokens'));
-
-            if ($totalTokensToday >= $companyTokenLimit) {
-                throw new RuntimeException("Daily company AI token quota exceeded ({$totalTokensToday} / {$companyTokenLimit}).");
-            }
-        } catch (RuntimeException $re) {
-            throw $re;
-        } catch (Throwable) {
-            // Fail open on telemetry read errors to avoid blocking business operations
-        }
+        DB::table('ai_usage_counters')->insertOrIgnore([
+            'company_id' => $principal->companyId,
+            'user_id' => $principal->actorId,
+            'date' => $date,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $counter->increment('request_count', 1, ['updated_at' => now()]);
     }
 
-    /**
-     * Record and increment usage counters atomically.
-     */
-    public function recordUsage(
-        AiPrincipal $principal,
-        int $inputTokens = 0,
-        int $outputTokens = 0,
-        int $costMinor = 0
-    ): void {
-        if (!function_exists('app') || !app()->bound('db')) {
-            return;
-        }
+    public function budgetStep(AiPrincipal $principal, string $date, PendingStep $step, Closure $next): StepResult
+    {
+        // Count UTF-8 bytes as an input allowance and add room for SDK/provider framing and tool schemas.
+        $inputAllowance = 1024 + strlen($step->instructions ?? '') + strlen(json_encode(
+            $step->messages, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ));
+        $outputLimit = 1024;
+        $reserved = $inputAllowance + $outputLimit;
 
-        try {
-            if (!Schema::hasTable('ai_usage_counters')) {
-                return;
+        DB::transaction(function () use ($principal, $date, $reserved): void {
+            $setting = $this->lockCompany($principal);
+            if ($this->remainingTokens($principal, $date, $setting) < $reserved) {
+                throw new TooManyRequestsHttpException(message: 'Daily company AI token quota cannot cover the next model step.');
             }
 
-            $today = now()->toDateString();
+            if ($this->counter($principal, $date)->increment('reserved_tokens', $reserved) !== 1) {
+                throw new ServiceUnavailableHttpException(message: 'AI usage accounting is unavailable.');
+            }
+        }, 3);
 
-            DB::statement("
-                INSERT INTO ai_usage_counters (company_id, user_id, date, request_count, input_tokens, output_tokens, estimated_cost_minor, created_at, updated_at)
-                VALUES (?, ?, ?, 1, ?, ?, ?, NOW(), NOW())
-                ON DUPLICATE KEY UPDATE
-                    request_count = request_count + 1,
-                    input_tokens = input_tokens + VALUES(input_tokens),
-                    output_tokens = output_tokens + VALUES(output_tokens),
-                    estimated_cost_minor = estimated_cost_minor + VALUES(estimated_cost_minor),
-                    updated_at = NOW()
-            ", [
-                $principal->companyId,
-                $principal->actorId,
-                $today,
-                $inputTokens,
-                $outputTokens,
-                $costMinor,
+        // Keep the reservation until the quota day ends if the provider fails without reporting usage.
+        return $next($step->withMaxTokens($outputLimit))->then(
+            fn (StepResponse $response) => $this->settleStep($principal, $date, $reserved, $response->usage)
+        );
+    }
+
+    private function settleStep(AiPrincipal $principal, string $date, int $reserved, TextUsage $usage): void
+    {
+        DB::transaction(function () use ($principal, $date, $reserved, $usage): void {
+            // Settle metered usage even if the company has since switched off AI.
+            DB::table('ai_feature_settings')->where('company_id', $principal->companyId)->lockForUpdate()->first();
+
+            $this->counter($principal, $date)->update([
+                'input_tokens' => DB::raw('input_tokens + ' . $usage->inputTokens),
+                'output_tokens' => DB::raw('output_tokens + ' . $usage->outputTokens),
+                'reserved_tokens' => DB::raw('reserved_tokens - ' . $reserved),
+                'updated_at' => now(),
             ]);
-        } catch (Throwable) {
-            // Non-blocking telemetry
+            DB::table('ai_runs')->where('company_id', $principal->companyId)->where('id', $principal->requestId)->update([
+                'input_tokens' => DB::raw('input_tokens + ' . $usage->inputTokens),
+                'output_tokens' => DB::raw('output_tokens + ' . $usage->outputTokens),
+                'updated_at' => now(),
+            ]);
+        }, 3);
+    }
+
+    private function lockCompany(AiPrincipal $principal): stdClass
+    {
+        $setting = DB::table('ai_feature_settings')->where('company_id', $principal->companyId)->lockForUpdate()->first();
+        if (!$setting?->enabled || !$this->featureGate->isEnabledForCompany($principal->companyId)) {
+            throw new ServiceUnavailableHttpException(message: 'AI capabilities are disabled for this company.');
         }
+
+        return $setting;
+    }
+
+    private function remainingTokens(AiPrincipal $principal, string $date, stdClass $setting): int
+    {
+        $limit = min(config('erp_ai.daily_company_tokens'), (int) $setting->daily_token_limit);
+        $used = DB::table('ai_usage_counters')->where('company_id', $principal->companyId)->where('date', $date)
+            ->lockForUpdate()->get(['input_tokens', 'output_tokens', 'reserved_tokens'])
+            ->sum(fn (stdClass $counter) => $counter->input_tokens + $counter->output_tokens + $counter->reserved_tokens);
+
+        return $limit - $used;
+    }
+
+    private function counter(AiPrincipal $principal, string $date): Builder
+    {
+        return DB::table('ai_usage_counters')->where('company_id', $principal->companyId)
+            ->where('user_id', $principal->actorId)->where('date', $date);
     }
 }
-
-

@@ -6,6 +6,8 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Models\User;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
 use Illuminate\Support\Str;
 
@@ -15,7 +17,9 @@ use Illuminate\Support\Str;
 class AiPrincipalFactory
 {
     public function __construct(
-        protected CompanyContextResolver $contextResolver
+        protected CompanyContextResolver $contextResolver,
+        protected AiToolManifest $manifest,
+        protected CommercialPermission $permissions,
     ) {}
 
     /**
@@ -38,7 +42,7 @@ class AiPrincipalFactory
         $user = User::findOrFail($userId);
 
         // Discover permitted tools for actor
-        $permittedTools = $this->resolvePermittedTools($user, $context->companyId);
+        $permittedTools = $this->resolvePermittedTools($user, $context);
 
         return new AiPrincipal(
             actorId: $userId,
@@ -57,36 +61,16 @@ class AiPrincipalFactory
      *
      * @return array<string>
      */
-    public function resolvePermittedTools(User $user, int $companyId): array
+    public function resolvePermittedTools(User $user, CompanyContext $context): array
     {
-        $tools = [];
+        $handler = $this->manifest->get('receivables.outstanding.v1');
+        $required = $handler->requiredPermissions();
+        $reportPermissions = ['accounting.reports.view', 'customer-report', 'due-report'];
+        $allowed = $this->permissions->allowed([...$required, ...$reportPermissions], $context, $user->id);
 
-        $hasReceivablesAccess = false;
-
-        // Admin / SuperAdmin role bypass
-        if ((int) $user->role_id === 1) {
-            $hasReceivablesAccess = true;
-        } else {
-            try {
-                if ($user->can('accounting.reports.view') || $user->can('customer-report') || $user->can('due-report')) {
-                    $hasReceivablesAccess = true;
-                } elseif ($user->role_id) {
-                    $role = \Spatie\Permission\Models\Role::find($user->role_id);
-                    if ($role && ($role->hasPermissionTo('due-report') || $role->hasPermissionTo('customer-report') || $role->hasPermissionTo('accounting.reports.view'))) {
-                        $hasReceivablesAccess = true;
-                    }
-                }
-            } catch (\Throwable) {
-                // Fail closed on authorization lookup exceptions
-                $hasReceivablesAccess = false;
-            }
-        }
-
-        if ($hasReceivablesAccess) {
-            $tools[] = 'receivables.outstanding.v1';
-        }
-
-        return $tools;
+        return array_diff($required, $allowed) === [] && array_intersect($reportPermissions, $allowed) !== []
+            ? [$handler->key()]
+            : [];
     }
 }
 

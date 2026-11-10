@@ -13,14 +13,14 @@ use App\Ai\Tools\CustomerOutstanding;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Support\UsesAiMysql;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Tools\Request;
 use Tests\TestCase;
 
 class ReceivablesSecurityAndAccuracyTest extends TestCase
 {
-    use DatabaseTransactions;
+    use UsesAiMysql;
 
     protected Company $companyA;
     protected Company $companyB;
