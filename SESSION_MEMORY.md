@@ -1,5 +1,41 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## AI External Model Telemetry, Provider RPM Rate Limiter & Monitoring Dashboard — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Architecture & Monitoring Requirement Implemented:**
+  1. Distinguish admitted user requests (`ai_usage_counters.request_count`) from individual external provider API requests (multi-step tool calls).
+  2. Implement provider-level rate limiting using Laravel `RateLimiter` (35 RPM threshold for NVIDIA NIM, safely below the 40 RPM quota).
+  3. Record every external model invocation in dedicated `ai_model_invocations` table (run ID, company ID, step number, provider, model, tokens, duration, status, error).
+  4. Provide administrator-only monitoring endpoints and interactive live telemetry widget in the AI Workspace.
+- **Architectural Deliverables:**
+  1. **Additive Database Migration:**
+     - `database/migrations/2026_11_10_000003_create_ai_model_invocations_table.php`: Added `ai_model_invocations` table with compound indexes on `(run_id, step_number)`, `(provider, created_at)`, and `(company_id, created_at)`. Migrated cleanly on development database (`zoloerp` port 3307) and disposable test database (`zolo_test_ai_release`).
+  2. **Model Gateway Rate Limiter & Telemetry Tracking (`app/Ai/Gateway/ApprovedModelGateway.php`):**
+     - `enforceProviderRateLimit(string $provider)`: Checks `RateLimiter::tooManyAttempts("ai:rpm:{$provider}", 35)`. If throttled, throws `TooManyRequestsHttpException` (429) specifying the remaining seconds.
+     - `getProviderRpmLimit(string $provider)` & `getProviderRpmUsage(?string $provider = null)`: Computes active requests, limit, remaining attempts, and health status (`healthy`, `warning`, `limited`).
+     - `recordModelInvocation(...)`: Safely inserts each step telemetry record into `ai_model_invocations`.
+     - In `budgetStep()`: Enforces the provider RPM limit before taking the step, tracks precise invocation latency with `microtime(true)`, and records completed or failed step metrics.
+  3. **Administrator Monitoring Endpoints (`app/Http/Controllers/Api/V1/AiChatController.php`):**
+     - Added `monitoring(Request $request)` endpoint:
+       - Strictly gates access to administrators (`role_id` 1 or 2). Non-admins receive HTTP 403 `AI_FORBIDDEN`.
+       - Scopes all aggregations by `principal->companyId` (Tenancy Law 1).
+       - Returns live RPM metrics, today's totals (user requests, model invocations, ERP tool calls, token usage vs daily limit), and the 10 most recent runs with per-run model and tool call counts.
+       - Registered across web (`GET /ai/monitoring`) and Sanctum API (`GET /api/v1/ai/monitoring`).
+  4. **Frontend Monitoring Widget (`resources/views/backend/ai/workspace.blade.php`):**
+     - Added `#btn-toggle-telemetry` in header showing real-time `RPM: X/35` badge with health color indicators.
+     - Added collapsible `#ai-telemetry-panel` displaying provider RPM, today's model calls vs tool calls, and daily token consumption vs company limit.
+     - Automatically refreshes metrics on page load and upon chat turn completion.
+  5. **Automated Verification (100% Green):**
+     - Added unit/feature tests in `tests/Feature/Ai/AiChatApiAndWorkspaceTest.php`:
+       - `test_monitoring_endpoint_returns_telemetry_for_admins_and_denies_unauthorized_users()`
+       - `test_provider_rpm_rate_limiter_throttles_when_limit_exceeded()`
+       - `test_chat_turn_persists_model_invocation_steps()`
+     - Ran full AI test suite on disposable MySQL 8.4 (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1`): **35/35 passed (212 assertions, 0 errors, 0 failures)**.
+     - `composer validate --strict`: Valid.
+     - `composer audit --locked`: 0 vulnerabilities.
+
+
+
 ## Chat UI Flexbox Layout & Message Overlap Fix — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **User Query Addressed:**

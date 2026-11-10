@@ -56,14 +56,49 @@
                         </h5>
                         <small class="text-muted" id="active-thread-title">New Conversation</small>
                     </div>
-                    @if($model)
-                    <div>
-                        <span class="badge badge-light border text-muted" style="font-size: 0.75rem;">
-                            Model: {{ $model }}
-                        </span>
+                    <div class="d-flex align-items-center">
+                        @if($isAdmin ?? false)
+                        <button id="btn-toggle-telemetry" class="btn btn-xs btn-outline-info mr-2 py-1 px-2" style="font-size: 0.75rem;" title="View AI telemetry & rate limits">
+                            <i class="dripicons-meter mr-1"></i> <span id="header-rpm-badge" class="badge badge-success" style="font-size: 0.7rem;">RPM: --/35</span>
+                        </button>
+                        @endif
+                        @if($model)
+                        <div>
+                            <span class="badge badge-light border text-muted" style="font-size: 0.75rem;">
+                                Model: {{ $model }}
+                            </span>
+                        </div>
+                        @endif
                     </div>
-                    @endif
                 </div>
+
+                @if($isAdmin ?? false)
+                <!-- Admin Telemetry Panel -->
+                <div id="ai-telemetry-panel" class="border-bottom bg-light px-3 py-2 flex-shrink-0" style="display: none; font-size: 0.8rem;">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center">
+                        <div class="d-flex align-items-center mr-3 my-1">
+                            <span class="text-muted mr-1">Provider RPM:</span>
+                            <span id="telemetry-rpm-badge" class="badge badge-success mr-2 font-weight-bold">-- / 35</span>
+                            <span id="telemetry-rpm-status" class="small text-muted font-italic">Healthy</span>
+                        </div>
+                        <div class="d-flex align-items-center mr-3 my-1">
+                            <span class="text-muted mr-1">Today's Invocations:</span>
+                            <span class="badge badge-light border mr-1"><strong id="telemetry-model-calls">0</strong> Model Calls</span>
+                            <span class="badge badge-light border"><strong id="telemetry-tool-calls">0</strong> ERP Tools</span>
+                        </div>
+                        <div class="d-flex align-items-center mr-3 my-1">
+                            <span class="text-muted mr-1">Tokens Today:</span>
+                            <span id="telemetry-tokens-used" class="font-weight-bold text-dark">0</span>
+                            <span class="text-muted small ml-1">/ <span id="telemetry-token-limit">100,000</span></span>
+                        </div>
+                        <div class="my-1">
+                            <button id="btn-refresh-telemetry" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.75rem;" title="Refresh metrics">
+                                <i class="dripicons-clockwise"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                @endif
 
                 <!-- Messages Feed -->
                 <div id="chat-messages" class="card-body p-3 flex-grow-1" style="overflow-y: auto; overflow-x: hidden; min-height: 0; background-color: #f8f9fa;">
@@ -541,6 +576,7 @@
                 }
 
                 appendMessage('assistant', res.message, res.sources, res.warnings, res.facts);
+                loadTelemetry();
             },
             error: function(xhr) {
                 let err = {};
@@ -585,8 +621,64 @@
         });
     });
 
+    // Admin Telemetry & Monitoring
+    function loadTelemetry() {
+        if (!@json($isAdmin ?? false)) return;
+        $.ajax({
+            url: '{{ route("ai.monitoring") }}',
+            method: 'GET',
+            headers: headers,
+            success: function(res) {
+                if (!res || !res.rpm) return;
+                const rpm = res.rpm;
+                const badge = $('#telemetry-rpm-badge');
+                const headerBadge = $('#header-rpm-badge');
+                const text = rpm.current + ' / ' + rpm.limit;
+                badge.text(text);
+                if (headerBadge.length) {
+                    headerBadge.text('RPM: ' + text);
+                }
+
+                badge.removeClass('badge-success badge-warning badge-danger');
+                if (headerBadge.length) {
+                    headerBadge.removeClass('badge-success badge-warning badge-danger');
+                }
+                if (rpm.status === 'limited') {
+                    badge.addClass('badge-danger');
+                    if (headerBadge.length) headerBadge.addClass('badge-danger');
+                    $('#telemetry-rpm-status').text('Rate Limited!').addClass('text-danger').removeClass('text-muted');
+                } else if (rpm.status === 'warning') {
+                    badge.addClass('badge-warning');
+                    if (headerBadge.length) headerBadge.addClass('badge-warning');
+                    $('#telemetry-rpm-status').text('High Usage').addClass('text-warning').removeClass('text-muted');
+                } else {
+                    badge.addClass('badge-success');
+                    if (headerBadge.length) headerBadge.addClass('badge-success');
+                    $('#telemetry-rpm-status').text('Healthy').addClass('text-muted').removeClass('text-danger text-warning');
+                }
+
+                if (res.today) {
+                    $('#telemetry-model-calls').text(res.today.model_invocations || 0);
+                    $('#telemetry-tool-calls').text(res.today.erp_tool_calls || 0);
+                    $('#telemetry-tokens-used').text((res.today.total_tokens || 0).toLocaleString());
+                    $('#telemetry-token-limit').text((res.today.daily_token_limit || 100000).toLocaleString());
+                }
+            }
+        });
+    }
+
+    $('#btn-toggle-telemetry').on('click', function() {
+        $('#ai-telemetry-panel').slideToggle(150);
+        loadTelemetry();
+    });
+
+    $('#btn-refresh-telemetry').on('click', function() {
+        loadTelemetry();
+    });
+
     // Boot
     loadThreads();
+    loadTelemetry();
 
 })(jQuery);
 </script>

@@ -47,6 +47,7 @@ class AiWorkspaceController extends Controller
             'isAiEnabled' => $isAiEnabled,
             'canUseCopilot' => $isAiEnabled && $principal->permittedToolNames !== [],
             'isReadOnly' => $isReadOnly,
+            'isAdmin' => in_array((int) ($user->role_id ?? 0), [1, 2], true),
             'model' => $isAiEnabled ? $this->modelGateway->resolveApprovedModel()['model'] : null,
         ]);
     }

@@ -49,6 +49,91 @@ class AiChatController extends Controller
         ]);
     }
 
+    public function monitoring(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!in_array((int) ($user->role_id ?? 0), [1, 2], true)) {
+            return $this->error('AI_FORBIDDEN', 'Administrator privileges are required to view AI telemetry and monitoring.', 403);
+        }
+
+        $principal = $this->principal($request);
+        $quotaDate = now('UTC')->toDateString();
+        $model = $this->modelGateway->resolveApprovedModel();
+        $rpmUsage = $this->modelGateway->getProviderRpmUsage($model['provider']);
+
+        // Today's aggregated usage for active company
+        $counters = DB::table('ai_usage_counters')
+            ->where('company_id', $principal->companyId)
+            ->where('date', $quotaDate)
+            ->selectRaw('SUM(request_count) as user_requests, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(reserved_tokens) as reserved_tokens')
+            ->first();
+
+        $todayModelCalls = DB::table('ai_model_invocations')
+            ->where('company_id', $principal->companyId)
+            ->whereDate('created_at', $quotaDate)
+            ->count();
+
+        $todayToolCalls = DB::table('ai_tool_invocations')
+            ->join('ai_runs', 'ai_runs.id', '=', 'ai_tool_invocations.run_id')
+            ->where('ai_runs.company_id', $principal->companyId)
+            ->whereDate('ai_tool_invocations.created_at', $quotaDate)
+            ->count();
+
+        $companySetting = DB::table('ai_feature_settings')
+            ->where('company_id', $principal->companyId)
+            ->first();
+
+        $inputTokens = (int) ($counters->input_tokens ?? 0);
+        $outputTokens = (int) ($counters->output_tokens ?? 0);
+        $totalTokens = $inputTokens + $outputTokens;
+        $dailyTokenLimit = (int) ($companySetting->daily_token_limit ?? config('erp_ai.daily_company_tokens', 100000));
+
+        // Latest runs with step and tool counts
+        $recentRuns = DB::table('ai_runs')
+            ->where('company_id', $principal->companyId)
+            ->latest('started_at')
+            ->limit(10)
+            ->get(['id as run_id', 'model_provider', 'model_key', 'status', 'input_tokens', 'output_tokens', 'started_at', 'completed_at'])
+            ->map(function (stdClass $run): array {
+                $modelCalls = DB::table('ai_model_invocations')->where('run_id', $run->run_id)->count();
+                $toolCalls = DB::table('ai_tool_invocations')->where('run_id', $run->run_id)->count();
+
+                return [
+                    'run_id' => $run->run_id,
+                    'provider' => $run->model_provider,
+                    'model' => $run->model_key,
+                    'status' => $run->status,
+                    'input_tokens' => (int) $run->input_tokens,
+                    'output_tokens' => (int) $run->output_tokens,
+                    'total_tokens' => (int) ($run->input_tokens + $run->output_tokens),
+                    'model_calls' => $modelCalls,
+                    'erp_tool_calls' => $toolCalls,
+                    'started_at' => $run->started_at,
+                    'completed_at' => $run->completed_at,
+                ];
+            });
+
+        return response()->json([
+            'status' => 'ok',
+            'provider' => $model['provider'],
+            'model' => $model['model'],
+            'rpm' => $rpmUsage,
+            'today' => [
+                'date' => $quotaDate,
+                'user_requests' => (int) ($counters->user_requests ?? 0),
+                'model_invocations' => $todayModelCalls,
+                'erp_tool_calls' => $todayToolCalls,
+                'input_tokens' => $inputTokens,
+                'output_tokens' => $outputTokens,
+                'total_tokens' => $totalTokens,
+                'daily_token_limit' => $dailyTokenLimit,
+                'tokens_remaining' => max(0, $dailyTokenLimit - $totalTokens),
+            ],
+            'recent_runs' => $recentRuns,
+            'scope' => $this->scope($principal),
+        ]);
+    }
+
     public function threads(Request $request): JsonResponse
     {
         $principal = $this->principal($request);

@@ -185,6 +185,7 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')
     ->controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
     Route::get('settings', 'settings')->name('settings');
+    Route::get('monitoring', 'monitoring')->name('monitoring');
     Route::get('threads', 'threads')->name('threads.index');
     Route::post('threads', 'createThread')->name('threads.store');
     Route::get('threads/{id}', 'showThread')->whereUuid('id')->name('threads.show');

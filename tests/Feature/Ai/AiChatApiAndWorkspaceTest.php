@@ -18,6 +18,7 @@ use App\Services\Platform\CompanyContext;
 use Illuminate\Http\Client\Request as ProviderRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Ai\PendingStep;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Tests\Support\UsesAiMysql;
@@ -405,6 +406,8 @@ class AiChatApiAndWorkspaceTest extends TestCase
             'input_tokens' => 414, 'output_tokens' => 40,
         ]);
         $this->assertDatabaseHas('ai_tool_invocations', ['run_id' => $runId, 'tool_key' => 'receivables.outstanding.v1', 'status' => 'ok']);
+        $this->assertDatabaseHas('ai_model_invocations', ['run_id' => $runId, 'step_number' => 1, 'status' => 'completed']);
+        $this->assertDatabaseHas('ai_model_invocations', ['run_id' => $runId, 'step_number' => 2, 'status' => 'completed']);
         $this->assertDatabaseHas('ai_usage_counters', [
             'company_id' => $this->company->id, 'user_id' => $this->adminUser->id, 'request_count' => 1,
             'input_tokens' => 414, 'output_tokens' => 40, 'reserved_tokens' => 0,
@@ -424,6 +427,108 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertStringContainsString($question, $history);
         $this->assertStringContainsString($answer, $history);
         $this->assertSame(1, substr_count($history, $followUp));
+    }
+
+    public function test_monitoring_endpoint_returns_telemetry_for_admins_and_denies_unauthorized_users(): void
+    {
+        $this->configureProvider();
+
+        // 1. Unauthenticated or non-admin user is denied with 403
+        $this->actingAs($this->unpermittedUser)->withSession($this->workspaceContext());
+        $this->getJson(route('ai.monitoring'))->assertStatus(403)
+            ->assertJsonPath('error_code', 'AI_FORBIDDEN');
+
+        // 2. Admin user receives structured monitoring telemetry
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $response = $this->getJson(route('ai.monitoring'));
+        $response->assertOk()
+            ->assertJsonStructure([
+                'status',
+                'provider',
+                'model',
+                'rpm' => ['provider', 'limit', 'current', 'remaining', 'status'],
+                'today' => [
+                    'date',
+                    'user_requests',
+                    'model_invocations',
+                    'erp_tool_calls',
+                    'input_tokens',
+                    'output_tokens',
+                    'total_tokens',
+                    'daily_token_limit',
+                    'tokens_remaining',
+                ],
+                'recent_runs',
+                'scope',
+            ])
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('rpm.status', 'healthy');
+
+        // 3. Sanctum endpoint parity
+        $responseApi = $this->getJson(route('api.v1.ai.monitoring'));
+        $responseApi->assertOk()
+            ->assertJsonPath('status', 'ok');
+    }
+
+    public function test_provider_rpm_rate_limiter_throttles_when_limit_exceeded(): void
+    {
+        $this->configureProvider();
+        config(['erp_ai.nvidia_rpm_limit' => 2]);
+        RateLimiter::clear('ai:rpm:openai');
+        RateLimiter::clear('ai:rpm:nvidia');
+
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $gateway = app(ApprovedModelGateway::class);
+
+        // 1st request should pass
+        $gateway->enforceProviderRateLimit('nvidia');
+        $this->assertSame(1, RateLimiter::attempts('ai:rpm:nvidia'));
+
+        // 2nd request should pass
+        $gateway->enforceProviderRateLimit('nvidia');
+        $this->assertSame(2, RateLimiter::attempts('ai:rpm:nvidia'));
+
+        // 3rd request should hit limit and throw 429
+        try {
+            $gateway->enforceProviderRateLimit('nvidia');
+            $this->fail('Expected rate limit exception');
+        } catch (TooManyRequestsHttpException $e) {
+            $this->assertStringContainsString('limit reached (2 requests per minute)', $e->getMessage());
+        }
+
+        $rpmUsage = $gateway->getProviderRpmUsage('nvidia');
+        $this->assertSame(2, $rpmUsage['current']);
+        $this->assertSame(2, $rpmUsage['limit']);
+        $this->assertSame(0, $rpmUsage['remaining']);
+        $this->assertSame('limited', $rpmUsage['status']);
+
+        RateLimiter::clear('ai:rpm:nvidia');
+    }
+
+    public function test_chat_turn_persists_model_invocation_steps(): void
+    {
+        $this->configureProvider();
+        RateLimiter::clear('ai:rpm:openai');
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+
+        Http::fake([
+            'https://provider.example/v1/responses' => Http::sequence()
+                ->push($this->providerResponse($this->providerMessage('Direct answer without tools'), 120, 35)),
+        ]);
+
+        $res = $this->postJson(route('ai.chat'), ['message' => 'Hello Copilot'])->assertOk();
+        $runId = $res->json('run_id');
+
+        $this->assertDatabaseHas('ai_model_invocations', [
+            'run_id' => $runId,
+            'company_id' => $this->company->id,
+            'step_number' => 1,
+            'provider' => 'openai',
+            'model' => 'gpt-4o',
+            'status' => 'completed',
+            'input_tokens' => 120,
+            'output_tokens' => 35,
+        ]);
     }
 
     private function providerResponse(array $output, int $inputTokens, int $outputTokens): array

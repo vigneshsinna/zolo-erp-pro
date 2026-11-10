@@ -9,6 +9,9 @@ use App\Ai\Services\AiFeatureGate;
 use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Laravel\Ai\Gateway\StepResponse;
 use Laravel\Ai\Gateway\StepResult;
@@ -17,6 +20,7 @@ use Laravel\Ai\Responses\Data\TextUsage;
 use stdClass;
 use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
+use Throwable;
 
 class ApprovedModelGateway
 {
@@ -92,6 +96,10 @@ class ApprovedModelGateway
 
     public function budgetStep(AiPrincipal $principal, string $date, PendingStep $step, Closure $next): StepResult
     {
+        $provider = $step->provider ?: config('erp_ai.provider', 'nvidia');
+        $model = $step->model ?: config('erp_ai.model', '');
+        $this->enforceProviderRateLimit($provider);
+
         // Count UTF-8 bytes as an input allowance and add room for SDK/provider framing and tool schemas.
         $inputAllowance = 1024 + strlen($step->instructions ?? '') + strlen(json_encode(
             $step->messages, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
@@ -110,10 +118,124 @@ class ApprovedModelGateway
             }
         }, 3);
 
-        // Keep the reservation until the quota day ends if the provider fails without reporting usage.
-        return $next($step->withMaxTokens($outputLimit))->then(
-            fn (StepResponse $response) => $this->settleStep($principal, $date, $reserved, $response->usage)
-        );
+        $start = microtime(true);
+        $stepNumber = $step->number + 1;
+
+        try {
+            // Keep the reservation until the quota day ends if the provider fails without reporting usage.
+            return $next($step->withMaxTokens($outputLimit))->then(
+                function (StepResponse $response) use ($principal, $date, $reserved, $provider, $model, $stepNumber, $start): void {
+                    $durationMs = (int) round((microtime(true) - $start) * 1000);
+                    $this->settleStep($principal, $date, $reserved, $response->usage);
+                    $this->recordModelInvocation(
+                        $principal,
+                        $stepNumber,
+                        $provider,
+                        $model,
+                        'completed',
+                        $response->usage->inputTokens,
+                        $response->usage->outputTokens,
+                        $durationMs
+                    );
+                }
+            );
+        } catch (Throwable $e) {
+            $durationMs = (int) round((microtime(true) - $start) * 1000);
+            $this->recordModelInvocation(
+                $principal,
+                $stepNumber,
+                $provider,
+                $model,
+                'failed',
+                0,
+                0,
+                $durationMs,
+                mb_substr($e->getMessage(), 0, 500)
+            );
+            throw $e;
+        }
+    }
+
+    public function enforceProviderRateLimit(string $provider): void
+    {
+        $limit = $this->getProviderRpmLimit($provider);
+        if ($limit <= 0) {
+            return;
+        }
+
+        $key = 'ai:rpm:' . $provider;
+        if (RateLimiter::tooManyAttempts($key, $limit)) {
+            $seconds = RateLimiter::availableIn($key);
+            throw new TooManyRequestsHttpException(
+                $seconds,
+                "AI provider '{$provider}' request limit reached ({$limit} requests per minute). Please retry in {$seconds} seconds."
+            );
+        }
+
+        RateLimiter::hit($key, 60);
+    }
+
+    public function getProviderRpmLimit(string $provider): int
+    {
+        return match ($provider) {
+            'nvidia', 'deepseek', 'openai-compatible' => (int) config('erp_ai.nvidia_rpm_limit', 35),
+            default => (int) config('erp_ai.provider_rpm_limit', 60),
+        };
+    }
+
+    /**
+     * @return array{provider: string, limit: int, current: int, remaining: int, status: string}
+     */
+    public function getProviderRpmUsage(?string $provider = null): array
+    {
+        $provider = $provider ?? config('erp_ai.provider', 'nvidia');
+        $limit = $this->getProviderRpmLimit($provider);
+        $key = 'ai:rpm:' . $provider;
+        $attempts = RateLimiter::attempts($key);
+        $remaining = max(0, $limit - $attempts);
+
+        return [
+            'provider' => $provider,
+            'limit' => $limit,
+            'current' => $attempts,
+            'remaining' => $remaining,
+            'status' => $attempts >= $limit ? 'limited' : ($attempts >= (int) ($limit * 0.8) ? 'warning' : 'healthy'),
+        ];
+    }
+
+    public function recordModelInvocation(
+        AiPrincipal $principal,
+        int $stepNumber,
+        string $provider,
+        string $model,
+        string $status,
+        int $inputTokens,
+        int $outputTokens,
+        int $durationMs,
+        ?string $errorMessage = null
+    ): void {
+        try {
+            DB::table('ai_model_invocations')->insert([
+                'id' => (string) Str::uuid(),
+                'run_id' => $principal->requestId,
+                'company_id' => $principal->companyId,
+                'step_number' => $stepNumber,
+                'provider' => $provider,
+                'model' => $model,
+                'status' => $status,
+                'input_tokens' => $inputTokens,
+                'output_tokens' => $outputTokens,
+                'duration_ms' => $durationMs,
+                'error_message' => $errorMessage,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Failed to record AI model invocation telemetry', [
+                'run_id' => $principal->requestId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function settleStep(AiPrincipal $principal, string $date, int $reserved, TextUsage $usage): void
