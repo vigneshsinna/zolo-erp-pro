@@ -57,11 +57,11 @@ class AiPrincipalAuthorizer implements AiPrincipalAuthorizerInterface
         $resolver = $this->contextResolver ?? (function_exists('app') && app()->bound(CompanyContextResolver::class) ? app(CompanyContextResolver::class) : null);
         $factory = $this->principalFactory ?? (function_exists('app') && app()->bound(AiPrincipalFactory::class) ? app(AiPrincipalFactory::class) : null);
 
-        if (!$resolver || !$factory) {
-            return $principal;
-        }
-
         try {
+            if (!$resolver || !$factory) {
+                throw new \LogicException('AI principal verification is unavailable.');
+            }
+
             $user = User::find($principal->actorId);
             if (!$user || !($user->is_active ?? true) || ($user->is_deleted ?? false)) {
                 return new AiPrincipal(

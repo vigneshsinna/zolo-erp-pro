@@ -6,7 +6,8 @@ namespace Tests\Feature\Ai;
 
 use App\Ai\Agents\ErpCopilot;
 use App\Ai\DTOs\AiPrincipal;
-use App\Ai\Tools\InventoryStockSummary;
+use App\Ai\Services\AiToolManifest;
+use App\Ai\Tools\GenericSdkTool;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Category;
 use App\Models\Company;
@@ -106,7 +107,7 @@ class InventoryVerticalSliceTest extends TestCase
         $tools = iterator_to_array($copilot->tools());
 
         $this->assertCount(1, $tools);
-        $this->assertInstanceOf(InventoryStockSummary::class, $tools[0]);
+        $this->assertInstanceOf(GenericSdkTool::class, $tools[0]);
 
         // Principal without permissions
         $unauthorizedPrincipal = new AiPrincipal(
@@ -126,8 +127,8 @@ class InventoryVerticalSliceTest extends TestCase
     public function test_inventory_stock_summary_tool_executes_deterministically(): void
     {
         // Create unit and warehouse for company
-        $unit = Unit::create([
-            'unit_code' => 'PCS',
+        $unit = Unit::forceCreate([
+            'company_id' => $this->company->id, 'unit_code' => 'PCS',
             'unit_name' => 'Pieces',
             'is_active' => true,
         ]);
@@ -135,6 +136,7 @@ class InventoryVerticalSliceTest extends TestCase
         $warehouse = Warehouse::create([
             'name' => 'Test AI Warehouse ' . uniqid(),
             'address' => 'Test Address 123',
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
         if (DB::getSchemaBuilder()->hasColumn('warehouses', 'company_id')) {
@@ -163,6 +165,7 @@ class InventoryVerticalSliceTest extends TestCase
 
         // Add stock in product_warehouse
         DB::table('product_warehouse')->insert([
+            'company_id' => $this->company->id,
             'product_id' => $product->id,
             'warehouse_id' => $warehouse->id,
             'qty' => 50,
@@ -177,7 +180,7 @@ class InventoryVerticalSliceTest extends TestCase
             requestId: 'inv-req-001'
         );
 
-        $tool = new InventoryStockSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principal);
         $request = new Request(['limit' => 10]);
 
         $jsonOutput = (string) $tool->handle($request);
@@ -200,12 +203,13 @@ class InventoryVerticalSliceTest extends TestCase
         $codeKg = 'KG_' . rand(1000, 9999);
         $codeMtr = 'MTR_' . rand(1000, 9999);
 
-        $unitKg = Unit::create(['unit_code' => $codeKg, 'unit_name' => 'Kilograms ' . $codeKg, 'is_active' => true]);
-        $unitPcs = Unit::create(['unit_code' => $codeMtr, 'unit_name' => 'Meters ' . $codeMtr, 'is_active' => true]);
+        $unitKg = Unit::forceCreate(['company_id' => $this->company->id, 'unit_code' => $codeKg, 'unit_name' => 'Kilograms ' . $codeKg, 'is_active' => true]);
+        $unitPcs = Unit::forceCreate(['company_id' => $this->company->id, 'unit_code' => $codeMtr, 'unit_name' => 'Meters ' . $codeMtr, 'is_active' => true]);
 
         $warehouse = Warehouse::create([
             'name' => 'WH ' . uniqid(),
             'address' => 'Test Address 123',
+            'branch_id' => $this->branchId,
             'is_active' => true,
         ]);
         if (DB::getSchemaBuilder()->hasColumn('warehouses', 'company_id')) {
@@ -238,8 +242,8 @@ class InventoryVerticalSliceTest extends TestCase
         $prodMtr->save();
 
         DB::table('product_warehouse')->insert([
-            ['product_id' => $prodKg->id, 'warehouse_id' => $warehouse->id, 'qty' => 100],
-            ['product_id' => $prodMtr->id, 'warehouse_id' => $warehouse->id, 'qty' => 500],
+            ['company_id' => $this->company->id, 'product_id' => $prodKg->id, 'warehouse_id' => $warehouse->id, 'qty' => 100],
+            ['company_id' => $this->company->id, 'product_id' => $prodMtr->id, 'warehouse_id' => $warehouse->id, 'qty' => 500],
         ]);
 
         $principal = new AiPrincipal(
@@ -251,7 +255,7 @@ class InventoryVerticalSliceTest extends TestCase
             requestId: 'inv-req-002'
         );
 
-        $tool = new InventoryStockSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principal);
         $jsonOutput = (string) $tool->handle(new Request(['warehouse_id' => $warehouse->id]));
         $response = json_decode($jsonOutput, true);
 
@@ -294,11 +298,68 @@ class InventoryVerticalSliceTest extends TestCase
             financialYearId: $this->financialYearId
         );
 
-        $tool = new InventoryStockSummary($unauthorizedPrincipal);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $unauthorizedPrincipal);
         $jsonOutput = (string) $tool->handle(new Request([]));
         $response = json_decode($jsonOutput, true);
 
         $this->assertSame('denied', $response['status']);
         $this->assertSame('AI_TOOL_FORBIDDEN', $response['error_code']);
+    }
+
+    public function test_inventory_catalog_batches_queries_without_truncating_totals(): void
+    {
+        $warehouse = Warehouse::create([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branchId,
+            'name' => 'Catalog fixture warehouse',
+            'address' => 'Fixture address',
+            'is_active' => true,
+        ]);
+        $unit = Unit::forceCreate(['company_id' => $this->company->id, 'unit_code' => 'CAT', 'unit_name' => 'Catalog unit', 'is_active' => true]);
+        $prefix = 'AI-CAT-' . uniqid();
+        foreach (array_chunk(range(1, 600), 200) as $batch) {
+            DB::table('products')->insert(array_map(fn ($i) => [
+                'company_id' => $this->company->id,
+                'name' => "Catalog product {$i}",
+                'code' => "{$prefix}-{$i}",
+                'category_id' => $this->category->id,
+                'unit_id' => $unit->id,
+                'purchase_unit_id' => $unit->id,
+                'sale_unit_id' => $unit->id,
+                'type' => 'standard',
+                'barcode_symbology' => 'code128',
+                'cost' => 1,
+                'price' => 2,
+                'is_active' => true,
+            ], $batch));
+        }
+        $products = Product::where('company_id', $this->company->id)->where('code', 'like', $prefix . '%')->pluck('id');
+        DB::table('product_warehouse')->insert($products->map(fn ($id) => [
+            'company_id' => $this->company->id, 'product_id' => $id, 'warehouse_id' => $warehouse->id, 'qty' => 2,
+        ])->all());
+
+        $principal = new AiPrincipal(
+            actorId: $this->user->id, companyId: $this->company->id, branchId: $this->branchId,
+            financialYearId: $this->financialYearId, permittedToolNames: ['inventory.stock_summary.v1'],
+            requestId: 'inventory-catalog',
+        );
+        DB::enableQueryLog();
+        try {
+            $result = json_decode((string) (app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principal))->handle(new Request([
+                'product_query' => $prefix, 'warehouse_id' => $warehouse->id, 'limit' => 3,
+            ])), true);
+            $stockQueries = collect(DB::getQueryLog())->filter(fn ($query) => preg_match('/from `(?:product_warehouse|stock_movement_lines|product_sales)`/', $query['query']))->count();
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(600, $result['data']['total_products_tracked']);
+        $this->assertSame(1200, $result['data']['units_summary'][0]['on_hand']);
+        $this->assertCount(3, $result['data']['top_products']);
+        $this->assertFalse($result['reconciliation']['is_reconciled']);
+        $this->assertNull($result['data']['total_stock_value']);
+        $this->assertSame(9, $stockQueries);
     }
 }

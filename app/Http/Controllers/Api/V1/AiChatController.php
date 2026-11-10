@@ -10,15 +10,21 @@ use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Gateway\ApprovedModelGateway;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalFactory;
+use App\Ai\Services\VerifiedSummaryBuilder;
 use App\Http\Controllers\Controller;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
 use Closure;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Ai\Exceptions\AiException;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\PendingStep;
 use Laravel\Ai\Responses\AgentResponse;
@@ -42,7 +48,7 @@ class AiChatController extends Controller
 
         return response()->json([
             'enabled' => $this->featureGate->isEnabledForCompany($principal->companyId),
-            'read_only' => $this->featureGate->isReadOnly($principal->companyId),
+            'read_only' => $this->featureGate->isReadOnly(),
             'allowed_tools' => $principal->permittedToolNames,
             ...$this->modelGateway->resolveApprovedModel(),
             'scope' => $this->scope($principal),
@@ -51,12 +57,11 @@ class AiChatController extends Controller
 
     public function monitoring(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!in_array((int) ($user->role_id ?? 0), [1, 2], true)) {
+        $principal = $this->principal($request);
+        if (!$this->contextResolver->canManageFinancialYears($principal->actorId, $principal->companyId)) {
             return $this->error('AI_FORBIDDEN', 'Administrator privileges are required to view AI telemetry and monitoring.', 403);
         }
 
-        $principal = $this->principal($request);
         $quotaDate = now('UTC')->toDateString();
         $model = $this->modelGateway->resolveApprovedModel();
         $rpmUsage = $this->modelGateway->getProviderRpmUsage($model['provider']);
@@ -72,6 +77,11 @@ class AiChatController extends Controller
             ->where('company_id', $principal->companyId)
             ->whereDate('created_at', $quotaDate)
             ->count();
+        $todayHttpAttempts = (int) DB::table('ai_model_invocations')
+            ->where('company_id', $principal->companyId)->whereDate('created_at', $quotaDate)->sum('http_attempts');
+        $todayRetries = (int) DB::table('ai_model_invocations')
+            ->where('company_id', $principal->companyId)->whereDate('created_at', $quotaDate)
+            ->sum(DB::raw('GREATEST(COALESCE(http_attempts, 0) - 1, 0)'));
 
         $todayToolCalls = DB::table('ai_tool_invocations')
             ->join('ai_runs', 'ai_runs.id', '=', 'ai_tool_invocations.run_id')
@@ -122,6 +132,8 @@ class AiChatController extends Controller
                 'date' => $quotaDate,
                 'user_requests' => (int) ($counters->user_requests ?? 0),
                 'model_invocations' => $todayModelCalls,
+                'provider_http_attempts' => $todayHttpAttempts,
+                'provider_retries' => $todayRetries,
                 'erp_tool_calls' => $todayToolCalls,
                 'input_tokens' => $inputTokens,
                 'output_tokens' => $outputTokens,
@@ -150,58 +162,18 @@ class AiChatController extends Controller
 
     public function proposals(Request $request): JsonResponse
     {
-        $principal = $this->principal($request);
-        if ($denial = $this->accessDenial($principal)) {
-            return $denial;
-        }
-
-        /** @var \App\Ai\Services\ActionProposalService $service */
-        $service = app(\App\Ai\Services\ActionProposalService::class);
-        $pending = $service->listPending($principal);
-
-        return response()->json([
-            'status' => 'ok',
-            'proposals' => $pending,
-            'scope' => $this->scope($principal),
-        ]);
+        return $this->accessDenial($this->principal($request))
+            ?? $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
     }
 
-    public function approveProposal(Request $request, string $id): JsonResponse
+    public function approveProposal(Request $request): JsonResponse
     {
-        $principal = $this->principal($request);
-        if ($denial = $this->accessDenial($principal)) {
-            return $denial;
-        }
-
-        $notes = $request->input('notes');
-        /** @var \App\Ai\Services\ActionProposalService $service */
-        $service = app(\App\Ai\Services\ActionProposalService::class);
-
-        try {
-            $result = $service->approve($principal, $id, $notes);
-            return response()->json($result);
-        } catch (\Throwable $e) {
-            return $this->error('AI_PROPOSAL_EXECUTION_FAILED', $e->getMessage(), 422);
-        }
+        return $this->proposals($request);
     }
 
-    public function rejectProposal(Request $request, string $id): JsonResponse
+    public function rejectProposal(Request $request): JsonResponse
     {
-        $principal = $this->principal($request);
-        if ($denial = $this->accessDenial($principal)) {
-            return $denial;
-        }
-
-        $reason = $request->input('reason');
-        /** @var \App\Ai\Services\ActionProposalService $service */
-        $service = app(\App\Ai\Services\ActionProposalService::class);
-
-        try {
-            $result = $service->reject($principal, $id, $reason);
-            return response()->json($result);
-        } catch (\Throwable $e) {
-            return $this->error('AI_PROPOSAL_REJECTION_FAILED', $e->getMessage(), 422);
-        }
+        return $this->proposals($request);
     }
 
     public function createThread(Request $request): JsonResponse
@@ -233,9 +205,14 @@ class AiChatController extends Controller
 
         $messages = $this->messages($thread->id)
             ->get(['id', 'role', 'content', 'created_at', 'meta'])
-            ->map(function (stdClass $message): array {
+            ->map(function (stdClass $message) use ($principal): array {
                 $metadata = json_decode($message->meta, true) ?? [];
                 unset($message->meta);
+
+                if (!$this->canReplay($principal, $metadata)) {
+                    $message->content = 'This result is unavailable with your current ERP access.';
+                    $metadata = [];
+                }
 
                 return [
                     ...(array) $message,
@@ -265,9 +242,8 @@ class AiChatController extends Controller
         $question = $validated['message'];
         $imageInput = $validated['image'] ?? null;
         $quotaDate = now('UTC')->toDateString();
-        $model = $this->modelGateway->resolveApprovedModel();
-
         try {
+            $model = $this->modelGateway->resolveApprovedModel();
             $admitted = DB::transaction(function () use ($principal, $existingThreadId, $threadId, $question, $quotaDate, $model): bool {
                 if ($existingThreadId && !$this->ownedThreads($principal)->where('id', $threadId)->lockForUpdate()->first()) {
                     return false;
@@ -300,6 +276,9 @@ class AiChatController extends Controller
             return $this->error('AI_QUOTA_EXCEEDED', $error->getMessage(), 429);
         } catch (ServiceUnavailableHttpException $error) {
             return $this->error('AI_DISABLED', $error->getMessage(), 503);
+        } catch (Throwable $error) {
+            Log::warning('AI chat admission failed.', ['exception_type' => $error::class]);
+            return $this->error('AI_INTERNAL_ERROR', 'The ERP could not start this request.', 500);
         }
 
         if (!$admitted) {
@@ -310,7 +289,8 @@ class AiChatController extends Controller
 
         try {
             $history = $this->messages($threadId, newestFirst: true)->limit(8)
-                ->get(['role', 'content'])->reverse()
+                ->get(['role', 'content', 'meta'])->reverse()
+                ->filter(fn (stdClass $message) => $this->canReplay($principal, json_decode($message->meta, true) ?? []))
                 ->map(fn (stdClass $message) => new Message($message->role, mb_substr($message->content, 0, 2000)))
                 ->values()->all();
 
@@ -327,9 +307,15 @@ class AiChatController extends Controller
                 ->where('thread_id', $threadId)
                 ->where('company_id', $principal->companyId)
                 ->where('branch_id', $principal->branchId)
+                ->where('financial_year_id', $principal->financialYearId)
+                ->whereIn('entity_type', array_keys(array_filter([
+                    'customer' => $principal->hasTool('receivables.invoices.v1'),
+                    'invoice' => $principal->hasTool('receivables.invoice_allocations.v1'),
+                    'supplier' => $principal->hasTool('payables.summary.v1'),
+                ])))
                 ->latest('updated_at')
                 ->limit(5)
-                ->get(['entity_type', 'entity_id', 'entity_name', 'as_of'])
+                ->get(['entity_type', 'entity_id', 'as_of'])
                 ->map(fn (stdClass $r): array => (array) $r)
                 ->all();
 
@@ -341,24 +327,31 @@ class AiChatController extends Controller
             );
             $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
 
-            $evidence = $this->evidence($response);
-            $rawText = trim($response->text);
+            Log::info('ERP Copilot response diagnostics', [
+                'run_id' => $principal->requestId,
+                'model' => $model['model'],
+                'text_length' => mb_strlen($response->text ?? ''),
+                'tool_results' => $response->toolResults->count(),
+                'input_tokens' => $response->usage->inputTokens ?? 0,
+                'output_tokens' => $response->usage->outputTokens ?? 0,
+            ]);
 
-            $answerStatus = 'unsupported';
-            if (!empty($evidence['facts'])) {
-                $answerStatus = 'verified';
+            $evidence = $this->evidence($response);
+            $rawText = trim((string) ($response->text ?? ''));
+            $answerStatus = $evidence['answer_status'];
+
+            if (! empty($evidence['facts'])) {
                 $answer = $rawText !== ''
                     ? $rawText
-                    : 'Verified ERP facts have been retrieved for this request. Review the summary card below.';
-            } elseif (!empty($evidence['warnings'])) {
-                $answerStatus = 'tool_error';
-                $warningDetails = implode(' ', $evidence['warnings']);
-                $answer = $rawText !== ''
-                    ? $rawText . "\n\n> [!WARNING]\n> {$warningDetails}"
-                    : "The copilot attempted to query ERP records, but could not complete the check: {$warningDetails}";
+                    : app(VerifiedSummaryBuilder::class)->build($evidence['facts'], $evidence['warnings']);
             } else {
-                $answerStatus = 'unsupported';
-                $answer = 'The copilot could not produce a verified answer. Review any available ERP results below.';
+                $answer = $rawText !== ''
+                    ? $rawText
+                    : match ($answerStatus) {
+                        'no_data' => 'The ERP found no matching data for this request.',
+                        'tool_error' => 'The ERP could not complete this check. Review the details below.',
+                        default => 'The copilot could not produce a verified answer. Review any available ERP results below.',
+                    };
             }
 
             DB::transaction(function () use ($principal, $threadId, $question, $answer, $response, $evidence, $run): void {
@@ -384,7 +377,9 @@ class AiChatController extends Controller
             [$code, $message, $status] = match (true) {
                 $error instanceof TooManyRequestsHttpException => ['AI_QUOTA_EXCEEDED', $error->getMessage(), 429],
                 $error instanceof ServiceUnavailableHttpException => ['AI_DISABLED', $error->getMessage(), 503],
-                default => ['AI_PROVIDER_UNAVAILABLE', 'The copilot could not complete this request. The upstream AI provider timed out or is temporarily unavailable.', 502],
+                $error instanceof AiException || $error instanceof RequestException || $error instanceof ConnectionException
+                    => ['AI_PROVIDER_UNAVAILABLE', 'The AI provider could not complete this request.', 502],
+                default => ['AI_INTERNAL_ERROR', 'The ERP could not complete this request.', 500],
             };
             $run->update(['status' => 'failed', 'error_code' => $code, 'completed_at' => now(), 'updated_at' => now()]);
             Log::warning('AI chat run failed.', [
@@ -392,16 +387,20 @@ class AiChatController extends Controller
                 'company_id' => $principal->companyId,
                 'error_code' => $code,
                 'exception_type' => $error::class,
-                'error_message' => $error->getMessage(),
                 'file' => $error->getFile() . ':' . $error->getLine(),
             ]);
 
-            return $this->error($code, $message, $status);
+            return response()->json([
+                'error_code' => $code,
+                'error_message' => $message,
+                'answer_status' => $code === 'AI_PROVIDER_UNAVAILABLE' ? 'provider_error' : 'tool_error',
+            ], $status);
         }
     }
 
     private function principal(Request $request): AiPrincipal
     {
+        abort_if($request->query->has('branch_scope'), 422, 'Copilot uses the selected branch.');
         $actor = $request->user()->id;
         $context = $this->contextResolver->forActor(userId: $actor);
         $workspaceScope = $request->header('X-AI-Scope');
@@ -466,17 +465,55 @@ class AiChatController extends Controller
             ->orderBy('id', $direction);
     }
 
+    private function canReplay(AiPrincipal $principal, array $metadata): bool
+    {
+        $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
+        $required = [];
+        foreach ($metadata['facts'] ?? [] as $fact) {
+            $tool = $fact['tool'] ?? '';
+            if (!$principal->hasTool($tool)) {
+                return false;
+            }
+
+            if (!isset($metadata['answer_status']) && in_array($tool, [
+                'documents.preview.v1', 'orders.open.v1', 'inventory.stock_summary.v1',
+                'knowledge.query.v1', 'receivables.invoice_allocations.v1', 'sales.summary.v1',
+            ], true)) {
+                return false;
+            }
+
+            $data = $fact['data'] ?? [];
+            if ($tool === 'documents.preview.v1') {
+                $required[] = ($data['document_type'] ?? null) === 'purchase_order' ? 'purchases-index' : 'sales-index';
+            }
+            if ($tool === 'orders.open.v1') {
+                foreach ($data['included_types'] ?? [] as $type) {
+                    $required[] = $type === 'purchase' ? 'purchases-index' : 'sales-index';
+                }
+            }
+            if ($tool === 'inventory.stock_summary.v1' && ($data['valuation_visible'] ?? true)) {
+                $required[] = 'purchases-index';
+            }
+        }
+
+        $required = array_unique($required);
+        return $required === [] || array_diff($required, app(CommercialPermission::class)->allowed($required, $context, $principal->actorId)) === [];
+    }
+
     private function evidence(AgentResponse $response): array
     {
         $facts = $sources = $warnings = [];
+        $failed = $unreconciled = $noData = false;
         foreach ($response->toolResults as $result) {
             $payload = $result->successful() ? json_decode($result->text(), true) : null;
             if (($payload['status'] ?? null) !== 'ok') {
+                $failed = true;
                 $errorCode = $payload['error_code'] ?? null;
                 $specificWarning = match ($errorCode) {
-                    'INVALID_FINANCIAL_YEAR_DATE' => 'Requested date is outside the active financial year.',
+                    'INVALID_FINANCIAL_YEAR_DATE' => $payload['error_message'] ?? 'Choose a date inside the active financial year.',
                     'ENTITY_NOT_FOUND' => 'Target customer, invoice, or entity was not found in this company/branch.',
                     'AI_INPUT_VALIDATION_FAILED' => 'Query parameters were outside allowable limits.',
+                    'AI_TOOL_LIMIT_EXCEEDED' => 'The tool limit for this request was reached.',
                     'AI_TOOL_FORBIDDEN' => 'Access denied: insufficient permissions to query this report or warehouse.',
                     'AI_PRINCIPAL_INACTIVE' => 'Authentication expired: user or company session is inactive.',
                     'AI_DOMAIN_EXECUTION_FAILURE' => 'Financial reporting service could not complete calculation for the requested date or parameters.',
@@ -490,10 +527,19 @@ class AiChatController extends Controller
                 continue;
             }
 
+            $reconciled = $payload['reconciled'] ?? $payload['reconciliation']['is_reconciled'] ?? true;
+            $unreconciled = $unreconciled || !$reconciled;
+            if (($payload['row_count'] ?? null) === 0) {
+                $noData = true;
+                array_push($warnings, ...($payload['warnings'] ?? []));
+                continue;
+            }
+
             $facts[] = [
                 'tool' => $payload['tool'],
                 'as_of' => $payload['as_of'],
                 'data' => $payload['data'],
+                'reconciled' => $reconciled,
             ];
             $toolTitle = match ($payload['tool'] ?? '') {
                 'inventory.stock_summary.v1' => 'Warehouse stock report',
@@ -508,20 +554,30 @@ class AiChatController extends Controller
                 'manufacturing.boms.v1' => 'Manufacturing Bill of Materials',
                 'jobwork.status.v1' => 'Job work processing report',
                 'orders.open.v1' => 'Open orders & fulfilment report',
-                'proposals.draft.v1' => 'Action proposal review draft',
                 'documents.preview.v1' => 'Document preview',
                 'knowledge.query.v1' => 'Company policy & terms',
                 default => 'Authoritative ERP report',
             };
             foreach ($payload['source_refs'] ?? [] as $href) {
-                $sources[$href] = ['title' => $toolTitle, 'href' => $href];
+                if (count($sources) < 20 && is_string($href) && preg_match('~^/[a-z0-9][^\\\\\x00-\x20]*$~iD', $href)) {
+                    $sources[$href] = ['title' => $toolTitle, 'href' => $href];
+                }
             }
             if (!empty($payload['warnings'])) {
                 array_push($warnings, ...$payload['warnings']);
             }
         }
 
-        return ['facts' => $facts, 'sources' => array_values($sources), 'warnings' => array_values(array_unique($warnings))];
+        $status = match (true) {
+            $facts !== [] && $failed => 'partial',
+            $facts !== [] && $unreconciled => 'unreconciled',
+            $facts !== [] => 'verified',
+            $failed => 'tool_error',
+            $noData => 'no_data',
+            default => 'unsupported',
+        };
+
+        return ['answer_status' => $status, 'facts' => $facts, 'sources' => array_values($sources), 'warnings' => array_values(array_unique($warnings))];
     }
 
     private function storeTurn(AiPrincipal $principal, string $threadId, string $question, string $answer, AgentResponse $response, array $evidence): void

@@ -39,7 +39,7 @@ class AiWorkspaceController extends Controller
         );
 
         $isAiEnabled = $this->featureGate->isEnabledForCompany($context->companyId);
-        $isReadOnly = $this->featureGate->isReadOnly($context->companyId);
+        $isReadOnly = $this->featureGate->isReadOnly();
 
         return view('backend.ai.workspace', [
             'company' => $company,

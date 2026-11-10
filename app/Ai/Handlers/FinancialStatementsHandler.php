@@ -42,10 +42,12 @@ class FinancialStatementsHandler implements ErpToolHandlerInterface
                 ],
                 'from' => [
                     'type' => 'string',
+                    'format' => 'date',
                     'description' => 'Start date (YYYY-MM-DD) inside active financial year.',
                 ],
                 'to' => [
                     'type' => 'string',
+                    'format' => 'date',
                     'description' => 'End date (YYYY-MM-DD) inside active financial year.',
                 ],
             ],

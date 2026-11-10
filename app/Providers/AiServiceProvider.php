@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Ai\Contracts\AiPrincipalAuthorizerInterface;
+use App\Ai\DTOs\AiToolRegistration;
 use App\Ai\Gateway\ApprovedModelGateway;
 use App\Ai\Handlers\CompanyKnowledgeHandler;
 use App\Ai\Handlers\CopilotHelpHandler;
 use App\Ai\Handlers\CustomerInvoicesHandler;
 use App\Ai\Handlers\CustomerOutstandingHandler;
 use App\Ai\Handlers\DocumentPreviewHandler;
-use App\Ai\Handlers\DraftProposalHandler;
 use App\Ai\Handlers\FinancialStatementsHandler;
 use App\Ai\Handlers\GstSummaryHandler;
 use App\Ai\Handlers\InventoryStockSummaryHandler;
@@ -21,27 +21,14 @@ use App\Ai\Handlers\ManufacturingBomsHandler;
 use App\Ai\Handlers\OpenOrdersHandler;
 use App\Ai\Handlers\PayablesSummaryHandler;
 use App\Ai\Handlers\SalesSummaryHandler;
-use App\Ai\Services\ActionProposalService;
 use App\Ai\Services\AiAuditRecorder;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalAuthorizer;
 use App\Ai\Services\AiPrincipalFactory;
 use App\Ai\Services\AiToolManifest;
 use App\Ai\Services\ErpToolExecutor;
-use App\Ai\Services\ReadCompanyKnowledge;
-use App\Ai\Services\ReadCopilotHelp;
-use App\Ai\Services\ReadCustomerInvoices;
-use App\Ai\Services\ReadCustomerOutstanding;
-use App\Ai\Services\ReadDocumentPreview;
-use App\Ai\Services\ReadFinancialStatements;
-use App\Ai\Services\ReadGstSummary;
-use App\Ai\Services\ReadInventoryStockSummary;
-use App\Ai\Services\ReadInvoiceAllocations;
-use App\Ai\Services\ReadJobWorkStatus;
-use App\Ai\Services\ReadManufacturingBoms;
-use App\Ai\Services\ReadOpenOrders;
-use App\Ai\Services\ReadPayablesSummary;
-use App\Ai\Services\ReadSalesAnalytics;
+use Illuminate\Http\Client\Events\RequestSending;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AiServiceProvider extends ServiceProvider
@@ -53,22 +40,27 @@ class AiServiceProvider extends ServiceProvider
     {
         $this->app->singleton(AiToolManifest::class, function ($app) {
             $manifest = new AiToolManifest();
-            // Register authoritative read and proposal tools
-            $manifest->register($app->make(CustomerOutstandingHandler::class));
-            $manifest->register($app->make(CustomerInvoicesHandler::class));
-            $manifest->register($app->make(InvoiceAllocationsHandler::class));
-            $manifest->register($app->make(InventoryStockSummaryHandler::class));
-            $manifest->register($app->make(SalesSummaryHandler::class));
-            $manifest->register($app->make(PayablesSummaryHandler::class));
-            $manifest->register($app->make(FinancialStatementsHandler::class));
-            $manifest->register($app->make(GstSummaryHandler::class));
-            $manifest->register($app->make(CopilotHelpHandler::class));
-            $manifest->register($app->make(ManufacturingBomsHandler::class));
-            $manifest->register($app->make(JobWorkStatusHandler::class));
-            $manifest->register($app->make(OpenOrdersHandler::class));
-            $manifest->register($app->make(DraftProposalHandler::class));
-            $manifest->register($app->make(DocumentPreviewHandler::class));
-            $manifest->register($app->make(CompanyKnowledgeHandler::class));
+            $receivables = ['accounting.reports.view', 'customer-report', 'due-report', 'sales-index'];
+            $orderPermissions = ['sales-index', 'purchases-index'];
+            foreach ([
+                new AiToolRegistration($app->make(CustomerOutstandingHandler::class), 'CustomerOutstanding', $receivables, legacyReconciliation: true),
+                new AiToolRegistration($app->make(CustomerInvoicesHandler::class), 'CustomerInvoices', $receivables),
+                new AiToolRegistration($app->make(InvoiceAllocationsHandler::class), 'InvoiceAllocations', $receivables),
+                new AiToolRegistration($app->make(InventoryStockSummaryHandler::class), 'InventoryStockSummary', ['warehouse-stock-report', 'product-report', 'products-index'], legacyReconciliation: true),
+                new AiToolRegistration($app->make(SalesSummaryHandler::class), 'sales_summary', ['sales-index', 'sale-report']),
+                new AiToolRegistration($app->make(PayablesSummaryHandler::class), 'payables_summary', ['accounting.reports.view', 'supplier-report', 'supplier-due-report', 'purchases-index']),
+                new AiToolRegistration($app->make(FinancialStatementsHandler::class), 'accounting_statements', ['accounting.reports.view', 'financial-report', 'profit-loss-report', 'trial-balance-report']),
+                new AiToolRegistration($app->make(GstSummaryHandler::class), 'tax_gst_summary', ['accounting.reports.view', 'tax-report', 'gst-report', 'sales-index']),
+                new AiToolRegistration($app->make(ManufacturingBomsHandler::class), 'manufacturing_boms', ['manufacturing.read'], operationsCapability: 'manufacturing.bom'),
+                new AiToolRegistration($app->make(JobWorkStatusHandler::class), 'jobwork_status', ['job_work.read'], operationsCapability: 'operations.job_work'),
+                new AiToolRegistration($app->make(OpenOrdersHandler::class), 'orders_open', $orderPermissions),
+                new AiToolRegistration($app->make(DocumentPreviewHandler::class), 'document_preview', $orderPermissions),
+                new AiToolRegistration($app->make(CompanyKnowledgeHandler::class), 'company_knowledge', []),
+                new AiToolRegistration($app->make(CopilotHelpHandler::class), 'copilot_help', []),
+            ] as $registration) {
+                $manifest->register($registration);
+            }
+
             return $manifest;
         });
 
@@ -82,44 +74,20 @@ class AiServiceProvider extends ServiceProvider
 
         $this->app->singleton(AiFeatureGate::class, function () {
             return new AiFeatureGate(
-                enabledGlobally: (bool) config('erp_ai.enabled', false),
-                readOnlyGlobally: (bool) config('erp_ai.read_only', true)
+                enabledGlobally: (bool) config('erp_ai.enabled', false)
             );
         });
 
         $this->app->singleton(AiAuditRecorder::class);
-        $this->app->singleton(ErpToolExecutor::class);
-        $this->app->singleton(ApprovedModelGateway::class);
+        $this->app->scoped(ErpToolExecutor::class, fn ($app) => new ErpToolExecutor(
+            $app->make(AiToolManifest::class),
+            $app->make(AiPrincipalAuthorizerInterface::class),
+            $app->make(AiAuditRecorder::class),
+            $app->make(AiFeatureGate::class),
+            max(0, (int) config('erp_ai.max_tools_per_run', 3)),
+        ));
+        $this->app->scoped(ApprovedModelGateway::class);
         $this->app->singleton(AiPrincipalFactory::class);
-        $this->app->singleton(ActionProposalService::class);
-        $this->app->singleton(ReadCustomerOutstanding::class);
-        $this->app->singleton(ReadCustomerInvoices::class);
-        $this->app->singleton(CustomerInvoicesHandler::class);
-        $this->app->singleton(ReadInvoiceAllocations::class);
-        $this->app->singleton(InvoiceAllocationsHandler::class);
-        $this->app->singleton(ReadInventoryStockSummary::class);
-        $this->app->singleton(InventoryStockSummaryHandler::class);
-        $this->app->singleton(ReadSalesAnalytics::class);
-        $this->app->singleton(SalesSummaryHandler::class);
-        $this->app->singleton(ReadPayablesSummary::class);
-        $this->app->singleton(PayablesSummaryHandler::class);
-        $this->app->singleton(ReadFinancialStatements::class);
-        $this->app->singleton(FinancialStatementsHandler::class);
-        $this->app->singleton(ReadGstSummary::class);
-        $this->app->singleton(GstSummaryHandler::class);
-        $this->app->singleton(ReadCopilotHelp::class);
-        $this->app->singleton(CopilotHelpHandler::class);
-        $this->app->singleton(ReadManufacturingBoms::class);
-        $this->app->singleton(ManufacturingBomsHandler::class);
-        $this->app->singleton(ReadJobWorkStatus::class);
-        $this->app->singleton(JobWorkStatusHandler::class);
-        $this->app->singleton(ReadOpenOrders::class);
-        $this->app->singleton(OpenOrdersHandler::class);
-        $this->app->singleton(DraftProposalHandler::class);
-        $this->app->singleton(ReadDocumentPreview::class);
-        $this->app->singleton(DocumentPreviewHandler::class);
-        $this->app->singleton(ReadCompanyKnowledge::class);
-        $this->app->singleton(CompanyKnowledgeHandler::class);
     }
 
     /**
@@ -127,7 +95,11 @@ class AiServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Event::listen(RequestSending::class, function (RequestSending $event): void {
+            if ($event->request->method() === 'POST' && $this->app->resolved(ApprovedModelGateway::class)) {
+                $this->app->make(ApprovedModelGateway::class)->admitProviderDispatch($event->request->url());
+            }
+        });
     }
 }
 

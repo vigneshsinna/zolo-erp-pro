@@ -37,6 +37,7 @@ class PayablesSummaryHandler implements ErpToolHandlerInterface
             'properties' => [
                 'as_of' => [
                     'type' => 'string',
+                    'format' => 'date',
                     'description' => 'Target calculation date in YYYY-MM-DD format (must fall inside active financial year).',
                 ],
                 'limit' => [

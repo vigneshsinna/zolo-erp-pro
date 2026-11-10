@@ -5,13 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Ai;
 
 use App\Ai\DTOs\AiPrincipal;
-use App\Ai\Services\ActionProposalService;
-use App\Ai\Tools\CompanyKnowledge;
-use App\Ai\Tools\DocumentPreview;
-use App\Ai\Tools\DraftProposal;
-use App\Ai\Tools\JobWorkStatus;
-use App\Ai\Tools\ManufacturingBoms;
-use App\Ai\Tools\OpenOrders;
+use App\Ai\Services\ErpToolExecutor;
+use App\Ai\Services\AiToolManifest;
+use App\Ai\Agents\ErpCopilot;
 use App\Models\Category;
 use App\Models\Company;
 use App\Models\Customer;
@@ -25,6 +21,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\Accounting\FiscalYear;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Ai\Tools\Request;
 use Tests\Support\UsesAiMysql;
 use Tests\TestCase;
@@ -99,10 +96,14 @@ class OperationalAndActionProposalsTest extends TestCase
      */
     public function test_manufacturing_boms_tool_returns_recipe_components(): void
     {
+        config(['operations.enabled' => true]);
+        $capabilities = \Mockery::mock(\App\Services\Platform\CapabilityService::class)->makePartial();
+        $capabilities->shouldReceive('enabled')->with('manufacturing.bom', \Mockery::type(\App\Services\Platform\CompanyContext::class))->andReturn(true);
+        $this->app->instance(\App\Services\Platform\CapabilityService::class, $capabilities);
         $unit = Unit::first() ?? Unit::create(['unit_code' => 'PCS', 'unit_name' => 'Pieces', 'is_active' => true]);
         $category = Category::where('is_active', true)->first() ?? Category::create(['name' => 'Cat ' . uniqid(), 'is_active' => true]);
 
-        $finishedGood = Product::create([
+        $finishedGood = Product::forceCreate([
             'company_id' => $this->company->id,
             'name' => 'Finished Desk',
             'code' => 'FG-DSK-' . uniqid(),
@@ -117,7 +118,7 @@ class OperationalAndActionProposalsTest extends TestCase
             'is_active' => true,
         ]);
 
-        $rawWood = Product::create([
+        $rawWood = Product::forceCreate([
             'company_id' => $this->company->id,
             'name' => 'Raw Timber Plank',
             'code' => 'RAW-WD-' . uniqid(),
@@ -167,7 +168,7 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'mfg-test-01'
         );
 
-        $tool = new ManufacturingBoms($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('manufacturing.boms.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['product_id' => $finishedGood->id])), true);
 
         $this->assertSame('ok', $res['status']);
@@ -200,32 +201,16 @@ class OperationalAndActionProposalsTest extends TestCase
             'is_active' => true,
         ]);
 
-        $biller = \App\Models\Biller::where('company_id', $this->company->id)->first() ?? \App\Models\Biller::create([
-            'company_id' => $this->company->id,
-            'name' => 'Order Biller',
-            'code' => 'ORD-BIL-' . uniqid(),
-            'is_active' => true,
-        ]);
-
-        $sale = Sale::forceCreate([
+        $order = \App\Models\SalesOrder::create([
             'company_id' => $this->company->id,
             'branch_id' => $this->branch1Id,
             'financial_year_id' => $this->fyId,
             'warehouse_id' => $wh->id,
             'customer_id' => $customer->id,
-            'biller_id' => $biller->id,
             'user_id' => $this->user->id,
             'reference_no' => 'SO-ORD-' . uniqid(),
-            'item' => 2,
-            'total_qty' => 5,
-            'total_discount' => '0.00',
-            'total_tax' => '0.00',
-            'total_price' => '5000.00',
-            'grand_total' => '5000.00',
-            'paid_amount' => '2000.00',
-            'sale_status' => 2, // pending fulfilment
-            'payment_status' => 2,
-            'created_at' => now(),
+            'business_date' => '2026-10-01',
+            'status' => 'open',
         ]);
 
         $principal = new AiPrincipal(
@@ -237,38 +222,69 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'orders-test-01'
         );
 
-        $tool = new OpenOrders($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('orders.open.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['type' => 'sale'])), true);
 
         $this->assertSame('ok', $res['status']);
         $this->assertSame('orders.open.v1', $res['tool']);
         $this->assertGreaterThanOrEqual(1, $res['data']['summary']['total_open_orders']);
-        $this->assertSame($sale->reference_no, $res['data']['orders'][0]['reference_no']);
-        $this->assertSame('5000.00', $res['data']['orders'][0]['grand_total']);
-        $this->assertSame('3000.00', $res['data']['orders'][0]['open_balance']);
+        $this->assertSame($order->reference_no, $res['data']['orders'][0]['reference_no']);
+        $this->assertNull($res['data']['orders'][0]['grand_total']);
+        $this->assertNull($res['data']['orders'][0]['open_balance']);
     }
 
-    /**
-     * P3: Action Proposal Creation & Deterministic Preview
-     */
-    public function test_action_proposal_draft_creates_pending_proposal(): void
+    public function test_open_orders_lifecycle_calculates_remaining_balances_with_partial_billing_cancellation_and_returns(): void
     {
         $group = CustomerGroup::first() ?? CustomerGroup::create(['name' => 'General', 'percentage' => '0', 'is_active' => true]);
         $customer = Customer::create([
             'company_id' => $this->company->id,
-            'name' => 'Proposal Target Customer',
+            'name' => 'Lifecycle Order Customer ' . uniqid(),
             'phone_number' => '9999900062',
             'customer_group_id' => $group->id,
             'is_active' => true,
         ]);
 
+        $wh = Warehouse::where('company_id', $this->company->id)->where('branch_id', $this->branch1Id)->first() ?? Warehouse::create([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch1Id,
+            'name' => 'WH Orders Lifecycle ' . uniqid(),
+            'is_active' => true,
+        ]);
+
+        $order = \App\Models\SalesOrder::create([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch1Id,
+            'financial_year_id' => $this->fyId,
+            'warehouse_id' => $wh->id,
+            'customer_id' => $customer->id,
+            'user_id' => $this->user->id,
+            'reference_no' => 'SO-LC-' . uniqid(),
+            'business_date' => '2026-10-15',
+            'status' => 'open',
+        ]);
+
         $unit = Unit::first() ?? Unit::create(['unit_code' => 'PCS', 'unit_name' => 'Pieces', 'is_active' => true]);
         $category = Category::where('is_active', true)->first() ?? Category::create(['name' => 'Cat ' . uniqid(), 'is_active' => true]);
 
-        $product = Product::forceCreate([
+        $prod1 = Product::create([
             'company_id' => $this->company->id,
-            'name' => 'Proposal Widget',
-            'code' => 'P-WID-' . uniqid(),
+            'name' => 'Product Alpha ' . uniqid(),
+            'code' => 'PA-' . uniqid(),
+            'type' => 'standard',
+            'barcode_symbology' => 'code128',
+            'category_id' => $category->id,
+            'unit_id' => $unit->id,
+            'purchase_unit_id' => $unit->id,
+            'sale_unit_id' => $unit->id,
+            'cost' => '50.00',
+            'price' => '100.00',
+            'is_active' => true,
+        ]);
+
+        $prod2 = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Product Beta ' . uniqid(),
+            'code' => 'PB-' . uniqid(),
             'type' => 'standard',
             'barcode_symbology' => 'code128',
             'category_id' => $category->id,
@@ -276,8 +292,85 @@ class OperationalAndActionProposalsTest extends TestCase
             'purchase_unit_id' => $unit->id,
             'sale_unit_id' => $unit->id,
             'cost' => '100.00',
-            'price' => '250.00',
+            'price' => '200.00',
             'is_active' => true,
+        ]);
+
+        // Insert commercial_order_items
+        // Item 1: ordered 10 @ 100 = 1000.00, cancelled 2
+        $item1Id = DB::table('commercial_order_items')->insertGetId([
+            'company_id' => $this->company->id,
+            'order_kind' => 'sale',
+            'order_id' => $order->id,
+            'product_id' => $prod1->id,
+            'uom_id' => $unit->id,
+            'qty' => 10,
+            'qty_base' => 10,
+            'unit_rate' => 100.00,
+            'cancelled_qty_base' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Item 2: ordered 5 @ 200 = 1000.00, cancelled 0
+        $item2Id = DB::table('commercial_order_items')->insertGetId([
+            'company_id' => $this->company->id,
+            'order_kind' => 'sale',
+            'order_id' => $order->id,
+            'product_id' => $prod2->id,
+            'uom_id' => $unit->id,
+            'qty' => 5,
+            'qty_base' => 5,
+            'unit_rate' => 200.00,
+            'cancelled_qty_base' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Allocations:
+        // Item 1 billed: qty_base 5, returned 1 => billed 4. Remaining = 10 - 2 - 4 = 4. Remaining value = 4 * 100 = 400.00.
+        DB::table('commercial_order_allocations')->insert([
+            'company_id' => $this->company->id,
+            'order_item_id' => $item1Id,
+            'consumer_type' => 'sale',
+            'consumer_id' => 901,
+            'consumer_item_id' => 9001,
+            'stage' => 'billing',
+            'qty_base' => 5,
+            'returned_qty_base' => 1,
+            'released_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Released allocation should NOT be counted in billing
+        DB::table('commercial_order_allocations')->insert([
+            'company_id' => $this->company->id,
+            'order_item_id' => $item1Id,
+            'consumer_type' => 'sale',
+            'consumer_id' => 902,
+            'consumer_item_id' => 9002,
+            'stage' => 'billing',
+            'qty_base' => 3,
+            'returned_qty_base' => 0,
+            'released_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Item 2 billed: qty_base 2, returned 0 => billed 2. Remaining = 5 - 0 - 2 = 3. Remaining value = 3 * 200 = 600.00.
+        DB::table('commercial_order_allocations')->insert([
+            'company_id' => $this->company->id,
+            'order_item_id' => $item2Id,
+            'consumer_type' => 'sale',
+            'consumer_id' => 903,
+            'consumer_item_id' => 9003,
+            'stage' => 'billing',
+            'qty_base' => 2,
+            'returned_qty_base' => 0,
+            'released_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $principal = new AiPrincipal(
@@ -285,142 +378,94 @@ class OperationalAndActionProposalsTest extends TestCase
             companyId: $this->company->id,
             branchId: $this->branch1Id,
             financialYearId: $this->fyId,
-            permittedToolNames: ['proposals.draft.v1'],
-            requestId: 'prop-test-01'
+            permittedToolNames: ['orders.open.v1'],
+            requestId: 'orders-lifecycle-01'
         );
 
-        $tool = new DraftProposal($principal);
-        $res = json_decode((string) $tool->handle(new Request([
-            'action_type' => 'draft_quotation',
-            'action_title' => 'Draft Quotation for ' . $customer->name,
-            'payload' => [
-                'customer_id' => $customer->id,
-                'items' => [
-                    ['product_id' => $product->id, 'qty' => 10, 'price' => 250],
-                ],
-                'note' => 'Special promotion pricing',
-            ],
-        ])), true);
+        $tool = app(AiToolManifest::class)->sdkTool('orders.open.v1', $principal);
+        $res = json_decode((string) $tool->handle(new Request(['type' => 'sale'])), true);
 
         $this->assertSame('ok', $res['status']);
-        $this->assertSame('proposals.draft.v1', $res['tool']);
-        $this->assertSame('pending', $res['data']['status']);
-        $this->assertSame('r1_draft', $res['data']['risk_tier']);
-        $this->assertSame('2500.00', $res['data']['preview']['subtotal']);
-        $this->assertSame('2625.00', $res['data']['preview']['grand_total']); // 2500 + 5% (125)
+        $this->assertSame('orders.open.v1', $res['tool']);
 
-        // Verify DB persistence
-        $this->assertDatabaseHas('ai_action_proposals', [
-            'id' => $res['data']['proposal_id'],
+        $matchedOrder = collect($res['data']['orders'])->firstWhere('order_id', $order->id);
+        $this->assertNotNull($matchedOrder);
+        $this->assertSame(2, $matchedOrder['items_count']);
+        $this->assertSame('2000.00', $matchedOrder['grand_total']);
+        $this->assertSame('1000.00', $matchedOrder['open_balance']);
+    }
+
+    public function test_proposals_remain_quarantined_with_write_flags_enabled(): void
+    {
+        $id = (string) Str::uuid();
+        DB::table('ai_action_proposals')->insert([
+            'id' => $id,
+            'actor_id' => $this->user->id,
             'company_id' => $this->company->id,
+            'branch_id' => $this->branch1Id,
+            'financial_year_id' => $this->fyId,
+            'action_type' => 'draft_quotation',
+            'action_title' => 'Existing quotation',
+            'payload_json' => '{}',
+            'preview_json' => '{}',
             'status' => 'pending',
         ]);
-    }
 
-    /**
-     * P3: Human Approval & Safe Transactional Execution
-     */
-    public function test_human_approval_executes_action_proposal_safely(): void
-    {
-        $group = CustomerGroup::first() ?? CustomerGroup::create(['name' => 'General', 'percentage' => '0', 'is_active' => true]);
-        $customer = Customer::create([
-            'company_id' => $this->company->id,
-            'name' => 'Approve Customer',
-            'phone_number' => '9999900063',
-            'customer_group_id' => $group->id,
-            'is_active' => true,
-        ]);
-
-        $service = app(ActionProposalService::class);
         $principal = new AiPrincipal(
             actorId: $this->user->id,
             companyId: $this->company->id,
             branchId: $this->branch1Id,
             financialYearId: $this->fyId,
             permittedToolNames: ['proposals.draft.v1'],
-            requestId: 'approve-test-01'
         );
 
-        $proposal = $service->propose(
-            principal: $principal,
-            actionType: 'draft_payment_reminder',
-            actionTitle: 'Payment reminder for ' . $customer->name,
-            payload: [
-                'customer_id' => $customer->id,
-                'amount' => '12500.00',
-                'channel' => 'whatsapp',
-            ]
-        );
+        $this->assertSame([], (new ErpCopilot($principal))->tools());
+        $before = DB::table('ai_action_proposals')->where('company_id', $this->company->id)->count();
+        $erpTables = ['sales', 'stock_movements', 'journal_entries', 'document_dispatch_logs'];
+        $erpCounts = array_map(fn ($table) => DB::table($table)->where('company_id', $this->company->id)->count(), $erpTables);
+        $result = app(ErpToolExecutor::class)->execute($principal->requestId, $principal, 'proposals.draft.v1', []);
+        $this->assertSame('AI_TOOL_NOT_FOUND', $result->errorCode);
 
-        $proposalId = $proposal['proposal_id'];
+        foreach (['/ai', '/api/v1/ai'] as $prefix) {
+            $this->getJson("$prefix/proposals")->assertForbidden()->assertJsonPath('error_code', 'AI_ACTIONS_DISABLED');
+            foreach ([$id, $id, (string) Str::uuid()] as $proposalId) {
+                foreach (['approve', 'reject'] as $operation) {
+                    $this->postJson("$prefix/proposals/$proposalId/$operation")
+                        ->assertForbidden()->assertJsonPath('error_code', 'AI_ACTIONS_DISABLED');
+                }
+            }
+        }
 
-        // Approve and execute
-        $execResult = $service->approve($principal, $proposalId, 'Authorized by Manager');
-
-        $this->assertSame('executed', $execResult['status']);
-        $this->assertSame($proposalId, $execResult['proposal_id']);
-        $this->assertSame('dispatched', $execResult['execution']['status']);
-
-        // Verify DB states
-        $this->assertDatabaseHas('ai_action_proposals', [
-            'id' => $proposalId,
-            'status' => 'executed',
-        ]);
-
-        $this->assertDatabaseHas('ai_action_approvals', [
-            'proposal_id' => $proposalId,
-            'approver_id' => $this->user->id,
-            'decision' => 'approved',
-        ]);
-
-        $this->assertDatabaseHas('ai_action_executions', [
-            'proposal_id' => $proposalId,
-            'status' => 'completed',
-        ]);
+        $this->assertSame($before, DB::table('ai_action_proposals')->where('company_id', $this->company->id)->count());
+        $this->assertDatabaseHas('ai_action_proposals', ['id' => $id, 'status' => 'pending']);
+        $this->assertDatabaseMissing('ai_action_approvals', ['proposal_id' => $id]);
+        $this->assertDatabaseMissing('ai_action_executions', ['proposal_id' => $id]);
+        $this->assertSame($erpCounts, array_map(fn ($table) => DB::table($table)->where('company_id', $this->company->id)->count(), $erpTables));
     }
 
-    /**
-     * P3: Proposal Rejection
-     */
-    public function test_action_proposal_rejection_marks_proposal_rejected(): void
+    public function test_sales_permission_does_not_grant_purchase_preview_or_orders(): void
     {
-        $group = CustomerGroup::first() ?? CustomerGroup::create(['name' => 'General', 'percentage' => '0', 'is_active' => true]);
-        $customer = Customer::create([
-            'company_id' => $this->company->id,
-            'name' => 'Reject Customer',
-            'phone_number' => '9999900064',
-            'customer_group_id' => $group->id,
-            'is_active' => true,
-        ]);
-
-        $service = app(ActionProposalService::class);
-        $principal = new AiPrincipal(
-            actorId: $this->user->id,
-            companyId: $this->company->id,
-            branchId: $this->branch1Id,
-            financialYearId: $this->fyId,
-            permittedToolNames: ['proposals.draft.v1'],
-            requestId: 'reject-test-01'
+        $role = max(3, (int) DB::table('roles')->max('id') + 1);
+        DB::table('roles')->insert(['id' => $role, 'name' => 'Sales AI fixture', 'guard_name' => 'web', 'is_active' => true]);
+        foreach (['ai.use', 'sales-index'] as $name) {
+            $permission = DB::table('permissions')->where('name', $name)->value('id')
+                ?? DB::table('permissions')->insertGetId(['name' => $name, 'guard_name' => 'web']);
+            DB::table('role_has_permissions')->insert(['role_id' => $role, 'permission_id' => $permission]);
+        }
+        DB::table('company_user')->where('company_id', $this->company->id)->where('user_id', $this->user->id)
+            ->update(['role_id_override' => $role]);
+        $principal = app(\App\Ai\Services\AiPrincipalFactory::class)->createForUser(
+            $this->user->id, $this->company->id, $this->branch1Id, $this->fyId,
         );
 
-        $proposal = $service->propose(
-            principal: $principal,
-            actionType: 'draft_payment_reminder',
-            actionTitle: 'Declined reminder',
-            payload: ['customer_id' => $customer->id, 'amount' => '500.00']
-        );
-
-        $rejectResult = $service->reject($principal, $proposal['proposal_id'], 'Payment already settled via bank');
-
-        $this->assertSame('rejected', $rejectResult['status']);
-        $this->assertDatabaseHas('ai_action_proposals', [
-            'id' => $proposal['proposal_id'],
-            'status' => 'rejected',
-        ]);
-        $this->assertDatabaseHas('ai_action_approvals', [
-            'proposal_id' => $proposal['proposal_id'],
-            'decision' => 'rejected',
-        ]);
+        $manifest = app(AiToolManifest::class);
+        $preview = $manifest->sdkTool('documents.preview.v1', $principal);
+        $orders = $manifest->sdkTool('orders.open.v1', $principal);
+        $this->assertSame('AI_TOOL_FORBIDDEN', json_decode($preview->handle(new Request(['document_type' => 'purchase', 'document_id' => 1])), true)['error_code']);
+        $this->assertSame('AI_TOOL_FORBIDDEN', json_decode($orders->handle(new Request(['type' => 'purchase'])), true)['error_code']);
+        $allOrders = json_decode($orders->handle(new Request(['type' => 'all'])), true);
+        $this->assertSame(['sale'], $allOrders['data']['included_types']);
+        $this->assertNull($allOrders['data']['summary']['total_purchase_value']);
     }
 
     /**
@@ -481,7 +526,7 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'prev-test-01'
         );
 
-        $tool = new DocumentPreview($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('documents.preview.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request([
             'document_type' => 'sale',
             'document_id' => $sale->id,
@@ -497,7 +542,7 @@ class OperationalAndActionProposalsTest extends TestCase
     /**
      * P4: Company Knowledge Query Tool
      */
-    public function test_company_knowledge_tool_returns_grounded_terms(): void
+    public function test_company_knowledge_does_not_invent_payment_terms(): void
     {
         $principal = new AiPrincipal(
             actorId: $this->user->id,
@@ -508,12 +553,12 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'know-test-01'
         );
 
-        $tool = new CompanyKnowledge($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('knowledge.query.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['topic' => 'payment_terms'])), true);
 
         $this->assertSame('ok', $res['status']);
         $this->assertSame('knowledge.query.v1', $res['tool']);
-        $this->assertArrayHasKey('payment_terms', $res['data']['knowledge']);
-        $this->assertSame(30, $res['data']['knowledge']['payment_terms']['default_due_days']);
+        $this->assertSame([], $res['data']['knowledge']);
+        $this->assertNotEmpty($res['warnings']);
     }
 }

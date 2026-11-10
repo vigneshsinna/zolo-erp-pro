@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Ai\Services;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -16,7 +15,6 @@ class AiFeatureGate
 {
     public function __construct(
         protected bool $enabledGlobally = false,
-        protected bool $readOnlyGlobally = true
     ) {}
 
     /**
@@ -47,33 +45,9 @@ class AiFeatureGate
     /**
      * Check if AI operations are restricted to read-only for a given company.
      */
-    public function isReadOnly(int $companyId): bool
+    public function isReadOnly(): bool
     {
-        if ($this->readOnlyGlobally) {
-            return true;
-        }
-
-        if (!function_exists('app') || !app()->bound('db')) {
-            return true;
-        }
-
-        try {
-            if (!Schema::hasTable('ai_feature_settings')) {
-                return true;
-            }
-
-            $setting = DB::table('ai_feature_settings')
-                ->where('company_id', $companyId)
-                ->first();
-
-            if ($setting !== null) {
-                return (bool) $setting->read_only;
-            }
-
-            return true;
-        } catch (Throwable) {
-            return true;
-        }
+        return true;
     }
 
     /**

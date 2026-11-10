@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Ai;
 
 use App\Ai\DTOs\AiPrincipal;
-use App\Ai\Tools\CustomerInvoices;
-use App\Ai\Tools\InventoryStockSummary;
-use App\Ai\Tools\InvoiceAllocations;
+use App\Ai\Services\AiToolManifest;
 use App\Models\Accounting\AccountAllocation;
 use App\Models\Accounting\AccountOpenItem;
 use App\Models\Accounting\ChartOfAccount;
@@ -176,8 +174,8 @@ class SprintASecurityAndLineageTest extends TestCase
 
         // Put 50 units in Warehouse 1 (Branch 1) and 30 units in Warehouse 2 (Branch 2)
         DB::table('product_warehouse')->insert([
-            ['product_id' => $product->id, 'warehouse_id' => $whBranch1->id, 'qty' => 50],
-            ['product_id' => $product->id, 'warehouse_id' => $whBranch2->id, 'qty' => 30],
+            ['company_id' => $this->companyA->id, 'product_id' => $product->id, 'warehouse_id' => $whBranch1->id, 'qty' => 50],
+            ['company_id' => $this->companyA->id, 'product_id' => $product->id, 'warehouse_id' => $whBranch2->id, 'qty' => 30],
         ]);
 
         $principalBranch1 = new AiPrincipal(
@@ -189,7 +187,7 @@ class SprintASecurityAndLineageTest extends TestCase
             requestId: 'sec-wh-01'
         );
 
-        $tool = new InventoryStockSummary($principalBranch1);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principalBranch1);
 
         // 1. Unscoped warehouse query (warehouse_id = null): MUST only see Branch 1's 50 units!
         $resAll = json_decode((string) $tool->handle(new Request(['product_query' => $product->code])), true);
@@ -200,7 +198,7 @@ class SprintASecurityAndLineageTest extends TestCase
         $resForeign = json_decode((string) $tool->handle(new Request(['warehouse_id' => $whBranch2->id])), true);
         $this->assertSame('error', $resForeign['status']);
         $this->assertSame('AI_TOOL_FORBIDDEN', $resForeign['error_code']);
-        $this->assertStringContainsString('belongs to a different branch', $resForeign['message']);
+        $this->assertStringContainsString('does not exist or is not accessible', $resForeign['message']);
 
         // 3. Querying non-existent warehouse: MUST FAIL CLOSED with AI_TOOL_FORBIDDEN (SEC-02)
         $resNonExistent = json_decode((string) $tool->handle(new Request(['warehouse_id' => 999999])), true);
@@ -308,7 +306,7 @@ class SprintASecurityAndLineageTest extends TestCase
             requestId: 'inv-drill-01'
         );
 
-        $tool = new CustomerInvoices($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.invoices.v1', $principal);
         $json = (string) $tool->handle(new Request(['customer_id' => $customer->id, 'as_of' => '2026-10-15']));
         $res = json_decode($json, true);
 
@@ -437,7 +435,7 @@ class SprintASecurityAndLineageTest extends TestCase
             requestId: 'alloc-drill-01'
         );
 
-        $tool = new InvoiceAllocations($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.invoice_allocations.v1', $principal);
         $json = (string) $tool->handle(new Request(['open_item_id' => $invoiceItem->id, 'as_of' => '2026-10-01']));
         $res = json_decode($json, true);
 
@@ -524,13 +522,13 @@ class SprintASecurityAndLineageTest extends TestCase
         );
 
         // Invoices query for customer B
-        $invoicesTool = new CustomerInvoices($principalA);
+        $invoicesTool = app(AiToolManifest::class)->sdkTool('receivables.invoices.v1', $principalA);
         $resInvoices = json_decode((string) $invoicesTool->handle(new Request(['customer_id' => $customerB->id])), true);
         $this->assertSame('error', $resInvoices['status']);
         $this->assertSame('ENTITY_NOT_FOUND', $resInvoices['error_code']);
 
         // Allocations query for open item in Company B
-        $allocTool = new InvoiceAllocations($principalA);
+        $allocTool = app(AiToolManifest::class)->sdkTool('receivables.invoice_allocations.v1', $principalA);
         $resAlloc = json_decode((string) $allocTool->handle(new Request(['open_item_id' => $foreignOpenItem->id])), true);
         $this->assertSame('error', $resAlloc['status']);
         $this->assertSame('ENTITY_NOT_FOUND', $resAlloc['error_code']);

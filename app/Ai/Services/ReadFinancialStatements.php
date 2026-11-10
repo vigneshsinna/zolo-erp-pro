@@ -6,7 +6,6 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
-use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Services\Accounting\FinancialReportService;
@@ -50,44 +49,8 @@ class ReadFinancialStatements
         );
 
         // 1. Resolve and Validate Date Range against Financial Year
-        $year = FiscalYear::where('company_id', $principal->companyId)->find($principal->financialYearId);
+        ['from' => $from, 'to' => $to, 'timezone' => $timezone] = AiReportingPeriod::resolve($principal, $from, $to);
         $warnings = [];
-        $dateAdjusted = false;
-
-        $timezone = Company::whereKey($principal->companyId)->value('timezone') ?: config('app.timezone');
-        $today = now($timezone)->toDateString();
-
-        if ($year) {
-            $startY = $year->start_date->toDateString();
-            $endY = $year->end_date->toDateString();
-
-            if ($from === null) {
-                $from = $startY;
-            } elseif ($from < $startY || $from > $endY) {
-                $clamped = max($startY, min($endY, $from));
-                $warnings[] = "Requested start date {$from} falls outside active financial year '{$year->name}' ({$startY} to {$endY}). Adjusted to {$clamped}.";
-                $from = $clamped;
-                $dateAdjusted = true;
-            }
-
-            if ($to === null) {
-                $to = max($startY, min($endY, $today));
-            } elseif ($to < $startY || $to > $endY) {
-                $clamped = max($startY, min($endY, $to));
-                $warnings[] = "Requested end date {$to} falls outside active financial year '{$year->name}' ({$startY} to {$endY}). Adjusted to {$clamped}.";
-                $to = $clamped;
-                $dateAdjusted = true;
-            }
-        } else {
-            $from = $from ?? now($timezone)->startOfYear()->toDateString();
-            $to = $to ?? $today;
-        }
-
-        if ($from > $to) {
-            $temp = $from;
-            $from = $to;
-            $to = $temp;
-        }
 
         // 2. Resolve Company Base Currency
         $company = Company::find($principal->companyId);
@@ -102,7 +65,8 @@ class ReadFinancialStatements
             'period' => [
                 'from' => $from,
                 'to' => $to,
-                'date_adjusted' => $dateAdjusted,
+                'date_adjusted' => false,
+                'timezone' => $timezone,
             ],
             'currency' => $currencyCode,
         ];
@@ -142,7 +106,7 @@ class ReadFinancialStatements
             $totalEquity = BigDecimal::of((string) ($bs['total_equity'] ?? 0))->toScale(2, RoundingMode::HalfUp);
             $liabAndEquity = $totalLiab->plus($totalEquity);
 
-            $isReconciled = $totalAssets->compareTo($liabAndEquity) === 0;
+            $isReconciled = (bool) $bs['is_balanced'];
 
             $data['summary'] = [
                 'total_assets' => (string) $totalAssets,
@@ -166,7 +130,7 @@ class ReadFinancialStatements
 
             $totalDebit = BigDecimal::of((string) ($tb['total_debit'] ?? 0))->toScale(2, RoundingMode::HalfUp);
             $totalCredit = BigDecimal::of((string) ($tb['total_credit'] ?? 0))->toScale(2, RoundingMode::HalfUp);
-            $isReconciled = $totalDebit->compareTo($totalCredit) === 0;
+            $isReconciled = (bool) $tb['is_balanced'];
 
             $data['summary'] = [
                 'total_debit' => (string) $totalDebit,
@@ -178,6 +142,10 @@ class ReadFinancialStatements
             $sourceRoute = \Illuminate\Support\Facades\Route::has('accounting.trial-balance')
                 ? route('accounting.trial-balance', absolute: false)
                 : '/accounting/trial-balance';
+        }
+
+        if (!$isReconciled) {
+            $warnings[] = 'The selected statement is out of balance at ledger precision.';
         }
 
         return ErpToolResult::ok(

@@ -8,7 +8,6 @@ use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
 use App\Models\Accounting\AccountAllocation;
 use App\Models\Accounting\AccountOpenItem;
-use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Customer;
@@ -33,10 +32,13 @@ class ReadInvoiceAllocations
             financialYearId: $principal->financialYearId
         );
 
-        // 1. Resolve and Validate Open Item within Tenancy
+        ['to' => $asOfDate, 'timezone' => $timezone] = AiReportingPeriod::resolve($principal, null, $asOf);
+        $warnings = [];
+
         $openItem = AccountOpenItem::forCompany($context)
             ->where('branch_id', $context->branchId)
-            ->find($openItemId);
+            ->where('party_type', 'customer')->where('source_type', 'sale')
+            ->where('document_date', '<=', $asOfDate)->find($openItemId);
 
         if (!$openItem) {
             return ErpToolResult::error(
@@ -51,20 +53,6 @@ class ReadInvoiceAllocations
             );
         }
 
-        // 2. Resolve Financial Year & Date
-        $year = FiscalYear::where('company_id', $principal->companyId)->find($principal->financialYearId);
-        $warnings = [];
-        if ($year && $asOf !== null) {
-            $startY = $year->start_date->toDateString();
-            $endY = $year->end_date->toDateString();
-            if ($asOf < $startY || $asOf > $endY) {
-                $clamped = max($startY, min($endY, $asOf));
-                $warnings[] = "Requested date {$asOf} falls outside the active financial year '{$year->name}' ({$startY} to {$endY}). Allocations calculated as of {$clamped}.";
-                $asOf = $clamped;
-            }
-        }
-        $asOfDate = $asOf ?? now()->toDateString();
-
         // 3. Resolve Company Base Currency
         $company = Company::find($principal->companyId);
         $currencyCode = 'INR';
@@ -73,44 +61,42 @@ class ReadInvoiceAllocations
         }
 
         // 4. Query Allocations for this Open Item
-        $allocationsQuery = AccountAllocation::forCompany($context)
-            ->where(function ($q) use ($openItemId) {
-                $q->where('debit_open_item_id', $openItemId)
-                  ->orWhere('credit_open_item_id', $openItemId);
-            });
+        $counterparties = AccountOpenItem::forCompany($context)->where('branch_id', $context->branchId)
+            ->where('party_type', 'customer')->where('party_id', $openItem->party_id);
+        $allocationsQuery = AccountAllocation::forCompany($context)->where('allocation_date', '<=', $asOfDate)
+            ->where(fn ($q) => $q
+                ->where(fn ($debit) => $debit->where('debit_open_item_id', $openItemId)
+                    ->whereIn('credit_open_item_id', (clone $counterparties)->select('id')))
+                ->orWhere(fn ($credit) => $credit->where('credit_open_item_id', $openItemId)
+                    ->whereIn('debit_open_item_id', (clone $counterparties)->select('id'))));
 
-        if ($asOf !== null) {
-            $allocationsQuery->whereDate('allocation_date', '<=', $asOf);
+        $allocationCount = (clone $allocationsQuery)->count();
+        $totalAllocatedUnits = LedgerAmount::units((clone $allocationsQuery)
+            ->selectRaw('COALESCE(SUM(CASE WHEN reversal_of_id IS NULL THEN allocated_amount ELSE -allocated_amount END), 0) AS net')
+            ->value('net'));
+        $allocations = $allocationsQuery->orderBy('allocation_date')->orderBy('id')->limit(50)->get();
+        if ($allocationCount > $allocations->count()) {
+            $warnings[] = 'Showing the first 50 allocations. The balance includes all authorized allocations through the effective date.';
         }
-
-        $allocations = $allocationsQuery->orderBy('allocation_date')->get();
 
         // 5. Preload Contra Open Items
         $contraIds = $allocations->map(function ($a) use ($openItemId) {
             return (int) $a->debit_open_item_id === $openItemId ? (int) $a->credit_open_item_id : (int) $a->debit_open_item_id;
         })->unique();
 
-        $contraItems = AccountOpenItem::forCompany($context)->whereIn('id', $contraIds)->get()->keyBy('id');
+        $contraItems = $counterparties->whereIn('id', $contraIds)->get()->keyBy('id');
 
         // Preload Sale if open item is an invoice
         $sale = $openItem->source_type === 'sale' && $openItem->source_id
-            ? Sale::forCompany($context)->find($openItem->source_id)
+            ? Sale::visibleIn($context)->find($openItem->source_id)
             : null;
         $customer = $openItem->party_id ? Customer::where('company_id', $principal->companyId)->find($openItem->party_id) : null;
 
         // 6. Assemble Allocation Records
         $allocationRows = [];
-        $totalAllocatedUnits = 0;
-
         foreach ($allocations as $a) {
             $isReversal = $a->reversal_of_id !== null;
             $amountUnits = LedgerAmount::units($a->allocated_amount);
-
-            if (!$isReversal) {
-                $totalAllocatedUnits += $amountUnits;
-            } else {
-                $totalAllocatedUnits -= $amountUnits;
-            }
 
             $contraId = (int) $a->debit_open_item_id === $openItemId ? (int) $a->credit_open_item_id : (int) $a->debit_open_item_id;
             $contra = $contraItems->get($contraId);
@@ -121,7 +107,6 @@ class ReadInvoiceAllocations
                 'allocation_date' => $a->allocation_date?->toDateString() ?? $a->created_at?->toDateString(),
                 'allocated_amount' => LedgerAmount::decimal($amountUnits),
                 'is_reversal' => $isReversal,
-                'reversal_reason' => $a->reversal_reason,
                 'contra_document_no' => $contra?->document_no ?? 'Receipt/Adjustment',
                 'contra_source_type' => $contra?->source_type ?? 'payment',
                 'contra_document_date' => $contra?->document_date?->toDateString(),
@@ -142,6 +127,7 @@ class ReadInvoiceAllocations
                 'open_item_id' => $openItemId,
             ],
             data: [
+                'timezone' => $timezone,
                 'invoice' => [
                     'open_item_id' => $openItem->id,
                     'invoice_number' => $invoiceNo,
@@ -156,14 +142,15 @@ class ReadInvoiceAllocations
                     'status' => $remainingUnits <= 0 ? 'paid' : ($totalAllocatedUnits > 0 ? 'partially_paid' : 'unpaid'),
                 ],
                 'allocations' => $allocationRows,
-                'allocation_count' => count($allocationRows),
+                'allocation_count' => $allocationCount,
             ],
             sourceRefs: [
                 route('accounting.ageing', ['party_type' => 'customer', 'as_of_date' => $asOfDate], absolute: false),
             ],
             warnings: $warnings,
             asOf: $asOfDate,
-            reconciled: true
+            reconciled: true,
+            rowCount: count($allocationRows) + 1,
         );
     }
 }

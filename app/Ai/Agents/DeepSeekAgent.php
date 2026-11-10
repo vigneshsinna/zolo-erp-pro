@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Ai\Agents;
 
 use App\Ai\DTOs\AiPrincipal;
-use App\Ai\Tools\CustomerOutstanding;
+use App\Ai\Services\AiToolManifest;
 use Closure;
 use InvalidArgumentException;
 use Laravel\Ai\Attributes\Model;
@@ -103,7 +103,7 @@ class DeepSeekAgent implements Agent, Conversational, HasMiddleware, HasTools
 
         $tools = [];
         if ($this->principal->hasTool('receivables.outstanding.v1')) {
-            $tools[] = new CustomerOutstanding($this->principal);
+            $tools[] = app(AiToolManifest::class)->sdkTool('receivables.outstanding.v1', $this->principal);
         }
 
         return $tools;

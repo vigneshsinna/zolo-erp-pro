@@ -6,7 +6,6 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
-use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Supplier;
@@ -39,19 +38,7 @@ class ReadPayablesSummary
             financialYearId: $principal->financialYearId
         );
 
-        $asOfWarning = null;
-        if ($asOf !== null) {
-            $year = FiscalYear::where('company_id', $principal->companyId)->find($principal->financialYearId);
-            if ($year) {
-                $startY = $year->start_date->toDateString();
-                $endY = $year->end_date->toDateString();
-                if ($asOf < $startY || $asOf > $endY) {
-                    $clamped = max($startY, min($endY, $asOf));
-                    $asOfWarning = "Requested date {$asOf} falls outside the active financial year ({$startY} to {$endY}). Balances calculated as of {$clamped}.";
-                    $asOf = $clamped;
-                }
-            }
-        }
+        ['to' => $asOf, 'timezone' => $timezone] = AiReportingPeriod::resolve($principal, null, $asOf);
 
         $report = $this->financialReportService->ageing(
             context: $context,
@@ -132,9 +119,6 @@ class ReadPayablesSummary
         $isReconciled = isset($reconciliation['difference']) && $difference->isZero();
 
         $warnings = [];
-        if ($asOfWarning) {
-            $warnings[] = $asOfWarning;
-        }
         if (!$isReconciled && isset($reconciliation['difference'])) {
             $warnings[] = "Accounts Payable subledger differs from control account by {$reconciliation['difference']} {$currencyCode}. Review unallocated payments or journal entries.";
         }
@@ -151,12 +135,13 @@ class ReadPayablesSummary
             data: [
                 'as_of_date' => $asOfDate,
                 'currency' => $currencyCode,
+                'timezone' => $timezone,
                 'total_outstanding' => (string) $grandTotalUnits,
                 'supplier_count_with_dues' => count($supplierTotals),
                 'top_suppliers' => $topSuppliersFormatted,
                 'reconciliation' => [
-                    'control_account_balance' => (string) ($reconciliation['control_account_balance'] ?? $grandTotalUnits),
-                    'subledger_total' => (string) ($reconciliation['open_items_total'] ?? $grandTotalUnits),
+                    'control_account_balance' => $reconciliation['control_balance'] ?? null,
+                    'subledger_total' => $reconciliation['open_item_balance'] ?? null,
                     'difference' => (string) $difference,
                     'is_reconciled' => $isReconciled,
                 ],

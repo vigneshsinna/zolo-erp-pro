@@ -39,7 +39,7 @@
             <a href="{{ url('/ai') }}">
                 <i class="dripicons-sparkles text-primary"></i>
                 <span>{{ __('AI Workspace') }}</span>
-                <span class="badge badge-primary ml-auto" style="font-size: 0.65rem; background: var(--z-primary); color: #fff;">PRO</span>
+                <span class="badge badge-primary ml-auto u-fs-10px">PRO</span>
             </a>
         </li>
     @endif

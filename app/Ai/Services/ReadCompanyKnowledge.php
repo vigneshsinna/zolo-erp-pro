@@ -7,10 +7,8 @@ namespace App\Ai\Services;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
 use App\Models\Company;
-use App\Models\GeneralSetting;
 use App\Services\Platform\CompanyContext;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route;
+use App\Services\Tax\GstSetupService;
 
 /**
  * Authoritative read facade for Company Knowledge, Policies, and Settings (P4).
@@ -29,47 +27,43 @@ class ReadCompanyKnowledge
             financialYearId: $principal->financialYearId
         );
 
-        $company = Company::find($principal->companyId);
-        $setting = GeneralSetting::latest()->first();
-
+        $company = Company::findOrFail($principal->companyId);
         $knowledge = [];
-        $sourceRoute = Route::has('setting.general') ? route('setting.general', absolute: false) : '/settings/general';
+        $warnings = [];
 
-        if ($topic === 'company_profile' || $topic === 'all') {
-            $branches = $company ? $company->branches()->where('is_active', true)->get(['id', 'name', 'code', 'phone']) : [];
+        if (in_array($topic, ['company_profile', 'all'], true)) {
             $knowledge['company'] = [
-                'name' => $company?->name ?? 'zoloERP Pro',
-                'code' => $company?->code ?? '',
-                'timezone' => $company?->timezone ?? 'Asia/Kolkata',
-                'branches' => $branches->toArray(),
+                'name' => $company->trade_name ?: $company->legal_name,
+                'code' => $company->code,
+                'timezone' => $company->timezone,
+                'branches' => $company->branches()->whereKey($principal->branchId)->where('is_active', true)
+                    ->get(['id', 'name', 'code'])->toArray(),
             ];
         }
 
-        if ($topic === 'payment_terms' || $topic === 'credit_policy' || $topic === 'all') {
-            $knowledge['payment_terms'] = [
-                'default_due_days' => 30,
-                'grace_period_days' => 7,
-                'statutory_interest_clause' => 'Overdue balances beyond 60 days are subject to statutory late payment policy.',
-                'accepted_methods' => ['bank_transfer', 'cheque', 'upi', 'cash'],
-            ];
+        if (in_array($topic, ['tax_policy', 'gst', 'all'], true)) {
+            $registration = app(GstSetupService::class)->registration($context);
+            if ($registration !== null) {
+                $knowledge['tax_policy'] = [
+                    'gstin' => $registration->gstin,
+                    'registration_type' => $registration->registration_type,
+                ];
+            } else {
+                $warnings[] = 'No active GST registration was found for this branch.';
+            }
         }
 
-        if ($topic === 'tax_policy' || $topic === 'gst' || $topic === 'all') {
-            $gstGstin = DB::table('tax_registrations')->where('company_id', $principal->companyId)->value('gstin') ?? '';
-            $knowledge['tax_policy'] = [
-                'regime' => 'GST (India)',
-                'gstin' => $gstGstin ?: 'Configured per branch',
-                'standard_rates' => ['0%', '5%', '12%', '18%', '28%'],
-                'e_invoice_threshold' => 'INR 5 Crores turnover',
-            ];
+        if (in_array($topic, ['return_policy', 'all'], true)) {
+            $policy = $company->settings_json['return_policy'] ?? null;
+            if (isset($policy['days'])) {
+                $knowledge['return_policy'] = ['approval_window_days' => $policy['days']];
+            } else {
+                $warnings[] = 'No return approval window is configured.';
+            }
         }
 
-        if ($topic === 'return_policy' || $topic === 'warranty' || $topic === 'all') {
-            $knowledge['return_policy'] = [
-                'sales_return_window_days' => 15,
-                'goods_condition_required' => 'Original packaging with valid delivery challan / invoice reference.',
-                'job_work_statutory_window' => 'Inputs returnable within 1 year; Capital goods within 3 years (GST Section 143(3)).',
-            ];
+        if (in_array($topic, ['payment_terms', 'credit_policy', 'warranty', 'all'], true)) {
+            $warnings[] = 'No verified company-wide payment, credit or warranty terms are available for this query.';
         }
 
         return ErpToolResult::ok(
@@ -83,8 +77,8 @@ class ReadCompanyKnowledge
                 'topic' => $topic,
                 'knowledge' => $knowledge,
             ],
-            sourceRefs: [$sourceRoute],
-            warnings: [],
+            sourceRefs: [],
+            warnings: $warnings,
             asOf: now()->toDateString(),
             reconciled: true,
             rowCount: count($knowledge)

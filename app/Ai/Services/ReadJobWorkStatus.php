@@ -14,7 +14,6 @@ use App\Services\JobWork\JobWorkService;
 use App\Services\Platform\CompanyContext;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -47,16 +46,10 @@ class ReadJobWorkStatus
             $currencyCode = Currency::find($company->base_currency_id)?->code ?? 'INR';
         }
 
-        $deadlines = [];
-        try {
-            $deadlines = $this->jobWorkService->deadlines($context, $principal->actorId);
-        } catch (\Throwable) {
-            // Safe fallback if job work tables or specific schema columns are unconfigured
-            $deadlines = [];
-        }
+        $deadlines = $this->jobWorkService->deadlines($context, $principal->actorId);
 
         $orders = [];
-        $totalPendingQty = BigDecimal::zero();
+        $orderIds = [];
         $totalPendingValue = BigDecimal::zero();
         $overdueCount = 0;
 
@@ -74,14 +67,17 @@ class ReadJobWorkStatus
                 $overdueCount++;
             }
 
-            $product = Product::find($row['product_id'] ?? null);
-            $worker = Supplier::find($row['job_worker_party_id'] ?? null);
+            $orderIds[$row['order_id']] = true;
+            $totalPendingValue = $totalPendingValue->plus((string) $row['pending_value']);
+            if (count($orders) >= $limit) {
+                continue;
+            }
+
+            $product = Product::where('company_id', $principal->companyId)->find($row['product_id'] ?? null);
+            $worker = Supplier::where('company_id', $principal->companyId)->find($row['job_worker_party_id'] ?? null);
 
             $pendingQty = BigDecimal::of((string) ($row['pending_qty'] ?? 0))->toScale(4, RoundingMode::HalfUp);
             $pendingVal = BigDecimal::of((string) ($row['pending_value'] ?? 0))->toScale(2, RoundingMode::HalfUp);
-
-            $totalPendingQty = $totalPendingQty->plus($pendingQty);
-            $totalPendingValue = $totalPendingValue->plus($pendingVal);
 
             $orders[] = [
                 'order_id' => (int) ($row['order_id'] ?? 0),
@@ -103,9 +99,6 @@ class ReadJobWorkStatus
                 'status' => $rowStatus,
             ];
 
-            if (count($orders) >= $limit) {
-                break;
-            }
         }
 
         $sourceRoute = Route::has('operations.job_work') ? route('operations.job_work', absolute: false) : '/operations/job-work';
@@ -120,9 +113,9 @@ class ReadJobWorkStatus
             data: [
                 'currency' => $currencyCode,
                 'summary' => [
-                    'total_orders_pending' => count($orders),
-                    'total_pending_qty' => (string) $totalPendingQty,
-                    'total_pending_value' => (string) $totalPendingValue,
+                    'total_orders_pending' => count($orderIds),
+                    'total_pending_qty' => null,
+                    'total_pending_value' => (string) $totalPendingValue->toScale(2, RoundingMode::HalfUp),
                     'overdue_count' => $overdueCount,
                 ],
                 'orders' => $orders,

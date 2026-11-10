@@ -6,7 +6,6 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
-use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Services\Platform\CompanyContext;
@@ -35,45 +34,8 @@ class ReadGstSummary
             financialYearId: $principal->financialYearId
         );
 
-        $year = FiscalYear::where('company_id', $principal->companyId)->find($principal->financialYearId);
+        ['from' => $from, 'to' => $to, 'timezone' => $timezone] = AiReportingPeriod::resolve($principal, $from, $to, monthToDate: true);
         $warnings = [];
-        $dateAdjusted = false;
-
-        $timezone = Company::whereKey($principal->companyId)->value('timezone') ?: config('app.timezone');
-        $today = now($timezone)->toDateString();
-
-        if ($year) {
-            $startY = $year->start_date->toDateString();
-            $endY = $year->end_date->toDateString();
-
-            if ($from === null) {
-                $firstOfMonth = now($timezone)->startOfMonth()->toDateString();
-                $from = max($startY, min($endY, $firstOfMonth));
-            } elseif ($from < $startY || $from > $endY) {
-                $clamped = max($startY, min($endY, $from));
-                $warnings[] = "Requested start date {$from} falls outside active financial year '{$year->name}' ({$startY} to {$endY}). Adjusted to {$clamped}.";
-                $from = $clamped;
-                $dateAdjusted = true;
-            }
-
-            if ($to === null) {
-                $to = max($startY, min($endY, $today));
-            } elseif ($to < $startY || $to > $endY) {
-                $clamped = max($startY, min($endY, $to));
-                $warnings[] = "Requested end date {$to} falls outside active financial year '{$year->name}' ({$startY} to {$endY}). Adjusted to {$clamped}.";
-                $to = $clamped;
-                $dateAdjusted = true;
-            }
-        } else {
-            $from = $from ?? now($timezone)->startOfMonth()->toDateString();
-            $to = $to ?? $today;
-        }
-
-        if ($from > $to) {
-            $temp = $from;
-            $from = $to;
-            $to = $temp;
-        }
 
         $company = Company::find($principal->companyId);
         $currencyCode = 'INR';
@@ -99,11 +61,13 @@ class ReadGstSummary
             $igst = BigDecimal::of((string) ($fields['igst'] ?? 0));
             $cess = BigDecimal::of((string) ($fields['cess'] ?? 0));
 
-            $totalTaxable = $totalTaxable->plus($taxable);
-            $totalCgst = $totalCgst->plus($cgst);
-            $totalSgst = $totalSgst->plus($sgst);
-            $totalIgst = $totalIgst->plus($igst);
-            $totalCess = $totalCess->plus($cess);
+            if (str_starts_with($bucket, 'outward_') || $bucket === 'inward_reverse_charge') {
+                $totalTaxable = $totalTaxable->plus($taxable);
+                $totalCgst = $totalCgst->plus($cgst);
+                $totalSgst = $totalSgst->plus($sgst);
+                $totalIgst = $totalIgst->plus($igst);
+                $totalCess = $totalCess->plus($cess);
+            }
 
             $sectionsBreakdown[$bucket] = [
                 'taxable_value' => (string) $taxable->toScale(2, RoundingMode::HalfUp),
@@ -131,7 +95,8 @@ class ReadGstSummary
                 'period' => [
                     'from' => $from,
                     'to' => $to,
-                    'date_adjusted' => $dateAdjusted,
+                    'date_adjusted' => false,
+                    'timezone' => $timezone,
                 ],
                 'currency' => $currencyCode,
                 'total_taxable_value' => (string) $totalTaxable->toScale(2, RoundingMode::HalfUp),
@@ -145,7 +110,8 @@ class ReadGstSummary
             sourceRefs: [$sourceRoute],
             warnings: $warnings,
             asOf: $to,
-            reconciled: true
+            reconciled: true,
+            rowCount: count($rows),
         );
     }
 }
