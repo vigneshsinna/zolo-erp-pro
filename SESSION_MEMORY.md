@@ -1,5 +1,23 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Active Session & Follow-up — 2026-11-10: NVIDIA NIM API Key & Free Best Model Update (branch ui)
+
+- **User Request Addressed:**
+  - *"Update the AI api key in the .env file use the best model and free model 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"*
+- **Actions Taken & Configuration Verified:**
+  1. *API Key Validation:*
+     - Authenticated key `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` with `https://integrate.api.nvidia.com/v1/models`. Verified 84 hosted models available on NVIDIA's free evaluation tier.
+  2. *Model Selection:*
+     - Set `AI_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b` and `AI_PROVIDER=nvidia`.
+     - Tested live against function tool calling: autonomously triggered ERP tool `get_customer_outstanding` with structured arguments, making it optimal for the ERP Copilot.
+  3. *Environment File (`.env`):*
+     - Updated `NVIDIA_API_KEY=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`.
+     - Cleared bootstrap/config caches: `php artisan optimize:clear; php artisan view:cache`.
+  4. *Clean State:*
+     - Working tree clean on active branch `ui`.
+
+
+
 ## Active Session & Follow-up — 2026-11-10: Remote Verification, Pull & Migration Parity (branch ui)
 
 - **User Request Addressed:**
