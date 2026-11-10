@@ -2,8 +2,9 @@
 
 ## DeepSeek Agent & NVIDIA NIM Multimodal Setup — 2026-11-10 (`feature/ai-agent-foundation`)
 
-- **User Request Addressed:**
-  - Configured DeepSeek agent using NVIDIA NIM OpenAI-compatible endpoint (`https://integrate.api.nvidia.com/v1`) with model `deepseek-ai/deepseek-v4.1-flash`, supporting multimodal vision and structured reasoning matching the user-specified payload:
+- **User Clarification Addressed:**
+  - Standardized exclusively on `NVIDIA_API_KEY` and `NVIDIA_BASE_URL`. Because the DeepSeek model `deepseek-ai/deepseek-v4.1-flash` is served directly by NVIDIA NIM (`https://integrate.api.nvidia.com/v1`), no separate `DEEPSEEK_API_KEY` is needed or queried.
+  - Python snippet parity:
     ```python
     client = OpenAI(
       base_url = "https://integrate.api.nvidia.com/v1",
@@ -16,21 +17,20 @@
     ```
 - **Architectural Deliverables:**
   1. **Provider Configuration (`config/ai.php`):**
-     - Configured `nvidia` provider with driver `openai-compatible`, `key => env('NVIDIA_API_KEY')`, and `url => env('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1')`.
-     - Configured `deepseek` provider with driver `deepseek`, `key => env('DEEPSEEK_API_KEY', env('NVIDIA_API_KEY'))`, and `url => env('DEEPSEEK_URL', env('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1'))`.
+     - Both `nvidia` and `deepseek` aliases route to `driver => 'openai-compatible'` using ONLY `NVIDIA_API_KEY` and `NVIDIA_BASE_URL`.
   2. **Model Gateway Whitelist (`app/Ai/Gateway/ApprovedModelGateway.php`):**
-     - Added `nvidia`, `deepseek`, and `openai-compatible` providers with model `deepseek-ai/deepseek-v4.1-flash` (plus `deepseek-chat` and `deepseek-reasoner`).
+     - Whitelisted `deepseek-ai/deepseek-v4.1-flash` under approved providers (`nvidia`, `deepseek`, and `openai-compatible`).
   3. **Dedicated DeepSeek Agent (`app/Ai/Agents/DeepSeekAgent.php`):**
      - Implements `Agent`, `Conversational`, `HasMiddleware`, `HasTools` with attributes `#[Provider('nvidia')]` and `#[Model('deepseek-ai/deepseek-v4.1-flash')]`.
      - Multimodal helper methods: `ask()`, `askWithImage()`, and `createImageAttachment()` resolving data URIs (`data:image/jpeg;base64,...`), remote URLs, and local files into `Laravel\Ai\Files\Base64Image` / `RemoteImage`.
-     - Exposes `DeepSeekAgent::makeClientConfig()` returning `base_url`, `api_key`, and `model` compliant with OpenAI Python SDK specification.
+     - Exposes `DeepSeekAgent::makeClientConfig()` returning `base_url`, `api_key` (`NVIDIA_API_KEY`), and `model` compliant with OpenAI Python SDK specification.
      - Supports bound `AiPrincipal` for ERP tool execution (`CustomerOutstanding`) or standalone operation.
   4. **Multimodal Chat Support (`app/Http/Controllers/Api/V1/AiChatController.php`):**
      - Accepts optional `image` payload (data URI / base64 string) across `/api/v1/ai/chat` and `/ai/chat`, passing attachments through `ErpCopilot` / `DeepSeekAgent`.
   5. **CLI Artisan Command (`app/Console/Commands/AiDeepSeekCommand.php`):**
-     - Added `php artisan ai:deepseek {--prompt=} {--image=} {--model=} {--provider=}` for instant terminal testing and verification of text and image reasoning.
+     - Added `php artisan ai:deepseek {--prompt=} {--image=} {--model=} {--provider=}` for instant terminal testing and verification using `NVIDIA_API_KEY`.
   6. **Configuration & Documentation (`config/erp_ai.php`, `.env.example`):**
-     - Documented `NVIDIA_API_KEY`, `NVIDIA_BASE_URL`, `DEEPSEEK_API_KEY`, `DEEPSEEK_URL`.
+     - `.env.example` contains ONLY `NVIDIA_API_KEY` and `NVIDIA_BASE_URL`.
   7. **Automated Verification (100% Green):**
      - `tests/Unit/Ai/DeepSeekAgentTest.php`: 5/5 passed (27 assertions).
      - Full AI release suite (`phpunit.ai.xml` against disposable MySQL): 32/32 passed (172 assertions, 0 errors, 0 failures).
