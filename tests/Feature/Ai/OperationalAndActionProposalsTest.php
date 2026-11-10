@@ -283,7 +283,8 @@ class OperationalAndActionProposalsTest extends TestCase
 
     public function test_sales_permission_does_not_grant_purchase_preview_or_orders(): void
     {
-        $role = DB::table('roles')->insertGetId(['name' => 'Sales AI fixture', 'guard_name' => 'web', 'is_active' => true]);
+        $role = max(3, (int) DB::table('roles')->max('id') + 1);
+        DB::table('roles')->insert(['id' => $role, 'name' => 'Sales AI fixture', 'guard_name' => 'web', 'is_active' => true]);
         foreach (['ai.use', 'sales-index'] as $name) {
             $permission = DB::table('permissions')->where('name', $name)->value('id')
                 ?? DB::table('permissions')->insertGetId(['name' => $name, 'guard_name' => 'web']);

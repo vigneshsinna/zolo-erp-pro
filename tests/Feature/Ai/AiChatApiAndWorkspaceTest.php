@@ -284,7 +284,8 @@ class AiChatApiAndWorkspaceTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $role = DB::table('roles')->insertGetId(['name' => 'Inventory AI fixture', 'guard_name' => 'web', 'is_active' => true]);
+        $role = max(3, (int) DB::table('roles')->max('id') + 1);
+        DB::table('roles')->insert(['id' => $role, 'name' => 'Inventory AI fixture', 'guard_name' => 'web', 'is_active' => true]);
         foreach (['ai.use', 'products-index'] as $name) {
             $permission = DB::table('permissions')->where('name', $name)->value('id')
                 ?? DB::table('permissions')->insertGetId(['name' => $name, 'guard_name' => 'web']);
