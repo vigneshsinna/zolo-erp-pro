@@ -212,6 +212,19 @@
     overflow-x: auto;
     font-size: 0.8rem;
 }
+.ai-workspace-container .erp-fact-card {
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+}
+.ai-workspace-container .erp-fact-card thead th {
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #475569;
+    border-top: none;
+}
 .ai-workspace-container .due-table-card {
     background: #fff;
     border: 1px solid #e2e8f0;
@@ -345,25 +358,23 @@
     });
 
     function renderMarkdown(rawText) {
-        if (!rawText) return '';
-        if (typeof marked !== 'undefined') {
-            try {
-                marked.setOptions({
-                    gfm: true,
-                    breaks: true
-                });
-                const parsed = marked.parse(rawText);
-                if (typeof DOMPurify !== 'undefined') {
-                    return DOMPurify.sanitize(parsed);
-                }
-                return parsed;
-            } catch (e) {
-                // fall through to text fallback
-            }
+        const text = String(rawText ?? '');
+        const escapeText = () => $('<div>').text(text).html().replace(/\r?\n/g, '<br>');
+
+        if (
+            typeof window.marked?.parse !== 'function' ||
+            typeof window.DOMPurify?.sanitize !== 'function'
+        ) {
+            return escapeText();
         }
-        const div = document.createElement('div');
-        div.textContent = rawText;
-        return div.innerHTML.replace(/\n/g, '<br>');
+
+        try {
+            const html = window.marked.parse(text, { gfm: true, breaks: true });
+            return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+        } catch (error) {
+            console.error('Markdown rendering failed.');
+            return escapeText();
+        }
     }
 
     // Append Message helper
@@ -383,19 +394,63 @@
 
         (facts || []).forEach(function(fact) {
             if (fact.tool !== 'receivables.outstanding.v1') return;
-            const data = fact.data;
-            const results = $('<div class="mt-2 pt-2 border-top small"></div>');
-            results.append($('<strong></strong>').text('Verified receivables · ' + fact.as_of));
-            results.append($('<div></div>').text(data.currency + ' ' + data.total_outstanding + ' outstanding · '
-                + data.total_customers_with_dues + ' customers with dues'));
-            if (data.top_customers.length) {
-                const customers = $('<ul class="mb-0 pl-3"></ul>');
-                data.top_customers.forEach(function(customer) {
-                    customers.append($('<li></li>').text(customer.customer_name + ' · ' + data.currency + ' ' + customer.outstanding_amount));
+            const data = fact.data || {};
+            const isReconciled = data.reconciliation?.is_reconciled;
+            const currencySymbol = (data.currency === 'INR') ? '₹' : (data.currency + ' ');
+
+            const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+
+            // Header
+            const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+            cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-document-edit text-primary mr-1"></i> Customer Outstanding · ' + $('<div>').text(fact.as_of).html() + '</span>'));
+
+            const badge = isReconciled
+                ? $('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Reconciled</span>')
+                : $('<span class="badge badge-warning px-2 py-1"><i class="dripicons-warning mr-1"></i>Variance Reported</span>');
+            cardHeader.append(badge);
+            card.append(cardHeader);
+
+            // Body with KPIs
+            const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+            const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+
+            kpiRow.append($('<div class="col-6 border-right"></div>')
+                .append('<div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Total Outstanding</div>')
+                .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + currencySymbol + $('<div>').text(data.total_outstanding).html() + '</div>'));
+
+            kpiRow.append($('<div class="col-6"></div>')
+                .append('<div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Customers with Dues</div>')
+                .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + $('<div>').text(data.total_customers_with_dues).html() + '</div>'));
+
+            cardBody.append(kpiRow);
+
+            // Table of Top Customers
+            if (data.top_customers && data.top_customers.length > 0) {
+                const tableWrapper = $('<div class="table-responsive"></div>');
+                const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                table.append('<thead class="thead-light"><tr>' +
+                    '<th>Customer</th>' +
+                    '<th class="text-right">Outstanding</th>' +
+                    '<th class="text-center">Invoices</th>' +
+                    '<th class="text-right">Max Overdue</th>' +
+                    '</tr></thead>');
+
+                const tbody = $('<tbody></tbody>');
+                data.top_customers.forEach(function(cust) {
+                    const tr = $('<tr></tr>');
+                    tr.append($('<td class="font-weight-bold"></td>').text(cust.customer_name));
+                    tr.append($('<td class="text-right"></td>').text(currencySymbol + cust.outstanding_amount));
+                    tr.append($('<td class="text-center"></td>').text(cust.invoice_count));
+                    tr.append($('<td class="text-right"></td>').text(cust.max_days_overdue + ' days'));
+                    tbody.append(tr);
                 });
-                results.append(customers);
+                table.append(tbody);
+                tableWrapper.append(table);
+                cardBody.append(tableWrapper);
             }
-            bubble.append(results);
+
+            card.append(cardBody);
+            bubble.append(card);
         });
 
         // Sources

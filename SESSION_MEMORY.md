@@ -1,5 +1,19 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Fail-Safe Sanitization & Structured Financial Fact Cards — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **Security Hardening Applied:**
+  - In `workspace.blade.php`, replaced `renderMarkdown()` with fail-safe sanitization: if `window.DOMPurify?.sanitize` is unavailable, strictly fails closed by escaping HTML entities via `escapeText()`.
+  - Added `{ USE_PROFILES: { html: true } }` profile to DOMPurify sanitization.
+- **Authoritative Presentation of ERP Facts:**
+  - Rather than relying on LLM models to generate raw markdown tables (which vary between models and prompts), the UI directly renders a structured **Financial Summary Card** from verified facts (`receivables.outstanding.v1`):
+    - Top header with reporting date (`Customer Outstanding · 2026-11-10`) and green `Reconciled` / `Variance Reported` badge.
+    - KPI metrics row: **Total Outstanding** (`₹22,656.00`) and **Customers with Dues** (`1`).
+    - Authoritative customer dues table: `Customer`, `Outstanding`, `Invoices`, `Max Overdue`.
+  - Updated `ErpCopilot::instructions()`: prompts the agent to provide concise operational insights, highlights, and context while letting the UI present the structured tables and KPI cards directly from the authoritative ERP facts.
+- **Verification:**
+  - 32/32 tests passed (173 assertions) on disposable MySQL.
+
 ## Markdown Rendering & XSS Sanitization in AI Workspace — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **User Query Addressed:**
