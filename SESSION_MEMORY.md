@@ -1,5 +1,19 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Live Model Switch to `nvidia/nemotron-3.5-lightning-30b-a3b` Verified — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Action Executed:**
+  - Updated `.env`: `AI_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b` (using existing `NVIDIA_API_KEY` on `https://integrate.api.nvidia.com/v1`).
+  - Cleared caches via `php artisan optimize:clear`.
+- **Live Verification on Development Database (`zoloerp` port 3307):**
+  - CLI Artisan test: `php artisan ai:deepseek --model="nvidia/nemotron-3.5-lightning-30b-a3b" --prompt="Say hello in 3 words"` returned in **8.1s**: `"Hello there friend"` with token usage reported cleanly (Input: 110, Output: 635).
+  - End-to-end `ErpCopilot` execution with dynamic tool calling:
+    - Prompt: *"Show customer outstanding breakdown"*
+    - Completed in **10.69s**.
+    - Model autonomously called `CustomerOutstanding` tool, received deterministic ledger balances from `FinancialReportService::ageing()`, verified reconciliation (difference: 0.00), and rendered a structured markdown report for Company 1, Branch 1, FY 1 (Customer John Doe: INR 22,656.00).
+- **Automated Test Suite:**
+  - Full AI release suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1`): 32/32 passed (173 assertions, 0 errors, 0 failures).
+
 ## DeepSeek NIM Timeout Root-Cause Diagnosis & Security/Error Hardening — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **Root Cause Analysis of `[AI_ERROR] An error occurred processing your request.`:**
