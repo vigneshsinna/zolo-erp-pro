@@ -6,7 +6,8 @@ namespace Tests\Feature\Ai;
 
 use App\Ai\Agents\ErpCopilot;
 use App\Ai\DTOs\AiPrincipal;
-use App\Ai\Tools\InventoryStockSummary;
+use App\Ai\Services\AiToolManifest;
+use App\Ai\Tools\GenericSdkTool;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Category;
 use App\Models\Company;
@@ -106,7 +107,7 @@ class InventoryVerticalSliceTest extends TestCase
         $tools = iterator_to_array($copilot->tools());
 
         $this->assertCount(1, $tools);
-        $this->assertInstanceOf(InventoryStockSummary::class, $tools[0]);
+        $this->assertInstanceOf(GenericSdkTool::class, $tools[0]);
 
         // Principal without permissions
         $unauthorizedPrincipal = new AiPrincipal(
@@ -179,7 +180,7 @@ class InventoryVerticalSliceTest extends TestCase
             requestId: 'inv-req-001'
         );
 
-        $tool = new InventoryStockSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principal);
         $request = new Request(['limit' => 10]);
 
         $jsonOutput = (string) $tool->handle($request);
@@ -254,7 +255,7 @@ class InventoryVerticalSliceTest extends TestCase
             requestId: 'inv-req-002'
         );
 
-        $tool = new InventoryStockSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principal);
         $jsonOutput = (string) $tool->handle(new Request(['warehouse_id' => $warehouse->id]));
         $response = json_decode($jsonOutput, true);
 
@@ -297,7 +298,7 @@ class InventoryVerticalSliceTest extends TestCase
             financialYearId: $this->financialYearId
         );
 
-        $tool = new InventoryStockSummary($unauthorizedPrincipal);
+        $tool = app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $unauthorizedPrincipal);
         $jsonOutput = (string) $tool->handle(new Request([]));
         $response = json_decode($jsonOutput, true);
 
@@ -344,7 +345,7 @@ class InventoryVerticalSliceTest extends TestCase
         );
         DB::enableQueryLog();
         try {
-            $result = json_decode((string) (new InventoryStockSummary($principal))->handle(new Request([
+            $result = json_decode((string) (app(AiToolManifest::class)->sdkTool('inventory.stock_summary.v1', $principal))->handle(new Request([
                 'product_query' => $prefix, 'warehouse_id' => $warehouse->id, 'limit' => 3,
             ])), true);
             $stockQueries = collect(DB::getQueryLog())->filter(fn ($query) => preg_match('/from `(?:product_warehouse|stock_movement_lines|product_sales)`/', $query['query']))->count();

@@ -9,7 +9,7 @@ use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalAuthorizer;
 use App\Ai\Services\AiPrincipalFactory;
 use App\Ai\Services\ErpToolExecutor;
-use App\Ai\Tools\CustomerOutstanding;
+use App\Ai\Services\AiToolManifest;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\User;
@@ -235,7 +235,7 @@ class ReceivablesSecurityAndAccuracyTest extends TestCase
             requestId: $runId
         );
 
-        $tool = new CustomerOutstanding($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.outstanding.v1', $principal);
         $request = new Request(['limit' => 5]);
         $tool->handle($request);
 

@@ -5,12 +5,14 @@ namespace Tests\Unit\Ai;
 use App\Ai\Contracts\AiPrincipalAuthorizerInterface;
 use App\Ai\Contracts\ErpToolHandlerInterface;
 use App\Ai\DTOs\AiPrincipal;
+use App\Ai\DTOs\AiToolRegistration;
 use App\Ai\DTOs\ErpToolResult;
 use App\Ai\Services\AiAuditRecorder;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalAuthorizer;
 use App\Ai\Services\AiToolManifest;
 use App\Ai\Services\ErpToolExecutor;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 class AiFoundationTest extends TestCase
@@ -82,7 +84,7 @@ class AiFoundationTest extends TestCase
             public function key(): string { return 'test.tool.v1'; }
             public function description(): string { return 'Test tool'; }
             public function risk(): string { return 'read_only'; }
-            public function schema(): array { return ['type' => 'object']; }
+            public function schema(): array { return ['type' => 'object', 'additionalProperties' => false]; }
             public function requiredPermissions(): array { return ['ai.use']; }
             public function authorize(AiPrincipal $principal, array $input): bool { return true; }
             public function execute(AiPrincipal $principal, array $validatedInput): ErpToolResult {
@@ -90,11 +92,14 @@ class AiFoundationTest extends TestCase
             }
         };
 
-        $manifest->register($handler);
+        $manifest->register(new AiToolRegistration($handler, 'fixture_tool', ['fixture.read']));
 
         $this->assertTrue($manifest->has('test.tool.v1'));
         $this->assertSame($handler, $manifest->get('test.tool.v1'));
         $this->assertFalse($manifest->has('nonexistent.tool'));
+
+        $this->expectException(InvalidArgumentException::class);
+        $manifest->register(new AiToolRegistration($handler, 'another_alias', ['fixture.read']));
     }
 
     public function test_erp_tool_executor_enforces_authorization(): void
@@ -102,6 +107,10 @@ class AiFoundationTest extends TestCase
         $manifest = new AiToolManifest();
         $authorizer = new class extends AiPrincipalAuthorizer {
             public function refresh(AiPrincipal $principal): AiPrincipal { return $principal; }
+            public function authorize(AiPrincipal $principal, string $toolKey, array $requiredPermissions = []): bool
+            {
+                return $principal->hasTool($toolKey);
+            }
         };
         $gate = new class extends AiFeatureGate {
             public function isEnabledForCompany(int $companyId): bool { return true; }
@@ -120,19 +129,20 @@ class AiFoundationTest extends TestCase
             public function schema(): array {
                 return [
                     'type' => 'object',
+                    'additionalProperties' => false,
                     'properties' => [
                         'limit' => ['type' => 'integer']
                     ],
                 ];
             }
-            public function requiredPermissions(): array { return []; }
+            public function requiredPermissions(): array { return ['ai.use']; }
             public function authorize(AiPrincipal $principal, array $input): bool { return true; }
             public function execute(AiPrincipal $principal, array $validatedInput): ErpToolResult {
                 return ErpToolResult::ok('receivables.outstanding.v1', ['company_id' => $principal->companyId], ['total' => '500.00']);
             }
         };
 
-        $manifest->register($handler);
+        $manifest->register(new AiToolRegistration($handler, 'fixture_tool', ['fixture.read']));
         $executor = new ErpToolExecutor($manifest, $authorizer, $auditRecorder, $gate);
 
         // Permitted principal
@@ -188,12 +198,12 @@ class AiFoundationTest extends TestCase
 
     public function test_feature_gate_evaluates_emergency_killswitch(): void
     {
-        $gate = new AiFeatureGate(enabledGlobally: false, readOnlyGlobally: true);
+        $gate = new AiFeatureGate(enabledGlobally: false);
         $this->assertFalse($gate->isEnabledForCompany(14));
 
-        $enabledGate = new AiFeatureGate(enabledGlobally: true, readOnlyGlobally: true);
+        $enabledGate = new AiFeatureGate(enabledGlobally: true);
         $this->assertFalse($enabledGate->isEnabledForCompany(14));
-        $this->assertTrue($enabledGate->isReadOnly(14));
+        $this->assertTrue($enabledGate->isReadOnly());
     }
 }
 

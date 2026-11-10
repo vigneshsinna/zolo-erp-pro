@@ -462,6 +462,16 @@ class AiChatApiAndWorkspaceTest extends TestCase
         foreach ($requests as $request) {
             $this->assertSame('gpt-4o', $request['model']);
         }
+        $tools = collect($requests[0]['tools'])->keyBy('name');
+        $this->assertArrayHasKey('CustomerOutstanding', $tools->all());
+        $this->assertArrayHasKey('sales_summary', $tools->all());
+        $this->assertArrayNotHasKey('proposals.draft.v1', $tools->all());
+        $this->assertSame(20, $tools['CustomerOutstanding']['parameters']['properties']['limit']['maximum']);
+        $this->assertFalse($tools['CustomerOutstanding']['parameters']['additionalProperties']);
+        $this->assertSame('date', $tools['CustomerOutstanding']['parameters']['properties']['as_of']['format']);
+        foreach ($tools->keys() as $name) {
+            $this->assertMatchesRegularExpression('/^[a-zA-Z0-9_-]{1,64}$/D', $name);
+        }
         $history = json_encode($requests[2]['input']);
         $this->assertStringContainsString($question, $history);
         $this->assertStringContainsString($answer, $history);

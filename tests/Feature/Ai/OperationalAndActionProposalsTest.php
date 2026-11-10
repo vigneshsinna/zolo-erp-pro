@@ -6,12 +6,8 @@ namespace Tests\Feature\Ai;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Services\ErpToolExecutor;
-use App\Ai\Tools\CompanyKnowledge;
-use App\Ai\Tools\DocumentPreview;
+use App\Ai\Services\AiToolManifest;
 use App\Ai\Agents\ErpCopilot;
-use App\Ai\Tools\JobWorkStatus;
-use App\Ai\Tools\ManufacturingBoms;
-use App\Ai\Tools\OpenOrders;
 use App\Models\Category;
 use App\Models\Company;
 use App\Models\Customer;
@@ -172,7 +168,7 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'mfg-test-01'
         );
 
-        $tool = new ManufacturingBoms($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('manufacturing.boms.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['product_id' => $finishedGood->id])), true);
 
         $this->assertSame('ok', $res['status']);
@@ -226,7 +222,7 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'orders-test-01'
         );
 
-        $tool = new OpenOrders($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('orders.open.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['type' => 'sale'])), true);
 
         $this->assertSame('ok', $res['status']);
@@ -263,6 +259,8 @@ class OperationalAndActionProposalsTest extends TestCase
 
         $this->assertSame([], (new ErpCopilot($principal))->tools());
         $before = DB::table('ai_action_proposals')->where('company_id', $this->company->id)->count();
+        $erpTables = ['sales', 'stock_movements', 'journal_entries', 'document_dispatch_logs'];
+        $erpCounts = array_map(fn ($table) => DB::table($table)->where('company_id', $this->company->id)->count(), $erpTables);
         $result = app(ErpToolExecutor::class)->execute($principal->requestId, $principal, 'proposals.draft.v1', []);
         $this->assertSame('AI_TOOL_NOT_FOUND', $result->errorCode);
 
@@ -280,6 +278,31 @@ class OperationalAndActionProposalsTest extends TestCase
         $this->assertDatabaseHas('ai_action_proposals', ['id' => $id, 'status' => 'pending']);
         $this->assertDatabaseMissing('ai_action_approvals', ['proposal_id' => $id]);
         $this->assertDatabaseMissing('ai_action_executions', ['proposal_id' => $id]);
+        $this->assertSame($erpCounts, array_map(fn ($table) => DB::table($table)->where('company_id', $this->company->id)->count(), $erpTables));
+    }
+
+    public function test_sales_permission_does_not_grant_purchase_preview_or_orders(): void
+    {
+        $role = DB::table('roles')->insertGetId(['name' => 'Sales AI fixture', 'guard_name' => 'web', 'is_active' => true]);
+        foreach (['ai.use', 'sales-index'] as $name) {
+            $permission = DB::table('permissions')->where('name', $name)->value('id')
+                ?? DB::table('permissions')->insertGetId(['name' => $name, 'guard_name' => 'web']);
+            DB::table('role_has_permissions')->insert(['role_id' => $role, 'permission_id' => $permission]);
+        }
+        DB::table('company_user')->where('company_id', $this->company->id)->where('user_id', $this->user->id)
+            ->update(['role_id_override' => $role]);
+        $principal = app(\App\Ai\Services\AiPrincipalFactory::class)->createForUser(
+            $this->user->id, $this->company->id, $this->branch1Id, $this->fyId,
+        );
+
+        $manifest = app(AiToolManifest::class);
+        $preview = $manifest->sdkTool('documents.preview.v1', $principal);
+        $orders = $manifest->sdkTool('orders.open.v1', $principal);
+        $this->assertSame('AI_TOOL_FORBIDDEN', json_decode($preview->handle(new Request(['document_type' => 'purchase', 'document_id' => 1])), true)['error_code']);
+        $this->assertSame('AI_TOOL_FORBIDDEN', json_decode($orders->handle(new Request(['type' => 'purchase'])), true)['error_code']);
+        $allOrders = json_decode($orders->handle(new Request(['type' => 'all'])), true);
+        $this->assertSame(['sale'], $allOrders['data']['included_types']);
+        $this->assertNull($allOrders['data']['summary']['total_purchase_value']);
     }
 
     /**
@@ -340,7 +363,7 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'prev-test-01'
         );
 
-        $tool = new DocumentPreview($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('documents.preview.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request([
             'document_type' => 'sale',
             'document_id' => $sale->id,
@@ -367,7 +390,7 @@ class OperationalAndActionProposalsTest extends TestCase
             requestId: 'know-test-01'
         );
 
-        $tool = new CompanyKnowledge($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('knowledge.query.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['topic' => 'payment_terms'])), true);
 
         $this->assertSame('ok', $res['status']);

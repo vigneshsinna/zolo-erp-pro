@@ -5,11 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Ai;
 
 use App\Ai\DTOs\AiPrincipal;
-use App\Ai\Tools\CopilotHelp;
-use App\Ai\Tools\FinancialStatements;
-use App\Ai\Tools\GstSummary;
-use App\Ai\Tools\PayablesSummary;
-use App\Ai\Tools\SalesSummary;
+use App\Ai\Services\AiToolManifest;
 use App\Models\Accounting\AccountOpenItem;
 use App\Models\Accounting\ChartOfAccount;
 use App\Models\Accounting\FiscalYear;
@@ -228,7 +224,7 @@ class SprintBAndP2CapabilitiesTest extends TestCase
             requestId: 'sales-test-01'
         );
 
-        $tool = new SalesSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('sales.summary.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['from' => '2026-10-01', 'to' => '2026-10-31'])), true);
 
         $this->assertSame('ok', $res['status']);
@@ -312,7 +308,7 @@ class SprintBAndP2CapabilitiesTest extends TestCase
             requestId: 'ap-test-01'
         );
 
-        $tool = new PayablesSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('payables.summary.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['as_of' => '2026-10-15'])), true);
 
         $this->assertSame('ok', $res['status']);
@@ -336,7 +332,7 @@ class SprintBAndP2CapabilitiesTest extends TestCase
             requestId: 'stmt-test-01'
         );
 
-        $tool = new FinancialStatements($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('accounting.statements.v1', $principal);
 
         // 1. P&L Statement
         $resPnl = json_decode((string) $tool->handle(new Request(['statement_type' => 'profit_and_loss'])), true);
@@ -381,7 +377,7 @@ class SprintBAndP2CapabilitiesTest extends TestCase
             requestId: 'gst-test-01'
         );
 
-        $tool = new GstSummary($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('tax.gst_summary.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request(['from' => '2026-10-24', 'to' => '2026-10-24'])), true);
         $this->assertSame('ok', $res['status']);
         $this->assertSame('tax.gst_summary.v1', $res['tool']);
@@ -406,7 +402,7 @@ class SprintBAndP2CapabilitiesTest extends TestCase
             requestId: 'help-test-01'
         );
 
-        $tool = new CopilotHelp($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('copilot.help.v1', $principal);
         $res = json_decode((string) $tool->handle(new Request([])), true);
 
         $this->assertSame('ok', $res['status']);

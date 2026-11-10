@@ -7,7 +7,8 @@ namespace Tests\Feature\Ai;
 use App\Ai\Agents\ErpCopilot;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Services\ErpToolExecutor;
-use App\Ai\Tools\CustomerOutstanding;
+use App\Ai\Services\AiToolManifest;
+use App\Ai\Tools\GenericSdkTool;
 use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\User;
@@ -90,7 +91,7 @@ class ReceivablesVerticalSliceTest extends TestCase
         $tools = iterator_to_array($copilot->tools());
 
         $this->assertCount(1, $tools);
-        $this->assertInstanceOf(CustomerOutstanding::class, $tools[0]);
+        $this->assertInstanceOf(GenericSdkTool::class, $tools[0]);
 
         // Principal without permissions
         $unauthorizedPrincipal = new AiPrincipal(
@@ -118,7 +119,7 @@ class ReceivablesVerticalSliceTest extends TestCase
             requestId: 'test-req-001'
         );
 
-        $tool = new CustomerOutstanding($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.outstanding.v1', $principal);
         $request = new Request(['limit' => 5]);
 
         $jsonOutput = (string) $tool->handle($request);
@@ -161,7 +162,7 @@ class ReceivablesVerticalSliceTest extends TestCase
             permittedToolNames: []
         );
 
-        $tool = new CustomerOutstanding($unauthorizedPrincipal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.outstanding.v1', $unauthorizedPrincipal);
         $request = new Request(['limit' => 5]);
 
         $jsonOutput = (string) $tool->handle($request);
@@ -182,7 +183,7 @@ class ReceivablesVerticalSliceTest extends TestCase
             requestId: 'test-req-002'
         );
 
-        $tool = new CustomerOutstanding($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.outstanding.v1', $principal);
         // Pass a date outside the financial year (e.g. 2025-08-27 when FY is 2026-04-01 to 2027-03-31)
         $request = new Request(['as_of' => '2025-08-27', 'limit' => 5]);
 
@@ -205,7 +206,7 @@ class ReceivablesVerticalSliceTest extends TestCase
             requestId: 'strict-arguments',
         );
 
-        $tool = new CustomerOutstanding($principal);
+        $tool = app(AiToolManifest::class)->sdkTool('receivables.outstanding.v1', $principal);
         foreach ([
             ['as_of' => '2026-11-31'],
             ['limit' => '5'],

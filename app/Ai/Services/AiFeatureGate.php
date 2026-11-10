@@ -15,7 +15,6 @@ class AiFeatureGate
 {
     public function __construct(
         protected bool $enabledGlobally = false,
-        protected bool $readOnlyGlobally = true
     ) {}
 
     /**
@@ -46,7 +45,7 @@ class AiFeatureGate
     /**
      * Check if AI operations are restricted to read-only for a given company.
      */
-    public function isReadOnly(int $companyId): bool
+    public function isReadOnly(): bool
     {
         return true;
     }

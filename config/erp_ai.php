@@ -21,12 +21,12 @@ return [
     | Global Read-Only Enforcement
     |--------------------------------------------------------------------------
     |
-    | When enabled, only read tools are permitted. No action proposals or
-    | draft transactions may be created or executed.
+    | Copilot is read-only. The executor applies this policy independently
+    | of legacy company read_only settings.
     |
     */
 
-    'read_only' => env('AI_READ_ONLY', true),
+    'read_only' => true,
 
     /*
     |--------------------------------------------------------------------------

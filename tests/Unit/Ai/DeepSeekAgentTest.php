@@ -130,7 +130,8 @@ class DeepSeekAgentTest extends TestCase
         $agentWithPrincipal = new DeepSeekAgent($principal);
         $tools = $agentWithPrincipal->tools();
         $this->assertCount(1, $tools);
-        $this->assertInstanceOf(\App\Ai\Tools\CustomerOutstanding::class, $tools[0]);
+        $this->assertInstanceOf(\App\Ai\Tools\GenericSdkTool::class, $tools[0]);
+        $this->assertSame('CustomerOutstanding', $tools[0]->name());
     }
 
     public function test_deepseek_agent_prompt_execution_with_ai_fake(): void

@@ -382,3 +382,13 @@ Actual source on `feature/ai-agent-foundation` at `a1477a679dc0f9ea98ce8cc2d531a
 - Current AI feature/unit tests under `tests/Feature/Ai` and `tests/Unit/Ai`.
 
 **Evidence convention:** "source-confirmed" means the reviewed code visibly contains the pattern. It does not mean a runtime exploit or functional failure was reproduced. "Regression check" means a previous issue that must be verified but may already have been fixed. Changes should be validated against actual current business semantics, not guessed.
+
+## 22. Local execution evidence
+
+- Baseline `a1477a679dc0f9ea98ce8cc2d531a1c997e20864`. PHP 8.5.12, Laravel 13.40.0, MySQL 8.4.0, Composer lock blob `c1f296e98fbe79c09a610a024f1cb9020585615c`. Baseline AI suite passed 56 tests with 337 assertions. Part A rollback checkpoint `c9bc130` passed 58 tests with 383 assertions.
+- The shared adapter replaced 14 SDK wrapper classes. The manifest retains 14 internal ERP keys and declares one provider alias per read. DeepSeek uses the same receivables adapter. Existing per-tool handlers retain their business scope and typed inputs.
+- The release AI suite passed 59 tests with 408 assertions against disposable MySQL. It covered strict arguments and run limits, permission revocation, purchase access from a sales-only role, proposal denial and zero side effects, signed sales credits, GST input-credit separation, and real SDK wire requests against HTTP fakes.
+- The inventory fixture preserved totals for 600 products and returned three rows using nine stock aggregation queries. Receivables reconciled against ERP ageing. Sales uses `created_at` as the document business date, converts amounts using the ERP report's exchange-rate convention, and includes signed adjustment notes. The paid amount is the current settlement on the selected invoices. Open-order amounts reflect ordered and unbilled line value before tax.
+- Core reports, textile migration, and industry workflows passed. The combined test command initially hit the existing `company_menu_switches` fixture cache issue. The dedicated Industry Flow run passed all seven tests with 100 assertions.
+- Composer validation, platform requirements, and the locked security audit passed. The new HTTP-attempt migration rolled back and reapplied on the disposable AI schema. The rendered workspace passed desktop and mobile Playwright checks with synthetic endpoints and no script errors.
+- Five active local companies had zero unexpired pending proposals at inspection. Release sign-off still requires remote CI and a staging pilot with the approved provider configuration.

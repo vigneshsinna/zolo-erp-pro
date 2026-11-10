@@ -47,7 +47,7 @@ class AiChatController extends Controller
 
         return response()->json([
             'enabled' => $this->featureGate->isEnabledForCompany($principal->companyId),
-            'read_only' => $this->featureGate->isReadOnly($principal->companyId),
+            'read_only' => $this->featureGate->isReadOnly(),
             'allowed_tools' => $principal->permittedToolNames,
             ...$this->modelGateway->resolveApprovedModel(),
             'scope' => $this->scope($principal),
@@ -56,12 +56,11 @@ class AiChatController extends Controller
 
     public function monitoring(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!in_array((int) ($user->role_id ?? 0), [1, 2], true)) {
+        $principal = $this->principal($request);
+        if (!$this->contextResolver->canManageFinancialYears($principal->actorId, $principal->companyId)) {
             return $this->error('AI_FORBIDDEN', 'Administrator privileges are required to view AI telemetry and monitoring.', 403);
         }
 
-        $principal = $this->principal($request);
         $quotaDate = now('UTC')->toDateString();
         $model = $this->modelGateway->resolveApprovedModel();
         $rpmUsage = $this->modelGateway->getProviderRpmUsage($model['provider']);
@@ -164,6 +163,16 @@ class AiChatController extends Controller
     {
         return $this->accessDenial($this->principal($request))
             ?? $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+    }
+
+    public function approveProposal(Request $request): JsonResponse
+    {
+        return $this->proposals($request);
+    }
+
+    public function rejectProposal(Request $request): JsonResponse
+    {
+        return $this->proposals($request);
     }
 
     public function createThread(Request $request): JsonResponse
