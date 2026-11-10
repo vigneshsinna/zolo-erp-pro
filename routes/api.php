@@ -104,6 +104,16 @@ Route::prefix('v1')->group(function () {
         Route::post('customer-onboard', [WaterLogisticsApiController::class, 'customerOnboard'])->name('api.v1.customer-onboard.alias');
         Route::get('financials', [WaterLogisticsApiController::class, 'financials'])->name('api.v1.financials.alias');
         Route::get('invoices', [WaterLogisticsApiController::class, 'invoicesList'])->name('api.v1.invoices.alias');
+        Route::post('collect-payment', [WaterLogisticsApiController::class, 'collectPayment'])->name('api.v1.collect-payment.alias');
+        Route::post('can-deliveries', [WaterLogisticsApiController::class, 'storeCanDelivery'])->name('api.v1.can-deliveries.alias');
+        Route::post('trip-sheets', [WaterLogisticsApiController::class, 'storeTripSheet'])->name('api.v1.trip-sheets.alias');
+        Route::post('plant-intakes', [WaterLogisticsApiController::class, 'storePlantIntake'])->name('api.v1.plant-intakes.alias');
+        Route::get('routes', [WaterLogisticsApiController::class, 'routes'])->name('api.v1.routes.alias');
+        Route::post('driver-surrender', [WaterLogisticsApiController::class, 'driverCashSurrender'])->name('api.v1.driver-surrender.alias');
+        Route::post('spot-audit', [WaterLogisticsApiController::class, 'spotAudit'])->name('api.v1.spot-audit.alias');
+        Route::post('operations/cafe-pos', [CafeApiController::class, 'storeOrder'])->name('api.v1.cafe-pos.alias');
+        Route::post('mobile/operations/cafe-pos', [CafeApiController::class, 'storeOrder'])->name('api.v1.mobile.cafe-pos.alias');
+        Route::post('stock-count', [InventoryApiController::class, 'stockCount'])->middleware('company.context')->name('api.v1.stock-count.alias');
 
         // Sales & Invoicing
         Route::prefix('sales')->group(function () {
@@ -135,6 +145,7 @@ Route::prefix('v1')->group(function () {
         Route::prefix('inventory')->group(function () {
             Route::get('valuation', [InventoryApiController::class, 'valuation'])->middleware('company.context')->name('api.v1.inventory.valuation');
             Route::post('transfer', [InventoryApiController::class, 'transfer'])->middleware('company.context')->name('api.v1.inventory.transfer');
+            Route::post('stock-count', [InventoryApiController::class, 'stockCount'])->middleware('company.context')->name('api.v1.inventory.stock-count.direct');
         });
 
         // Double-Entry Accounting & Financial Ledger
