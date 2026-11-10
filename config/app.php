@@ -188,6 +188,7 @@ return [
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
         App\Providers\CapabilityServiceProvider::class,
+        App\Providers\AiServiceProvider::class,
 
 
     ],

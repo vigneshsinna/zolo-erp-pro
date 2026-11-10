@@ -18,6 +18,7 @@
         "intervention/image": "^3",
         "konekt/html": "^6.5",
         "kwn/number-to-words": "^1.12",
+        "laravel/ai": "^1.3",
         "laravel/framework": "^13.2",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.23",
