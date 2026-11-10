@@ -96,7 +96,15 @@ class DeepSeekAgentTest extends TestCase
         $this->assertInstanceOf(Base64Image::class, $rawAttachment);
         $this->assertSame('image/jpeg', $rawAttachment->mime);
 
-        // 4. Invalid input throws InvalidArgumentException
+        // 4. Local file path is rejected for security
+        try {
+            DeepSeekAgent::createImageAttachment(base_path('composer.json'));
+            $this->fail('Expected InvalidArgumentException for local file path');
+        } catch (InvalidArgumentException) {
+            $this->assertTrue(true);
+        }
+
+        // 5. Invalid input throws InvalidArgumentException
         $this->expectException(InvalidArgumentException::class);
         DeepSeekAgent::createImageAttachment('not a valid image string @#$%^&*');
     }

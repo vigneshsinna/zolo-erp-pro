@@ -76,7 +76,7 @@ class AiDeepSeekCommand extends Command
             $this->newLine();
 
             if (isset($response->usage)) {
-                $this->comment("Token usage: Prompt: {$response->usage->promptTokens}, Completion: {$response->usage->completionTokens}");
+                $this->comment("Token usage: Input: {$response->usage->inputTokens}, Output: {$response->usage->outputTokens}");
             }
 
             return self::SUCCESS;

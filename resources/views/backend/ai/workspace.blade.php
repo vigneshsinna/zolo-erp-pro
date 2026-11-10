@@ -361,9 +361,36 @@
                 appendMessage('assistant', res.message, res.sources, res.warnings, res.facts);
             },
             error: function(xhr) {
-                const err = xhr.responseJSON || {};
-                const errMsg = err.error_message || err.message || 'An error occurred processing your request.';
-                const errCode = err.error_code || 'AI_ERROR';
+                let err = {};
+                try {
+                    err = xhr.responseJSON || (xhr.responseText ? JSON.parse(xhr.responseText) : {});
+                } catch (e) {
+                    err = {};
+                }
+
+                let errMsg = err.error_message || err.message;
+                let errCode = err.error_code;
+
+                if (!errMsg) {
+                    if (xhr.status === 504) {
+                        errCode = 'GATEWAY_TIMEOUT';
+                        errMsg = 'The server or AI model took too long to respond (504 Gateway Timeout). Please try again in a few moments.';
+                    } else if (xhr.status === 502) {
+                        errCode = 'BAD_GATEWAY';
+                        errMsg = 'Unable to reach the AI model provider or backend service (502 Bad Gateway). The upstream model provider may be queued or unresponsive.';
+                    } else if (xhr.status === 419) {
+                        errCode = 'SESSION_EXPIRED';
+                        errMsg = 'Your session has expired. Please refresh the page and try again.';
+                    } else if (xhr.status === 0) {
+                        errCode = 'NETWORK_ERROR';
+                        errMsg = 'Network connection failed or the request was interrupted.';
+                    } else {
+                        errCode = errCode || ('HTTP_' + (xhr.status || 'ERROR'));
+                        errMsg = xhr.statusText ? ('Request failed: ' + xhr.statusText) : 'An unexpected error occurred while processing your request.';
+                    }
+                } else if (!errCode) {
+                    errCode = 'AI_ERROR';
+                }
 
                 appendMessage('assistant', '[' + errCode + '] ' + errMsg);
             },

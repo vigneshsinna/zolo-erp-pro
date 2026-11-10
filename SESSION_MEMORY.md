@@ -1,6 +1,22 @@
 # zoloERP Pro — Persistent Session Memory & State
 
-## DeepSeek Agent & NVIDIA NIM Multimodal Setup — 2026-11-10 (`feature/ai-agent-foundation`)
+## DeepSeek NIM Timeout Root-Cause Diagnosis & Security/Error Hardening — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **Root Cause Analysis of `[AI_ERROR] An error occurred processing your request.`:**
+  1. **Direct Cause:** In `storage/logs/laravel.log`, `ai.chat` request `f6086dc9-5f9d-4500-8a5d-ba1192bf713a` timed out after `duration_ms: 90410.04` (90.4 seconds) with `Laravel\Ai\Exceptions\ProviderConnectionException`.
+  2. **Empirical Provider Investigation:** Tested NVIDIA NIM endpoint `https://integrate.api.nvidia.com/v1` across all 84 available models. Requests for `deepseek-ai/deepseek-v4.1-flash` persistently time out with 0 bytes received due to heavy queueing / cold instance latency on NVIDIA NIM. Conversely, sibling models on the same NVIDIA NIM account (`nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-bolt-e4b`) execute tool-calls and complete in **0.4s to 1.8s**.
+  3. **Gateway Timeout & Error UI Truncation:** Because the AI timeout was configured at 90s while Herd/Nginx proxy timeout is 60s, the web server terminated the connection with 504 Gateway Timeout HTML before Laravel could return JSON. The workspace fallback error handler `xhr.responseJSON || {}` evaluated to empty, falling back to generic `[AI_ERROR] An error occurred processing your request.`.
+- **Fixes Applied & Verified:**
+  1. **Security Guardrail (LFI Prevention):** Removed `file_exists($input) && is_file($input)` from `DeepSeekAgent::createImageAttachment()`. Local filesystem paths are strictly rejected with `InvalidArgumentException`; only authenticated Data URIs, raw base64, and URLs are parsed.
+  2. **Artisan Command Property Bug:** In `app/Console/Commands/AiDeepSeekCommand.php`, corrected usage properties from `$response->usage->promptTokens` / `completionTokens` to `$response->usage->inputTokens` / `outputTokens`.
+  3. **Timeout Calibration:** Reduced `AI_TIMEOUT` in `config/erp_ai.php` from 90s to 45s (below Nginx's 60s proxy threshold) so Laravel's exception handler catches provider latency and returns structured JSON `AI_PROVIDER_UNAVAILABLE` before the web server proxy terminates.
+  4. **Frontend Error Diagnostics:** Updated `resources/views/backend/ai/workspace.blade.php` to handle non-JSON responses (504 Gateway Timeout, 502 Bad Gateway, 419 CSRF mismatch, network drop), displaying the exact HTTP status and actionable diagnostics instead of the generic fallback.
+  5. **Model Gateway Whitelist:** Expanded `ApprovedModelGateway` to whitelist `nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-bolt-e4b`, and `nvidia/nemotron-3.5-super-vl-120b-a12b` alongside `deepseek-ai/deepseek-v4.1-flash`, allowing instant switching to responsive models on the same NVIDIA API key.
+- **Verification:**
+  - `tests/Unit/Ai/DeepSeekAgentTest.php`: 5/5 passed (28 assertions), including local file rejection test.
+  - Full AI test suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1` against `zolo_test_ai_release`): 32/32 passed (173 assertions, 0 errors, 0 failures).
+  - `composer validate --strict`: Valid.
+  - `composer audit --locked`: 0 vulnerabilities.
 
 - **User Clarification Addressed:**
   - Standardized exclusively on `NVIDIA_API_KEY` and `NVIDIA_BASE_URL`. Because the DeepSeek model `deepseek-ai/deepseek-v4.1-flash` is served directly by NVIDIA NIM (`https://integrate.api.nvidia.com/v1`), no separate `DEEPSEEK_API_KEY` is needed or queried.

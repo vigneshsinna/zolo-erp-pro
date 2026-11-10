@@ -58,7 +58,7 @@ return [
     'max_output_rows' => (int) env('AI_MAX_OUTPUT_ROWS', 20),
     'daily_user_requests' => (int) env('AI_DAILY_USER_REQUESTS', 50),
     'daily_company_tokens' => (int) env('AI_DAILY_COMPANY_TOKENS', 100000),
-    'timeout' => (int) env('AI_TIMEOUT', 90),
+    'timeout' => (int) env('AI_TIMEOUT', 45),
 
     /*
     |--------------------------------------------------------------------------

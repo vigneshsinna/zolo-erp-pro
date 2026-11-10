@@ -15,7 +15,6 @@ use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Contracts\HasMiddleware;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Files\Base64Image;
-use Laravel\Ai\Files\LocalImage;
 use Laravel\Ai\Files\RemoteImage;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
@@ -135,9 +134,10 @@ class DeepSeekAgent implements Agent, Conversational, HasMiddleware, HasTools
     }
 
     /**
-     * Resolve any image representation into a typed Laravel AI File attachment.
+     * Resolve an image payload (Data URI, remote URL, or raw base64 string) into a typed Laravel AI File attachment.
+     * Note: Local server filesystem paths are strictly disallowed to prevent arbitrary file disclosure.
      */
-    public static function createImageAttachment(string $imageInput, ?string $defaultMime = 'image/jpeg'): Base64Image|LocalImage|RemoteImage
+    public static function createImageAttachment(string $imageInput, ?string $defaultMime = 'image/jpeg'): Base64Image|RemoteImage
     {
         $input = trim($imageInput);
 
@@ -155,12 +155,8 @@ class DeepSeekAgent implements Agent, Conversational, HasMiddleware, HasTools
             return new RemoteImage($input);
         }
 
-        if (file_exists($input) && is_file($input)) {
-            return new LocalImage($input);
-        }
-
-        // Raw base64 string
-        if (preg_match('/^[a-zA-Z0-9\/\r\n+]+=*$/', $input)) {
+        // Raw base64 string (strictly base64 characters, avoiding filesystem path traversal)
+        if (preg_match('/^[a-zA-Z0-9\/\r\n+]+=*$/', $input) && !file_exists($input)) {
             return new Base64Image($input, $defaultMime ?? 'image/jpeg');
         }
 

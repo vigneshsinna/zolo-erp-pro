@@ -216,7 +216,7 @@ class AiChatController extends Controller
             [$code, $message, $status] = match (true) {
                 $error instanceof TooManyRequestsHttpException => ['AI_QUOTA_EXCEEDED', $error->getMessage(), 429],
                 $error instanceof ServiceUnavailableHttpException => ['AI_DISABLED', $error->getMessage(), 503],
-                default => ['AI_PROVIDER_UNAVAILABLE', 'The copilot could not complete this request. Try again later.', 502],
+                default => ['AI_PROVIDER_UNAVAILABLE', 'The copilot could not complete this request. The upstream AI provider timed out or is temporarily unavailable.', 502],
             };
             $run->update(['status' => 'failed', 'error_code' => $code, 'completed_at' => now(), 'updated_at' => now()]);
             Log::warning('AI chat run failed.', [

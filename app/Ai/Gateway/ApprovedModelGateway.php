@@ -22,7 +22,12 @@ class ApprovedModelGateway
 {
     protected array $allowedModels = [
         'openai' => ['gpt-4o-mini', 'gpt-4o'],
-        'nvidia' => ['deepseek-ai/deepseek-v4.1-flash'],
+        'nvidia' => [
+            'deepseek-ai/deepseek-v4.1-flash',
+            'nvidia/nemotron-3.5-lightning-30b-a3b',
+            'nvidia/nemotron-3.5-bolt-e4b',
+            'nvidia/nemotron-3.5-super-vl-120b-a12b',
+        ],
         'deepseek' => [
             'deepseek-ai/deepseek-v4.1-flash',
             'deepseek-chat',
