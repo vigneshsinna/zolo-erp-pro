@@ -115,9 +115,9 @@ class DeepSeekAgent implements Agent, Conversational, HasMiddleware, HasTools
      *
      * @param array<int, \Laravel\Ai\Files\File> $attachments
      */
-    public function ask(string $prompt, array $attachments = []): AgentResponse
+    public function ask(string $prompt, array $attachments = [], ?int $timeout = null): AgentResponse
     {
-        return $this->prompt($prompt, attachments: $attachments, provider: 'nvidia', model: self::MODEL);
+        return $this->prompt($prompt, attachments: $attachments, provider: 'nvidia', model: self::MODEL, timeout: $timeout ?? (int) config('erp_ai.timeout', 90));
     }
 
     /**
@@ -127,10 +127,11 @@ class DeepSeekAgent implements Agent, Conversational, HasMiddleware, HasTools
         string $prompt,
         string $imageDataUriOrPath,
         ?string $mimeType = 'image/jpeg',
+        ?int $timeout = null,
     ): AgentResponse {
         $attachment = self::createImageAttachment($imageDataUriOrPath, $mimeType);
 
-        return $this->prompt($prompt, attachments: [$attachment], provider: 'nvidia', model: self::MODEL);
+        return $this->prompt($prompt, attachments: [$attachment], provider: 'nvidia', model: self::MODEL, timeout: $timeout ?? (int) config('erp_ai.timeout', 90));
     }
 
     /**

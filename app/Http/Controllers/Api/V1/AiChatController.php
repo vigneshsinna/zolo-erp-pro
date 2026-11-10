@@ -187,7 +187,7 @@ class AiChatController extends Controller
                 $history,
                 fn (PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
             );
-            $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: 25);
+            $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
 
             $evidence = $this->evidence($response);
             $answer = $evidence['facts'] === [] || trim($response->text) === ''
