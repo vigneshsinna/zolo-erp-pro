@@ -124,11 +124,11 @@
 @push('css')
 <style>
 .ai-workspace-container .chat-bubble {
-    max-width: 82%;
+    max-width: 85%;
     border-radius: 12px;
-    padding: 10px 14px;
+    padding: 12px 16px;
     font-size: 0.88rem;
-    line-height: 1.45;
+    line-height: 1.5;
     word-break: break-word;
 }
 .ai-workspace-container .chat-user {
@@ -136,6 +136,7 @@
     color: #fff;
     align-self: flex-end;
     border-bottom-right-radius: 2px;
+    white-space: pre-wrap;
 }
 .ai-workspace-container .chat-assistant {
     background-color: #ffffff;
@@ -143,6 +144,73 @@
     align-self: flex-start;
     border: 1px solid #e2e8f0;
     border-bottom-left-radius: 2px;
+}
+.ai-workspace-container .markdown-body table {
+    width: 100%;
+    margin: 10px 0;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+.ai-workspace-container .markdown-body th,
+.ai-workspace-container .markdown-body td {
+    padding: 6px 10px;
+    border: 1px solid #e2e8f0;
+    text-align: left;
+}
+.ai-workspace-container .markdown-body th {
+    background-color: #f1f5f9;
+    font-weight: 600;
+    color: #334155;
+}
+.ai-workspace-container .markdown-body tr:nth-child(even) {
+    background-color: #f8fafc;
+}
+.ai-workspace-container .markdown-body p {
+    margin-bottom: 0.5rem;
+}
+.ai-workspace-container .markdown-body p:last-child {
+    margin-bottom: 0;
+}
+.ai-workspace-container .markdown-body ul,
+.ai-workspace-container .markdown-body ol {
+    padding-left: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+.ai-workspace-container .markdown-body blockquote {
+    border-left: 3px solid #6366f1;
+    background: #f8fafc;
+    padding: 6px 12px;
+    margin: 8px 0;
+    border-radius: 0 4px 4px 0;
+    color: #475569;
+    font-size: 0.84rem;
+}
+.ai-workspace-container .markdown-body h1,
+.ai-workspace-container .markdown-body h2,
+.ai-workspace-container .markdown-body h3,
+.ai-workspace-container .markdown-body h4,
+.ai-workspace-container .markdown-body h5 {
+    font-weight: 600;
+    margin-top: 10px;
+    margin-bottom: 6px;
+    color: #0f172a;
+}
+.ai-workspace-container .markdown-body h3 { font-size: 0.96rem; }
+.ai-workspace-container .markdown-body h4 { font-size: 0.90rem; }
+.ai-workspace-container .markdown-body code {
+    background-color: #f1f5f9;
+    color: #e11d48;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+}
+.ai-workspace-container .markdown-body pre {
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.8rem;
 }
 .ai-workspace-container .due-table-card {
     background: #fff;
@@ -155,6 +223,8 @@
 @endpush
 
 @push('scripts')
+<script src="{{ asset('vendor/marked.min.js') }}"></script>
+<script src="{{ asset('vendor/purify.min.js') }}"></script>
 <script>
 (function($) {
     'use strict';
@@ -274,6 +344,28 @@
         }
     });
 
+    function renderMarkdown(rawText) {
+        if (!rawText) return '';
+        if (typeof marked !== 'undefined') {
+            try {
+                marked.setOptions({
+                    gfm: true,
+                    breaks: true
+                });
+                const parsed = marked.parse(rawText);
+                if (typeof DOMPurify !== 'undefined') {
+                    return DOMPurify.sanitize(parsed);
+                }
+                return parsed;
+            } catch (e) {
+                // fall through to text fallback
+            }
+        }
+        const div = document.createElement('div');
+        div.textContent = rawText;
+        return div.innerHTML.replace(/\n/g, '<br>');
+    }
+
     // Append Message helper
     function appendMessage(role, text, sources, warnings, facts) {
         $('.ai-welcome-box').remove();
@@ -281,9 +373,13 @@
         const container = $('<div class="d-flex mb-3 ' + (isUser ? 'justify-content-end' : 'justify-content-start') + '"></div>');
         const bubble = $('<div class="chat-bubble ' + (isUser ? 'chat-user' : 'chat-assistant shadow-sm') + '"></div>');
 
-        // Text content sanitized against XSS
-        const textDiv = $('<div></div>').text(text);
-        bubble.append(textDiv);
+        if (isUser) {
+            const textDiv = $('<div></div>').text(text);
+            bubble.append(textDiv);
+        } else {
+            const textDiv = $('<div class="markdown-body"></div>').html(renderMarkdown(text));
+            bubble.append(textDiv);
+        }
 
         (facts || []).forEach(function(fact) {
             if (fact.tool !== 'receivables.outstanding.v1') return;

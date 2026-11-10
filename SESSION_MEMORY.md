@@ -1,5 +1,19 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Markdown Rendering & XSS Sanitization in AI Workspace — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Query Addressed:**
+  - *"why the output looks like this?"* with screenshot showing raw, unformatted markdown tables and asterisks collapsing into a single unformatted text block.
+- **Root Cause:**
+  - In `workspace.blade.php`, message text was injected via `$('<div></div>').text(text)`, and `.chat-bubble` lacked CSS table/whitespace rules. HTML collapsed all newlines into single spaces, flattening markdown tables (`| Item | Amount |...`) into an unreadable continuous line.
+- **Fix Applied:**
+  1. Vendored offline `marked.min.js` (39KB) and `purify.min.js` (DOMPurify, 29KB) into `public/vendor/`.
+  2. Integrated `renderMarkdown()` in `workspace.blade.php`: renders Github Flavored Markdown (GFM) tables, lists, blockquotes, and headings, sanitized 100% against XSS via `DOMPurify`.
+  3. Styled `.markdown-body` with enterprise typography, bordered zebra-striped tables, subtle code blocks, and blockquotes matching zoloERP Pro design tokens.
+  4. User bubbles styled with `white-space: pre-wrap;`.
+- **Verification:**
+  - 32/32 tests passed (173 assertions) on disposable MySQL.
+
 ## Live Model Switch to `nvidia/nemotron-3.5-lightning-30b-a3b` Verified — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **User Action Executed:**
