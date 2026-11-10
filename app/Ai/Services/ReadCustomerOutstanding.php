@@ -6,6 +6,7 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
+use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Services\Accounting\FinancialReportService;
@@ -37,6 +38,21 @@ class ReadCustomerOutstanding
             branchId: $principal->branchId,
             financialYearId: $principal->financialYearId
         );
+
+        // Clamp as_of safely to the active financial year to prevent validation aborts
+        $asOfWarning = null;
+        if ($asOf !== null) {
+            $year = FiscalYear::where('company_id', $principal->companyId)->find($principal->financialYearId);
+            if ($year) {
+                $startY = $year->start_date->toDateString();
+                $endY = $year->end_date->toDateString();
+                if ($asOf < $startY || $asOf > $endY) {
+                    $clamped = max($startY, min($endY, $asOf));
+                    $asOfWarning = "Requested date {$asOf} falls outside the active financial year ({$startY} to {$endY}). Balances calculated as of {$clamped}.";
+                    $asOf = $clamped;
+                }
+            }
+        }
 
         // 2. Call authoritative ERP financial reporting service with explicit actor ID
         $report = $this->financialReportService->ageing(
@@ -112,6 +128,9 @@ class ReadCustomerOutstanding
         $difference = $hasReconciliation ? (string) $reconciliation['difference'] : null;
         $isReconciled = $hasReconciliation && BigDecimal::of($difference)->isZero();
         $warnings = [];
+        if ($asOfWarning !== null) {
+            $warnings[] = $asOfWarning;
+        }
 
         if (!$hasReconciliation) {
             $warnings[] = 'Reconciliation data unavailable for this calculation period.';

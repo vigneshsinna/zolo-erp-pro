@@ -98,6 +98,8 @@ class ErpToolExecutor
             if (function_exists('app') && app()->bound('log')) {
                 Log::error('ERP tool execution failed.', [
                     'exception_type' => $e::class,
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile() . ':' . $e->getLine(),
                     'run_id' => $runId,
                     'tool_key' => $toolKey,
                 ]);

@@ -275,9 +275,20 @@ class AiChatController extends Controller
             $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
 
             $evidence = $this->evidence($response);
-            $answer = $evidence['facts'] === [] || trim($response->text) === ''
-                ? 'The copilot could not produce a verified answer. Review any available ERP results below.'
-                : $response->text;
+            $rawText = trim($response->text);
+
+            if (!empty($evidence['facts'])) {
+                $answer = $rawText !== ''
+                    ? $rawText
+                    : 'Verified ERP facts have been retrieved for this request. Review the summary card below.';
+            } elseif (!empty($evidence['warnings'])) {
+                $warningDetails = implode(' ', $evidence['warnings']);
+                $answer = $rawText !== ''
+                    ? $rawText . "\n\n> [!WARNING]\n> {$warningDetails}"
+                    : "The copilot attempted to query ERP records, but could not complete the check: {$warningDetails}";
+            } else {
+                $answer = 'The copilot could not produce a verified answer. Review any available ERP results below.';
+            }
 
             DB::transaction(function () use ($principal, $threadId, $question, $answer, $response, $evidence, $run): void {
                 $this->storeTurn($principal, $threadId, $question, $answer, $response, $evidence);
@@ -387,7 +398,19 @@ class AiChatController extends Controller
         foreach ($response->toolResults as $result) {
             $payload = $result->successful() ? json_decode($result->text(), true) : null;
             if (($payload['status'] ?? null) !== 'ok') {
-                $warnings[] = 'An ERP tool could not complete its check.';
+                $errorCode = $payload['error_code'] ?? null;
+                $specificWarning = match ($errorCode) {
+                    'AI_INPUT_VALIDATION_FAILED' => 'Query parameters were outside allowable limits.',
+                    'AI_TOOL_FORBIDDEN' => 'Access denied: insufficient permissions to query this report.',
+                    'AI_PRINCIPAL_INACTIVE' => 'Authentication expired: user or company session is inactive.',
+                    'AI_DOMAIN_EXECUTION_FAILURE' => 'Financial reporting service could not complete calculation for the requested date or parameters.',
+                    default => 'An ERP tool could not complete its check.',
+                };
+                if (!empty($payload['warnings'])) {
+                    array_push($warnings, ...$payload['warnings']);
+                } else {
+                    $warnings[] = $specificWarning;
+                }
                 continue;
             }
 
@@ -396,10 +419,17 @@ class AiChatController extends Controller
                 'as_of' => $payload['as_of'],
                 'data' => $payload['data'],
             ];
-            foreach ($payload['source_refs'] as $href) {
-                $sources[$href] = ['title' => 'Customer receivables ageing', 'href' => $href];
+            $toolTitle = match ($payload['tool'] ?? '') {
+                'inventory.stock_summary.v1' => 'Warehouse stock report',
+                'receivables.outstanding.v1' => 'Customer receivables ageing',
+                default => 'Authoritative ERP report',
+            };
+            foreach ($payload['source_refs'] ?? [] as $href) {
+                $sources[$href] = ['title' => $toolTitle, 'href' => $href];
             }
-            array_push($warnings, ...$payload['warnings']);
+            if (!empty($payload['warnings'])) {
+                array_push($warnings, ...$payload['warnings']);
+            }
         }
 
         return ['facts' => $facts, 'sources' => array_values($sources), 'warnings' => array_values(array_unique($warnings))];

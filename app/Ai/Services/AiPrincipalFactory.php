@@ -63,14 +63,33 @@ class AiPrincipalFactory
      */
     public function resolvePermittedTools(User $user, CompanyContext $context): array
     {
-        $handler = $this->manifest->get('receivables.outstanding.v1');
-        $required = $handler->requiredPermissions();
-        $reportPermissions = ['accounting.reports.view', 'customer-report', 'due-report'];
-        $allowed = $this->permissions->allowed([...$required, ...$reportPermissions], $context, $user->id);
+        $permitted = [];
 
-        return array_diff($required, $allowed) === [] && array_intersect($reportPermissions, $allowed) !== []
-            ? [$handler->key()]
-            : [];
+        // 1. Receivables Outstanding Tool
+        if ($this->manifest->has('receivables.outstanding.v1')) {
+            $handler = $this->manifest->get('receivables.outstanding.v1');
+            $required = $handler->requiredPermissions();
+            $reportPermissions = ['accounting.reports.view', 'customer-report', 'due-report'];
+            $allowed = $this->permissions->allowed([...$required, ...$reportPermissions], $context, $user->id);
+
+            if (array_diff($required, $allowed) === [] && array_intersect($reportPermissions, $allowed) !== []) {
+                $permitted[] = $handler->key();
+            }
+        }
+
+        // 2. Inventory Stock Summary Tool
+        if ($this->manifest->has('inventory.stock_summary.v1')) {
+            $handler = $this->manifest->get('inventory.stock_summary.v1');
+            $required = $handler->requiredPermissions();
+            $stockPermissions = ['warehouse-stock-report', 'product-report', 'products-index'];
+            $allowed = $this->permissions->allowed([...$required, ...$stockPermissions], $context, $user->id);
+
+            if (array_diff($required, $allowed) === [] && array_intersect($stockPermissions, $allowed) !== []) {
+                $permitted[] = $handler->key();
+            }
+        }
+
+        return $permitted;
     }
 }
 

@@ -1,5 +1,32 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## AI Inventory Stock Summary Tool, Financial Year Date Clamping & UI Fact Cards — 2026-11-10 (`feature/ai-agent-foundation`)
+
+- **User Inquiry & Challenges Addressed:**
+  1. *Customer Outstanding Failure on Follow-up:* Diagnosed why "Show customer outstanding breakdown" previously succeeded but then threw `AI_DOMAIN_EXECUTION_FAILURE`.
+     - *Root Cause:* Following an unsupported stock inquiry ("How much stock is available?"), the model generated an out-of-bounds historical date (`2025-08-27`) for the receivables tool. Active FY 1 spans `2026-03-31` to `2027-03-31`. `FinancialReportService::range()` threw `ValidationException: Report dates must fall inside the selected financial year.`
+     - *Fix:* In `app/Ai/Services/ReadCustomerOutstanding.php`, safely clamped any out-of-bounds `$asOf` date within the active financial year bounds (`$year->start_date` and `$year->end_date`), surfacing an authoritative warning: `Requested date X falls outside the active financial year (Y to Z). Balances calculated as of W.`
+  2. *Authoritative Multi-Tenant Inventory Stock Tool (`inventory.stock_summary.v1`):*
+     - Implemented `ReadInventoryStockSummary`:
+       - Scoped strictly by `company_id` and optional `warehouse_id` (Tenancy Law 1).
+       - Never sums incompatible units: groups quantities strictly by Unit of Measure (`units_summary` keyed by `unit_code`).
+       - Calculates `total_products_tracked`, `in_stock_count`, `out_of_stock_count`, and `total_stock_value` in company base currency (`cost * on_hand`).
+       - Flags physical stock count warning if physical on-hand diverges from ledger on-hand.
+     - Implemented `InventoryStockSummaryHandler`: Strict JSON schema bounding (`product_query`, `warehouse_id`, `limit`).
+     - Implemented `InventoryStockSummary`: Official `Laravel\Ai\Contracts\Tool` adapter.
+     - Registered in `AiToolManifest`, container bindings in `AiServiceProvider`, and bound in `ErpCopilot`.
+     - Role/Permission gated in `AiPrincipalFactory`: Requires `ai.use` and at least one of `warehouse-stock-report`, `product-report`, or `products-index`.
+  3. *Error Diagnostics & Safe Mappings:*
+     - In `AiChatController::evidence()`, mapped failed tool results to specific, user-safe diagnostics (`AI_INPUT_VALIDATION_FAILED`, `AI_TOOL_FORBIDDEN`, `AI_PRINCIPAL_INACTIVE`, `AI_DOMAIN_EXECUTION_FAILURE`) instead of a single opaque warning.
+     - Removed accidental duplicate header badge markup in `workspace.blade.php`.
+     - Added rich Fact Card rendering for `inventory.stock_summary.v1` in `workspace.blade.php` displaying total products, valuation, distinct unit pills, and top stock products table.
+- **Automated Verification (100% Green):**
+  - Full AI test suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1` against `zolo_test_ai_release`): **40/40 passed (235 assertions, 0 errors, 0 failures)**.
+  - Core ERP regression suites (`CustomerSupplierReportsNavigationTest`, `OutstandingDuesAndGstTypeTest`): **15/15 passed (70 assertions, 0 errors, 0 failures)**.
+  - `composer validate --strict`: Valid.
+  - `composer audit --locked`: 0 vulnerabilities.
+  - Route & view caches compiled cleanly via `php artisan optimize:clear; php artisan view:cache`.
+
 ## AI External Model Telemetry, Provider RPM Rate Limiter & Monitoring Dashboard — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **User Architecture & Monitoring Requirement Implemented:**

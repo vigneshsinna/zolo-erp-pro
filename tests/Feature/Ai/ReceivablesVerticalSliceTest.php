@@ -170,5 +170,28 @@ class ReceivablesVerticalSliceTest extends TestCase
         $this->assertSame('denied', $response['status']);
         $this->assertSame('AI_TOOL_FORBIDDEN', $response['error_code']);
     }
+
+    public function test_customer_outstanding_clamps_as_of_outside_financial_year(): void
+    {
+        $principal = new AiPrincipal(
+            actorId: $this->user->id,
+            companyId: $this->company->id,
+            branchId: $this->branchId,
+            financialYearId: $this->financialYearId,
+            permittedToolNames: ['receivables.outstanding.v1'],
+            requestId: 'test-req-002'
+        );
+
+        $tool = new CustomerOutstanding($principal);
+        // Pass a date outside the financial year (e.g. 2025-08-27 when FY is 2026-04-01 to 2027-03-31)
+        $request = new Request(['as_of' => '2025-08-27', 'limit' => 5]);
+
+        $jsonOutput = (string) $tool->handle($request);
+        $response = json_decode($jsonOutput, true);
+
+        $this->assertSame('ok', $response['status']);
+        $this->assertNotEmpty($response['warnings']);
+        $this->assertStringContainsString('falls outside the active financial year', $response['warnings'][0]);
+    }
 }
 
