@@ -20,7 +20,7 @@ class SalesSummary implements Tool
 
     public function name(): string
     {
-        return 'sales.summary.v1';
+        return 'sales_summary';
     }
 
     public function description(): string
@@ -40,10 +40,7 @@ class SalesSummary implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $from = isset($request['from']) && is_string($request['from']) ? trim($request['from']) : null;
-        $to = isset($request['to']) && is_string($request['to']) ? trim($request['to']) : null;
-        $warehouseId = isset($request['warehouse_id']) && is_numeric($request['warehouse_id']) ? (int) $request['warehouse_id'] : null;
-        $limit = isset($request['limit']) && is_numeric($request['limit']) ? (int) $request['limit'] : 10;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -51,12 +48,7 @@ class SalesSummary implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'sales.summary.v1',
-            rawInput: array_filter([
-                'from' => $from,
-                'to' => $to,
-                'warehouse_id' => $warehouseId,
-                'limit' => $limit,
-            ], fn ($v) => $v !== null)
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

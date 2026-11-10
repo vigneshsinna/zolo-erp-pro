@@ -11,7 +11,6 @@ use App\Ai\Handlers\CopilotHelpHandler;
 use App\Ai\Handlers\CustomerInvoicesHandler;
 use App\Ai\Handlers\CustomerOutstandingHandler;
 use App\Ai\Handlers\DocumentPreviewHandler;
-use App\Ai\Handlers\DraftProposalHandler;
 use App\Ai\Handlers\FinancialStatementsHandler;
 use App\Ai\Handlers\GstSummaryHandler;
 use App\Ai\Handlers\InventoryStockSummaryHandler;
@@ -21,7 +20,6 @@ use App\Ai\Handlers\ManufacturingBomsHandler;
 use App\Ai\Handlers\OpenOrdersHandler;
 use App\Ai\Handlers\PayablesSummaryHandler;
 use App\Ai\Handlers\SalesSummaryHandler;
-use App\Ai\Services\ActionProposalService;
 use App\Ai\Services\AiAuditRecorder;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalAuthorizer;
@@ -42,6 +40,8 @@ use App\Ai\Services\ReadManufacturingBoms;
 use App\Ai\Services\ReadOpenOrders;
 use App\Ai\Services\ReadPayablesSummary;
 use App\Ai\Services\ReadSalesAnalytics;
+use Illuminate\Http\Client\Events\RequestSending;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AiServiceProvider extends ServiceProvider
@@ -53,7 +53,7 @@ class AiServiceProvider extends ServiceProvider
     {
         $this->app->singleton(AiToolManifest::class, function ($app) {
             $manifest = new AiToolManifest();
-            // Register authoritative read and proposal tools
+            // Register authoritative read tools
             $manifest->register($app->make(CustomerOutstandingHandler::class));
             $manifest->register($app->make(CustomerInvoicesHandler::class));
             $manifest->register($app->make(InvoiceAllocationsHandler::class));
@@ -66,7 +66,6 @@ class AiServiceProvider extends ServiceProvider
             $manifest->register($app->make(ManufacturingBomsHandler::class));
             $manifest->register($app->make(JobWorkStatusHandler::class));
             $manifest->register($app->make(OpenOrdersHandler::class));
-            $manifest->register($app->make(DraftProposalHandler::class));
             $manifest->register($app->make(DocumentPreviewHandler::class));
             $manifest->register($app->make(CompanyKnowledgeHandler::class));
             return $manifest;
@@ -88,10 +87,15 @@ class AiServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(AiAuditRecorder::class);
-        $this->app->singleton(ErpToolExecutor::class);
-        $this->app->singleton(ApprovedModelGateway::class);
+        $this->app->scoped(ErpToolExecutor::class, fn ($app) => new ErpToolExecutor(
+            $app->make(AiToolManifest::class),
+            $app->make(AiPrincipalAuthorizerInterface::class),
+            $app->make(AiAuditRecorder::class),
+            $app->make(AiFeatureGate::class),
+            max(0, (int) config('erp_ai.max_tools_per_run', 3)),
+        ));
+        $this->app->scoped(ApprovedModelGateway::class);
         $this->app->singleton(AiPrincipalFactory::class);
-        $this->app->singleton(ActionProposalService::class);
         $this->app->singleton(ReadCustomerOutstanding::class);
         $this->app->singleton(ReadCustomerInvoices::class);
         $this->app->singleton(CustomerInvoicesHandler::class);
@@ -115,7 +119,6 @@ class AiServiceProvider extends ServiceProvider
         $this->app->singleton(JobWorkStatusHandler::class);
         $this->app->singleton(ReadOpenOrders::class);
         $this->app->singleton(OpenOrdersHandler::class);
-        $this->app->singleton(DraftProposalHandler::class);
         $this->app->singleton(ReadDocumentPreview::class);
         $this->app->singleton(DocumentPreviewHandler::class);
         $this->app->singleton(ReadCompanyKnowledge::class);
@@ -127,7 +130,11 @@ class AiServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Event::listen(RequestSending::class, function (RequestSending $event): void {
+            if ($event->request->method() === 'POST' && $this->app->resolved(ApprovedModelGateway::class)) {
+                $this->app->make(ApprovedModelGateway::class)->admitProviderDispatch();
+            }
+        });
     }
 }
 

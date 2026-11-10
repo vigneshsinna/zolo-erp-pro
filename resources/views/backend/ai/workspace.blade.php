@@ -439,10 +439,20 @@
 
         try {
             const html = window.marked.parse(text, { gfm: true, breaks: true });
-            return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+            return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['a', 'img'] });
         } catch (error) {
             console.error('Markdown rendering failed.');
             return escapeText();
+        }
+    }
+
+    function erpHref(value) {
+        if (typeof value !== 'string' || !/^\/[a-z0-9]/i.test(value) || value.includes('\\')) return null;
+        try {
+            const url = new URL(value, window.location.origin);
+            return url.origin === window.location.origin ? url.href : null;
+        } catch {
+            return null;
         }
     }
 
@@ -550,8 +560,8 @@
                     .append('<div class="font-weight-bold ' + (data.out_of_stock_count > 0 ? 'text-danger' : 'text-dark') + '" style="font-size: 1.05rem;">' + $('<div>').text(data.out_of_stock_count).html() + '</div>'));
 
                 kpiRow.append($('<div class="col-3"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Est. Valuation</div>')
-                    .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + currencySymbol + $('<div>').text(data.total_stock_value).html() + '</div>'));
+                    .append('<div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Stock Valuation</div>')
+                    .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + $('<div>').text(data.total_stock_value == null ? 'Unavailable' : currencySymbol + data.total_stock_value).html() + '</div>'));
 
                 cardBody.append(kpiRow);
 
@@ -589,7 +599,7 @@
                         tr.append($('<td class="text-right"></td>').text(prod.on_hand));
                         tr.append($('<td class="text-right text-muted"></td>').text(prod.reserved));
                         tr.append($('<td class="text-right font-weight-bold ' + (prod.available <= 0 ? 'text-danger' : 'text-success') + '"></td>').text(prod.available));
-                        tr.append($('<td class="text-right"></td>').text(currencySymbol + prod.stock_value));
+                        tr.append($('<td class="text-right"></td>').text(prod.stock_value == null ? '—' : currencySymbol + prod.stock_value));
                         tbody.append(tr);
                     });
                     table.append(tbody);
@@ -637,7 +647,8 @@
                         let stBadge = inv.status === 'paid' ? '<span class="badge badge-success">Paid</span>' : (inv.status === 'partially_paid' ? '<span class="badge badge-info">Partially Paid</span>' : '<span class="badge badge-warning">Open</span>');
                         tr.append($('<td class="text-center"></td>').html(stBadge));
                         const linkTd = $('<td></td>');
-                        if (inv.source_link) linkTd.append($('<a class="btn btn-xs btn-outline-primary py-0 px-1" target="_blank">View</a>').attr('href', inv.source_link));
+                        const href = erpHref(inv.source_link);
+                        if (href) linkTd.append($('<a class="btn btn-xs btn-outline-primary py-0 px-1" target="_blank" rel="noopener">View</a>').attr('href', href));
                         tr.append(linkTd);
                         tbody.append(tr);
                     });
@@ -685,7 +696,7 @@
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
                 kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Gross Sales</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.gross_sales || '0.00') + '</div></div>'));
                 kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Tax</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.total_tax || '0.00') + '</div></div>'));
-                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Net Turnover</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals?.net_sales || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Net Invoiced</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals?.net_sales || '0.00') + '</div></div>'));
                 cardBody.append(kpiRow);
 
                 if (data.top_products && data.top_products.length > 0) {
@@ -696,7 +707,7 @@
                     data.top_products.forEach(function(p) {
                         const tr = $('<tr></tr>');
                         tr.append($('<td class="font-weight-bold"></td>').text(p.name + ' (' + p.code + ')'));
-                        tr.append($('<td class="text-right"></td>').text(p.total_qty));
+                        tr.append($('<td class="text-right"></td>').text(p.total_qty + (p.unit ? ' ' + p.unit : '')));
                         tr.append($('<td class="text-right font-weight-bold text-success"></td>').text(currencySymbol + p.total_revenue));
                         tbody.append(tr);
                     });
@@ -845,7 +856,7 @@
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
                 kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Orders Pending</div><div class="font-weight-bold text-dark">' + (summary.total_orders_pending || 0) + '</div></div>'));
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Qty</div><div class="font-weight-bold text-dark">' + (summary.total_pending_qty || '0') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Qty</div><div class="font-weight-bold text-dark">' + (summary.total_pending_qty ?? 'By product') + '</div></div>'));
                 kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Value</div><div class="font-weight-bold text-primary">' + currencySymbol + (summary.total_pending_value || '0.00') + '</div></div>'));
                 cardBody.append(kpiRow);
 
@@ -887,10 +898,13 @@
                     data.orders.forEach(function(o) {
                         const tr = $('<tr></tr>');
                         tr.append($('<td></td>').html(o.order_type === 'sale' ? '<span class="badge badge-info">Sale</span>' : '<span class="badge badge-secondary">Purchase</span>'));
-                        tr.append($('<td class="font-weight-bold"></td>').append($('<a></a>').attr('href', o.source_link).text(o.reference_no)));
+                        const href = erpHref(o.source_link);
+                        const reference = $('<td class="font-weight-bold"></td>').text(o.reference_no);
+                        if (href) reference.empty().append($('<a></a>').attr('href', href).text(o.reference_no));
+                        tr.append(reference);
                         tr.append($('<td></td>').text(o.party?.name || ''));
-                        tr.append($('<td class="text-right"></td>').text(currencySymbol + o.grand_total));
-                        tr.append($('<td class="text-right font-weight-bold text-danger"></td>').text(currencySymbol + o.open_balance));
+                        tr.append($('<td class="text-right"></td>').text(o.grand_total == null ? '—' : currencySymbol + o.grand_total));
+                        tr.append($('<td class="text-right font-weight-bold text-danger"></td>').text(o.open_balance == null ? '—' : currencySymbol + o.open_balance));
                         tr.append($('<td class="text-center"><span class="badge badge-warning">' + $('<div>').text(o.status).html() + '</span></td>'));
                         tbody.append(tr);
                     });
@@ -900,103 +914,23 @@
                 }
                 card.append(cardBody);
                 bubble.append(card);
-            } else if (fact.tool === 'proposals.draft.v1') {
-                const card = $('<div class="card border border-warning shadow-none mt-2 mb-1 erp-fact-card"></div>');
-                const proposalId = data.proposal_id;
-                const prev = data.preview || {};
-
-                const cardHeader = $('<div class="card-header bg-warning text-dark py-2 px-3 d-flex justify-content-between align-items-center"></div>');
-                cardHeader.append($('<span class="font-weight-bold small"><i class="dripicons-warning mr-1"></i> Action Proposal Draft · Requires Approval</span>'));
-                cardHeader.append($('<span class="badge badge-dark px-2 py-1">R1 Reviewable</span>'));
-                card.append(cardHeader);
-
-                const cardBody = $('<div class="card-body p-3 bg-white"></div>');
-                cardBody.append($('<div class="font-weight-bold text-dark mb-1" style="font-size: 0.95rem;"></div>').text(data.action_title || 'Proposed ERP Action'));
-
-                if (prev.type === 'quotation_preview') {
-                    cardBody.append($('<div class="text-muted small mb-2">Customer: <strong>' + $('<div>').text(prev.customer?.name || '').html() + '</strong></div>'));
-                    if (prev.items && prev.items.length > 0) {
-                        const table = $('<table class="table table-sm border mb-2" style="font-size: 0.78rem;"><thead><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Subtotal</th></tr></thead><tbody></tbody></table>');
-                        const tb = table.find('tbody');
-                        prev.items.forEach(function(it) {
-                            tb.append('<tr><td>' + $('<div>').text(it.name).html() + '</td><td class="text-right">' + it.qty + '</td><td class="text-right">' + currencySymbol + it.unit_price + '</td><td class="text-right font-weight-bold">' + currencySymbol + it.subtotal + '</td></tr>');
-                        });
-                        cardBody.append(table);
-                    }
-                    cardBody.append('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-1" style="font-size: 0.9rem;"><span>Grand Total:</span><span class="text-primary">' + currencySymbol + (prev.grand_total || '0.00') + '</span></div>');
-                } else if (prev.type === 'payment_reminder_preview') {
-                    cardBody.append($('<div class="text-muted small mb-2">Recipient: <strong>' + $('<div>').text(prev.recipient?.name || '').html() + '</strong> · Outstanding: <strong class="text-danger">' + currencySymbol + (prev.outstanding_amount || '0.00') + '</strong></div>'));
-                    cardBody.append($('<div class="p-2 border rounded bg-light small mb-2 text-dark font-italic"></div>').text(prev.message_body || ''));
-                }
-
-                // Interactive Confirmation Action Buttons
-                const actionBtnBar = $('<div class="mt-3 pt-2 border-top d-flex justify-content-end" id="proposal-bar-' + proposalId + '"></div>');
-                const btnReject = $('<button type="button" class="btn btn-sm btn-outline-danger mr-2 px-3"><i class="dripicons-cross mr-1"></i> Reject</button>');
-                const btnApprove = $('<button type="button" class="btn btn-sm btn-success px-3"><i class="dripicons-checkmark mr-1"></i> Approve &amp; Execute</button>');
-
-                btnApprove.click(function() {
-                    btnApprove.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Executing...');
-                    btnReject.prop('disabled', true);
-                    $.ajax({
-                        url: '/ai/proposals/' + proposalId + '/approve',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: {},
-                        success: function(resp) {
-                            actionBtnBar.html('<div class="alert alert-success py-1 px-3 mb-0 small w-100"><i class="dripicons-checkmark mr-1"></i> Action approved and executed successfully! ' +
-                                (resp.execution?.reference_no ? '<strong>Ref: ' + resp.execution.reference_no + '</strong>' : '') +
-                                (resp.execution?.view_link ? ' <a href="' + resp.execution.view_link + '" class="ml-2 font-weight-bold text-primary" target="_blank">View Document →</a>' : '') +
-                                '</div>');
-                        },
-                        error: function(xhr) {
-                            btnApprove.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i> Approve &amp; Execute');
-                            btnReject.prop('disabled', false);
-                            alert('Execution error: ' + (xhr.responseJSON?.message || 'Could not execute proposal.'));
-                        }
-                    });
-                });
-
-                btnReject.click(function() {
-                    btnApprove.prop('disabled', true);
-                    btnReject.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Rejecting...');
-                    $.ajax({
-                        url: '/ai/proposals/' + proposalId + '/reject',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { reason: 'User declined action.' },
-                        success: function() {
-                            actionBtnBar.html('<div class="alert alert-secondary py-1 px-3 mb-0 small w-100 text-muted"><i class="dripicons-cross mr-1"></i> Action proposal was rejected.</div>');
-                        },
-                        error: function(xhr) {
-                            btnApprove.prop('disabled', false);
-                            btnReject.prop('disabled', false).html('<i class="dripicons-cross mr-1"></i> Reject');
-                            alert('Error: ' + (xhr.responseJSON?.message || 'Could not reject proposal.'));
-                        }
-                    });
-                });
-
-                actionBtnBar.append(btnReject);
-                actionBtnBar.append(btnApprove);
-                cardBody.append(actionBtnBar);
-
-                card.append(cardBody);
-                bubble.append(card);
             } else if (fact.tool === 'documents.preview.v1') {
                 const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
                 const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
                 cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-document-edit text-primary mr-1"></i> Document Preview · ' + $('<div>').text(data.reference_no || '').html() + '</span>'));
-                cardHeader.append($('<span class="badge badge-success px-2 py-1">' + (data.status || 'Active') + '</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1"></span>').text(data.status || 'Active'));
                 card.append(cardHeader);
 
                 const cardBody = $('<div class="card-body p-3 bg-white"></div>');
                 cardBody.append('<div class="row no-gutters mb-2" style="font-size: 0.85rem;">' +
                     '<div class="col-6">Party: <strong>' + $('<div>').text(data.party?.name || '').html() + '</strong></div>' +
-                    '<div class="col-6 text-right">Date: <strong>' + (data.date || '') + '</strong></div>' +
+                    '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
                     '</div>');
-                cardBody.append('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-2" style="font-size: 0.95rem;">' +
-                    '<span>Grand Total: ' + currencySymbol + (data.grand_total || '0.00') + '</span>' +
-                    (data.view_link ? '<a href="' + data.view_link + '" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2">Open Document ↗</a>' : '') +
-                    '</div>');
+                const footer = $('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-2"></div>');
+                footer.append($('<span></span>').text('Grand Total: ' + currencySymbol + (data.grand_total || '0.00')));
+                const href = erpHref(data.view_link);
+                if (href) footer.append($('<a target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary py-0 px-2">Open Document ↗</a>').attr('href', href));
+                cardBody.append(footer);
                 card.append(cardBody);
                 bubble.append(card);
             } else if (fact.tool === 'knowledge.query.v1') {
@@ -1008,17 +942,15 @@
 
                 const cardBody = $('<div class="card-body p-3 bg-white small"></div>');
                 const kw = data.knowledge || {};
-                if (kw.payment_terms) {
-                    cardBody.append('<div class="font-weight-bold text-dark">Payment Policy:</div>');
-                    cardBody.append('<div class="text-muted mb-2">Default due period: ' + kw.payment_terms.default_due_days + ' days. Grace: ' + kw.payment_terms.grace_period_days + ' days. ' + kw.payment_terms.statutory_interest_clause + '</div>');
+                if (kw.company) {
+                    cardBody.append($('<div class="font-weight-bold"></div>').text(kw.company.name));
+                    (kw.company.branches || []).forEach(branch => cardBody.append($('<div></div>').text(branch.name)));
                 }
                 if (kw.tax_policy) {
-                    cardBody.append('<div class="font-weight-bold text-dark">Tax Regime:</div>');
-                    cardBody.append('<div class="text-muted mb-2">' + kw.tax_policy.regime + ' · GSTIN: ' + kw.tax_policy.gstin + ' · Rates: ' + kw.tax_policy.standard_rates.join(', ') + '</div>');
+                    cardBody.append($('<div class="text-muted"></div>').text('GST registration: ' + (kw.tax_policy.gstin || kw.tax_policy.registration_type)));
                 }
                 if (kw.return_policy) {
-                    cardBody.append('<div class="font-weight-bold text-dark">Return &amp; Job Work Windows:</div>');
-                    cardBody.append('<div class="text-muted">Return window: ' + kw.return_policy.sales_return_window_days + ' days. ' + kw.return_policy.job_work_statutory_window + '</div>');
+                    cardBody.append($('<div class="text-muted"></div>').text('Return approval window: ' + kw.return_policy.approval_window_days + ' days'));
                 }
                 card.append(cardBody);
                 bubble.append(card);
@@ -1029,10 +961,10 @@
         if (sources && sources.length > 0) {
             const sourcesDiv = $('<div class="mt-2 pt-2 border-top small"><strong>Verified Sources:</strong></div>');
             sources.forEach(function(s) {
-                const source = new URL(s.href, window.location.origin);
-                if (source.origin === window.location.origin) {
+                const href = erpHref(s.href);
+                if (href) {
                     sourcesDiv.append($('<div></div>').append($('<a class="text-primary" target="_blank" rel="noopener"></a>')
-                        .attr('href', source.href).text(s.title)));
+                        .attr('href', href).text(s.title)));
                 }
             });
             bubble.append(sourcesDiv);

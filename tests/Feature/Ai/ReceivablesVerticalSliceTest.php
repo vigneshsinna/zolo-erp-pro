@@ -171,7 +171,7 @@ class ReceivablesVerticalSliceTest extends TestCase
         $this->assertSame('AI_TOOL_FORBIDDEN', $response['error_code']);
     }
 
-    public function test_customer_outstanding_clamps_as_of_outside_financial_year(): void
+    public function test_customer_outstanding_rejects_as_of_outside_financial_year(): void
     {
         $principal = new AiPrincipal(
             actorId: $this->user->id,
@@ -189,9 +189,34 @@ class ReceivablesVerticalSliceTest extends TestCase
         $jsonOutput = (string) $tool->handle($request);
         $response = json_decode($jsonOutput, true);
 
-        $this->assertSame('ok', $response['status']);
-        $this->assertNotEmpty($response['warnings']);
-        $this->assertStringContainsString('falls outside the active financial year', $response['warnings'][0]);
+        $this->assertSame('denied', $response['status']);
+        $this->assertSame('INVALID_FINANCIAL_YEAR_DATE', $response['error_code']);
+        $this->assertSame([], $response['data']);
+    }
+
+    public function test_sdk_arguments_reach_strict_validation_and_share_run_limit(): void
+    {
+        $principal = new AiPrincipal(
+            actorId: $this->user->id,
+            companyId: $this->company->id,
+            branchId: $this->branchId,
+            financialYearId: $this->financialYearId,
+            permittedToolNames: ['receivables.outstanding.v1'],
+            requestId: 'strict-arguments',
+        );
+
+        $tool = new CustomerOutstanding($principal);
+        foreach ([
+            ['as_of' => '2026-11-31'],
+            ['limit' => '5'],
+            ['company_id' => ['id' => 2]],
+        ] as $arguments) {
+            $result = json_decode((string) $tool->handle(new Request($arguments)), true);
+            $this->assertSame('AI_INPUT_VALIDATION_FAILED', $result['error_code']);
+        }
+
+        $result = json_decode((string) $tool->handle(new Request([])), true);
+        $this->assertSame('AI_TOOL_LIMIT_EXCEEDED', $result['error_code']);
     }
 }
 

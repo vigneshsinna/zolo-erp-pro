@@ -8,6 +8,7 @@ use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Services\AiFeatureGate;
 use Closure;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -24,6 +25,9 @@ use Throwable;
 
 class ApprovedModelGateway
 {
+    private ?string $dispatchProvider = null;
+    private int $dispatchAttempts = 0;
+
     protected array $allowedModels = [
         'openai' => ['gpt-4o-mini', 'gpt-4o'],
         'nvidia' => [
@@ -98,8 +102,6 @@ class ApprovedModelGateway
     {
         $provider = $step->provider ?: config('erp_ai.provider', 'nvidia');
         $model = $step->model ?: config('erp_ai.model', '');
-        $this->enforceProviderRateLimit($provider);
-
         // Count UTF-8 bytes as an input allowance and add room for SDK/provider framing and tool schemas.
         $inputAllowance = 1024 + strlen($step->instructions ?? '') + strlen(json_encode(
             $step->messages, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
@@ -121,10 +123,18 @@ class ApprovedModelGateway
         $start = microtime(true);
         $stepNumber = $step->number + 1;
 
+        $this->dispatchProvider = $provider;
+        $this->dispatchAttempts = 0;
         try {
             // Keep the reservation until the quota day ends if the provider fails without reporting usage.
-            return $next($step->withMaxTokens($outputLimit))->then(
-                function (StepResponse $response) use ($principal, $date, $reserved, $provider, $model, $stepNumber, $start): void {
+            $result = $next($step->withMaxTokens($outputLimit));
+            $attempts = $this->dispatchAttempts;
+            if ($result->stopped() && $attempts === 0) {
+                $this->settleStep($principal, $date, $reserved, new TextUsage());
+                return $result;
+            }
+            return $result->then(
+                function (StepResponse $response) use ($principal, $date, $reserved, $provider, $model, $stepNumber, $start, $attempts): void {
                     $durationMs = (int) round((microtime(true) - $start) * 1000);
                     $this->settleStep($principal, $date, $reserved, $response->usage);
                     $this->recordModelInvocation(
@@ -135,11 +145,16 @@ class ApprovedModelGateway
                         'completed',
                         $response->usage->inputTokens,
                         $response->usage->outputTokens,
-                        $durationMs
+                        $durationMs,
+                        httpAttempts: $attempts,
                     );
                 }
             );
         } catch (Throwable $e) {
+            if ($this->dispatchAttempts === 0) {
+                $this->settleStep($principal, $date, $reserved, new TextUsage());
+                throw $e;
+            }
             $durationMs = (int) round((microtime(true) - $start) * 1000);
             $this->recordModelInvocation(
                 $principal,
@@ -150,10 +165,24 @@ class ApprovedModelGateway
                 0,
                 0,
                 $durationMs,
-                mb_substr($e->getMessage(), 0, 500)
+                class_basename($e),
+                $this->dispatchAttempts,
             );
             throw $e;
+        } finally {
+            $this->dispatchProvider = null;
         }
+    }
+
+    /** Count each SDK HTTP dispatch, including a retry inside a model step. */
+    public function admitProviderDispatch(): void
+    {
+        if ($this->dispatchProvider === null) {
+            return;
+        }
+
+        $this->enforceProviderRateLimit($this->dispatchProvider);
+        $this->dispatchAttempts++;
     }
 
     public function enforceProviderRateLimit(string $provider): void
@@ -163,16 +192,15 @@ class ApprovedModelGateway
             return;
         }
 
-        $key = 'ai:rpm:' . $provider;
-        if (RateLimiter::tooManyAttempts($key, $limit)) {
-            $seconds = RateLimiter::availableIn($key);
-            throw new TooManyRequestsHttpException(
-                $seconds,
-                "AI provider '{$provider}' request limit reached ({$limit} requests per minute). Please retry in {$seconds} seconds."
-            );
-        }
+        $key = $this->providerBucket($provider);
+        Cache::store(config('cache.limiter'))->lock($key . ':lock', 5)->block(2, function () use ($key, $limit): void {
+            if (RateLimiter::tooManyAttempts($key, $limit)) {
+                $seconds = RateLimiter::availableIn($key);
+                throw new TooManyRequestsHttpException($seconds, "AI provider request limit reached ({$limit} requests per minute). Please retry in {$seconds} seconds.");
+            }
 
-        RateLimiter::hit($key, 60);
+            RateLimiter::hit($key, 60);
+        });
     }
 
     public function getProviderRpmLimit(string $provider): int
@@ -190,7 +218,7 @@ class ApprovedModelGateway
     {
         $provider = $provider ?? config('erp_ai.provider', 'nvidia');
         $limit = $this->getProviderRpmLimit($provider);
-        $key = 'ai:rpm:' . $provider;
+        $key = $this->providerBucket($provider);
         $attempts = RateLimiter::attempts($key);
         $remaining = max(0, $limit - $attempts);
 
@@ -203,6 +231,11 @@ class ApprovedModelGateway
         ];
     }
 
+    private function providerBucket(string $provider): string
+    {
+        return 'ai:rpm:' . (in_array($provider, ['deepseek', 'openai-compatible'], true) ? 'nvidia' : $provider);
+    }
+
     public function recordModelInvocation(
         AiPrincipal $principal,
         int $stepNumber,
@@ -212,7 +245,8 @@ class ApprovedModelGateway
         int $inputTokens,
         int $outputTokens,
         int $durationMs,
-        ?string $errorMessage = null
+        ?string $errorMessage = null,
+        ?int $httpAttempts = null,
     ): void {
         try {
             DB::table('ai_model_invocations')->insert([
@@ -227,13 +261,14 @@ class ApprovedModelGateway
                 'output_tokens' => $outputTokens,
                 'duration_ms' => $durationMs,
                 'error_message' => $errorMessage,
+                'http_attempts' => $httpAttempts,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         } catch (Throwable $e) {
             Log::warning('Failed to record AI model invocation telemetry', [
                 'run_id' => $principal->requestId,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
         }
     }

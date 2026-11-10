@@ -8,7 +8,6 @@ use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
 use App\Models\Accounting\AccountAllocation;
 use App\Models\Accounting\AccountOpenItem;
-use App\Models\Accounting\FiscalYear;
 use App\Models\Company;
 use App\Models\Currency;
 use App\Models\Customer;
@@ -52,33 +51,9 @@ class ReadCustomerInvoices
         );
 
         // 1. Resolve and Validate As-Of Date against Financial Year (AI-002)
-        $year = FiscalYear::where('company_id', $principal->companyId)->find($principal->financialYearId);
         $requestedAsOf = $asOf;
-        $dateAdjusted = false;
+        ['to' => $asOf, 'timezone' => $timezone] = AiReportingPeriod::resolve($principal, null, $asOf);
         $warnings = [];
-
-        if ($year) {
-            $startY = $year->start_date->toDateString();
-            $endY = $year->end_date->toDateString();
-
-            if ($asOf !== null) {
-                if ($asOf < $startY || $asOf > $endY) {
-                    $clamped = max($startY, min($endY, $asOf));
-                    $warnings[] = "Requested date {$asOf} falls outside the active financial year '{$year->name}' ({$startY} to {$endY}). Invoices calculated as of {$clamped}.";
-                    $asOf = $clamped;
-                    $dateAdjusted = true;
-                }
-            } else {
-                $timezone = Company::whereKey($principal->companyId)->value('timezone') ?: config('app.timezone');
-                $today = now($timezone)->toDateString();
-                $asOf = max($startY, min($endY, $today));
-                if ($asOf !== $today) {
-                    $dateAdjusted = true;
-                }
-            }
-        } else {
-            $asOf = $asOf ?? now()->toDateString();
-        }
 
         // 2. Validate Customer if provided
         $customer = null;
@@ -130,7 +105,8 @@ class ReadCustomerInvoices
                     'customer' => $customer ? ['id' => $customer->id, 'name' => $customer->name] : null,
                     'requested_as_of' => $requestedAsOf,
                     'effective_as_of' => $asOf,
-                    'date_adjusted' => $dateAdjusted,
+                    'date_adjusted' => false,
+                    'timezone' => $timezone,
                     'currency' => $currencyCode,
                     'totals' => [
                         'original_amount' => '0.0000',
@@ -263,7 +239,8 @@ class ReadCustomerInvoices
                 'customer' => $customer ? ['id' => $customer->id, 'name' => $customer->name] : null,
                 'requested_as_of' => $requestedAsOf,
                 'effective_as_of' => $asOf,
-                'date_adjusted' => $dateAdjusted,
+                'date_adjusted' => false,
+                'timezone' => $timezone,
                 'currency' => $currencyCode,
                 'totals' => [
                     'original_amount' => LedgerAmount::decimal($totalOriginalUnits),

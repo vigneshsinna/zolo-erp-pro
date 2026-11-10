@@ -20,7 +20,7 @@ class PayablesSummary implements Tool
 
     public function name(): string
     {
-        return 'payables.summary.v1';
+        return 'payables_summary';
     }
 
     public function description(): string
@@ -38,8 +38,7 @@ class PayablesSummary implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $asOf = isset($request['as_of']) && is_string($request['as_of']) ? trim($request['as_of']) : null;
-        $limit = isset($request['limit']) && is_numeric($request['limit']) ? (int) $request['limit'] : 5;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -47,10 +46,7 @@ class PayablesSummary implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'payables.summary.v1',
-            rawInput: array_filter([
-                'as_of' => $asOf,
-                'limit' => $limit,
-            ], fn ($v) => $v !== null)
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

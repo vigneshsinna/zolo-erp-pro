@@ -20,7 +20,7 @@ class FinancialStatements implements Tool
 
     public function name(): string
     {
-        return 'accounting.statements.v1';
+        return 'accounting_statements';
     }
 
     public function description(): string
@@ -39,9 +39,7 @@ class FinancialStatements implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $statementType = isset($request['statement_type']) && is_string($request['statement_type']) ? trim($request['statement_type']) : 'profit_and_loss';
-        $from = isset($request['from']) && is_string($request['from']) ? trim($request['from']) : null;
-        $to = isset($request['to']) && is_string($request['to']) ? trim($request['to']) : null;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -49,11 +47,7 @@ class FinancialStatements implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'accounting.statements.v1',
-            rawInput: array_filter([
-                'statement_type' => $statementType,
-                'from' => $from,
-                'to' => $to,
-            ], fn ($v) => $v !== null)
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

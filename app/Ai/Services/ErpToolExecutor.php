@@ -7,7 +7,9 @@ namespace App\Ai\Services;
 use App\Ai\Contracts\AiPrincipalAuthorizerInterface;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -23,11 +25,14 @@ use Throwable;
  */
 class ErpToolExecutor
 {
+    private array $toolAttempts = [];
+
     public function __construct(
         protected AiToolManifest $manifest,
         protected AiPrincipalAuthorizerInterface $authorizer,
         protected AiAuditRecorder $auditRecorder,
-        protected ?AiFeatureGate $featureGate = null
+        protected AiFeatureGate $featureGate,
+        protected int $maxToolsPerRun = 3,
     ) {}
 
     /**
@@ -58,30 +63,33 @@ class ErpToolExecutor
 
         $handler = $this->manifest->get($toolKey);
 
-        // 3. Feature gate & Emergency killswitch
-        $gate = $this->featureGate ?? (function_exists('app') && app()->bound(AiFeatureGate::class) ? app(AiFeatureGate::class) : null);
-        if ($gate !== null) {
-            if (!$gate->isEnabledForCompany($principal->companyId)) {
-                $result = ErpToolResult::denied($toolKey, "AI capabilities are disabled for company ID [{$principal->companyId}].", 'AI_FEATURE_DISABLED');
-                $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
-                return $result;
-            }
+        if ($handler->risk() !== 'read_only') {
+            $result = ErpToolResult::denied($toolKey, 'Copilot accepts read-only tools.', 'AI_READ_ONLY_MODE');
+            $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
+            return $result;
+        }
 
-            // Enforce read-only policy
-            if ($gate->isReadOnly($principal->companyId) && $handler->risk() !== 'read_only') {
-                $result = ErpToolResult::denied($toolKey, 'System is operating in read-only AI mode; mutating actions are blocked.', 'AI_READ_ONLY_MODE');
-                $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
-                return $result;
-            }
+        // 3. Feature gate & Emergency killswitch
+        if (!$this->featureGate->isEnabledForCompany($principal->companyId)) {
+            $result = ErpToolResult::denied($toolKey, 'AI capabilities are disabled for this company.', 'AI_FEATURE_DISABLED');
+            $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
+            return $result;
         }
 
         // 4. Authorize principal against tool key and handler permissions
-        if (!$this->authorizer->authorize($principal, $toolKey, $handler->requiredPermissions())
-            || !$handler->authorize($principal, $rawInput)) {
+        if (!$this->authorizer->authorize($principal, $toolKey, $handler->requiredPermissions())) {
             $result = ErpToolResult::denied($toolKey, "Principal is not authorized to execute tool [{$toolKey}].", 'AI_TOOL_FORBIDDEN');
             $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
             return $result;
         }
+
+        $attempts = $this->toolAttempts[$runId] ?? 0;
+        if ($attempts >= $this->maxToolsPerRun) {
+            $result = ErpToolResult::denied($toolKey, 'The tool limit for this request was reached.', 'AI_TOOL_LIMIT_EXCEEDED');
+            $this->recordTelemetry($runId, $toolKey, $rawInput, $result, $startTime);
+            return $result;
+        }
+        $this->toolAttempts[$runId] = $attempts + 1;
 
         // 5. Input Schema Validation
         $validationError = $this->validateInputSchema($handler->schema(), $rawInput);
@@ -93,12 +101,24 @@ class ErpToolExecutor
 
         // 6. Execute domain service with safe error redaction
         try {
-            $result = $handler->execute($principal, $rawInput);
+            if (!$handler->authorize($principal, $rawInput)) {
+                $result = ErpToolResult::denied($toolKey, 'Access denied to the requested operation.', 'AI_TOOL_FORBIDDEN');
+            } else {
+                $result = $handler->execute($principal, $rawInput);
+            }
+        } catch (AuthorizationException) {
+            $result = ErpToolResult::denied($toolKey, 'Access denied to the requested operation.', 'AI_TOOL_FORBIDDEN');
+        } catch (ValidationException $e) {
+            $periodError = $e->errors()['period'][0] ?? null;
+            $result = ErpToolResult::denied(
+                $toolKey,
+                $periodError ?? 'The ERP rejected the requested parameters.',
+                $periodError === null ? 'AI_INPUT_VALIDATION_FAILED' : 'INVALID_FINANCIAL_YEAR_DATE'
+            );
         } catch (Throwable $e) {
             if (function_exists('app') && app()->bound('log')) {
                 Log::error('ERP tool execution failed.', [
                     'exception_type' => $e::class,
-                    'message' => $e->getMessage(),
                     'file' => $e->getFile() . ':' . $e->getLine(),
                     'run_id' => $runId,
                     'tool_key' => $toolKey,
@@ -121,78 +141,34 @@ class ErpToolExecutor
     /**
      * Validate raw input against tool handler declared JSON schema.
      */
-    protected function validateInputSchema(array $schema, array $input): ?string
+    private function validateInputSchema(array $schema, array $input): ?string
     {
-        $properties = $schema['properties'] ?? [];
-        $required = $schema['required'] ?? [];
-        $allowAdditional = $schema['additionalProperties'] ?? true;
+        $properties = (array) ($schema['properties'] ?? []);
+        if (array_diff_key($input, $properties) !== []) {
+            return 'Unexpected tool parameters.';
+        }
 
-        // 1. Required fields
-        foreach ($required as $reqField) {
-            if (!array_key_exists($reqField, $input)) {
-                return "Missing required parameter [{$reqField}].";
+        foreach ($schema['required'] ?? [] as $key) {
+            if (!array_key_exists($key, $input)) {
+                return "Missing required parameter [{$key}].";
             }
         }
 
-        // 2. Disallow extra properties if additionalProperties is false
-        if (!$allowAdditional) {
-            foreach ($input as $key => $val) {
-                if (!array_key_exists($key, $properties)) {
-                    return "Unexpected parameter [{$key}].";
-                }
-            }
-        }
+        foreach ($input as $key => $value) {
+            $field = $properties[$key];
+            $valid = match ($field['type']) {
+                'integer' => is_int($value)
+                    && $value >= ($field['minimum'] ?? PHP_INT_MIN)
+                    && $value <= ($field['maximum'] ?? PHP_INT_MAX),
+                'string' => is_string($value)
+                    && mb_strlen($value) <= ($field['maxLength'] ?? 200)
+                    && (($field['format'] ?? null) !== 'date' || validator(['date' => $value], ['date' => 'date_format:Y-m-d'])->passes()),
+                'boolean' => is_bool($value),
+                default => false,
+            };
 
-        // 3. Validate types and constraints
-        foreach ($input as $key => $val) {
-            if (!isset($properties[$key])) {
-                continue;
-            }
-
-            if ($val === null) {
-                if (in_array($key, $required, true)) {
-                    return "Parameter [{$key}] cannot be null.";
-                }
-                continue;
-            }
-
-            $propSchema = $properties[$key];
-            $expectedType = $propSchema['type'] ?? null;
-
-            if ($expectedType === 'integer') {
-                if (!is_int($val) && (!is_string($val) || !ctype_digit(ltrim((string)$val, '-')))) {
-                    return "Parameter [{$key}] must be an integer.";
-                }
-                $intVal = (int) $val;
-                if (isset($propSchema['minimum']) && $intVal < $propSchema['minimum']) {
-                    return "Parameter [{$key}] must be at least {$propSchema['minimum']}.";
-                }
-                if (isset($propSchema['maximum']) && $intVal > $propSchema['maximum']) {
-                    return "Parameter [{$key}] must not exceed {$propSchema['maximum']}.";
-                }
-            } elseif ($expectedType === 'string') {
-                if (!is_string($val)) {
-                    return "Parameter [{$key}] must be a string.";
-                }
-                if (isset($propSchema['format']) && $propSchema['format'] === 'date') {
-                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $val)) {
-                        return "Parameter [{$key}] must be a valid date in YYYY-MM-DD format.";
-                    }
-                }
-            } elseif ($expectedType === 'boolean') {
-                if (!is_bool($val)) {
-                    return "Parameter [{$key}] must be a boolean.";
-                }
-            } elseif ($expectedType === 'array') {
-                if (!is_array($val)) {
-                    return "Parameter [{$key}] must be an array.";
-                }
-            }
-
-            if (isset($propSchema['enum']) && is_array($propSchema['enum'])) {
-                if (!in_array($val, $propSchema['enum'], true)) {
-                    return "Parameter [{$key}] contains an invalid value.";
-                }
+            if (!$valid || (isset($field['enum']) && !in_array($value, $field['enum'], true))) {
+                return "Invalid parameter [{$key}].";
             }
         }
 

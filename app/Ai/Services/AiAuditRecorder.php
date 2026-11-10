@@ -67,15 +67,20 @@ class AiAuditRecorder
         ErpToolResult $result,
         int $durationMs
     ): void {
-        // Redacts input and output references
-        $redactedInput = $this->redact($input);
+        $redactedInput = [];
+        foreach (['limit', 'as_of', 'from', 'to'] as $field) {
+            $value = $input[$field] ?? null;
+            if ($field === 'limit' ? is_int($value) : (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value))) {
+                $redactedInput[$field] = $value;
+            }
+        }
 
         if (function_exists('app') && app()->bound('db')) {
             try {
                 if (\Illuminate\Support\Facades\Schema::hasTable('ai_tool_invocations')) {
                     $decision = ($result->status === 'denied') ? 'denied' : 'authorized';
                     $scopeHash = !empty($result->scope) ? hash('sha256', json_encode($result->scope)) : null;
-                    $outputRef = !empty($result->sourceRefs) ? (string) $result->sourceRefs[0] : null;
+                    $outputRef = !empty($result->sourceRefs) ? hash('sha256', $result->sourceRefs[0]) : null;
 
                     \Illuminate\Support\Facades\DB::table('ai_tool_invocations')->insert([
                         'id' => (string) \Illuminate\Support\Str::uuid(),
@@ -95,9 +100,10 @@ class AiAuditRecorder
                 }
             } catch (\Throwable $e) {
                 if (app()->bound('log')) {
-                    \Illuminate\Support\Facades\Log::warning('Failed to persist AI tool audit log: ' . $e->getMessage(), [
+                    \Illuminate\Support\Facades\Log::warning('Failed to persist AI tool audit log.', [
                         'run_id' => $runId,
                         'tool_key' => $toolKey,
+                        'exception_type' => $e::class,
                     ]);
                 }
             }

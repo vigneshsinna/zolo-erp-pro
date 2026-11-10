@@ -45,15 +45,7 @@ class CustomerOutstanding implements Tool
      */
     public function handle(Request $request): Stringable|string
     {
-        $rawAsOf = $request['as_of'] ?? null;
-        $asOf = null;
-        if (is_string($rawAsOf) && trim($rawAsOf) !== '') {
-            $rawAsOf = trim($rawAsOf);
-            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $rawAsOf, $matches)) {
-                $asOf = $matches[0];
-            }
-        }
-        $limit = is_numeric($request['limit'] ?? null) ? max(1, min(20, (int) $request['limit'])) : 5;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -61,10 +53,7 @@ class CustomerOutstanding implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'receivables.outstanding.v1',
-            rawInput: [
-                'as_of' => $asOf,
-                'limit' => $limit,
-            ]
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

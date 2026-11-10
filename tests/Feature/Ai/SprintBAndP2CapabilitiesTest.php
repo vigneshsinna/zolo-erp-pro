@@ -192,6 +192,33 @@ class SprintBAndP2CapabilitiesTest extends TestCase
             'created_at' => '2026-10-15 10:00:00',
         ]);
 
+        // A posted credit reduces invoiced sales. A draft credit contributes nothing.
+        $credit = [
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch1Id,
+            'financial_year_id' => $this->fyId,
+            'warehouse_id' => $wh1->id,
+            'customer_id' => $customer->id,
+            'biller_id' => $biller->id,
+            'user_id' => $this->user->id,
+            'sale_id' => $sale->id,
+            'account_id' => 0,
+            'item' => 0,
+            'total_qty' => 0,
+            'total_discount' => 0,
+            'total_tax' => 10,
+            'total_price' => 100,
+            'order_tax_rate' => 0,
+            'order_tax' => 0,
+            'grand_total' => 110,
+            'note_type' => 'credit',
+            'created_at' => '2026-10-20 00:00:00',
+        ];
+        DB::table('returns')->insert([
+            $credit + ['status' => 'posted', 'reference_no' => 'POSTED-' . uniqid()],
+            $credit + ['status' => 'draft', 'reference_no' => 'DRAFT-' . uniqid()],
+        ]);
+
         $principal = new AiPrincipal(
             actorId: $this->user->id,
             companyId: $this->company->id,
@@ -208,7 +235,9 @@ class SprintBAndP2CapabilitiesTest extends TestCase
         $this->assertSame('sales.summary.v1', $res['tool']);
         $this->assertSame(1, $res['data']['totals']['sales_count']);
         $this->assertSame('2100.00', $res['data']['totals']['gross_sales']);
-        $this->assertSame('150.00', $res['data']['totals']['total_tax']);
+        $this->assertSame('140.00', $res['data']['totals']['total_tax']);
+        $this->assertSame('1990.00', $res['data']['totals']['net_sales']);
+        $this->assertSame('-110.00', $res['data']['totals']['due_amount']);
         $this->assertCount(1, $res['data']['top_products']);
         $this->assertSame($product->code, $res['data']['top_products'][0]['code']);
         $this->assertSame(10.0, (float) $res['data']['top_products'][0]['total_qty']);
@@ -331,6 +360,18 @@ class SprintBAndP2CapabilitiesTest extends TestCase
      */
     public function test_gst_summary_tool_returns_tax_projections(): void
     {
+        $line = [
+            'supply_type' => 'domestic', 'reverse_charge' => false, 'input_credit_allowed' => true,
+            'taxable_value' => '100.0000', 'cgst' => '9.0000', 'sgst' => '9.0000', 'igst' => '0.0000', 'cess' => '0.0000',
+        ];
+        foreach (['sale', 'purchase'] as $index => $type) {
+            DB::table('gst_transaction_projections')->insert([
+                'company_id' => $this->company->id, 'branch_id' => $this->branch1Id, 'financial_year_id' => $this->fyId,
+                'source_type' => $type, 'source_id' => 900000 + $index, 'document_no' => 'GST-AI-' . $type,
+                'document_date' => '2026-10-24', 'registration_gstin' => '', 'version' => 'fixture',
+                'snapshot_json' => json_encode(['lines' => [$line], 'buyer_gstin' => null], JSON_THROW_ON_ERROR), 'created_at' => now(),
+            ]);
+        }
         $principal = new AiPrincipal(
             actorId: $this->user->id,
             companyId: $this->company->id,
@@ -341,12 +382,14 @@ class SprintBAndP2CapabilitiesTest extends TestCase
         );
 
         $tool = new GstSummary($principal);
-        $res = json_decode((string) $tool->handle(new Request(['from' => '2026-04-01', 'to' => '2026-10-31'])), true);
+        $res = json_decode((string) $tool->handle(new Request(['from' => '2026-10-24', 'to' => '2026-10-24'])), true);
         $this->assertSame('ok', $res['status']);
         $this->assertSame('tax.gst_summary.v1', $res['tool']);
         $this->assertArrayHasKey('total_taxable_value', $res['data']);
         $this->assertArrayHasKey('total_tax_liability', $res['data']);
         $this->assertArrayHasKey('sections', $res['data']);
+        $this->assertSame('18.00', $res['data']['total_tax_liability']);
+        $this->assertSame('9.00', $res['data']['sections']['eligible_input_credit']['cgst']);
     }
 
     /**

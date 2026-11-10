@@ -265,6 +265,42 @@ class AiChatApiAndWorkspaceTest extends TestCase
             ->assertJsonPath('messages.0.role', 'user')->assertJsonPath('messages.1.role', 'assistant');
     }
 
+    public function test_revoked_tool_facts_are_hidden_from_history_and_provider_replay(): void
+    {
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $protected = 'Protected receivables from an earlier turn';
+        DB::table('agent_conversation_messages')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'conversation_id' => $thread,
+            'agent' => 'erp_copilot',
+            'status' => 'completed',
+            'role' => 'assistant',
+            'content' => $protected,
+            'attachments' => '[]',
+            'steps' => '[]',
+            'usage' => '[]',
+            'meta' => json_encode(['facts' => [['tool' => 'receivables.outstanding.v1', 'data' => ['protected' => $protected]]]], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+        ]);
+
+        $role = DB::table('roles')->insertGetId(['name' => 'Inventory AI fixture', 'guard_name' => 'web', 'is_active' => true]);
+        foreach (['ai.use', 'products-index'] as $name) {
+            $permission = DB::table('permissions')->where('name', $name)->value('id')
+                ?? DB::table('permissions')->insertGetId(['name' => $name, 'guard_name' => 'web']);
+            DB::table('role_has_permissions')->insert(['role_id' => $role, 'permission_id' => $permission]);
+        }
+        DB::table('company_user')->where('company_id', $this->company->id)->where('user_id', $this->adminUser->id)
+            ->update(['role_id_override' => $role]);
+
+        $this->getJson(route('ai.threads.show', $thread))->assertOk()
+            ->assertJsonPath('messages.0.facts', [])->assertDontSee($protected);
+        $this->configureProvider();
+        Http::fake(['https://provider.example/v1/responses' => Http::response($this->providerResponse($this->providerMessage('Continue'), 20, 3))]);
+        $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'message' => 'Continue'])->assertOk();
+        Http::assertSent(fn (ProviderRequest $request) => !str_contains($request->body(), $protected));
+    }
+
     public function test_sanctum_routes_accept_bearer_tokens_and_workspace_routes_require_sessions(): void
     {
         $token = $this->adminUser->createToken('AI fixture')->plainTextToken;
@@ -371,23 +407,25 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertFalse($report['reconciliation']['is_reconciled']);
 
         $question = 'What is my total customer outstanding balance?';
-        $answer = 'Total receivables balance is 45,000.2512 INR.';
+        $answer = 'The ERP reported a reconciliation difference. Review the figures and warnings below.';
+        $fabricated = 'Total receivables balance is 99,999,999 INR.';
         $followUp = 'What about the same date?';
         Http::fake(['https://provider.example/v1/responses' => Http::sequence()
             ->push($this->providerResponse([
                 'type' => 'function_call', 'call_id' => 'call_receivables', 'name' => 'CustomerOutstanding',
                 'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
             ], 111, 17))
-            ->push($this->providerResponse($this->providerMessage($answer), 303, 23))
+            ->push($this->providerResponse($this->providerMessage($fabricated), 303, 23))
             ->push($this->providerResponse([
                 'type' => 'function_call', 'call_id' => 'call_followup', 'name' => 'CustomerOutstanding', 'arguments' => '{}',
             ], 175, 13))
-            ->push($this->providerResponse($this->providerMessage($answer), 370, 22))]);
+            ->push($this->providerResponse($this->providerMessage($fabricated), 370, 22))]);
 
         $response = $this->postJson(route('ai.chat'), ['message' => $question, 'options' => ['model' => 'unapproved']]);
         $response->assertOk();
         $response->assertJson([
             'status' => 'completed',
+            'answer_status' => 'unreconciled',
             'message' => $answer,
             'scope' => $this->workspaceContext(),
             'usage' => ['input_tokens' => 414, 'output_tokens' => 40, 'tool_count' => 1],
@@ -408,6 +446,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertDatabaseHas('ai_tool_invocations', ['run_id' => $runId, 'tool_key' => 'receivables.outstanding.v1', 'status' => 'ok']);
         $this->assertDatabaseHas('ai_model_invocations', ['run_id' => $runId, 'step_number' => 1, 'status' => 'completed']);
         $this->assertDatabaseHas('ai_model_invocations', ['run_id' => $runId, 'step_number' => 2, 'status' => 'completed']);
+        $this->assertSame(2, (int) DB::table('ai_model_invocations')->where('run_id', $runId)->sum('http_attempts'));
         $this->assertDatabaseHas('ai_usage_counters', [
             'company_id' => $this->company->id, 'user_id' => $this->adminUser->id, 'request_count' => 1,
             'input_tokens' => 414, 'output_tokens' => 40, 'reserved_tokens' => 0,
@@ -503,6 +542,34 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertSame('limited', $rpmUsage['status']);
 
         RateLimiter::clear('ai:rpm:nvidia');
+    }
+
+    public function test_nvidia_retries_share_provider_bucket_and_count_separately_from_steps(): void
+    {
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        config([
+            'erp_ai.provider' => 'nvidia',
+            'erp_ai.model' => 'deepseek-ai/deepseek-v4.1-flash',
+            'erp_ai.nvidia_rpm_limit' => 3,
+            'ai.providers.nvidia.url' => 'https://nim.example/v1',
+            'ai.providers.nvidia.key' => 'fixture-key',
+        ]);
+        RateLimiter::clear('ai:rpm:nvidia');
+        Http::preventStrayRequests();
+        Http::fake(['https://nim.example/v1/chat/completions' => Http::sequence()
+            ->push(['error' => ['message' => 'fixture overload']], 503, ['Retry-After' => '0'])
+            ->push([
+                'id' => 'fixture-completion',
+                'model' => 'deepseek-ai/deepseek-v4.1-flash',
+                'choices' => [['message' => ['role' => 'assistant', 'content' => 'Fixture response'], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 18, 'completion_tokens' => 3, 'total_tokens' => 21],
+            ])]);
+
+        $run = $this->postJson(route('ai.chat'), ['message' => 'What can you do?'])->assertOk()->json('run_id');
+        Http::assertSentCount(2);
+        $this->assertDatabaseHas('ai_model_invocations', ['run_id' => $run, 'step_number' => 1, 'http_attempts' => 2]);
+        $this->assertSame(2, app(ApprovedModelGateway::class)->getProviderRpmUsage('deepseek')['current']);
+        $this->getJson(route('ai.monitoring'))->assertOk()->assertJsonPath('today.provider_retries', 1);
     }
 
     public function test_chat_turn_persists_model_invocation_steps(): void

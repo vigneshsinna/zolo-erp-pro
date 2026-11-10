@@ -100,7 +100,12 @@ class AiFoundationTest extends TestCase
     public function test_erp_tool_executor_enforces_authorization(): void
     {
         $manifest = new AiToolManifest();
-        $authorizer = new AiPrincipalAuthorizer();
+        $authorizer = new class extends AiPrincipalAuthorizer {
+            public function refresh(AiPrincipal $principal): AiPrincipal { return $principal; }
+        };
+        $gate = new class extends AiFeatureGate {
+            public function isEnabledForCompany(int $companyId): bool { return true; }
+        };
         $auditRecorder = new class extends AiAuditRecorder {
             public array $logs = [];
             public function recordInvocation(string $runId, string $toolKey, array $input, ErpToolResult $result, int $durationMs): void {
@@ -128,7 +133,7 @@ class AiFoundationTest extends TestCase
         };
 
         $manifest->register($handler);
-        $executor = new ErpToolExecutor($manifest, $authorizer, $auditRecorder);
+        $executor = new ErpToolExecutor($manifest, $authorizer, $auditRecorder, $gate);
 
         // Permitted principal
         $authorizedPrincipal = new AiPrincipal(

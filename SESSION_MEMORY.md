@@ -1,5 +1,13 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Copilot stabilization and Goldfish review — 2026-11-10 (`refactor/erp-copilot-stabilization`)
+
+- Started from `origin/feature/ai-agent-foundation` at `a1477a679dc0f9ea98ce8cc2d531a1c997e20864`. Preserved the supplied plan and revised it after three fresh-context Goldfish reviews. Decisions are recorded in `docs/zoloerp-ai-agent-implementation/goldfish_review_report.md`.
+- Part A quarantines every proposal route and the model proposal tool. Proposal data remains in its original tables. A company-scoped, read-only inventory found zero unexpired pending proposals across five active local companies.
+- Added explicit fiscal dates and resource checks, scoped sales and stock aggregation, commercial order lifecycle reads, corrected GST and payables totals, hardened history and rendering, and counted provider HTTP attempts independently from SDK steps. The telemetry migration ran on the disposable AI schema.
+- Verification before adapter migration. Baseline AI suite 56 tests, 337 assertions. Part A AI suite 58 tests, 383 assertions on MySQL 8.4.0 and PHP 8.5.12. Industry flow 7 tests, 100 assertions in its own suite. The combined fixture run passed 21 tests and failed three Industry Flow page checks because the cross-suite schema cache retained a missing `company_menu_switches` table. Running Industry Flow independently cleared all three. Composer validation, platform checks and locked audit passed. Playwright verified desktop and mobile Copilot history, cards, links and error states using the rendered workspace and synthetic responses.
+- Next step. Extend the existing manifest and migrate the read tools through one SDK adapter. Keep proposal and approval execution separate.
+
 ## Remaining Phases Complete: P2 Operational Specialists, P3 Governed Action Proposals Engine & P4 Document Intelligence & Grounded Knowledge — 2026-11-10 (`feature/ai-agent-foundation`)
 
 - **Sprint Goal & Scope:**

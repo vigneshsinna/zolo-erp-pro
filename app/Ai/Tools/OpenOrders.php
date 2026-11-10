@@ -37,15 +37,15 @@ class OpenOrders implements Tool
 
     public function handle(Request $request): string
     {
-        $input = $request->all();
-        /** @var ErpToolExecutor $executor */
+        $rawInput = $request->all();
+
         $executor = app(ErpToolExecutor::class);
 
         $result = $executor->execute(
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'orders.open.v1',
-            rawInput: $input
+            rawInput: $rawInput
         );
 
         return (string) json_encode($result->toArray(), JSON_THROW_ON_ERROR);

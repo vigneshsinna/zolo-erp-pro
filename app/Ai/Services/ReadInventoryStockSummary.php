@@ -11,7 +11,10 @@ use App\Models\Currency;
 use App\Models\Product;
 use App\Models\Warehouse;
 use App\Services\Inventory\InventoryAvailabilityService;
-use App\Services\Inventory\UomConversionService;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\Inventory\InventoryPolicy;
+use App\Services\Platform\CompanyContext;
+use App\Support\LedgerAmount;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 
@@ -23,7 +26,7 @@ class ReadInventoryStockSummary
 {
     public function __construct(
         protected InventoryAvailabilityService $availabilityService,
-        protected UomConversionService $uom
+        protected InventoryPolicy $inventoryPolicy
     ) {}
 
     public function execute(
@@ -39,24 +42,13 @@ class ReadInventoryStockSummary
         // 1. Authoritative Warehouse Scope Resolution (SEC-01 & SEC-02)
         $warehouseName = null;
         if ($warehouseId !== null) {
-            $warehouse = Warehouse::where('company_id', $companyId)->find($warehouseId);
+            $warehouse = Warehouse::where('company_id', $companyId)
+                ->where('branch_id', $principal->branchId)->where('is_active', true)->find($warehouseId);
             if (!$warehouse) {
                 return ErpToolResult::error(
                     toolKey: 'inventory.stock_summary.v1',
                     errorCode: 'AI_TOOL_FORBIDDEN',
                     message: "Warehouse ID {$warehouseId} does not exist or is not accessible.",
-                    scope: [
-                        'company_id' => $companyId,
-                        'branch_id' => $principal->branchId,
-                        'warehouse_id' => $warehouseId,
-                    ]
-                );
-            }
-            if ($warehouse->branch_id !== null && (int) $warehouse->branch_id !== (int) $principal->branchId) {
-                return ErpToolResult::error(
-                    toolKey: 'inventory.stock_summary.v1',
-                    errorCode: 'AI_TOOL_FORBIDDEN',
-                    message: "Warehouse '{$warehouse->name}' belongs to a different branch and is not accessible.",
                     scope: [
                         'company_id' => $companyId,
                         'branch_id' => $principal->branchId,
@@ -70,14 +62,11 @@ class ReadInventoryStockSummary
             // Default to warehouses authorized for the actor's branch (fail-closed against cross-branch aggregation)
             $targetWarehouses = Warehouse::where('company_id', $companyId)
                 ->where('is_active', true)
-                ->where(function ($q) use ($principal) {
-                    $q->where('branch_id', $principal->branchId)
-                      ->orWhereNull('branch_id');
-                })
+                ->where('branch_id', $principal->branchId)
                 ->get();
 
             if ($targetWarehouses->isEmpty()) {
-                $warnings[] = "No active warehouses are assigned to the current branch.";
+                return ErpToolResult::denied('inventory.stock_summary.v1', 'No active warehouses are assigned to the selected branch.', 'AI_TOOL_FORBIDDEN');
             }
         }
 
@@ -85,7 +74,7 @@ class ReadInventoryStockSummary
         $productsQuery = Product::where('company_id', $companyId)
             ->where('is_active', true)
             ->where(function ($q) {
-                $q->whereNull('type')->orWhere('type', '!=', 'service');
+                $q->whereNull('type')->orWhereNotIn('type', ['service', 'digital']);
             });
 
         if ($productQuery !== null && trim($productQuery) !== '') {
@@ -96,157 +85,101 @@ class ReadInventoryStockSummary
             });
         }
 
-        $allProducts = $productsQuery->with('unit')->get();
+        $context = new CompanyContext($companyId, $principal->branchId, $principal->financialYearId);
+        $allowed = app(CommercialPermission::class)->allowed(['purchases-index', 'warehouse-stock-report'], $context, $principal->actorId);
+        $canSeeCost = in_array('purchases-index', $allowed, true);
+        $valuation = $this->inventoryPolicy->valuation($companyId);
+        $warehouseIds = $targetWarehouses->pluck('id')->all();
+        $company = Company::findOrFail($companyId);
+        $currency = Currency::find($company->base_currency_id)?->code ?? 'INR';
 
-        // 3. Resolve Company Base Currency
-        $company = Company::find($companyId);
-        $currencyCode = 'INR';
-        if ($company && $company->base_currency_id) {
-            $currencyCode = Currency::find($company->base_currency_id)?->code ?? 'INR';
-        }
+        $totals = ['tracked' => 0, 'in_stock' => 0, 'value' => BigDecimal::zero(), 'unreconciled' => false];
+        $units = $top = [];
+        $productsQuery->with(['unit' => fn ($q) => $q->where('company_id', $companyId)])
+            ->chunkById(250, function ($products) use ($context, $warehouseIds, $canSeeCost, $valuation, $limit, &$totals, &$units, &$top): void {
+                $stock = $this->availabilityService->forCatalogBatch($context, $products, $warehouseIds);
+                foreach ($products as $product) {
+                    $balance = $stock[$product->id] ?? [];
+                    $onHand = $balance['on_hand'] ?? 0;
+                    $reserved = $balance['reserved'] ?? 0;
+                    $available = $onHand - $reserved;
+                    $unreconciled = $balance['unreconciled'] ?? false;
+                    $totals['tracked']++;
+                    $totals['in_stock'] += (int) ($onHand > 0);
+                    $totals['unreconciled'] = $totals['unreconciled'] || $unreconciled;
 
-        $reportDate = now()->toDateString();
-        $sourceRoute = route('report.warehouseStock', absolute: false);
+                    $unitCode = $product->unit?->unit_code ?: ($product->unit?->unit_name ?: 'Unknown unit');
+                    $unitKey = $product->unit ? 'unit:' . $product->unit_id : 'product:' . $product->id;
+                    $units[$unitKey] ??= ['unit' => $unitCode, 'on_hand' => 0, 'reserved' => 0, 'available' => 0, 'product_count' => 0];
+                    $units[$unitKey]['on_hand'] += $onHand;
+                    $units[$unitKey]['reserved'] += $reserved;
+                    $units[$unitKey]['available'] += $available;
+                    $units[$unitKey]['product_count']++;
 
-        if ($allProducts->isEmpty()) {
-            return ErpToolResult::ok(
-                toolKey: 'inventory.stock_summary.v1',
-                scope: [
-                    'company_id' => $companyId,
-                    'branch_id' => $principal->branchId,
-                    'warehouse_id' => $warehouseId,
-                ],
-                data: [
-                    'total_products_tracked' => 0,
-                    'in_stock_count' => 0,
-                    'out_of_stock_count' => 0,
-                    'total_stock_value' => '0.00',
-                    'currency' => $currencyCode,
-                    'warehouse' => $warehouseName ?? 'All Warehouses',
-                    'units_summary' => [],
-                    'top_products' => [],
-                ],
-                sourceRefs: [$sourceRoute],
-                warnings: $productQuery !== null
-                    ? ["No active products matched query '{$productQuery}'."]
-                    : ['No active physical products found for this company.'],
-                asOf: $reportDate,
-                reconciled: true
-            );
-        }
-
-        // 4. Calculate stock metrics per product
-        $productDetails = [];
-        $unitsSummary = [];
-        $inStockCount = 0;
-        $outOfStockCount = 0;
-        $totalValuation = BigDecimal::zero();
-        $hasLedgerVariance = false;
-
-        foreach ($allProducts as $product) {
-            $onHand = 0.0;
-            $reserved = 0.0;
-            $available = 0.0;
-            $ledger = 0.0;
-
-            if ($warehouseId !== null) {
-                $avail = $this->availabilityService->forProduct(
-                    productId: $product->id,
-                    warehouseId: $warehouseId
-                );
-                $onHand = (float) $avail['on_hand'];
-                $reserved = (float) $avail['reserved'];
-                $available = (float) $avail['available'];
-                $ledger = (float) $avail['ledger_on_hand'];
-            } else {
-                if ($targetWarehouses->isEmpty()) {
-                    $onHand = $reserved = $available = $ledger = 0.0;
-                } else {
-                    foreach ($targetWarehouses as $targetWh) {
-                        $avail = $this->availabilityService->forProduct(
-                            productId: $product->id,
-                            warehouseId: $targetWh->id
-                        );
-                        $onHand += (float) $avail['on_hand'];
-                        $reserved += (float) $avail['reserved'];
-                        $available += (float) $avail['available'];
-                        $ledger += (float) $avail['ledger_on_hand'];
+                    $value = $unitCost = null;
+                    if ($canSeeCost && !$unreconciled) {
+                        if ($valuation === 'standard') {
+                            $unitCost = BigDecimal::of((string) ($product->cost ?? '0'));
+                            $value = $unitCost->multipliedBy(LedgerAmount::decimal($onHand));
+                        } else {
+                            $value = BigDecimal::of(LedgerAmount::decimal($balance['value'] ?? 0));
+                            $unitCost = $onHand > 0 ? $value->dividedBy(LedgerAmount::decimal($onHand), 6, RoundingMode::HalfUp) : null;
+                        }
+                        $totals['value'] = $totals['value']->plus($value);
                     }
+
+                    $top[] = [
+                        'product_id' => $product->id,
+                        'code' => $product->code,
+                        'name' => $product->name,
+                        'unit' => $unitCode,
+                        'on_hand' => $onHand / 10000,
+                        'reserved' => $reserved / 10000,
+                        'available' => $available / 10000,
+                        'unit_cost' => $unitCost === null ? null : (string) $unitCost,
+                        'stock_value' => $value === null ? null : (string) $value->toScale(2, RoundingMode::HalfUp),
+                    ];
                 }
-            }
+                usort($top, static fn ($a, $b) => ($b['available'] <=> $a['available']) ?: ($a['product_id'] <=> $b['product_id']));
+                $top = array_slice($top, 0, $limit);
+            });
 
-            if ($onHand != $ledger) {
-                $hasLedgerVariance = true;
-            }
-
-            if ($onHand > 0) {
-                $inStockCount++;
-            } else {
-                $outOfStockCount++;
-            }
-
-            $unitCode = $product->unit?->unit_code ?: ($product->unit?->unit_name ?: 'Units');
-            $cost = BigDecimal::of((string) ($product->cost ?? '0.00'));
-            $val = BigDecimal::of((string) max(0.0, $onHand))->multipliedBy($cost);
-            $totalValuation = $totalValuation->plus($val);
-
-            // Group strictly by unit of measure so incompatible units are never added
-            if (!isset($unitsSummary[$unitCode])) {
-                $unitsSummary[$unitCode] = [
-                    'unit' => $unitCode,
-                    'on_hand' => 0.0,
-                    'reserved' => 0.0,
-                    'available' => 0.0,
-                    'product_count' => 0,
-                ];
-            }
-            $unitsSummary[$unitCode]['on_hand'] = round($unitsSummary[$unitCode]['on_hand'] + $onHand, 4);
-            $unitsSummary[$unitCode]['reserved'] = round($unitsSummary[$unitCode]['reserved'] + $reserved, 4);
-            $unitsSummary[$unitCode]['available'] = round($unitsSummary[$unitCode]['available'] + $available, 4);
-            $unitsSummary[$unitCode]['product_count']++;
-
-            $productDetails[] = [
-                'product_id' => $product->id,
-                'code' => $product->code,
-                'name' => $product->name,
-                'unit' => $unitCode,
-                'on_hand' => round($onHand, 4),
-                'reserved' => round($reserved, 4),
-                'available' => round($available, 4),
-                'unit_cost' => (string) $cost,
-                'stock_value' => (string) $val->toScale(2, RoundingMode::HalfUp),
-            ];
+        if ($totals['tracked'] === 0) {
+            $warnings[] = 'No active inventory products matched this request.';
         }
-
-        if ($hasLedgerVariance) {
-            $warnings[] = 'Stock movement history differs from current on-hand quantities for some items. Physical stock count recommended.';
+        if ($totals['unreconciled']) {
+            $warnings[] = 'Stock projections differ from the movement ledger. The total valuation is unavailable until stock reconciles.';
         }
-
-        // Sort products by available stock descending
-        usort($productDetails, fn ($a, $b) => $b['available'] <=> $a['available']);
-        $topProducts = array_slice($productDetails, 0, $limit);
 
         return ErpToolResult::ok(
             toolKey: 'inventory.stock_summary.v1',
             scope: [
                 'company_id' => $companyId,
                 'branch_id' => $principal->branchId,
+                'financial_year_id' => $principal->financialYearId,
                 'warehouse_id' => $warehouseId,
             ],
             data: [
-                'total_products_tracked' => count($allProducts),
-                'in_stock_count' => $inStockCount,
-                'out_of_stock_count' => $outOfStockCount,
-                'total_stock_value' => (string) $totalValuation->toScale(2, RoundingMode::HalfUp),
-                'currency' => $currencyCode,
-                'warehouse' => $warehouseName ?? 'All Warehouses',
-                'units_summary' => array_values($unitsSummary),
-                'top_products' => $topProducts,
+                'total_products_tracked' => $totals['tracked'],
+                'in_stock_count' => $totals['in_stock'],
+                'out_of_stock_count' => $totals['tracked'] - $totals['in_stock'],
+                'total_stock_value' => $canSeeCost && !$totals['unreconciled'] ? (string) $totals['value']->toScale(2, RoundingMode::HalfUp) : null,
+                'valuation_visible' => $canSeeCost,
+                'currency' => $currency,
+                'warehouse' => $warehouseName ?? 'Active Branch Warehouses',
+                'units_summary' => array_values(array_map(static function (array $unit): array {
+                    foreach (['on_hand', 'reserved', 'available'] as $key) {
+                        $unit[$key] /= 10000;
+                    }
+                    return $unit;
+                }, array_slice($units, 0, 50))),
+                'top_products' => $top,
             ],
-            sourceRefs: [$sourceRoute],
+            sourceRefs: in_array('warehouse-stock-report', $allowed, true) ? [route('report.warehouseStock', absolute: false)] : [],
             warnings: $warnings,
-            asOf: $reportDate,
-            reconciled: !$hasLedgerVariance
+            asOf: now($company->timezone)->toDateString(),
+            reconciled: !$totals['unreconciled'],
+            rowCount: count($top),
         );
     }
 }

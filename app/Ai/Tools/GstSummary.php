@@ -20,7 +20,7 @@ class GstSummary implements Tool
 
     public function name(): string
     {
-        return 'tax.gst_summary.v1';
+        return 'tax_gst_summary';
     }
 
     public function description(): string
@@ -38,8 +38,7 @@ class GstSummary implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $from = isset($request['from']) && is_string($request['from']) ? trim($request['from']) : null;
-        $to = isset($request['to']) && is_string($request['to']) ? trim($request['to']) : null;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -47,10 +46,7 @@ class GstSummary implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'tax.gst_summary.v1',
-            rawInput: array_filter([
-                'from' => $from,
-                'to' => $to,
-            ], fn ($v) => $v !== null)
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

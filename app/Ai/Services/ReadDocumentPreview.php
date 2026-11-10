@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\Supplier;
+use App\Services\Commercial\CommercialPermission;
 use App\Services\Platform\CompanyContext;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -33,18 +34,28 @@ class ReadDocumentPreview
             financialYearId: $principal->financialYearId
         );
 
+        if (($documentId === null) === ($referenceNo === null || trim($referenceNo) === '')) {
+            return ErpToolResult::denied('documents.preview.v1', 'Provide exactly one document ID or reference number.', 'AI_INPUT_VALIDATION_FAILED');
+        }
+
+        $permission = match ($documentType) {
+            'sale', 'invoice' => 'sales-index',
+            'purchase' => 'purchases-index',
+            default => null,
+        };
+        if ($permission === null || !app(CommercialPermission::class)->allows($permission, $context, $principal->actorId)) {
+            return ErpToolResult::denied('documents.preview.v1', 'Document not found or access denied.', 'AI_TOOL_FORBIDDEN');
+        }
+
         if ($documentType === 'sale' || $documentType === 'invoice') {
-            $query = Sale::visibleIn($context);
+            $query = Sale::visibleIn($context)
+                ->where('branch_id', $context->branchId)
+                ->where('financial_year_id', $context->financialYearId)
+                ->whereNull('reversed_at');
             if ($documentId !== null) {
                 $query->where('id', $documentId);
-            } elseif ($referenceNo !== null && trim($referenceNo) !== '') {
-                $query->where('reference_no', trim($referenceNo));
             } else {
-                return ErpToolResult::error(
-                    'documents.preview.v1',
-                    'Either document_id or reference_no must be provided.',
-                    'AI_INPUT_VALIDATION_FAILED'
-                );
+                $query->where('reference_no', trim($referenceNo));
             }
 
             $sale = $query->first();
@@ -56,7 +67,7 @@ class ReadDocumentPreview
                 );
             }
 
-            $customer = Customer::find($sale->customer_id);
+            $customer = Customer::forCompany($context)->find($sale->customer_id);
             $viewUrl = Route::has('sale.invoice') ? route('sale.invoice', $sale->id, absolute: false) : "/sales/{$sale->id}";
 
             $data = [
@@ -67,7 +78,6 @@ class ReadDocumentPreview
                 'party' => [
                     'type' => 'customer',
                     'name' => $customer?->name ?? 'Unknown Customer',
-                    'phone' => $customer?->phone_number ?? '',
                 ],
                 'items_count' => (int) ($sale->item ?? 1),
                 'total_qty' => (float) ($sale->total_qty ?? 0),
@@ -94,21 +104,15 @@ class ReadDocumentPreview
         }
 
         if ($documentType === 'purchase') {
-            $query = Purchase::where('company_id', $principal->companyId)
-                ->where(function ($q) use ($principal) {
-                    $q->where('branch_id', $principal->branchId)->orWhereNull('branch_id');
-                });
+            $query = Purchase::visibleIn($context)
+                ->where('branch_id', $context->branchId)
+                ->where('financial_year_id', $context->financialYearId)
+                ->whereNull('reversed_at');
 
             if ($documentId !== null) {
                 $query->where('id', $documentId);
-            } elseif ($referenceNo !== null && trim($referenceNo) !== '') {
-                $query->where('reference_no', trim($referenceNo));
             } else {
-                return ErpToolResult::error(
-                    'documents.preview.v1',
-                    'Either document_id or reference_no must be provided.',
-                    'AI_INPUT_VALIDATION_FAILED'
-                );
+                $query->where('reference_no', trim($referenceNo));
             }
 
             $purchase = $query->first();
@@ -120,7 +124,7 @@ class ReadDocumentPreview
                 );
             }
 
-            $supplier = Supplier::find($purchase->supplier_id);
+            $supplier = Supplier::forCompany($context)->find($purchase->supplier_id);
             $viewUrl = Route::has('purchases.index') ? route('purchases.index', absolute: false) : "/purchases/{$purchase->id}";
 
             $data = [

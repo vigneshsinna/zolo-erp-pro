@@ -176,8 +176,8 @@ class SprintASecurityAndLineageTest extends TestCase
 
         // Put 50 units in Warehouse 1 (Branch 1) and 30 units in Warehouse 2 (Branch 2)
         DB::table('product_warehouse')->insert([
-            ['product_id' => $product->id, 'warehouse_id' => $whBranch1->id, 'qty' => 50],
-            ['product_id' => $product->id, 'warehouse_id' => $whBranch2->id, 'qty' => 30],
+            ['company_id' => $this->companyA->id, 'product_id' => $product->id, 'warehouse_id' => $whBranch1->id, 'qty' => 50],
+            ['company_id' => $this->companyA->id, 'product_id' => $product->id, 'warehouse_id' => $whBranch2->id, 'qty' => 30],
         ]);
 
         $principalBranch1 = new AiPrincipal(
@@ -200,7 +200,7 @@ class SprintASecurityAndLineageTest extends TestCase
         $resForeign = json_decode((string) $tool->handle(new Request(['warehouse_id' => $whBranch2->id])), true);
         $this->assertSame('error', $resForeign['status']);
         $this->assertSame('AI_TOOL_FORBIDDEN', $resForeign['error_code']);
-        $this->assertStringContainsString('belongs to a different branch', $resForeign['message']);
+        $this->assertStringContainsString('does not exist or is not accessible', $resForeign['message']);
 
         // 3. Querying non-existent warehouse: MUST FAIL CLOSED with AI_TOOL_FORBIDDEN (SEC-02)
         $resNonExistent = json_decode((string) $tool->handle(new Request(['warehouse_id' => 999999])), true);

@@ -171,22 +171,10 @@ class AiPrincipalFactory
         if ($this->manifest->has('orders.open.v1')) {
             $handler = $this->manifest->get('orders.open.v1');
             $required = $handler->requiredPermissions();
-            $orderPermissions = ['sales-index', 'purchases-index', 'order-report', 'due-report'];
+            $orderPermissions = ['sales-index', 'purchases-index'];
             $allowed = $this->permissions->allowed([...$required, ...$orderPermissions], $context, $user->id);
 
             if (array_diff($required, $allowed) === [] && array_intersect($orderPermissions, $allowed) !== []) {
-                $permitted[] = $handler->key();
-            }
-        }
-
-        // 10. Action Proposals Draft Tool (P3)
-        if ($this->manifest->has('proposals.draft.v1')) {
-            $handler = $this->manifest->get('proposals.draft.v1');
-            $required = $handler->requiredPermissions();
-            $proposalPermissions = ['sales-add', 'quotes-add', 'due-report', 'sales-index'];
-            $allowed = $this->permissions->allowed([...$required, ...$proposalPermissions], $context, $user->id);
-
-            if (array_diff($required, $allowed) === [] && array_intersect($proposalPermissions, $allowed) !== []) {
                 $permitted[] = $handler->key();
             }
         }
@@ -195,7 +183,7 @@ class AiPrincipalFactory
         if ($this->manifest->has('documents.preview.v1')) {
             $handler = $this->manifest->get('documents.preview.v1');
             $required = $handler->requiredPermissions();
-            $docPermissions = ['sales-index', 'purchases-index', 'accounting.reports.view'];
+            $docPermissions = ['sales-index', 'purchases-index'];
             $allowed = $this->permissions->allowed([...$required, ...$docPermissions], $context, $user->id);
 
             if (array_diff($required, $allowed) === [] && array_intersect($docPermissions, $allowed) !== []) {

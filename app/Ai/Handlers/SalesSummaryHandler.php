@@ -37,18 +37,24 @@ class SalesSummaryHandler implements ErpToolHandlerInterface
             'properties' => [
                 'from' => [
                     'type' => 'string',
+                    'format' => 'date',
                     'description' => 'Start date for sales period in YYYY-MM-DD format (must fall inside active financial year).',
                 ],
                 'to' => [
                     'type' => 'string',
+                    'format' => 'date',
                     'description' => 'End date for sales period in YYYY-MM-DD format (defaults to today or FY end date).',
                 ],
                 'warehouse_id' => [
                     'type' => 'integer',
+                    'minimum' => 1,
                     'description' => 'Optional warehouse ID filter. Must belong to the active branch.',
                 ],
                 'limit' => [
                     'type' => 'integer',
+                    'minimum' => 1,
+                    'maximum' => 50,
+                    'default' => 10,
                     'description' => 'Maximum top products to return (default 10, max 50).',
                 ],
             ],

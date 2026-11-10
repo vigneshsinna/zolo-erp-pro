@@ -47,20 +47,7 @@ class CustomerInvoices implements Tool
      */
     public function handle(Request $request): Stringable|string
     {
-        $customerId = is_numeric($request['customer_id'] ?? null) ? (int) $request['customer_id'] : null;
-
-        $rawAsOf = $request['as_of'] ?? null;
-        $asOf = null;
-        if (is_string($rawAsOf) && trim($rawAsOf) !== '') {
-            $rawAsOf = trim($rawAsOf);
-            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $rawAsOf, $matches)) {
-                $asOf = $matches[0];
-            }
-        }
-
-        $rawStatus = (string) ($request['status'] ?? 'open');
-        $status = in_array($rawStatus, ['open', 'all', 'overdue'], true) ? $rawStatus : 'open';
-        $limit = is_numeric($request['limit'] ?? null) ? max(1, min(50, (int) $request['limit'])) : 20;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -68,12 +55,7 @@ class CustomerInvoices implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'receivables.invoices.v1',
-            rawInput: array_filter([
-                'customer_id' => $customerId,
-                'as_of' => $asOf,
-                'status' => $status,
-                'limit' => $limit,
-            ], fn ($v) => $v !== null)
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

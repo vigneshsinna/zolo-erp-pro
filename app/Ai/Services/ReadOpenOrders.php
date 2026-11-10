@@ -8,15 +8,13 @@ use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\ErpToolResult;
 use App\Models\Company;
 use App\Models\Currency;
-use App\Models\Customer;
 use App\Models\Purchase;
-use App\Models\Sale;
-use App\Models\Supplier;
+use App\Models\SalesOrder;
+use App\Services\Commercial\CommercialPermission;
 use App\Services\Platform\CompanyContext;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route;
 
 /**
  * Authoritative read facade for Open Orders, pending fulfilment, and unbilled purchase/sale orders.
@@ -35,118 +33,83 @@ class ReadOpenOrders
             financialYearId: $principal->financialYearId
         );
 
-        $limit = max(1, min(50, $limit));
-
-        $company = Company::find($principal->companyId);
-        $currencyCode = 'INR';
-        if ($company && $company->base_currency_id) {
-            $currencyCode = Currency::find($company->base_currency_id)?->code ?? 'INR';
+        $allowed = app(CommercialPermission::class)->allowed(['sales-index', 'purchases-index'], $context, $principal->actorId);
+        $included = array_values(array_filter(['sale', 'purchase'], fn ($kind) =>
+            in_array($kind === 'sale' ? 'sales-index' : 'purchases-index', $allowed, true)
+            && in_array($type, ['all', $kind], true)));
+        if ($included === []) {
+            return ErpToolResult::denied('orders.open.v1', 'Access denied to the requested order type.', 'AI_TOOL_FORBIDDEN');
         }
 
-        $orders = [];
-        $totalSalesRemaining = BigDecimal::zero();
-        $totalPurchasesRemaining = BigDecimal::zero();
+        $company = Company::findOrFail($principal->companyId);
+        $currency = Currency::find($company->base_currency_id)?->code ?? 'INR';
+        $orders = $sources = $warnings = [];
+        $summary = ['total_open_orders' => 0, 'total_sales_value' => null, 'total_purchase_value' => null];
+        $money = static fn ($value): string => (string) BigDecimal::of((string) ($value ?? 0))->toScale(2, RoundingMode::HalfUp);
 
-        // 1. Open Sales Orders / Pending Deliveries
-        if (in_array($type, ['all', 'sale'], true)) {
-            $sales = Sale::visibleIn($context)
-                ->where('sale_status', '!=', 1) // status 1 is completed/delivered
-                ->whereNull('deleted_at')
-                ->whereNull('reversed_at')
-                ->orderByDesc('id')
-                ->limit($limit)
-                ->get();
+        foreach ($included as $kind) {
+            $sale = $kind === 'sale';
+            $table = $sale ? 'sales_orders' : 'purchases';
+            $party = $sale ? 'customer' : 'supplier';
+            $dateColumn = $sale ? 'business_date' : 'created_at';
+            $query = $sale ? SalesOrder::visibleIn($context)->whereIn('sales_orders.status', ['open', 'partial'])
+                : Purchase::visibleIn($context)->where('purchases.status', 4)->whereNull('purchases.reversed_at')
+                    ->whereNull('purchases.attributes_json->fulfilled_at');
+            $query->where("$table.branch_id", $context->branchId)->where("$table.financial_year_id", $context->financialYearId);
 
-            foreach ($sales as $sale) {
-                $customer = Customer::find($sale->customer_id);
-                $grandTotal = BigDecimal::of((string) ($sale->grand_total ?? 0))->toScale(2, RoundingMode::HalfUp);
-                $paid = BigDecimal::of((string) ($sale->paid_amount ?? 0))->toScale(2, RoundingMode::HalfUp);
-                $openAmt = $grandTotal->minus($paid);
+            // Match OrderLifecycleService's remaining billing quantities for all authorized orders.
+            $billing = DB::table('commercial_order_allocations')->where('company_id', $context->companyId)
+                ->where('stage', 'billing')->whereNull('released_at')->groupBy('order_item_id')
+                ->selectRaw('order_item_id, SUM(qty_base - returned_qty_base) AS billed');
+            $items = DB::table('commercial_order_items as item')->where('item.company_id', $context->companyId)
+                ->where('item.order_kind', $kind)->whereIn('item.order_id', (clone $query)->select("$table.id"))
+                ->leftJoinSub($billing, 'billing', 'billing.order_item_id', '=', 'item.id')->groupBy('item.order_id')
+                ->selectRaw('item.order_id, COUNT(*) AS line_count, SUM(item.qty * item.unit_rate) AS ordered_value,
+                    SUM(GREATEST(0, item.qty_base - item.cancelled_qty_base - COALESCE(billing.billed, 0))
+                        / NULLIF(item.qty_base, 0) * item.qty * item.unit_rate) AS remaining_value');
+            $query->leftJoinSub($items, 'lines', 'lines.order_id', '=', "$table.id");
+            $rate = $sale ? '1' : 'COALESCE(NULLIF(purchases.exchange_rate, 0), 1)';
+            $totals = (clone $query)->toBase()->selectRaw("COUNT(*) AS total, SUM(lines.remaining_value / ($rate)) AS remaining,
+                SUM(CASE WHEN lines.remaining_value IS NULL THEN 1 ELSE 0 END) AS incomplete")->first();
 
-                $totalSalesRemaining = $totalSalesRemaining->plus($grandTotal);
+            $summary['total_open_orders'] += (int) $totals->total;
+            $summary[$sale ? 'total_sales_value' : 'total_purchase_value'] = $totals->incomplete ? null : $money($totals->remaining);
+            if ($totals->incomplete) {
+                $warnings[] = 'Some open orders have no lifecycle lines. Their remaining value is unavailable.';
+            }
+            $sources[] = route('commercial.orders.index', ['kind' => $kind], absolute: false);
+            $rows = $query->select("$table.*", 'lines.line_count')
+                ->selectRaw("lines.ordered_value / ($rate) AS ordered_value, lines.remaining_value / ($rate) AS remaining_value")
+                ->with([$party => fn ($q) => $q->forCompany($context)])
+                ->orderByDesc("$table.$dateColumn")->orderByDesc("$table.id")->limit($limit)->get();
 
+            foreach ($rows as $order) {
                 $orders[] = [
-                    'order_type' => 'sale',
-                    'order_id' => (int) $sale->id,
-                    'reference_no' => $sale->reference_no,
-                    'date' => substr((string) $sale->created_at, 0, 10),
-                    'party' => [
-                        'type' => 'customer',
-                        'id' => (int) $sale->customer_id,
-                        'name' => $customer?->name ?? 'Unknown Customer',
-                    ],
-                    'items_count' => (int) ($sale->item ?? 1),
-                    'total_qty' => (float) ($sale->total_qty ?? 0),
-                    'grand_total' => (string) $grandTotal,
-                    'open_balance' => (string) $openAmt,
-                    'status' => $sale->sale_status == 2 ? 'pending' : ($sale->sale_status == 3 ? 'draft' : 'in_progress'),
-                    'source_link' => Route::has('sale.invoice') ? route('sale.invoice', $sale->id, absolute: false) : "/sales/{$sale->id}",
+                    'order_type' => $kind,
+                    'order_id' => (int) $order->id,
+                    'reference_no' => $order->reference_no,
+                    'date' => substr((string) $order->{$dateColumn}, 0, 10),
+                    'party' => ['type' => $party, 'id' => (int) $order->{$party . '_id'}, 'name' => $order->{$party}?->name],
+                    'items_count' => (int) $order->line_count,
+                    'grand_total' => $order->ordered_value === null ? null : $money($order->ordered_value),
+                    'open_balance' => $order->remaining_value === null ? null : $money($order->remaining_value),
+                    'status' => $sale ? $order->status : ($order->attributes_json['order_status'] ?? 'open'),
+                    'source_link' => route('commercial.orders.show', ['kind' => $kind, 'id' => $order->id], absolute: false),
                 ];
             }
         }
 
-        // 2. Open Purchase Orders / Pending Receipts
-        if (in_array($type, ['all', 'purchase'], true)) {
-            $purchases = Purchase::where('company_id', $principal->companyId)
-                ->where(function ($q) use ($principal) {
-                    $q->where('branch_id', $principal->branchId)->orWhereNull('branch_id');
-                })
-                ->where('status', '!=', 1) // status 1 is completed/received
-                ->whereNull('deleted_at')
-                ->orderByDesc('id')
-                ->limit($limit)
-                ->get();
-
-            foreach ($purchases as $purchase) {
-                $supplier = Supplier::find($purchase->supplier_id);
-                $grandTotal = BigDecimal::of((string) ($purchase->grand_total ?? 0))->toScale(2, RoundingMode::HalfUp);
-                $paid = BigDecimal::of((string) ($purchase->paid_amount ?? 0))->toScale(2, RoundingMode::HalfUp);
-                $openAmt = $grandTotal->minus($paid);
-
-                $totalPurchasesRemaining = $totalPurchasesRemaining->plus($grandTotal);
-
-                $orders[] = [
-                    'order_type' => 'purchase',
-                    'order_id' => (int) $purchase->id,
-                    'reference_no' => $purchase->reference_no,
-                    'date' => substr((string) $purchase->created_at, 0, 10),
-                    'party' => [
-                        'type' => 'supplier',
-                        'id' => (int) $purchase->supplier_id,
-                        'name' => $supplier?->name ?? 'Unknown Supplier',
-                    ],
-                    'items_count' => (int) ($purchase->item ?? 1),
-                    'total_qty' => (float) ($purchase->total_qty ?? 0),
-                    'grand_total' => (string) $grandTotal,
-                    'open_balance' => (string) $openAmt,
-                    'status' => $purchase->status == 2 ? 'pending' : ($purchase->status == 3 ? 'partial' : 'draft'),
-                    'source_link' => Route::has('purchases.index') ? route('purchases.index', absolute: false) : "/purchases/{$purchase->id}",
-                ];
-            }
-        }
+        usort($orders, static fn ($a, $b) => ($b['date'] <=> $a['date']) ?: ($b['order_id'] <=> $a['order_id']));
 
         return ErpToolResult::ok(
             toolKey: 'orders.open.v1',
-            scope: [
-                'company_id' => $principal->companyId,
-                'branch_id' => $principal->branchId,
-                'financial_year_id' => $principal->financialYearId,
-            ],
-            data: [
-                'currency' => $currencyCode,
-                'summary' => [
-                    'total_open_orders' => count($orders),
-                    'total_sales_value' => (string) $totalSalesRemaining,
-                    'total_purchase_value' => (string) $totalPurchasesRemaining,
-                ],
-                'orders' => array_slice($orders, 0, $limit),
-            ],
-            sourceRefs: ['/sales', '/purchases'],
-            warnings: [],
-            asOf: now()->toDateString(),
-            reconciled: true,
-            rowCount: count($orders)
+            scope: ['company_id' => $context->companyId, 'branch_id' => $context->branchId, 'financial_year_id' => $context->financialYearId],
+            data: ['currency' => $currency, 'included_types' => $included, 'summary' => $summary, 'orders' => array_slice($orders, 0, $limit)],
+            sourceRefs: $sources,
+            warnings: $warnings,
+            asOf: now($company->timezone)->toDateString(),
+            reconciled: $warnings === [],
+            rowCount: min(count($orders), $limit),
         );
     }
 }
-

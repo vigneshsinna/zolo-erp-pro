@@ -20,7 +20,7 @@ class CopilotHelp implements Tool
 
     public function name(): string
     {
-        return 'copilot.help.v1';
+        return 'copilot_help';
     }
 
     public function description(): string
@@ -35,13 +35,14 @@ class CopilotHelp implements Tool
 
     public function handle(Request $request): Stringable|string
     {
+        $rawInput = $request->all();
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
         $result = $executor->execute(
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'copilot.help.v1',
-            rawInput: []
+            rawInput: $rawInput
         );
 
         return (string) json_encode([

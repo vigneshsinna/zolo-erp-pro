@@ -10,7 +10,6 @@ use App\Ai\Tools\CopilotHelp;
 use App\Ai\Tools\CustomerInvoices;
 use App\Ai\Tools\CustomerOutstanding;
 use App\Ai\Tools\DocumentPreview;
-use App\Ai\Tools\DraftProposal;
 use App\Ai\Tools\FinancialStatements;
 use App\Ai\Tools\GstSummary;
 use App\Ai\Tools\InventoryStockSummary;
@@ -67,8 +66,8 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
                 $entityLines[] = "- {$type}: '{$name}' (ID: {$id})" . ($asOf ? " as of {$asOf}" : '');
             }
             $entityContext = " Recent Verified Entities in this conversation:\n" . implode("\n", $entityLines) . "\n"
-                . " When the user asks 'What are the two invoices?', 'Which invoices?', or asks about 'those invoices' or 'this customer', invoke the receivables.invoices.v1 tool with the customer_id and as_of from the verified entities."
-                . " When the user asks about payments for an invoice, invoke receivables.invoice_allocations.v1 with the target open_item_id.";
+                . " When the user asks 'What are the two invoices?', 'Which invoices?', or asks about 'those invoices' or 'this customer', invoke CustomerInvoices with the customer_id and as_of from the verified entities."
+                . " When the user asks about payments for an invoice, invoke InvoiceAllocations with the target open_item_id.";
         }
 
         return 'You are the zoloERP Copilot, an enterprise assistant for zoloERP Pro.'
@@ -82,9 +81,9 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
             . ' The UI automatically renders verified financial Fact Cards and detailed Invoice tables directly from the ERP data payload, '
             . ' so provide a concise, high-level summary rather than generating huge raw markdown tables.'
             . ' If there are reconciliation warnings, control account variances, or stock disparities, state them clearly.'
-            . ' When the user asks to create, draft, or prepare an action (such as a quotation or payment reminder), invoke proposals.draft.v1 so the user receives a reviewable Action Proposal Card to confirm and execute.'
-            . ' When the user asks to view or preview a specific invoice, sale, or purchase, invoke documents.preview.v1.'
-            . ' When asked about company policies, return rules, payment terms, or tax profile, invoke knowledge.query.v1.'
+            . ' Copilot provides read-only ERP information. Action proposals and execution are unavailable.'
+            . ' When the user asks to view or preview a specific invoice, sale, or purchase, invoke document_preview.'
+            . ' When asked about company policies, return rules, payment terms, or tax profile, invoke company_knowledge.'
             . ' If the user asks about an unsupported business area where no tool is available, '
             . ' politely explain that the capability has not been enabled in the Copilot yet.'
             . ' Never perform financial mutations or imply that unapproved vouchers have been posted.';
@@ -161,9 +160,6 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
             $tools[] = new OpenOrders($this->principal);
         }
 
-        if ($this->principal->hasTool('proposals.draft.v1')) {
-            $tools[] = new DraftProposal($this->principal);
-        }
 
         if ($this->principal->hasTool('documents.preview.v1')) {
             $tools[] = new DocumentPreview($this->principal);

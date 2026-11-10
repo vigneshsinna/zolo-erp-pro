@@ -37,10 +37,7 @@ class InventoryStockSummary implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $rawQuery = $request['product_query'] ?? null;
-        $productQuery = is_string($rawQuery) && trim($rawQuery) !== '' ? trim($rawQuery) : null;
-        $warehouseId = is_numeric($request['warehouse_id'] ?? null) ? (int) $request['warehouse_id'] : null;
-        $limit = is_numeric($request['limit'] ?? null) ? max(1, min(50, (int) $request['limit'])) : 10;
+        $rawInput = $request->all();
 
         $executor = $this->executor ?? app(ErpToolExecutor::class);
 
@@ -48,11 +45,7 @@ class InventoryStockSummary implements Tool
             runId: $this->principal->requestId,
             principal: $this->principal,
             toolKey: 'inventory.stock_summary.v1',
-            rawInput: [
-                'product_query' => $productQuery,
-                'warehouse_id' => $warehouseId,
-                'limit' => $limit,
-            ]
+            rawInput: $rawInput
         );
 
         return (string) json_encode([
