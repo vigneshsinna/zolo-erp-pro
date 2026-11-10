@@ -97,7 +97,7 @@ class AiServiceProvider extends ServiceProvider
     {
         Event::listen(RequestSending::class, function (RequestSending $event): void {
             if ($event->request->method() === 'POST' && $this->app->resolved(ApprovedModelGateway::class)) {
-                $this->app->make(ApprovedModelGateway::class)->admitProviderDispatch();
+                $this->app->make(ApprovedModelGateway::class)->admitProviderDispatch($event->request->url());
             }
         });
     }

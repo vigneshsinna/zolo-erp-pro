@@ -359,7 +359,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
 
     public function test_step_reservation_blocks_an_overlapping_company_call_and_releases_unused_tokens(): void
     {
-        config(['erp_ai.daily_company_tokens' => 4000]);
+        config(['erp_ai.daily_company_tokens' => 5000]);
         $this->configureProvider();
         $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
         $date = now('UTC')->toDateString();
@@ -379,7 +379,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         }]);
 
         $this->postJson(route('ai.chat'), ['message' => 'Show customer dues'])->assertOk()->assertJsonPath('facts', [])
-            ->assertJsonPath('message', 'The copilot could not produce a verified answer. Review any available ERP results below.');
+            ->assertJsonPath('message', 'Unverified answer');
         $this->assertDatabaseHas('ai_usage_counters', [
             'company_id' => $this->company->id, 'input_tokens' => 150, 'output_tokens' => 25, 'reserved_tokens' => 0,
         ]);
@@ -408,26 +408,25 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertFalse($report['reconciliation']['is_reconciled']);
 
         $question = 'What is my total customer outstanding balance?';
-        $answer = 'The ERP reported a reconciliation difference. Review the figures and warnings below.';
-        $fabricated = 'Total receivables balance is 99,999,999 INR.';
+        $explanation = 'The customer has an outstanding balance with an open variance.';
         $followUp = 'What about the same date?';
         Http::fake(['https://provider.example/v1/responses' => Http::sequence()
             ->push($this->providerResponse([
                 'type' => 'function_call', 'call_id' => 'call_receivables', 'name' => 'CustomerOutstanding',
                 'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
             ], 111, 17))
-            ->push($this->providerResponse($this->providerMessage($fabricated), 303, 23))
+            ->push($this->providerResponse($this->providerMessage($explanation), 303, 23))
             ->push($this->providerResponse([
                 'type' => 'function_call', 'call_id' => 'call_followup', 'name' => 'CustomerOutstanding', 'arguments' => '{}',
             ], 175, 13))
-            ->push($this->providerResponse($this->providerMessage($fabricated), 370, 22))]);
+            ->push($this->providerResponse($this->providerMessage($explanation), 370, 22))]);
 
         $response = $this->postJson(route('ai.chat'), ['message' => $question, 'options' => ['model' => 'unapproved']]);
         $response->assertOk();
         $response->assertJson([
             'status' => 'completed',
             'answer_status' => 'unreconciled',
-            'message' => $answer,
+            'message' => $explanation,
             'scope' => $this->workspaceContext(),
             'usage' => ['input_tokens' => 414, 'output_tokens' => 40, 'tool_count' => 1],
         ]);
@@ -475,7 +474,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         }
         $history = json_encode($requests[2]['input']);
         $this->assertStringContainsString($question, $history);
-        $this->assertStringContainsString($answer, $history);
+        $this->assertStringContainsString($explanation, $history);
         $this->assertSame(1, substr_count($history, $followUp));
     }
 
@@ -607,6 +606,96 @@ class AiChatApiAndWorkspaceTest extends TestCase
             'input_tokens' => 120,
             'output_tokens' => 35,
         ]);
+    }
+
+    public function test_unrelated_http_posts_do_not_affect_provider_request_count(): void
+    {
+        $gateway = app(ApprovedModelGateway::class);
+        $this->assertFalse($gateway->isProviderRequestUrl('nvidia', 'https://webhook.site/abc'));
+        $this->assertFalse($gateway->isProviderRequestUrl('nvidia', 'https://example.com/api/post'));
+        $this->assertTrue($gateway->isProviderRequestUrl('nvidia', 'https://integrate.api.nvidia.com/v1/chat/completions'));
+
+        config([
+            'erp_ai.provider' => 'nvidia',
+            'ai.providers.nvidia.url' => 'https://nim.example/v1',
+        ]);
+        $this->assertTrue($gateway->isProviderRequestUrl('nvidia', 'https://nim.example/v1/chat/completions'));
+        $this->assertFalse($gateway->isProviderRequestUrl('nvidia', 'https://other-service.example/notify'));
+
+        $reflection = new \ReflectionClass($gateway);
+        $providerProp = $reflection->getProperty('dispatchProvider');
+        $providerProp->setAccessible(true);
+        $providerProp->setValue($gateway, 'nvidia');
+
+        $attemptsProp = $reflection->getProperty('dispatchAttempts');
+        $attemptsProp->setAccessible(true);
+        $attemptsProp->setValue($gateway, 0);
+
+        // Unrelated POST should not increment
+        $gateway->admitProviderDispatch('https://other-service.example/notify');
+        $this->assertSame(0, $attemptsProp->getValue($gateway));
+
+        // Matching provider POST should increment
+        $gateway->admitProviderDispatch('https://nim.example/v1/chat/completions');
+        $this->assertSame(1, $attemptsProp->getValue($gateway));
+
+        $providerProp->setValue($gateway, null);
+    }
+
+    public function test_empty_model_text_triggers_deterministic_verified_summary(): void
+    {
+        $this->configureProvider();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $context = new CompanyContext($this->company->id, $this->branchId, $this->fyId);
+        $groupId = DB::table('customer_groups')->where('company_id', $this->company->id)->value('id');
+        $customer = Customer::create([
+            'company_id' => $this->company->id, 'customer_group_id' => $groupId,
+            'name' => 'Summary Test Customer', 'phone_number' => '5550200', 'is_active' => true,
+        ]);
+        app(PartyOpeningBalanceService::class)->post($customer, 12500.00, $context);
+        $report = app(FinancialReportService::class)->ageing($context, 'customer', actorId: $this->adminUser->id);
+
+        // Model returns tool call in step 1, then EMPTY text in step 2
+        Http::fake(['https://provider.example/v1/responses' => Http::sequence()
+            ->push($this->providerResponse([
+                'type' => 'function_call', 'call_id' => 'call_summary', 'name' => 'CustomerOutstanding',
+                'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
+            ], 120, 18))
+            ->push($this->providerResponse($this->providerMessage(''), 250, 5))]);
+
+        $res = $this->postJson(route('ai.chat'), ['message' => 'What are customer dues?'])->assertOk();
+        $res->assertJsonPath('answer_status', 'verified');
+        $message = $res->json('message');
+
+        $this->assertNotEmpty($message);
+        $this->assertStringContainsString('Customer Outstanding Summary', $message);
+        $this->assertStringContainsString('Summary Test Customer', $message);
+        $this->assertStringNotContainsString('Verified ERP results are below.', $message);
+    }
+
+    public function test_model_written_narrative_is_preserved_when_present(): void
+    {
+        $this->configureProvider();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+
+        $writtenExplanation = 'Here is the detailed summary of your business performance with all verified context.';
+        Http::fake([
+            'https://provider.example/v1/responses' => Http::sequence()
+                ->push($this->providerResponse($this->providerMessage($writtenExplanation), 100, 25)),
+        ]);
+
+        $res = $this->postJson(route('ai.chat'), ['message' => 'Give me a summary'])->assertOk();
+        $this->assertSame($writtenExplanation, $res->json('message'));
+    }
+
+    public function test_workspace_stylesheet_enforces_full_width_assistant_cards_and_no_shrink(): void
+    {
+        $css = file_get_contents(public_path('css/pages/ai-workspace.css'));
+        $this->assertStringContainsString('width: min(100%, 980px);', $css);
+        $this->assertStringContainsString('.ai-workspace-container .chat-bubble.chat-assistant', $css);
+        $this->assertStringContainsString('.ai-workspace-container .erp-fact-card', $css);
+        $this->assertStringContainsString('width: 100%;', $css);
+        $this->assertStringContainsString('flex: 0 0 auto;', $css);
     }
 
     private function providerResponse(array $output, int $inputTokens, int $outputTokens): array

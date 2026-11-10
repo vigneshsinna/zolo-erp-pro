@@ -10,6 +10,7 @@ use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Gateway\ApprovedModelGateway;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalFactory;
+use App\Ai\Services\VerifiedSummaryBuilder;
 use App\Http\Controllers\Controller;
 use App\Services\Commercial\CommercialPermission;
 use App\Services\Platform\CompanyContext;
@@ -326,16 +327,32 @@ class AiChatController extends Controller
             );
             $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
 
+            Log::info('ERP Copilot response diagnostics', [
+                'run_id' => $principal->requestId,
+                'model' => $model['model'],
+                'text_length' => mb_strlen($response->text ?? ''),
+                'tool_results' => $response->toolResults->count(),
+                'input_tokens' => $response->usage->inputTokens ?? 0,
+                'output_tokens' => $response->usage->outputTokens ?? 0,
+            ]);
+
             $evidence = $this->evidence($response);
+            $rawText = trim((string) ($response->text ?? ''));
             $answerStatus = $evidence['answer_status'];
-            $answer = match ($answerStatus) {
-                'verified' => 'Verified ERP results are below.',
-                'partial' => 'Some ERP results are available. Review the warnings for incomplete checks.',
-                'unreconciled' => 'The ERP reported a reconciliation difference. Review the figures and warnings below.',
-                'no_data' => 'The ERP found no matching data for this request.',
-                'tool_error' => 'The ERP could not complete this check. Review the details below.',
-                default => 'The copilot could not produce a verified answer. Review any available ERP results below.',
-            };
+
+            if (! empty($evidence['facts'])) {
+                $answer = $rawText !== ''
+                    ? $rawText
+                    : app(VerifiedSummaryBuilder::class)->build($evidence['facts'], $evidence['warnings']);
+            } else {
+                $answer = $rawText !== ''
+                    ? $rawText
+                    : match ($answerStatus) {
+                        'no_data' => 'The ERP found no matching data for this request.',
+                        'tool_error' => 'The ERP could not complete this check. Review the details below.',
+                        default => 'The copilot could not produce a verified answer. Review any available ERP results below.',
+                    };
+            }
 
             DB::transaction(function () use ($principal, $threadId, $question, $answer, $response, $evidence, $run): void {
                 $this->storeTurn($principal, $threadId, $question, $answer, $response, $evidence);

@@ -2390,7 +2390,7 @@
             }
         });
 
-        $input.on('change', async function() {
+        $input.on('change', function() {
             var tr = $(this).closest('tr');
             var val = $(this).val().trim();
             if (!val) {
@@ -2415,13 +2415,6 @@
                 CommercialProductLookup.normalize(p.name) === normVal ||
                 CommercialProductLookup.normalize(p.code) === normVal
             ));
-
-            if (!exact) {
-                try {
-                    var matches = await CommercialProductLookup.search(val, allProducts, 'sale', matchesProductMode);
-                    exact = CommercialProductLookup.exact(matches, val);
-                } catch(e) { console.warn(e); }
-            }
 
             if (exact) {
                 applyProductToRow(tr, exact);

@@ -106,7 +106,7 @@ class ApprovedModelGateway
         $inputAllowance = 1024 + strlen($step->instructions ?? '') + strlen(json_encode(
             $step->messages, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
         ));
-        $outputLimit = 1024;
+        $outputLimit = (int) config('erp_ai.max_output_tokens', 1536);
         $reserved = $inputAllowance + $outputLimit;
 
         DB::transaction(function () use ($principal, $date, $reserved): void {
@@ -175,14 +175,52 @@ class ApprovedModelGateway
     }
 
     /** Count each SDK HTTP dispatch, including a retry inside a model step. */
-    public function admitProviderDispatch(): void
+    public function admitProviderDispatch(?string $url = null): void
     {
         if ($this->dispatchProvider === null) {
             return;
         }
 
+        if ($url !== null && ! $this->isProviderRequestUrl($this->dispatchProvider, $url)) {
+            return;
+        }
+
         $this->enforceProviderRateLimit($this->dispatchProvider);
         $this->dispatchAttempts++;
+    }
+
+    public function isProviderRequestUrl(string $provider, string $url): bool
+    {
+        $configuredUrl = config("ai.providers.{$provider}.url");
+        if (! empty($configuredUrl)) {
+            if (str_starts_with($url, rtrim((string) $configuredUrl, '/'))) {
+                return true;
+            }
+
+            $configuredHost = parse_url((string) $configuredUrl, PHP_URL_HOST);
+            $targetHost = parse_url($url, PHP_URL_HOST);
+            if ($configuredHost && $targetHost && strcasecmp($configuredHost, $targetHost) === 0) {
+                return true;
+            }
+        }
+
+        $knownHosts = match ($provider) {
+            'nvidia', 'deepseek' => ['integrate.api.nvidia.com', 'api.nvidia.com'],
+            'openai' => ['api.openai.com'],
+            'anthropic' => ['api.anthropic.com'],
+            'gemini' => ['generativelanguage.googleapis.com'],
+            'groq' => ['api.groq.com'],
+            'mistral' => ['api.mistral.ai'],
+            'cohere' => ['api.cohere.ai', 'api.cohere.com'],
+            default => [],
+        };
+
+        $targetHost = parse_url($url, PHP_URL_HOST);
+        if ($targetHost && in_array(strtolower($targetHost), $knownHosts, true)) {
+            return true;
+        }
+
+        return false;
     }
 
     public function enforceProviderRateLimit(string $provider): void

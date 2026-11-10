@@ -58,6 +58,7 @@ return [
     'max_output_rows' => (int) env('AI_MAX_OUTPUT_ROWS', 20),
     'daily_user_requests' => (int) env('AI_DAILY_USER_REQUESTS', 50),
     'daily_company_tokens' => (int) env('AI_DAILY_COMPANY_TOKENS', 100000),
+    'max_output_tokens' => (int) env('AI_MAX_OUTPUT_TOKENS', 1536),
     'timeout' => (int) env('AI_TIMEOUT', 45),
     'nvidia_rpm_limit' => (int) env('NVIDIA_RPM_LIMIT', 35),
 

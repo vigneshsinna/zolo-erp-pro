@@ -233,6 +233,168 @@ class OperationalAndActionProposalsTest extends TestCase
         $this->assertNull($res['data']['orders'][0]['open_balance']);
     }
 
+    public function test_open_orders_lifecycle_calculates_remaining_balances_with_partial_billing_cancellation_and_returns(): void
+    {
+        $group = CustomerGroup::first() ?? CustomerGroup::create(['name' => 'General', 'percentage' => '0', 'is_active' => true]);
+        $customer = Customer::create([
+            'company_id' => $this->company->id,
+            'name' => 'Lifecycle Order Customer ' . uniqid(),
+            'phone_number' => '9999900062',
+            'customer_group_id' => $group->id,
+            'is_active' => true,
+        ]);
+
+        $wh = Warehouse::where('company_id', $this->company->id)->where('branch_id', $this->branch1Id)->first() ?? Warehouse::create([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch1Id,
+            'name' => 'WH Orders Lifecycle ' . uniqid(),
+            'is_active' => true,
+        ]);
+
+        $order = \App\Models\SalesOrder::create([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch1Id,
+            'financial_year_id' => $this->fyId,
+            'warehouse_id' => $wh->id,
+            'customer_id' => $customer->id,
+            'user_id' => $this->user->id,
+            'reference_no' => 'SO-LC-' . uniqid(),
+            'business_date' => '2026-10-15',
+            'status' => 'open',
+        ]);
+
+        $unit = Unit::first() ?? Unit::create(['unit_code' => 'PCS', 'unit_name' => 'Pieces', 'is_active' => true]);
+        $category = Category::where('is_active', true)->first() ?? Category::create(['name' => 'Cat ' . uniqid(), 'is_active' => true]);
+
+        $prod1 = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Product Alpha ' . uniqid(),
+            'code' => 'PA-' . uniqid(),
+            'type' => 'standard',
+            'barcode_symbology' => 'code128',
+            'category_id' => $category->id,
+            'unit_id' => $unit->id,
+            'purchase_unit_id' => $unit->id,
+            'sale_unit_id' => $unit->id,
+            'cost' => '50.00',
+            'price' => '100.00',
+            'is_active' => true,
+        ]);
+
+        $prod2 = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Product Beta ' . uniqid(),
+            'code' => 'PB-' . uniqid(),
+            'type' => 'standard',
+            'barcode_symbology' => 'code128',
+            'category_id' => $category->id,
+            'unit_id' => $unit->id,
+            'purchase_unit_id' => $unit->id,
+            'sale_unit_id' => $unit->id,
+            'cost' => '100.00',
+            'price' => '200.00',
+            'is_active' => true,
+        ]);
+
+        // Insert commercial_order_items
+        // Item 1: ordered 10 @ 100 = 1000.00, cancelled 2
+        $item1Id = DB::table('commercial_order_items')->insertGetId([
+            'company_id' => $this->company->id,
+            'order_kind' => 'sale',
+            'order_id' => $order->id,
+            'product_id' => $prod1->id,
+            'uom_id' => $unit->id,
+            'qty' => 10,
+            'qty_base' => 10,
+            'unit_rate' => 100.00,
+            'cancelled_qty_base' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Item 2: ordered 5 @ 200 = 1000.00, cancelled 0
+        $item2Id = DB::table('commercial_order_items')->insertGetId([
+            'company_id' => $this->company->id,
+            'order_kind' => 'sale',
+            'order_id' => $order->id,
+            'product_id' => $prod2->id,
+            'uom_id' => $unit->id,
+            'qty' => 5,
+            'qty_base' => 5,
+            'unit_rate' => 200.00,
+            'cancelled_qty_base' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Allocations:
+        // Item 1 billed: qty_base 5, returned 1 => billed 4. Remaining = 10 - 2 - 4 = 4. Remaining value = 4 * 100 = 400.00.
+        DB::table('commercial_order_allocations')->insert([
+            'company_id' => $this->company->id,
+            'order_item_id' => $item1Id,
+            'consumer_type' => 'sale',
+            'consumer_id' => 901,
+            'consumer_item_id' => 9001,
+            'stage' => 'billing',
+            'qty_base' => 5,
+            'returned_qty_base' => 1,
+            'released_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Released allocation should NOT be counted in billing
+        DB::table('commercial_order_allocations')->insert([
+            'company_id' => $this->company->id,
+            'order_item_id' => $item1Id,
+            'consumer_type' => 'sale',
+            'consumer_id' => 902,
+            'consumer_item_id' => 9002,
+            'stage' => 'billing',
+            'qty_base' => 3,
+            'returned_qty_base' => 0,
+            'released_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Item 2 billed: qty_base 2, returned 0 => billed 2. Remaining = 5 - 0 - 2 = 3. Remaining value = 3 * 200 = 600.00.
+        DB::table('commercial_order_allocations')->insert([
+            'company_id' => $this->company->id,
+            'order_item_id' => $item2Id,
+            'consumer_type' => 'sale',
+            'consumer_id' => 903,
+            'consumer_item_id' => 9003,
+            'stage' => 'billing',
+            'qty_base' => 2,
+            'returned_qty_base' => 0,
+            'released_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $principal = new AiPrincipal(
+            actorId: $this->user->id,
+            companyId: $this->company->id,
+            branchId: $this->branch1Id,
+            financialYearId: $this->fyId,
+            permittedToolNames: ['orders.open.v1'],
+            requestId: 'orders-lifecycle-01'
+        );
+
+        $tool = app(AiToolManifest::class)->sdkTool('orders.open.v1', $principal);
+        $res = json_decode((string) $tool->handle(new Request(['type' => 'sale'])), true);
+
+        $this->assertSame('ok', $res['status']);
+        $this->assertSame('orders.open.v1', $res['tool']);
+
+        $matchedOrder = collect($res['data']['orders'])->firstWhere('order_id', $order->id);
+        $this->assertNotNull($matchedOrder);
+        $this->assertSame(2, $matchedOrder['items_count']);
+        $this->assertSame('2000.00', $matchedOrder['grand_total']);
+        $this->assertSame('1000.00', $matchedOrder['open_balance']);
+    }
+
     public function test_proposals_remain_quarantined_with_write_flags_enabled(): void
     {
         $id = (string) Str::uuid();

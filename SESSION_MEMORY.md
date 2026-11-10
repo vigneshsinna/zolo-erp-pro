@@ -1,5 +1,79 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Session Loading, Full-Width Layout & Verified Summary Builder Stabilization — 2026-11-10 (`refactor/erp-copilot-stabilization`)
+
+- **Session Loading & Message Sending Unblocked (`workspace.blade.php`):**
+  - *Root Cause:* A duplicate JavaScript string fragment with an unmatched `')'` at lines 788-790 of `resources/views/backend/ai/workspace.blade.php` caused an immediate uncaught `SyntaxError: Unexpected token ')'` on page load in browser environments. This halted all script initialization, leaving the session list stuck at "Loading sessions..." and preventing click and enter-key event handlers from registering.
+  - *Fix:* Removed the corrupt lines 788-790, verified the JavaScript AST cleanly with Node.js (`new Function(...)` returning 0 errors), and cleared/re-cached views. Sessions now load and message submission functions immediately.
+
+- **Full-Width Assistant Response Layout (`public/css/pages/ai-workspace.css`):**
+  - Addressed assistant bubble shrinking around short responses where `max-width: 85%` caused flex containers to shrink the fact cards and tables.
+  - Added approved responsive stylesheet rules:
+    - `.ai-workspace-container .chat-bubble.chat-assistant`: `width: min(100%, 980px); max-width: 100%; min-width: 0;`
+    - `.ai-workspace-container .chat-bubble.chat-user`: `width: fit-content; max-width: 85%;`
+    - `.ai-workspace-container .erp-fact-card`: `width: 100%; height: auto; min-height: 0;`
+    - `.ai-workspace-container .erp-fact-card > .card-body`: `flex: 0 0 auto; height: auto; min-height: 0;`
+  - Eliminates flex shrinking while preventing cards from needlessly stretching in Bootstrap flex layouts.
+
+- **Deterministic `VerifiedSummaryBuilder` & Preserved AI Narrative (`AiChatController` & `VerifiedSummaryBuilder`):**
+  - Resolved the controller logic where `$response->text` was discarded in favor of canned strings like `'Verified ERP results are below.'`.
+  - Preserved the model's written narrative when provided (`$rawText !== ''`).
+  - Implemented `App\Ai\Services\VerifiedSummaryBuilder`: Generates authoritative, structured Markdown summaries from verified tool facts across all 14 tool families (`receivables.outstanding.v1`, `receivables.invoices.v1`, `sales.summary.v1`, `inventory.stock_summary.v1`, `payables.summary.v1`, `accounting.statements.v1`, `tax.gst_summary.v1`, `orders.open.v1`, `manufacturing.boms.v1`, `jobwork.status.v1`, `documents.preview.v1`, `knowledge.query.v1`, `copilot.help.v1`).
+  - Added unit test suite `tests/Unit/Ai/VerifiedSummaryBuilderTest.php` (4/4 passed, 21 assertions).
+
+- **Output Token Headroom & Diagnostic Logging (`ApprovedModelGateway` & `AiChatController`):**
+  - Increased model step output ceiling from 1024 to configurable `(int) config('erp_ai.max_output_tokens', 1536)` to give models sufficient output headroom to synthesize answers after multi-tool execution without running out of tokens.
+  - Added privacy-safe diagnostic logging in `AiChatController` logging `run_id`, `model`, `text_length`, `tool_results`, `input_tokens`, and `output_tokens` without exposing sensitive customer data.
+
+- **Verification & Test Status (100% Green):**
+  - AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **68/68 passed (455 assertions, 0 errors, 0 failures)**.
+  - Core ERP Regression Suites:
+    - `ProductAliasTest.php`: 12/12 passed (65 assertions).
+    - `DesignTokensTest.php`: 4/4 passed (4 assertions).
+    - `CustomerSupplierReportsNavigationTest.php`: 7/7 passed (41 assertions).
+    - `OutstandingDuesAndGstTypeTest.php`: 8/8 passed (29 assertions).
+    - `VerifiedSummaryBuilderTest.php`: 4/4 passed (21 assertions).
+  - Framework Caches: `php artisan optimize:clear; php artisan view:cache; php artisan route:cache` compiled 100% cleanly.
+
+## Release Gate Corrections, Design Tokens, Provider Request Scoping & Open Orders Verification — 2026-11-10 (`refactor/erp-copilot-stabilization`)
+
+- **P0 Release Gate Corrections (100% Green):**
+  1. **Product Alias Grid Lookup Discrepancy (`ProductAliasTest.php:115`):**
+     - Investigated git history: Commit `26cee6fb` added an `$input.on('change', async function() { ... })` handler in both `sale/index.blade.php` and `purchase/index.blade.php` that duplicated `CommercialProductLookup.search(val, allProducts, '$kind', matchesProductMode)` and `CommercialProductLookup.exact(matches, val)`. This produced a 5th lookup occurrence and triggered premature quick-create modals on ambiguous input before autocomplete could complete.
+     - Removed the redundant search from `change` in both views while preserving in-memory catalog matching.
+     - `php vendor/bin/phpunit tests/Feature/ProductAliasTest.php`: Passed 12/12 (65 assertions, 0 failures) without weakening test assertions.
+  2. **Brand Colors (`DesignTokensTest.php:58`):**
+     - Replaced hardcoded `#6366f1` / `rgba(99, 102, 241, 0.1)` with established design tokens `var(--z-primary)` and `var(--z-primary-soft)`.
+     - Replaced inline sidebar style on line 42 of `sidebar.blade.php` with `u-fs-10px`.
+  3. **Inline Stylesheet Decoupling (`DesignTokensTest.php:79`):**
+     - Created approved page stylesheet `public/css/pages/ai-workspace.css` loaded in `<head>` via `@push('css')`.
+     - Removed `<style>` block from `workspace.blade.php`.
+     - Converted all 67 inline styles across HTML elements and dynamic JavaScript renderers (KPIs, tables, chips, BOMs, JobWork, Open Orders, and Document Previews) into approved semantic CSS classes (`ai-sidebar-body`, `ai-scope-badge`, `ai-guardrail-status`, `ai-telemetry-toggle-btn`, `ai-rpm-badge`, `ai-status-badge`, `ai-kpi-label`, `ai-kpi-value`, `ai-fact-table`, `ai-fact-table-sm`, `ai-chip-btn`, `ai-bom-title`, `ai-comp-list`, `ai-diff-row`).
+     - Fixed an unexpected duplicate string fragment in `workspace.blade.php` at line 788 that caused a JavaScript `SyntaxError: Unexpected token ')'`, unblocking script execution so `loadThreads()` and chat form submission execute cleanly on browser load. Validated via `node scratch_check_js.js`.
+     - `php vendor/bin/phpunit tests/Unit/DesignTokensTest.php`: Passed 4/4 (4 assertions, 0 failures).
+
+- **Architectural Provider URL Scoping & RPM Isolation (`ApprovedModelGateway` & `AiServiceProvider`):**
+  - Resolved the architectural issue where `AiServiceProvider` listened for all HTTP POST dispatches while an AI step was active, which could cause unrelated application POSTs (e.g., webhook notifications, logging, external APIs) to increment model request counts.
+  - Implemented `ApprovedModelGateway::isProviderRequestUrl(string $provider, string $url): bool`: Validates request URLs against configured provider endpoints (`ai.providers.{$provider}.url`) or known provider hosts (`integrate.api.nvidia.com`, `api.openai.com`, etc.).
+  - Updated `ApprovedModelGateway::admitProviderDispatch(?string $url = null)` to filter by URL, ignoring non-provider dispatches.
+  - Updated `AiServiceProvider::boot()` to pass `$event->request->url()`.
+  - Added test in `tests/Feature/Ai/AiChatApiAndWorkspaceTest.php`: `test_unrelated_http_posts_do_not_affect_provider_request_count()` (7 assertions, 100% passed).
+
+- **Domain Accuracy Evidence — Open Orders Lifecycle Verification:**
+  - Added `test_open_orders_lifecycle_calculates_remaining_balances_with_partial_billing_cancellation_and_returns()` in `tests/Feature/Ai/OperationalAndActionProposalsTest.php`.
+  - Exercises full multi-table lifecycle: `sales_orders`, `commercial_order_items` (with cancelled quantities `cancelled_qty_base`), and `commercial_order_allocations` (billing stage, partial billing, returned quantities `returned_qty_base`, and released allocations).
+  - Asserts exact `grand_total` (`2000.00`), `open_balance` (`1000.00`), item counts (`2`), and clean warning states.
+
+- **Full Release Verification (100% Green):**
+  - Full AI Test Suite on disposable MySQL (`phpunit.ai.xml`): **61/61 passed (421 assertions, 0 errors, 0 failures)**.
+  - Core ERP Regression Suites:
+    - `ProductAliasTest.php`: 12/12 passed (65 assertions).
+    - `DesignTokensTest.php`: 4/4 passed (4 assertions).
+    - `CustomerSupplierReportsNavigationTest.php`: 7/7 passed (41 assertions).
+    - `OutstandingDuesAndGstTypeTest.php`: 8/8 passed (29 assertions).
+  - Package Hygiene: `composer validate --strict` (valid), `composer audit --locked` (0 vulnerabilities).
+  - Caches: `php artisan optimize:clear; php artisan view:cache; php artisan route:cache` compiled 100% cleanly.
+
 ## Copilot stabilization and Goldfish review — 2026-11-10 (`refactor/erp-copilot-stabilization`)
 
 - Started from `origin/feature/ai-agent-foundation` at `a1477a679dc0f9ea98ce8cc2d531a1c997e20864`. Preserved the supplied plan and revised it after three fresh-context Goldfish reviews. Decisions are recorded in `docs/zoloerp-ai-agent-implementation/goldfish_review_report.md`.

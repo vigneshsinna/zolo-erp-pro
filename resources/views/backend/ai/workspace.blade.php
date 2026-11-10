@@ -12,23 +12,23 @@
                             <i class="dripicons-plus"></i> New
                         </button>
                     </div>
-                    <div class="card-body p-2 d-flex flex-column" style="min-height: 0;">
+                    <div class="card-body p-2 d-flex flex-column ai-sidebar-body">
                         <!-- Active Scope Badge -->
-                        <div class="p-2 mb-2 rounded bg-light border flex-shrink-0" style="font-size: 0.8rem;">
+                        <div class="p-2 mb-2 rounded bg-light border flex-shrink-0 ai-scope-badge">
                             <div class="text-muted small text-uppercase font-weight-bold">Active Tenancy</div>
                             <div class="font-weight-bold text-truncate">{{ $company->legal_name ?? $company->name }}</div>
                             <div class="text-secondary small">FY ID: {{ $context->financialYearId }} &bull; Branch: {{ $context->branchId }}</div>
                         </div>
 
                         <!-- Threads List -->
-                        <div id="thread-list" class="list-group list-group-flush flex-grow-1" style="overflow-y: auto; min-height: 0;">
+                        <div id="thread-list" class="list-group list-group-flush flex-grow-1">
                             <div class="text-center text-muted py-4 small" id="thread-loading">
                                 <span class="spinner-border spinner-border-sm text-primary mr-1"></span> Loading sessions...
                             </div>
                         </div>
 
                         <!-- Guardrail Status & Privacy Notice -->
-                        <div class="mt-auto pt-2 border-top flex-shrink-0" style="font-size: 0.75rem;">
+                        <div class="mt-auto pt-2 border-top flex-shrink-0 ai-guardrail-status">
                             <div class="d-flex align-items-center mb-1">
                                 <span class="badge {{ $isAiEnabled ? 'badge-success' : 'badge-danger' }} mr-1">
                                     {{ $isAiEnabled ? 'Active' : 'Disabled' }}
@@ -58,13 +58,13 @@
                         </div>
                         <div class="d-flex align-items-center">
                             @if($isAdmin ?? false)
-                            <button id="btn-toggle-telemetry" class="btn btn-xs btn-outline-info mr-2 py-1 px-2" style="font-size: 0.75rem;" title="View AI telemetry & rate limits">
-                                <i class="dripicons-meter mr-1"></i> <span id="header-rpm-badge" class="badge badge-success" style="font-size: 0.7rem;">RPM: --/35</span>
+                            <button id="btn-toggle-telemetry" class="btn btn-xs btn-outline-info mr-2 py-1 px-2 ai-telemetry-toggle-btn" title="View AI telemetry & rate limits">
+                                <i class="dripicons-meter mr-1"></i> <span id="header-rpm-badge" class="badge badge-success ai-rpm-badge">RPM: --/35</span>
                             </button>
                             @endif
                             @if($model)
                             <div>
-                                <span class="badge badge-light border text-muted" style="font-size: 0.75rem;">
+                                <span class="badge badge-light border text-muted ai-status-badge">
                                     Model: {{ $model }}
                                 </span>
                             </div>
@@ -74,7 +74,7 @@
 
                 @if($isAdmin ?? false)
                 <!-- Admin Telemetry Panel -->
-                <div id="ai-telemetry-panel" class="border-bottom bg-light px-3 py-2 flex-shrink-0" style="display: none; font-size: 0.8rem;">
+                <div id="ai-telemetry-panel" class="border-bottom bg-light px-3 py-2 flex-shrink-0" style="display: none;">
                     <div class="d-flex flex-wrap justify-content-between align-items-center">
                         <div class="d-flex align-items-center mr-3 my-1">
                             <span class="text-muted mr-1">Provider RPM:</span>
@@ -92,7 +92,7 @@
                             <span class="text-muted small ml-1">/ <span id="telemetry-token-limit">100,000</span></span>
                         </div>
                         <div class="my-1">
-                            <button id="btn-refresh-telemetry" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.75rem;" title="Refresh metrics">
+                            <button id="btn-refresh-telemetry" class="btn btn-xs btn-outline-secondary py-0 px-2 ai-telemetry-refresh-btn" title="Refresh metrics">
                                 <i class="dripicons-clockwise"></i> Refresh
                             </button>
                         </div>
@@ -101,16 +101,16 @@
                 @endif
 
                     <!-- Messages Feed -->
-                    <div id="chat-messages" class="card-body p-3 flex-grow-1" style="overflow-y: auto; overflow-x: hidden; min-height: 0; background-color: #f8f9fa;">
+                    <div id="chat-messages" class="card-body p-3 flex-grow-1">
                         <!-- Welcome Hero / Default Message -->
                         <div class="ai-welcome-box p-4 text-center my-auto">
                             <div class="mb-3">
-                                <span class="badge-pill p-3" style="background: rgba(99, 102, 241, 0.1); color: var(--z-primary, #6366f1); font-size: 2rem;">
+                                <span class="badge-pill p-3 ai-welcome-badge">
                                     <i class="dripicons-sparkles"></i>
                                 </span>
                             </div>
                             <h5 class="font-weight-bold">How can I assist your business operations today?</h5>
-                            <p class="text-muted small mx-auto" style="max-width: 540px;">
+                            <p class="text-muted small mx-auto ai-welcome-desc">
                                 I query real-time customer outstanding dues, general ledgers, and warehouse inventory stock with strict accounting accuracy.
                             </p>
                             <div class="d-flex justify-content-center flex-wrap mt-3">
@@ -135,9 +135,9 @@
                         <form id="chat-form" class="m-0">
                             @csrf
                             <div class="input-group">
-                                <textarea id="chat-input" class="form-control border-right-0" rows="1" 
+                                <textarea id="chat-input" class="form-control border-right-0 ai-chat-input" rows="1" 
                                 placeholder="Ask about outstanding dues, customer aging, or financial balances..."
-                                maxlength="4000" style="resize: none;" required></textarea>
+                                maxlength="4000" required></textarea>
                             <div class="input-group-append">
                                 <button id="btn-send" class="btn btn-primary px-3" type="submit">
                                     <span id="btn-send-text"><i class="dripicons-direction mr-1"></i> Send</span>
@@ -146,10 +146,10 @@
                             </div>
                         </div>
                         <div class="d-flex justify-content-between align-items-center mt-1 px-1">
-                            <small class="text-muted" style="font-size: 0.7rem;">
+                            <small class="text-muted ai-footer-hint">
                                 Press <kbd>Enter</kbd> to send, <kbd>Shift + Enter</kbd> for line break
                             </small>
-                            <small id="char-counter" class="text-muted" style="font-size: 0.7rem;">0 / 4000</small>
+                            <small id="char-counter" class="text-muted ai-char-counter">0 / 4000</small>
                         </div>
                     </form>
                 </div>
@@ -160,148 +160,7 @@
 @endsection
 
 @push('css')
-<style>
-.ai-workspace-container .ai-chat-card,
-.ai-workspace-container .ai-sidebar-card {
-    height: calc(100vh - 170px);
-    min-height: 560px;
-    max-height: 860px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-    border-radius: 8px;
-}
-.ai-workspace-container #chat-messages {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto !important;
-    overflow-x: hidden;
-    background-color: #f8f9fa;
-    scroll-behavior: smooth;
-}
-.ai-workspace-container #thread-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto !important;
-    overflow-x: hidden;
-}
-.ai-workspace-container .card-footer {
-    flex-shrink: 0;
-    position: relative;
-    z-index: 5;
-    background-color: #ffffff;
-}
-.ai-workspace-container .chat-bubble {
-    max-width: 85%;
-    border-radius: 12px;
-    padding: 12px 16px;
-    font-size: 0.88rem;
-    line-height: 1.5;
-    word-break: break-word;
-}
-.ai-workspace-container .chat-user {
-    background-color: var(--z-primary, #6366f1);
-    color: #fff;
-    align-self: flex-end;
-    border-bottom-right-radius: 2px;
-    white-space: pre-wrap;
-}
-.ai-workspace-container .chat-assistant {
-    background-color: #ffffff;
-    color: #212529;
-    align-self: flex-start;
-    border: 1px solid #e2e8f0;
-    border-bottom-left-radius: 2px;
-}
-.ai-workspace-container .markdown-body table {
-    width: 100%;
-    margin: 10px 0;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-}
-.ai-workspace-container .markdown-body th,
-.ai-workspace-container .markdown-body td {
-    padding: 6px 10px;
-    border: 1px solid #e2e8f0;
-    text-align: left;
-}
-.ai-workspace-container .markdown-body th {
-    background-color: #f1f5f9;
-    font-weight: 600;
-    color: #334155;
-}
-.ai-workspace-container .markdown-body tr:nth-child(even) {
-    background-color: #f8fafc;
-}
-.ai-workspace-container .markdown-body p {
-    margin-bottom: 0.5rem;
-}
-.ai-workspace-container .markdown-body p:last-child {
-    margin-bottom: 0;
-}
-.ai-workspace-container .markdown-body ul,
-.ai-workspace-container .markdown-body ol {
-    padding-left: 1.25rem;
-    margin-bottom: 0.5rem;
-}
-.ai-workspace-container .markdown-body blockquote {
-    border-left: 3px solid #6366f1;
-    background: #f8fafc;
-    padding: 6px 12px;
-    margin: 8px 0;
-    border-radius: 0 4px 4px 0;
-    color: #475569;
-    font-size: 0.84rem;
-}
-.ai-workspace-container .markdown-body h1,
-.ai-workspace-container .markdown-body h2,
-.ai-workspace-container .markdown-body h3,
-.ai-workspace-container .markdown-body h4,
-.ai-workspace-container .markdown-body h5 {
-    font-weight: 600;
-    margin-top: 10px;
-    margin-bottom: 6px;
-    color: #0f172a;
-}
-.ai-workspace-container .markdown-body h3 { font-size: 0.96rem; }
-.ai-workspace-container .markdown-body h4 { font-size: 0.90rem; }
-.ai-workspace-container .markdown-body code {
-    background-color: #f1f5f9;
-    color: #e11d48;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-size: 0.82rem;
-}
-.ai-workspace-container .markdown-body pre {
-    background-color: #0f172a;
-    color: #f8fafc;
-    padding: 10px;
-    border-radius: 6px;
-    overflow-x: auto;
-    font-size: 0.8rem;
-}
-.ai-workspace-container .erp-fact-card {
-    border-radius: 8px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-}
-.ai-workspace-container .erp-fact-card thead th {
-    font-size: 0.76rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #475569;
-    border-top: none;
-}
-.ai-workspace-container .due-table-card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    margin-top: 10px;
-    overflow: hidden;
-}
-</style>
+<link rel="stylesheet" href="{{ asset('css/pages/ai-workspace.css') }}" type="text/css">
 @endpush
 
 @push('scripts')
@@ -346,8 +205,8 @@
                 res.threads.forEach(function(th) {
                     const activeClass = (th.id === currentThreadId) ? 'active' : '';
                     const item = $('<a href="#" class="list-group-item list-group-item-action py-2 px-2 thread-item ' + activeClass + '" data-id="' + th.id + '">' +
-                        '<div class="font-weight-bold text-truncate" style="font-size: 0.82rem;">' + $('<div>').text(th.title).html() + '</div>' +
-                        '<small class="text-muted" style="font-size: 0.7rem;">' + th.updated_at + '</small>' +
+                        '<div class="font-weight-bold text-truncate ai-thread-item-title">' + $('<div>').text(th.title).html() + '</div>' +
+                        '<small class="text-muted ai-thread-item-time">' + th.updated_at + '</small>' +
                     '</a>');
                     list.append(item);
                 });
@@ -494,19 +353,19 @@
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
 
                 kpiRow.append($('<div class="col-6 border-right"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Total Outstanding</div>')
-                    .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + currencySymbol + $('<div>').text(data.total_outstanding).html() + '</div>'));
+                    .append('<div class="text-muted ai-kpi-label">Total Outstanding</div>')
+                    .append('<div class="font-weight-bold text-dark ai-kpi-value">' + currencySymbol + $('<div>').text(data.total_outstanding).html() + '</div>'));
 
                 kpiRow.append($('<div class="col-6"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Customers with Dues</div>')
-                    .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + $('<div>').text(data.total_customers_with_dues).html() + '</div>'));
+                    .append('<div class="text-muted ai-kpi-label">Customers with Dues</div>')
+                    .append('<div class="font-weight-bold text-dark ai-kpi-value">' + $('<div>').text(data.total_customers_with_dues).html() + '</div>'));
 
                 cardBody.append(kpiRow);
 
                 // Table of Top Customers
                 if (data.top_customers && data.top_customers.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
                     table.append('<thead class="thead-light"><tr>' +
                         '<th>Customer</th>' +
                         '<th class="text-right">Outstanding</th>' +
@@ -548,29 +407,29 @@
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
 
                 kpiRow.append($('<div class="col-3 border-right"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Tracked Products</div>')
-                    .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + $('<div>').text(data.total_products_tracked).html() + '</div>'));
+                    .append('<div class="text-muted ai-kpi-label">Tracked Products</div>')
+                    .append('<div class="font-weight-bold text-dark ai-kpi-value">' + $('<div>').text(data.total_products_tracked).html() + '</div>'));
 
                 kpiRow.append($('<div class="col-3 border-right"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">In Stock</div>')
-                    .append('<div class="font-weight-bold text-success" style="font-size: 1.05rem;">' + $('<div>').text(data.in_stock_count).html() + '</div>'));
+                    .append('<div class="text-muted ai-kpi-label">In Stock</div>')
+                    .append('<div class="font-weight-bold text-success ai-kpi-value">' + $('<div>').text(data.in_stock_count).html() + '</div>'));
 
                 kpiRow.append($('<div class="col-3 border-right"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Out of Stock</div>')
-                    .append('<div class="font-weight-bold ' + (data.out_of_stock_count > 0 ? 'text-danger' : 'text-dark') + '" style="font-size: 1.05rem;">' + $('<div>').text(data.out_of_stock_count).html() + '</div>'));
+                    .append('<div class="text-muted ai-kpi-label">Out of Stock</div>')
+                    .append('<div class="font-weight-bold ' + (data.out_of_stock_count > 0 ? 'text-danger' : 'text-dark') + ' ai-kpi-value">' + $('<div>').text(data.out_of_stock_count).html() + '</div>'));
 
                 kpiRow.append($('<div class="col-3"></div>')
-                    .append('<div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Stock Valuation</div>')
-                    .append('<div class="font-weight-bold text-dark" style="font-size: 1.05rem;">' + $('<div>').text(data.total_stock_value == null ? 'Unavailable' : currencySymbol + data.total_stock_value).html() + '</div>'));
+                    .append('<div class="text-muted ai-kpi-label">Stock Valuation</div>')
+                    .append('<div class="font-weight-bold text-dark ai-kpi-value">' + $('<div>').text(data.total_stock_value == null ? 'Unavailable' : currencySymbol + data.total_stock_value).html() + '</div>'));
 
                 cardBody.append(kpiRow);
 
                 // Grouped Units Summary
                 if (data.units_summary && data.units_summary.length > 0) {
                     const unitBadges = $('<div class="d-flex flex-wrap align-items-center mb-2 px-1"></div>');
-                    unitBadges.append('<span class="text-muted mr-2 small font-weight-bold" style="font-size: 0.72rem;">By Unit:</span>');
+                    unitBadges.append('<span class="text-muted mr-2 small font-weight-bold ai-unit-label">By Unit:</span>');
                     data.units_summary.forEach(function(u) {
-                        unitBadges.append($('<span class="badge badge-light border mr-1 mb-1 font-weight-normal py-1 px-2" style="font-size: 0.75rem;">' +
+                        unitBadges.append($('<span class="badge badge-light border mr-1 mb-1 font-weight-normal py-1 px-2 ai-unit-chip">' +
                             '<strong>' + $('<div>').text(u.unit).html() + ':</strong> ' +
                             $('<div>').text(u.on_hand).html() + ' on-hand (avail: ' + $('<div>').text(u.available).html() + ')' +
                         '</span>'));
@@ -581,7 +440,7 @@
                 // Table of Products
                 if (data.top_products && data.top_products.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
                     table.append('<thead class="thead-light"><tr>' +
                         '<th>Product</th>' +
                         '<th>Unit</th>' +
@@ -624,16 +483,16 @@
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 if (data.totals) {
                     const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
-                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Invoices</div><div class="font-weight-bold text-dark">' + (data.invoice_count || 0) + '</div></div>'));
-                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Original Sum</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals.original_amount || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Allocated</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals.allocated_amount || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-3"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Remaining Due</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.totals.outstanding_amount || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted ai-kpi-label">Invoices</div><div class="font-weight-bold text-dark">' + (data.invoice_count || 0) + '</div></div>'));
+                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted ai-kpi-label">Original Sum</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals.original_amount || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-3 border-right"><div class="text-muted ai-kpi-label">Allocated</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals.allocated_amount || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-3"><div class="text-muted ai-kpi-label">Remaining Due</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.totals.outstanding_amount || '0.00') + '</div></div>'));
                     cardBody.append(kpiRow);
                 }
 
                 if (data.invoices && data.invoices.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
                     table.append('<thead class="thead-light"><tr><th>Invoice #</th><th>Doc Date</th><th>Due Date</th><th class="text-right">Original</th><th class="text-right">Allocated</th><th class="text-right">Remaining</th><th class="text-center">Status</th><th></th></tr></thead>');
                     const tbody = $('<tbody></tbody>');
                     data.invoices.forEach(function(inv) {
@@ -668,7 +527,7 @@
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 if (data.allocations && data.allocations.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
                     table.append('<thead class="thead-light"><tr><th>Date</th><th>Type</th><th>Ref #</th><th class="text-right">Amount</th></tr></thead>');
                     const tbody = $('<tbody></tbody>');
                     data.allocations.forEach(function(al) {
@@ -694,14 +553,14 @@
 
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Gross Sales</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.gross_sales || '0.00') + '</div></div>'));
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Tax</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.total_tax || '0.00') + '</div></div>'));
-                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Net Invoiced</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals?.net_sales || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Gross Sales</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.gross_sales || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Total Tax</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.total_tax || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Net Invoiced</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals?.net_sales || '0.00') + '</div></div>'));
                 cardBody.append(kpiRow);
 
                 if (data.top_products && data.top_products.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.78rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table-sm"></table>');
                     table.append('<thead class="thead-light"><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Revenue</th></tr></thead>');
                     const tbody = $('<tbody></tbody>');
                     data.top_products.forEach(function(p) {
@@ -726,13 +585,13 @@
 
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
-                kpiRow.append($('<div class="col-6 border-right"><div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Total Payables</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_outstanding || '0.00') + '</div></div>'));
-                kpiRow.append($('<div class="col-6"><div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase;">Suppliers with Dues</div><div class="font-weight-bold text-dark">' + (data.supplier_count_with_dues || 0) + '</div></div>'));
+                kpiRow.append($('<div class="col-6 border-right"><div class="text-muted ai-kpi-label">Total Payables</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_outstanding || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-6"><div class="text-muted ai-kpi-label">Suppliers with Dues</div><div class="font-weight-bold text-dark">' + (data.supplier_count_with_dues || 0) + '</div></div>'));
                 cardBody.append(kpiRow);
 
                 if (data.top_suppliers && data.top_suppliers.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
                     table.append('<thead class="thead-light"><tr><th>Supplier</th><th class="text-right">Balance Owed</th><th class="text-center">Bills</th><th class="text-right">Max Overdue</th></tr></thead>');
                     const tbody = $('<tbody></tbody>');
                     data.top_suppliers.forEach(function(sup) {
@@ -761,16 +620,16 @@
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
                 if (stType === 'profit_and_loss') {
-                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Revenue</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_revenue || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Gross Profit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.gross_profit || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Net Income</div><div class="font-weight-bold text-success">' + currencySymbol + (data.summary?.net_income || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Revenue</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_revenue || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Gross Profit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.gross_profit || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Net Income</div><div class="font-weight-bold text-success">' + currencySymbol + (data.summary?.net_income || '0.00') + '</div></div>'));
                 } else if (stType === 'balance_sheet') {
-                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Assets</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_assets || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Liabilities</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.summary?.total_liabilities || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Equity</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.summary?.total_equity || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Assets</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_assets || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Liabilities</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.summary?.total_liabilities || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Equity</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.summary?.total_equity || '0.00') + '</div></div>'));
                 } else {
-                    kpiRow.append($('<div class="col-6 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Debit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_debit || '0.00') + '</div></div>'));
-                    kpiRow.append($('<div class="col-6"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Credit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_credit || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-6 border-right"><div class="text-muted ai-kpi-label">Total Debit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_debit || '0.00') + '</div></div>'));
+                    kpiRow.append($('<div class="col-6"><div class="text-muted ai-kpi-label">Total Credit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_credit || '0.00') + '</div></div>'));
                 }
                 cardBody.append(kpiRow);
                 card.append(cardBody);
@@ -784,9 +643,9 @@
 
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Taxable Value</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.total_taxable_value || '0.00') + '</div></div>'));
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">CGST + SGST</div><div class="font-weight-bold text-dark">' + currencySymbol + ((parseFloat(data.total_cgst || 0) + parseFloat(data.total_sgst || 0))).toFixed(2) + '</div></div>'));
-                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Total Tax Liability</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_tax_liability || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Taxable Value</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.total_taxable_value || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">CGST + SGST</div><div class="font-weight-bold text-dark">' + currencySymbol + ((parseFloat(data.total_cgst || 0) + parseFloat(data.total_sgst || 0))).toFixed(2) + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Total Tax Liability</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_tax_liability || '0.00') + '</div></div>'));
                 cardBody.append(kpiRow);
                 card.append(cardBody);
                 bubble.append(card);
@@ -802,7 +661,7 @@
                     cardBody.append('<div class="text-muted small font-weight-bold mb-2">Click any suggested question below to try:</div>');
                     const pillContainer = $('<div class="d-flex flex-wrap"></div>');
                     data.suggested_questions.forEach(function(q) {
-                        const btn = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-2 font-weight-normal text-left" style="font-size: 0.78rem; border-radius: 16px;"></button>')
+                        const btn = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-2 font-weight-normal text-left ai-chip-btn"></button>')
                             .text('💬 ' + q)
                             .click(function() { $('#chat-input').val(q).focus(); });
                         pillContainer.append(btn);
@@ -822,13 +681,13 @@
                 if (data.boms && data.boms.length > 0) {
                     data.boms.forEach(function(b) {
                         const bomBox = $('<div class="border rounded p-2 mb-2 bg-light"></div>');
-                        bomBox.append('<div class="d-flex justify-content-between font-weight-bold text-dark" style="font-size: 0.85rem;">' +
+                        bomBox.append('<div class="d-flex justify-content-between font-weight-bold text-dark ai-bom-title">' +
                             '<span>' + $('<div>').text(b.output_product.name).html() + ' (' + $('<div>').text(b.code).html() + ' v' + b.version + ')</span>' +
                             '<span class="badge badge-secondary">' + b.output_product.output_qty + ' ' + b.output_product.uom + '</span>' +
                             '</div>');
 
                         if (b.components && b.components.length > 0) {
-                            const compList = $('<div class="mt-1" style="font-size: 0.78rem;"></div>');
+                            const compList = $('<div class="mt-1 ai-comp-list"></div>');
                             b.components.forEach(function(c) {
                                 compList.append('<div class="text-muted d-flex justify-content-between border-top py-1">' +
                                     '<span>• ' + $('<div>').text(c.component_name).html() + '</span>' +
@@ -855,14 +714,14 @@
 
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Orders Pending</div><div class="font-weight-bold text-dark">' + (summary.total_orders_pending || 0) + '</div></div>'));
-                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Qty</div><div class="font-weight-bold text-dark">' + (summary.total_pending_qty ?? 'By product') + '</div></div>'));
-                kpiRow.append($('<div class="col-4"><div class="text-muted" style="font-size: 0.70rem; text-transform: uppercase;">Pending Value</div><div class="font-weight-bold text-primary">' + currencySymbol + (summary.total_pending_value || '0.00') + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Orders Pending</div><div class="font-weight-bold text-dark">' + (summary.total_orders_pending || 0) + '</div></div>'));
+                kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Pending Qty</div><div class="font-weight-bold text-dark">' + (summary.total_pending_qty ?? 'By product') + '</div></div>'));
+                kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Pending Value</div><div class="font-weight-bold text-primary">' + currencySymbol + (summary.total_pending_value || '0.00') + '</div></div>'));
                 cardBody.append(kpiRow);
 
                 if (data.orders && data.orders.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.78rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table-sm"></table>');
                     table.append('<thead class="thead-light"><tr><th>Order #</th><th>Processor</th><th>Product</th><th class="text-right">Qty</th><th class="text-right">Return By</th><th class="text-center">Status</th></tr></thead>');
                     const tbody = $('<tbody></tbody>');
                     data.orders.forEach(function(o) {
@@ -892,7 +751,7 @@
                 const cardBody = $('<div class="card-body p-2 bg-white"></div>');
                 if (data.orders && data.orders.length > 0) {
                     const tableWrapper = $('<div class="table-responsive"></div>');
-                    const table = $('<table class="table table-sm table-hover mb-0" style="font-size: 0.78rem;"></table>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table-sm"></table>');
                     table.append('<thead class="thead-light"><tr><th>Type</th><th>Order #</th><th>Party</th><th class="text-right">Total</th><th class="text-right">Open Due</th><th class="text-center">Status</th></tr></thead>');
                     const tbody = $('<tbody></tbody>');
                     data.orders.forEach(function(o) {
@@ -922,7 +781,7 @@
                 card.append(cardHeader);
 
                 const cardBody = $('<div class="card-body p-3 bg-white"></div>');
-                cardBody.append('<div class="row no-gutters mb-2" style="font-size: 0.85rem;">' +
+                cardBody.append('<div class="row no-gutters mb-2 ai-diff-row">' +
                     '<div class="col-6">Party: <strong>' + $('<div>').text(data.party?.name || '').html() + '</strong></div>' +
                     '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
                     '</div>');
