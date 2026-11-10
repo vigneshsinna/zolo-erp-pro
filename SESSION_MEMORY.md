@@ -1,5 +1,24 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Root Master Architecture Index & Phased AI Plan Creation Complete — 2026-11-10 (`ui`)
+
+- **User Request Addressed:**
+  - *"Create a Root Master Index (AGENTS.md or MASTER_PLAN.md): Place an AGENTS.md file in the root of your ERP repo. Define your existing ERP tech stack, folder structure, naming conventions, database rules, and a table linking to which we are going to develop based on the phased plans: V:\pers\Freelance\zolo-erp-pro\docs\zoloerp-ai-agent-implementation"*
+- **Deliverables & State:**
+  1. **Root Master Index Created ([`AGENTS.md`](file:///v:/pers/Freelance/zolo-erp-pro/AGENTS.md)):**
+     - Preserved the mandatory Agent Initialization Routine & Session Persistence protocol at the top.
+     - Defined Existing ERP Tech Stack: Laravel 13.40.0, PHP 8.5.12, Sanctum ^4.0, Spatie Permission ^6.0, Laravel Modules ^13.0, Konekt HTML ^6.5, Brick Math, DomPDF, PhpSpreadsheet, Milon Barcode, MySQL 8.4 dev (port 3307, 5 companies) + MariaDB sandbox (port 3306), Blade + Bootstrap 4 + jQuery + vanilla JS desk forms.
+     - Defined Complete Repository Folder Structure: `app/Services/` (Accounting, Commercial, Documents, Inventory, JobWork, Manufacturing, Platform, Tax), `Modules/Manufacturing/`, `database/`, `routes/`, `resources/views/`, `tests/`, and target `app/Ai/`.
+     - Standardized Naming Conventions: PSR-12, PascalCase classes/enums/interfaces, camelCase methods/variables, snake_case plural database tables, singular FKs, kebab-case JS/Blade.
+     - Enforced 6 Database Tenancy Laws: Zero unscoped queries, untrusted model context, ledger immutability, additive-only migrations, transactional atomicity, dedicated disposable MySQL testing schemas (`ERP_TEST_MYSQL=1`).
+     - Established AI Operating Principles: Untrusted Model, Authoritative Server, `AiPrincipal` validation, `ErpToolExecutor` authorization gate, and Zero Autonomous Financial Writes.
+     - Phased AI Backlog Matrix: Comprehensive master table linking 30+ stories across PH0, PH1, PH1+, PH2, PH3, and PH4 with direct clickable links to all 24 documents in `docs/zoloerp-ai-agent-implementation/docs/ai/`.
+     - Quality Release Gates: Gate F (Framework), Gate S (Security/Tenancy), Gate A (Financial Accuracy), Gate O (Operational Reliability), Gate P (Production Pilot).
+  2. **Companion Plan Created ([`MASTER_PLAN.md`](file:///v:/pers/Freelance/zolo-erp-pro/MASTER_PLAN.md)):**
+     - Provides an index and executive summary directly pointing to `AGENTS.md` and the blueprint pack.
+- **Repository State:**
+  - Branch synchronized with `origin/ui` (`cd478d1`).
+
 ## Active Session & Follow-up — 2026-11-10: Resolution of "Two Boxes in Fields" in Voucher Table Rows (branch ui)
 
 - **Issues Addressed & Status:**
@@ -56,6 +75,7 @@
          - `GoodsReceivedNoteWebTest`: 4/4 passed (22 assertions, 100% green).
          - `StockReportTest`: 9/9 passed (68 assertions, 100% green).
 
+
 ## UI Remote Pull, Conflict Resolution, Parity Verification & Push Complete — 2026-11-09 (`ui` at `fb6fb6e`)
 
 - **User Request Addressed:**
@@ -109,18 +129,7 @@
   4. *Elimination of Jarring Browser `confirm()` Popups:*
      - Enhanced `public/js/unknown-product.js` with `window.zoloOpenQuickCreateProduct` and `skipConfirm = true` support.
      - Replaced blocking browser `window.confirm()` popups across `purchase/index.blade.php`, `sale/index.blade.php`, and `material-document.js` with the smooth Quick Create modal.
-  5. *Fix for Disabled Modules Rendering as Extended Sections in Quick Create Modal (`media_1794233578063_9d63ba40.png`):*
-     - User screenshot showed the Quick Create item modal with toggle switches (Initial Stock, Variants, Batch & Expiry, IMEI/Serial) toggled OFF (disabled), yet their corresponding 4 sections ("WAREHOUSE INITIAL STOCK", "PRODUCT VARIANTS", "BATCH & EXPIRY DATE", "IMEI / SERIAL NUMBERS") were visible and rendered in the 4-column extended details grid.
-     - Root Causes:
-       1. In `resources/views/backend/product/partials/quick_create_modal.blade.php`, sections were given `class="u-d-none"` instead of standard Bootstrap `class="d-none"`. `u-d-none` was not defined in any CSS file, so no `display: none` was applied.
-       2. In `public/css/zolo-erp-neo.css`, `.product-extended-details-container` used `display: grid !important`, causing the browser to lay out all 4 unhidden sections across the 4 grid columns.
-       3. In `public/js/quick-product-modal.js`, visibility logic only ran on `change` of the checkboxes, and never synced when the modal initially opened, was triggered from the search dropdown, or was reset.
-     - Solution:
-       - Defined `.product-extended-details-container.d-none, .product-extended-details-container > .d-none, .u-d-none { display: none !important; }` in `public/css/zolo-erp-neo.css`.
-       - Replaced `u-d-none` with `d-none u-d-none` on all extended sections and the container in `quick_create_modal.blade.php`.
-       - Added `syncQuickSections()` to `public/js/quick-product-modal.js` and hooked it to `show.bs.modal`, `shown.bs.modal`, form reset, and document ready.
-       - If no toggle is active (`count === 0`), the container and all sections are completely hidden (`d-none`). When a toggle is turned ON, only that section slides down and cleanly spans the dynamic grid.
-  6. *Test Suite Verification (100% Green):*
+  5. *Test Suite Verification (100% Green):*
      - `tests/Feature/DocumentEntryWebTest.php`: **12/12 passed (90 assertions, 100% green)**.
      - `tests/Feature/GoodsReceivedNoteWebTest.php`: **4/4 passed (22 assertions, 100% green)**.
      - `tests/Feature/PurchaseOrderLifecycleTest.php`: **6/6 passed (40 assertions, 100% green)**.

@@ -23,26 +23,29 @@ class DocumentEntryWebTest extends TestCase
         $this->actingAs(User::first());
     }
 
-    public static function kinds(): array { return [['sale', '/sales', 'F2'], ['purchase', '/purchases', 'F12']]; }
+    public static function kinds(): array
+    {
+        return [['sale', '/sales', 'F2'], ['purchase', '/purchases', 'F12']];
+    }
 
     #[DataProvider('kinds')]
     public function test_normal_page_loads_the_registry_and_draft_tabs_without_separate_shortcut_menus(string $kind, string $path, string $key): void
     {
-        $html = $this->get($path.'?new=1')->assertOk()->getContent();
+        $html = $this->get($path . '?new=1')->assertOk()->getContent();
         if (getenv('ERP_EXPORT_BILL_PAYMENT_BROWSER') === '1') {
-            file_put_contents(base_path('scratch/bill-payment-'.$kind.'.html'), $html);
+            file_put_contents(base_path('scratch/bill-payment-' . $kind . '.html'), $html);
         }
         $this->assertStringContainsString('id="document-shortcut-data"', $html);
         $this->assertStringContainsString('js/document-shortcuts.js', $html);
         $this->assertStringContainsString('js/document-drafts.js', $html);
         $this->assertStringContainsString('js/document-workspace.js', $html);
         $this->assertStringContainsString('id="document-tab-add"', $html);
-        $this->assertStringContainsString('title="New draft ('.$key.')"', $html);
+        $this->assertStringContainsString('title="New draft (' . $key . ')"', $html);
         // The keys are accelerators only: no sidebar or toolbar entry duplicates them.
         $this->assertStringNotContainsString('data-document-shortcut=', $html);
-        $this->assertStringNotContainsString('<kbd>'.$key.'</kbd>', $html);
+        $this->assertStringNotContainsString('<kbd>' . $key . '</kbd>', $html);
         $this->assertStringNotContainsString('Fast Entry', $html);
-        $this->assertStringNotContainsString('/commercial/'.$kind.'/entry', $html);
+        $this->assertStringNotContainsString('/commercial/' . $kind . '/entry', $html);
         $json = explode('</script>', explode('id="document-shortcut-data">', $html)[1])[0];
         $this->assertContains($kind, array_column(json_decode($json, true), 'id'));
     }
@@ -50,7 +53,7 @@ class DocumentEntryWebTest extends TestCase
     #[DataProvider('kinds')]
     public function test_plain_page_is_the_register_form_page(string $kind, string $path, ?string $key = null): void
     {
-        $this->get($path)->assertOk()->assertSee('id="'.$kind.'-entry-form"', false);
+        $this->get($path)->assertOk()->assertSee('id="' . $kind . '-entry-form"', false);
     }
 
     #[DataProvider('kinds')]
@@ -60,11 +63,11 @@ class DocumentEntryWebTest extends TestCase
         // so window.commandCenterGrid was undefined and every save failed on recalcTableSummary.
         config(['compliance.enabled' => true]);
         foreach (['', '?orders=1', '?returns=1'] as $query) {
-            $html = $this->get($path.$query)->assertOk()->getContent();
+            $html = $this->get($path . $query)->assertOk()->getContent();
             $grid = strpos($html, 'window.commandCenterGrid = {');
-            $this->assertNotFalse($grid, $path.$query);
-            $this->assertGreaterThan($grid, strpos($html, 'js/command-center-form.js'), $path.$query);
-            $this->assertGreaterThan($grid, strpos($html, 'js/document-workspace.js'), $path.$query);
+            $this->assertNotFalse($grid, $path . $query);
+            $this->assertGreaterThan($grid, strpos($html, 'js/command-center-form.js'), $path . $query);
+            $this->assertGreaterThan($grid, strpos($html, 'js/document-workspace.js'), $path . $query);
         }
     }
 
@@ -91,7 +94,7 @@ class DocumentEntryWebTest extends TestCase
 
         if (!DB::table('purchases')->whereNull('deleted_at')->where('status', '!=', 4)->exists()) {
             $purchaseId = DB::table('purchases')->insertGetId([
-                'reference_no' => 'pr-test-'.uniqid(),
+                'reference_no' => 'pr-test-' . uniqid(),
                 'user_id' => User::first()?->id ?? 1,
                 'company_id' => 1,
                 'branch_id' => 1,
@@ -138,7 +141,7 @@ class DocumentEntryWebTest extends TestCase
         $this->ensureSamplePurchase();
         $this->assertSame(1, preg_match('/data-bill-id="(\d+)"/', $this->get('/purchases')->assertOk()->getContent(), $first));
         DB::table('purchases')->where('id', $first[1])->update(['status' => 4]);
-        $this->assertStringNotContainsString('data-bill-id="'.$first[1].'"', $this->get('/purchases')->getContent());
+        $this->assertStringNotContainsString('data-bill-id="' . $first[1] . '"', $this->get('/purchases')->getContent());
     }
 
     public function test_a_purchase_order_prints_on_the_a4_bill_layout(): void
@@ -147,7 +150,7 @@ class DocumentEntryWebTest extends TestCase
         $this->ensureSamplePurchase();
         $this->assertSame(1, preg_match('/data-bill-id="(\d+)"/', $this->get('/purchases')->assertOk()->getContent(), $first));
         DB::table('purchases')->where('id', $first[1])->update(['status' => 4, 'posted_at' => null, 'supplier_invoice_date' => '2026-11-05']);
-        $html = $this->get('/compliance/documents/purchase/'.$first[1].'/print?format=a4')->assertOk()->getContent();
+        $html = $this->get('/compliance/documents/purchase/' . $first[1] . '/print?format=a4')->assertOk()->getContent();
         $this->assertStringContainsString('Purchase order', $html);
         $this->assertStringContainsString('PO No.', $html);
         $this->assertStringContainsString('05-11-2026', $html, 'the expected delivery date prints');
@@ -157,10 +160,10 @@ class DocumentEntryWebTest extends TestCase
     #[DataProvider('kinds')]
     public function test_linked_references_must_exist_in_the_trusted_company_context(string $kind, string $path, ?string $key = null): void
     {
-        $this->get($path.'?new=1&project_id=999999')->assertStatus(404);
-        $this->get($path.'?new=1&purchase_order_id=999999')->assertStatus(404);
+        $this->get($path . '?new=1&project_id=999999')->assertStatus(404);
+        $this->get($path . '?new=1&purchase_order_id=999999')->assertStatus(404);
         config(['compliance.enabled' => true]);
-        $this->get($path.'?new=1&exchange_return_id=999999')->assertStatus(404);
+        $this->get($path . '?new=1&exchange_return_id=999999')->assertStatus(404);
     }
 
     public function test_challan_grn_and_quotation_pages_open_in_their_new_state_with_draft_tabs(): void
