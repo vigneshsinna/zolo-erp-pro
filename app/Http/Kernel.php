@@ -82,6 +82,7 @@ class Kernel extends HttpKernel
         'company.context' => \App\Http\Middleware\ResolveCompanyContext::class,
         'legacy.company' => \App\Http\Middleware\ResolveLegacyCompanyContext::class,
         'legacy.stock' => \App\Http\Middleware\RecordLegacyStockShadow::class,
+        'ai.bootstrap.admin' => \App\Http\Middleware\VerifyBootstrapAdminContext::class,
     ];
 
     /**

@@ -6,6 +6,7 @@ namespace App\Ai\Contracts;
 
 use App\Ai\DTOs\ActionDefinition;
 use App\Ai\DTOs\ActionPreviewResult;
+use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Services\Platform\CompanyContext;
 
 interface ActionPreviewAdapterInterface
@@ -17,6 +18,6 @@ interface ActionPreviewAdapterInterface
     public function preview(
         ActionDefinition $definition,
         array $slots,
-        CompanyContext $context,
+        CompanyContext|BootstrapSetupPrincipal $context,
     ): ActionPreviewResult;
 }

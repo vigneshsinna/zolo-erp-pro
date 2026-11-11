@@ -216,6 +216,14 @@ Route::prefix('v1')->group(function () {
             Route::get('customers/{id}/ledger', [ReportApiController::class, 'customerLedger'])->name('api.v1.reports.customer-ledger');
         });
 
+        // AI Guided Initial Setup (Mode A: Pre-Company Bootstrap)
+        Route::prefix('ai/setup/bootstrap')->middleware(\App\Http\Middleware\VerifyBootstrapAdminContext::class)->group(function () {
+            Route::post('tasks', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'initiateTask'])->name('api.v1.ai.setup.bootstrap.tasks');
+            Route::post('tasks/{id}/preview', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'preview'])->whereUuid('id')->name('api.v1.ai.setup.bootstrap.preview');
+            Route::post('tasks/{id}/change-request', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'changeRequest'])->whereUuid('id')->name('api.v1.ai.setup.bootstrap.change-request');
+            Route::post('tasks/{id}/approve', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'approve'])->whereUuid('id')->name('api.v1.ai.setup.bootstrap.approve');
+        });
+
         // AI Operating Layer
         Route::prefix('ai')->middleware('company.context')->group(function () {
             Route::get('settings', [\App\Http\Controllers\Api\V1\AiChatController::class, 'settings'])->name('api.v1.ai.settings');

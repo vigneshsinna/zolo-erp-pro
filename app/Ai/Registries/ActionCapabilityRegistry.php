@@ -52,4 +52,39 @@ final class ActionCapabilityRegistry
     {
         return $this->definitions;
     }
+
+    public function registerSetupCapabilities(): void
+    {
+        if (!$this->has('setup.branch.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'setup.branch.create.v1',
+                businessModule: 'branch_setup',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use'],
+                inputSchemaClass: \App\Ai\Schemas\CreateBranchInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\BranchSetupPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\BranchSetupCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+
+        if (!$this->has('setup.warehouse.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'setup.warehouse.create.v1',
+                businessModule: 'warehouse_setup',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use'],
+                inputSchemaClass: \App\Ai\Schemas\CreateWarehouseInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\WarehouseSetupPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\WarehouseSetupCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+    }
 }
