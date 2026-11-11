@@ -175,5 +175,22 @@ final class ActionCapabilityRegistry
                 mode: 'company',
             ));
         }
+
+        if (!$this->has('sales_order.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'sales_order.create.v1',
+                businessModule: 'commercial',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use', 'sales-add'],
+                inputSchemaClass: \App\Ai\Schemas\CreateSalesOrderInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\SalesOrderPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\SalesOrderCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                requiresFreshSnapshot: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
     }
 }

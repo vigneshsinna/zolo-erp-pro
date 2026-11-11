@@ -65,7 +65,7 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             $categoryId = Category::where('company_id', $context->companyId)->value('id');
         }
 
-        $cost = (float) ($slots['cost'] ?? 0);
+        $cost = (float) ($slots['cost'] ?? $slots['cost_price'] ?? 0);
         $price = (float) ($slots['price'] ?? 0);
 
         $taxCategoryId = null;

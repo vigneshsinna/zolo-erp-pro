@@ -6,6 +6,7 @@ namespace App\Ai\Registries;
 
 use App\Ai\Contracts\ActionRequirementsProviderInterface;
 use App\Ai\Requirements\PurchaseOrderRequirementsProvider;
+use App\Ai\Requirements\SalesOrderRequirementsProvider;
 use InvalidArgumentException;
 
 final class ActionRequirementsRegistry
@@ -16,6 +17,7 @@ final class ActionRequirementsRegistry
     public function __construct()
     {
         $this->register(new PurchaseOrderRequirementsProvider());
+        $this->register(new SalesOrderRequirementsProvider());
     }
 
     public function register(ActionRequirementsProviderInterface $provider): void

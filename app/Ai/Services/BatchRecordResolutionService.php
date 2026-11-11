@@ -6,6 +6,7 @@ namespace App\Ai\Services;
 
 use App\Ai\DTOs\BatchResolutionResult;
 use App\Ai\DTOs\WorkflowTaskContext;
+use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\Unit;
@@ -35,13 +36,20 @@ final class BatchRecordResolutionService
             return $result;
         }
 
-        // 1. Resolve Supplier
-        $this->resolveSupplierField($context, $slots, $result);
+        // 1. Resolve Supplier (purchasing flows)
+        if (isset($slots['supplier_id']) || isset($slots['supplier_query'])) {
+            $this->resolveSupplierField($context, $slots, $result);
+        }
 
-        // 2. Resolve Warehouse
+        // 2. Resolve Customer (sales flows)
+        if (isset($slots['customer_id']) || isset($slots['customer_query'])) {
+            $this->resolveCustomerField($context, $slots, $result);
+        }
+
+        // 3. Resolve Warehouse
         $this->resolveWarehouseField($context, $slots, $result);
 
-        // 3. Resolve Line Items (Products & Units) across every single line
+        // 4. Resolve Line Items (Products & Units) across every single line
         $this->resolveLineItems($context, $slots, $result);
 
         return $result;
@@ -81,6 +89,44 @@ final class BatchRecordResolutionService
                 $result->setCandidates('supplier_id', $candidates, $query);
             } else {
                 $result->setNone('supplier_id', $query, "No active supplier found matching '{$query}'.");
+            }
+        }
+    }
+
+    private function resolveCustomerField(CompanyContext $context, array $slots, BatchResolutionResult $result): void
+    {
+        $customerId = (int) ($slots['customer_id'] ?? 0);
+        if ($customerId > 0) {
+            $customer = Customer::where('company_id', $context->companyId)
+                ->where('is_active', true)
+                ->find($customerId);
+
+            if ($customer) {
+                $result->setResolved('customer_id', (int) $customer->id, $customer);
+                return;
+            }
+        }
+
+        $query = trim((string) ($slots['customer_query'] ?? ''));
+        if ($query !== '') {
+            $res = $this->resolver->resolveCustomer($context, $query);
+
+            if ($res['status'] === 'exact' && $res['customer']) {
+                $result->setResolved('customer_id', (int) $res['customer']->id, $res['customer']);
+            } elseif ($res['status'] === 'candidates') {
+                $candidates = $res['candidates']->map(function (Customer $c): array {
+                    $tax = !empty($c->tax_no) ? " (GSTIN: {$c->tax_no})" : '';
+                    return [
+                        'id' => (int) $c->id,
+                        'label' => "{$c->name}{$tax}",
+                        'name' => $c->name,
+                        'company_name' => $c->company_name,
+                        'tax_no' => $c->tax_no,
+                    ];
+                })->all();
+                $result->setCandidates('customer_id', $candidates, $query);
+            } else {
+                $result->setNone('customer_id', $query, "No active customer found matching '{$query}'.");
             }
         }
     }
@@ -132,6 +178,8 @@ final class BatchRecordResolutionService
     private function resolveLineItems(CompanyContext $context, array $slots, BatchResolutionResult $result): void
     {
         $rawItems = (array) ($slots['items'] ?? []);
+        $isSale = isset($slots['customer_id']) || isset($slots['customer_query']);
+        $mode = $isSale ? 'sale' : 'purchase';
 
         foreach ($rawItems as $index => $line) {
             $clientLineId = (string) ($line['client_line_id'] ?? "line-{$index}");
@@ -145,7 +193,7 @@ final class BatchRecordResolutionService
 
                 if ($product) {
                     $result->setResolved($fieldKey, (int) $product->id, $product);
-                    $this->resolveLineUnit($product, $line, $clientLineId, $result);
+                    $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
                     continue;
                 }
             }
@@ -157,7 +205,7 @@ final class BatchRecordResolutionService
                 if ($res['status'] === 'exact' && $res['product']) {
                     $product = $res['product'];
                     $result->setResolved($fieldKey, (int) $product->id, $product);
-                    $this->resolveLineUnit($product, $line, $clientLineId, $result);
+                    $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
                 } elseif ($res['status'] === 'candidates') {
                     $candidates = $res['candidates']->map(fn (Product $p): array => [
                         'id' => (int) $p->id,
@@ -165,6 +213,7 @@ final class BatchRecordResolutionService
                         'name' => $p->name,
                         'code' => $p->code,
                         'cost' => (float) ($p->cost ?? 0),
+                        'price' => (float) ($p->price ?? 0),
                     ])->all();
                     $result->setCandidates($fieldKey, $candidates, $productQuery);
                 } else {
@@ -174,12 +223,18 @@ final class BatchRecordResolutionService
         }
     }
 
-    private function resolveLineUnit(Product $product, array $line, string $clientLineId, BatchResolutionResult $result): void
+    private function resolveLineUnit(Product $product, array $line, string $clientLineId, BatchResolutionResult $result, string $mode = 'purchase'): void
     {
-        $uomKey = "items[{$clientLineId}].purchase_unit_id";
         $uomQuery = !empty($line['uom']) ? (string) $line['uom'] : null;
 
-        $unitId = $this->resolver->resolveUnit($product, $uomQuery);
+        if ($mode === 'sale' || isset($line['sale_unit_id'])) {
+            $uomKey = "items[{$clientLineId}].sale_unit_id";
+            $unitId = $this->resolver->resolveUnit($product, $uomQuery, 'sale');
+        } else {
+            $uomKey = "items[{$clientLineId}].purchase_unit_id";
+            $unitId = $this->resolver->resolveUnit($product, $uomQuery, 'purchase');
+        }
+
         if ($unitId) {
             $unit = Unit::find($unitId);
             $result->setResolved($uomKey, (int) $unitId, $unit);

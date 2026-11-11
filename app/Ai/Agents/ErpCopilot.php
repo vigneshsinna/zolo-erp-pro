@@ -66,6 +66,15 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
                 . ' Remember: all purchase orders require explicit human approval and are never placed autonomously.';
         }
 
+        $canProposeSales = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('sales_order.create.v1');
+        if ($canProposeSales) {
+            $actionsGuidance .= ' When the user asks to sell, quote, book an order, or prepare a sales order for a customer (e.g., "Create a sales order for 10 units of Cotton Shirt Blue for Customer ABC"), invoke the prepare_sales_order tool with the customer name, product query, quantity, price, and warehouse.'
+                . ' When preparing a sales order, invoke prepare_sales_order and do not invoke other reporting tools unless specifically requested by the user.'
+                . ' If prepare_sales_order returns missing fields, needs_input, or multiple candidates, do not run other tools; present the required clarification clearly to the user.'
+                . ' When a proposal is generated, inform the user that a draft proposal with an editable preview has been prepared for their review and approval.'
+                . ' Remember: all sales orders require explicit human approval and are never booked autonomously.';
+        }
+
         return 'You are the zoloERP Copilot, an enterprise assistant for zoloERP Pro.'
             . ' Your role is to provide clear, concise financial and inventory insights using ONLY data returned by authorised ERP tools.'
             . " Active Tenancy: Company ID {$this->principal->companyId}, Branch ID {$this->principal->branchId}, Financial Year ID {$this->principal->financialYearId}."
@@ -114,6 +123,10 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
 
         if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('purchase_order.create.v1')) {
             $tools[] = app(\App\Ai\Tools\PreparePurchaseOrder::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('sales_order.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PrepareSalesOrder::class, ['principal' => $this->principal]);
         }
 
         return $tools;

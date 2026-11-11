@@ -21,9 +21,10 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
     }
 
     /**
+     * @param array<string, mixed> $currentSlots
      * @return list<ActionFieldRequirement>
      */
-    public function requirements(WorkflowTaskContext $context): array
+    public function requirements(WorkflowTaskContext $context, array $currentSlots = []): array
     {
         return [
             new ActionFieldRequirement(

@@ -12,9 +12,10 @@ interface ActionRequirementsProviderInterface
     public function actionKey(): string;
 
     /**
+     * @param array<string, mixed> $currentSlots Current draft inputs for dynamic line expansion
      * @return list<ActionFieldRequirement>
      */
-    public function requirements(WorkflowTaskContext $context): array;
+    public function requirements(WorkflowTaskContext $context, array $currentSlots = []): array;
 
     /**
      * Deterministic, authoritative validation of complete inputs without ERP mutation.

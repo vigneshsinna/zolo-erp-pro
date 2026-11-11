@@ -960,17 +960,272 @@
                         // Required Inputs (Issues to resolve)
                         const inputsContainer = $('<div class="ai-clarification-inputs border-top pt-2 mt-2"></div>');
                         if (data.required_inputs && data.required_inputs.length > 0) {
-                            inputsContainer.append('<div class="small font-weight-bold text-dark mb-2">Please provide or clarify the following:</div>');
+                            inputsContainer.append('<div class="small font-weight-bold text-dark mb-2">Please complete or clarify the missing information:</div>');
                             data.required_inputs.forEach(function (issue) {
-                                const issueBox = $('<div class="form-group mb-2 ai-clarification-issue" data-field="' + issue.field + '"></div>');
+                                const issueBox = $('<div class="form-group mb-3 ai-clarification-issue" data-field="' + issue.field + '"></div>');
                                 const statusBadgeClass = issue.status === 'ambiguous' ? 'badge-info' : (issue.status === 'invalid' ? 'badge-danger' : 'badge-warning');
+                                
                                 issueBox.append('<div class="d-flex justify-content-between align-items-center mb-1">' +
                                     '<label class="small font-weight-bold mb-0 text-dark">' + $('<div>').text(issue.label || issue.field).html() + '</label>' +
                                     '<span class="badge ' + statusBadgeClass + ' py-0 px-1 small">' + $('<div>').text(issue.status).html() + '</span>' +
                                     '</div>');
-                                issueBox.append('<div class="small text-muted mb-1">' + $('<div>').text(issue.reason).html() + '</div>');
+                                issueBox.append('<div class="small text-muted mb-2">' + $('<div>').text(issue.reason).html() + '</div>');
 
-                                if (issue.candidates && issue.candidates.length > 0) {
+                                // Phase 2.2: Intelligent Three-Way Disambiguation Triad
+                                if (issue.resolution_options && issue.resolution_options.length > 0) {
+                                    const triadContainer = $('<div class="d-flex flex-wrap ai-triad-container mb-2 p-1 border rounded bg-light"></div>');
+                                    const triadPanel = $('<div class="ai-triad-panel border rounded p-2 bg-white mb-2"></div>');
+
+                                    const optSelect = issue.resolution_options.find(function (o) { return o.key === 'select_existing'; });
+                                    const optCreate = issue.resolution_options.find(function (o) { return o.key === 'create_new'; });
+                                    const optCorrect = issue.resolution_options.find(function (o) { return o.key === 'correct_name'; });
+
+                                    const btnSelect = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-1 mb-1 ai-triad-btn"><i class="dripicons-search mr-1"></i>' + $('<div>').text(optSelect ? optSelect.label : 'Select existing').html() + '</button>');
+                                    const btnCreate = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-1 mb-1 ai-triad-btn"><i class="dripicons-plus mr-1"></i>' + $('<div>').text(optCreate ? optCreate.label : 'Create new').html() + '</button>');
+                                    const btnCorrect = $('<button type="button" class="btn btn-sm btn-outline-secondary mb-1 ai-triad-btn"><i class="dripicons-pencil mr-1"></i>' + $('<div>').text(optCorrect ? optCorrect.label : 'Correct name').html() + '</button>');
+
+                                    if (optCreate && !optCreate.can_create) {
+                                        btnCreate.prop('disabled', true).addClass('disabled').attr('title', optCreate.disabled_reason || 'Permission denied');
+                                    }
+
+                                    triadContainer.append(btnSelect).append(btnCreate).append(btnCorrect);
+                                    issueBox.append(triadContainer).append(triadPanel);
+
+                                    function switchTriadMode(mode) {
+                                        triadContainer.find('.ai-triad-btn').removeClass('active btn-dark text-white').addClass('btn-outline-secondary');
+                                        triadPanel.empty();
+
+                                        if (mode === 'select_existing') {
+                                            btnSelect.removeClass('btn-outline-secondary').addClass('active btn-dark text-white');
+                                            if (issue.candidates && issue.candidates.length > 0) {
+                                                const candidateGroup = $('<div class="d-flex flex-wrap ai-candidate-group mb-1"></div>');
+                                                issue.candidates.forEach(function (cand) {
+                                                    const label = cand.name + (cand.code ? ' (' + cand.code + ')' : '');
+                                                    const candBtn = $('<button type="button" class="btn btn-sm btn-outline-primary mr-1 mb-1 ai-candidate-btn"></button>')
+                                                        .attr('data-field', issue.field)
+                                                        .attr('data-value', cand.id)
+                                                        .text(label);
+
+                                                    candBtn.on('click', function () {
+                                                        if ($(this).hasClass('active')) {
+                                                            $(this).removeClass('active btn-primary').addClass('btn-outline-primary');
+                                                            issueBox.removeAttr('data-resolved-val');
+                                                        } else {
+                                                            candidateGroup.find('.ai-candidate-btn').removeClass('active btn-primary').addClass('btn-outline-primary');
+                                                            $(this).addClass('active btn-primary').removeClass('btn-outline-primary');
+                                                            issueBox.attr('data-resolved-val', cand.id);
+                                                        }
+                                                    });
+                                                    candidateGroup.append(candBtn);
+                                                });
+                                                triadPanel.append('<div class="small font-weight-bold text-dark mb-1">Choose an existing active record:</div>').append(candidateGroup);
+                                            } else {
+                                                const searchInput = $('<input type="text" class="form-control form-control-sm ai-clarification-input" placeholder="Enter exact record ID or search query">')
+                                                    .attr('data-field', issue.field);
+                                                triadPanel.append('<div class="small text-muted mb-1">Enter existing record ID or search term:</div>').append(searchInput);
+                                            }
+                                        } else if (mode === 'correct_name') {
+                                            btnCorrect.removeClass('btn-outline-secondary').addClass('active btn-dark text-white');
+                                            const prefilledVal = (optCreate && optCreate.prefilled_slots && optCreate.prefilled_slots.name) ? optCreate.prefilled_slots.name : '';
+                                            const textInput = $('<input type="text" class="form-control form-control-sm ai-clarification-input">')
+                                                .attr('data-field', issue.field)
+                                                .attr('value', prefilledVal)
+                                                .attr('placeholder', 'Type corrected ' + (issue.label || issue.field) + ' name');
+                                            triadPanel.append('<div class="small text-muted mb-1">Update search term to retry matching:</div>').append(textInput);
+                                        } else if (mode === 'create_new') {
+                                            btnCreate.removeClass('btn-outline-secondary').addClass('active btn-dark text-white');
+                                            triadPanel.append('<div class="small text-info mb-2"><i class="dripicons-information mr-1"></i>' + $('<div>').text(optCreate.description || 'Provide required fields for master creation.').html() + '</div>');
+                                            const loading = $('<div class="small text-muted py-2"><i class="dripicons-loading mr-1"></i> Fetching master requirements...</div>');
+                                            triadPanel.append(loading);
+
+                                            $.ajax({
+                                                url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/dependent-masters/spawn',
+                                                method: 'POST',
+                                                headers: headers,
+                                                data: JSON.stringify({ field: issue.field }),
+                                                success: function (spawnRes) {
+                                                    loading.remove();
+                                                    const formBody = $('<div class="ai-master-form-body bg-light p-2 rounded border"></div>');
+                                                    const pre = spawnRes.prefilled || {};
+                                                    const defs = spawnRes.tenant_defaults || {};
+
+                                                    // Master fields layout
+                                                    if (spawnRes.entity_type === 'supplier') {
+                                                        formBody.append('<div class="form-group mb-1"><label>Supplier Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="e.g. ABC Traders"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Company Legal Name</label><input type="text" class="form-control form-control-sm mf-company-name" placeholder="Legal entity name"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>GSTIN / VAT Number</label><input type="text" class="form-control form-control-sm mf-vat" placeholder="29ABCDE1234F1Z5"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Phone Number</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>City</label><input type="text" class="form-control form-control-sm mf-city" placeholder="City"></div>');
+                                                    } else if (spawnRes.entity_type === 'product') {
+                                                        formBody.append('<div class="form-group mb-1"><label>Product Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Product Name"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Product Code / SKU *</label><input type="text" class="form-control form-control-sm mf-code" value="' + $('<div>').text(pre.code || '').html() + '" placeholder="SKU Code"></div>');
+                                                        
+                                                        const unitSelect = $('<select class="form-control form-control-sm mf-unit"></select>');
+                                                        if (defs.units && defs.units.length > 0) {
+                                                            defs.units.forEach(function (u) {
+                                                                const isSel = (pre.unit_id && pre.unit_id === u.id) ? ' selected' : '';
+                                                                unitSelect.append('<option value="' + u.id + '"' + isSel + '>' + $('<div>').text(u.unit_name + ' (' + u.unit_code + ')').html() + '</option>');
+                                                            });
+                                                        }
+                                                        formBody.append($('<div class="form-group mb-1"><label>Primary Unit *</label></div>').append(unitSelect));
+
+                                                        formBody.append('<div class="form-group mb-1"><label>Cost Price (₹)</label><input type="number" step="0.01" class="form-control form-control-sm mf-cost" value="' + (pre.cost || pre.price || '') + '" placeholder="0.00"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Selling Price (₹)</label><input type="number" step="0.01" class="form-control form-control-sm mf-price" value="' + (pre.price || pre.cost || '') + '" placeholder="0.00"></div>');
+
+                                                        if (defs.categories && defs.categories.length > 0) {
+                                                            const catSelect = $('<select class="form-control form-control-sm mf-category"><option value="">-- Default Category --</option></select>');
+                                                            defs.categories.forEach(function (c) {
+                                                                catSelect.append('<option value="' + c.id + '">' + $('<div>').text(c.name).html() + '</option>');
+                                                            });
+                                                            formBody.append($('<div class="form-group mb-1"><label>Category</label></div>').append(catSelect));
+                                                        }
+                                                    } else if (spawnRes.entity_type === 'warehouse') {
+                                                        formBody.append('<div class="form-group mb-1"><label>Warehouse Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Warehouse Name"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Phone</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Address / Location</label><input type="text" class="form-control form-control-sm mf-address" placeholder="Address"></div>');
+                                                    } else if (spawnRes.entity_type === 'customer') {
+                                                        formBody.append('<div class="form-group mb-1"><label>Customer Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Customer Name"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Phone</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>GSTIN</label><input type="text" class="form-control form-control-sm mf-vat" placeholder="GSTIN"></div>');
+                                                    }
+
+                                                    // Gate 1: Preview & Approval buttons
+                                                    const previewArea = $('<div class="mt-2 pt-2 border-top"></div>');
+                                                    const btnPreview = $('<button type="button" class="btn btn-sm btn-primary ai-btn-preview-master py-1 px-3"><i class="dripicons-preview mr-1"></i>Preview Master Proposal</button>');
+                                                    previewArea.append(btnPreview);
+                                                    formBody.append(previewArea);
+                                                    triadPanel.append(formBody);
+
+                                                    btnPreview.on('click', function () {
+                                                        btnPreview.prop('disabled', true).text('Validating & Preparing Preview...');
+                                                        
+                                                        const masterData = {
+                                                            name: formBody.find('.mf-name').val(),
+                                                        };
+                                                        if (spawnRes.entity_type === 'supplier') {
+                                                            masterData.company_name = formBody.find('.mf-company-name').val() || null;
+                                                            masterData.vat_number = formBody.find('.mf-vat').val() || null;
+                                                            masterData.phone_number = formBody.find('.mf-phone').val() || null;
+                                                            masterData.city = formBody.find('.mf-city').val() || null;
+                                                        } else if (spawnRes.entity_type === 'product') {
+                                                            masterData.code = formBody.find('.mf-code').val();
+                                                            masterData.unit_id = formBody.find('.mf-unit').val() ? parseInt(formBody.find('.mf-unit').val(), 10) : null;
+                                                            masterData.cost = formBody.find('.mf-cost').val() ? parseFloat(formBody.find('.mf-cost').val()) : 0;
+                                                            masterData.price = formBody.find('.mf-price').val() ? parseFloat(formBody.find('.mf-price').val()) : 0;
+                                                            if (formBody.find('.mf-category').val()) {
+                                                                masterData.category_id = parseInt(formBody.find('.mf-category').val(), 10);
+                                                            }
+                                                        } else if (spawnRes.entity_type === 'warehouse') {
+                                                            masterData.phone = formBody.find('.mf-phone').val() || null;
+                                                            masterData.address = formBody.find('.mf-address').val() || null;
+                                                        } else if (spawnRes.entity_type === 'customer') {
+                                                            masterData.phone_number = formBody.find('.mf-phone').val() || null;
+                                                            masterData.vat_number = formBody.find('.mf-vat').val() || null;
+                                                        }
+
+                                                        $.ajax({
+                                                            url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/dependent-masters/preview',
+                                                            method: 'POST',
+                                                            headers: headers,
+                                                            data: JSON.stringify({
+                                                                field: issue.field,
+                                                                data: masterData
+                                                            }),
+                                                            success: function (prevRes) {
+                                                                btnPreview.hide();
+                                                                const prop = prevRes.proposal;
+                                                                const propBox = $('<div class="ai-master-preview-box mt-2"></div>');
+                                                                propBox.append('<div class="font-weight-bold text-dark mb-1"><i class="dripicons-document mr-1 text-primary"></i> Gate 1: ' + $('<div>').text(prop.action_title || prop.action_key).html() + ' (v' + prop.version + ')</div>');
+                                                                propBox.append('<div class="small text-muted mb-2">Proposal #' + $('<div>').text(prop.id.substring(0, 8)).html() + ' · Target: ' + $('<div>').text(masterData.name).html() + '</div>');
+                                                                
+                                                                const btnApprove = $('<button type="button" class="btn btn-sm btn-success ai-btn-approve-master mr-2 py-1 px-3"><i class="dripicons-checkmark mr-1"></i>Approve & Create Master</button>');
+                                                                const btnEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2">Edit Form</button>');
+
+                                                                btnApprove.on('click', function () {
+                                                                    btnApprove.prop('disabled', true).text('Executing in ERP...');
+                                                                    btnEdit.prop('disabled', true);
+
+                                                                    $.ajax({
+                                                                        url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/dependent-masters/approve-and-execute',
+                                                                        method: 'POST',
+                                                                        headers: headers,
+                                                                        data: JSON.stringify({
+                                                                            field: issue.field,
+                                                                            master_proposal_id: prop.id,
+                                                                            expected_version: prop.version || 1
+                                                                        }),
+                                                                        success: function (resExec) {
+                                                                            triadContainer.remove();
+                                                                            triadPanel.remove();
+                                                                            issueBox.attr('data-resolved', 'true');
+                                                                            issueBox.attr('data-resolved-id', resExec.newly_created.resource_id);
+                                                                            
+                                                                            const successBadge = $('<div class="ai-resumed-success-badge p-2 mb-2"><i class="dripicons-checkmark text-success mr-1"></i><strong>' + $('<div>').text(resExec.newly_created.resource_type.toUpperCase()).html() + ' Created & Linked:</strong> ' + $('<div>').text(resExec.newly_created.name || ('#' + resExec.newly_created.resource_id)).html() + ' (ID: #' + resExec.newly_created.resource_id + '). Task resumed at Rev ' + resExec.revision + '.</div>');
+                                                                            issueBox.append(successBadge);
+
+                                                                            if (resExec.can_prepare_proposal) {
+                                                                                const readyBanner = $('<div class="alert alert-success mt-2 mb-0 p-2 d-flex justify-content-between align-items-center">' +
+                                                                                    '<span class="small font-weight-bold"><i class="dripicons-checkmark mr-1"></i>All details ready! Purchase Order proposal can now be generated.</span>' +
+                                                                                    '<button type="button" class="btn btn-sm btn-success ai-btn-prepare-final-po py-1 px-3"><i class="dripicons-document mr-1"></i>Generate Purchase Order Proposal</button>' +
+                                                                                    '</div>');
+                                                                                readyBanner.find('.ai-btn-prepare-final-po').on('click', function () {
+                                                                                    $(this).prop('disabled', true).text('Preparing Proposal...');
+                                                                                    $.ajax({
+                                                                                        url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/prepare-proposal',
+                                                                                        method: 'POST',
+                                                                                        headers: headers,
+                                                                                        success: function () {
+                                                                                            readyBanner.html('<span class="small font-weight-bold text-success"><i class="dripicons-checkmark mr-1"></i>Purchase Order Proposal generated successfully! Review & approve in chat or Review Center.</span>');
+                                                                                        },
+                                                                                        error: function (e) {
+                                                                                            alert('Error generating proposal: ' + (e.responseJSON?.message || 'Failed'));
+                                                                                        }
+                                                                                    });
+                                                                                });
+                                                                                cardBody.append(readyBanner);
+                                                                            }
+                                                                        },
+                                                                        error: function (errExec) {
+                                                                            btnApprove.prop('disabled', false).text('Approve & Create Master');
+                                                                            btnEdit.prop('disabled', false);
+                                                                            alert('Execution failed: ' + (errExec.responseJSON?.message || 'Error executing proposal'));
+                                                                        }
+                                                                    });
+                                                                });
+
+                                                                btnEdit.on('click', function () {
+                                                                    propBox.remove();
+                                                                    btnPreview.show().prop('disabled', false).text('Preview Master Proposal');
+                                                                });
+
+                                                                propBox.append(btnApprove).append(btnEdit);
+                                                                previewArea.append(propBox);
+                                                            },
+                                                            error: function (errPrev) {
+                                                                btnPreview.prop('disabled', false).text('Preview Master Proposal');
+                                                                alert('Preview failed: ' + (errPrev.responseJSON?.message || 'Invalid master data'));
+                                                            }
+                                                        });
+                                                    });
+                                                },
+                                                error: function (err) {
+                                                    loading.html('<span class="text-danger small">Failed to load master requirements: ' + $('<div>').text(err.responseJSON?.message || 'Error').html() + '</span>');
+                                                }
+                                            });
+                                        }
+                                    }
+
+                                    btnSelect.on('click', function () { switchTriadMode('select_existing'); });
+                                    btnCreate.on('click', function () { switchTriadMode('create_new'); });
+                                    btnCorrect.on('click', function () { switchTriadMode('correct_name'); });
+
+                                    // Default initial view
+                                    if (issue.candidates && issue.candidates.length > 0) {
+                                        switchTriadMode('select_existing');
+                                    } else {
+                                        switchTriadMode('select_existing');
+                                    }
+                                } else if (issue.candidates && issue.candidates.length > 0) {
                                     const candidateGroup = $('<div class="d-flex flex-wrap ai-candidate-group mb-1"></div>');
                                     issue.candidates.forEach(function (cand) {
                                         const label = cand.name + (cand.code ? ' (' + cand.code + ')' : '');
@@ -1010,9 +1265,19 @@
                             btnSubmit.on('click', function () {
                                 const corrections = [];
                                 inputsContainer.find('.ai-clarification-issue').each(function () {
+                                    if ($(this).attr('data-resolved') === 'true') {
+                                        return; // Already resolved and persisted via Gate 1
+                                    }
                                     const field = $(this).attr('data-field');
+                                    const explicitVal = $(this).attr('data-resolved-val');
                                     const activeBtn = $(this).find('.ai-candidate-btn.active');
-                                    if (activeBtn.length > 0) {
+                                    if (explicitVal) {
+                                        corrections.push({
+                                            field: field,
+                                            value: explicitVal,
+                                            confirmation: 'user_selected'
+                                        });
+                                    } else if (activeBtn.length > 0) {
                                         corrections.push({
                                             field: field,
                                             value: activeBtn.attr('data-value'),
@@ -1030,7 +1295,7 @@
                                 });
 
                                 if (corrections.length === 0) {
-                                    alert('Please select or enter details for at least one item.');
+                                    alert('Please select, create, or enter details for at least one item.');
                                     return;
                                 }
 

@@ -1,5 +1,49 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Delivery Summary:**
+  - Fully extended the Unified Multi-Slot Input Collection & Clarification Engine across all enterprise transaction domains, specifically delivering `sales_order.create.v1` and Phase 2.2 Dependent Master Data Creation with the Three-Way Disambiguation Triad (`Select Existing`, `Create New Master`, `Correct Input`).
+  - Strict compliance with all core architectural invariants: Untrusted Model, Authoritative Server, Strict Tenancy Law 1 (zero unscoped queries), and Zero Autonomous Financial Writes.
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Dynamic Line-Item Addressing Contract:**
+     - Updated `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` to accept current slots and dynamically generate line schemas (`items[line-0]`, `items[line-1]`, etc.) with client line ID indexing and `_destroy: true` semantics.
+     - Implemented dynamic expansion in `PurchaseOrderRequirementsProvider` and `SalesOrderRequirementsProvider`.
+  2. **Single-Pass Batch Record Resolution Across Domains:**
+     - Extended `RecordResolutionService` with `resolveCustomer(CompanyContext $context, string $query)` (handling ID, tax_no/GSTIN, exact name, and substring candidate searches capped at 5).
+     - Extended `resolveUnit(Product $product, ?string $uomQuery, string $mode)` to support `$mode === 'sale'` using `sale_unit_id` with unit conversions.
+     - Extended `BatchRecordResolutionService` with set-based vectorized customer and line resolution for sales orders without early-exit.
+  3. **Input Completeness Evaluator & Three-Way Disambiguation Triad:**
+     - Evaluates customer, warehouse, and all line items in a single pass.
+     - Defaults prices to product `price` (master price) for sales orders vs `cost` for purchase orders.
+     - Defaults units to `sale_unit_id` for sales orders vs `purchase_unit_id` for purchase orders.
+     - Attaches the Three-Way Disambiguation Triad (`ResolutionOption`) with `select_existing`, `create_new`, and `correct_name` to unresolved/ambiguous master entities (`supplier_id`, `customer_id`, `product_id`, `warehouse_id`, `unit_id`).
+     - Emits downstream pending check for customer credit limits & GST place-of-supply determination.
+  4. **Governed Sales Order Action Pipeline (`sales_order.create.v1`):**
+     - `CreateSalesOrderInputSchema`: validates customer, warehouse, date, dynamic items, and expected commercial totals.
+     - `SalesOrderRequirementsProvider`: declarative requirement provider for `sales_order.create.v1`.
+     - `SalesOrderPreviewAdapter`: authoritative preview computing pricing, non-blocking ATP stock availability check via `InventoryAvailabilityService`, and live `source_state_hash`. Enforces `CanonicalActionPayload` decimal string formatting.
+     - `SalesOrderCommandAdapter`: row locks, fresh source state verification, and authoritative order creation via `OrderLifecycleService::createSale()`.
+     - Registered in `ActionCapabilityRegistry` and `ActionRequirementsRegistry`.
+  5. **AI SDK Tool & Agent Integration:**
+     - Created `PrepareSalesOrder` AI tool bridging natural language sales instructions to the governed pipeline.
+     - Registered `PrepareSalesOrder` in `ErpCopilot::tools()` and added system prompt guidance for sales order intent.
+  6. **Phase 2.2 Dependent Master Data Orchestration:**
+     - `DependentMasterOrchestrator`: spawns master requirements, generates Gate 1 master proposals (`setup.supplier.create.v1`, `setup.customer.create.v1`, `setup.product.create.v1`), executes them via `ActionExecutionService`, and automatically resumes the parent workflow task.
+     - Additive migration `2026_11_11_000003_add_dependent_masters_to_ai_workflow_tasks.php` adding `dependent_masters_json`.
+     - Mounted 3 REST endpoints under `/api/v1/ai/workflow-tasks/{id}/dependent-masters/` (`spawn`, `preview`, `approve-and-execute`).
+  7. **Feature Test Suites Passing 100%:**
+     - `tests/Feature/Ai/Commercial/MultiSlotSalesOrderWorkflowTest.php` (5 tests, 44 assertions): verifies batch resolution, clarification card with triad, non-blocking low-stock advisory, proposal creation without ERP mutations, approval execution via `SalesOrderCommandAdapter`, and cross-company isolation.
+     - `tests/Feature/Ai/Clarification/DependentMasterResolutionTest.php` (6 tests, 53 assertions): verifies Gate 1 master setup, automatic parent task resumption, and Gate 2 commercial transaction promotion.
+     - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **127/127 passed (860 assertions, 0 errors, 0 failures, 0 skipped)**.
+
+- **Next Steps:**
+  - Stage, commit, and push all deliverables on `feature/ai-unified-input-clarification`.
+  - Proceed with Phase 3 (Receipts, Bills & Full Ledger Invoices) or user-directed tasks.
+
+---
+
 ## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **User Direction & Confirmation:**
@@ -204,6 +248,50 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Delivery Summary:**
+  - Fully extended the Unified Multi-Slot Input Collection & Clarification Engine across all enterprise transaction domains, specifically delivering `sales_order.create.v1` and Phase 2.2 Dependent Master Data Creation with the Three-Way Disambiguation Triad (`Select Existing`, `Create New Master`, `Correct Input`).
+  - Strict compliance with all core architectural invariants: Untrusted Model, Authoritative Server, Strict Tenancy Law 1 (zero unscoped queries), and Zero Autonomous Financial Writes.
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Dynamic Line-Item Addressing Contract:**
+     - Updated `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` to accept current slots and dynamically generate line schemas (`items[line-0]`, `items[line-1]`, etc.) with client line ID indexing and `_destroy: true` semantics.
+     - Implemented dynamic expansion in `PurchaseOrderRequirementsProvider` and `SalesOrderRequirementsProvider`.
+  2. **Single-Pass Batch Record Resolution Across Domains:**
+     - Extended `RecordResolutionService` with `resolveCustomer(CompanyContext $context, string $query)` (handling ID, tax_no/GSTIN, exact name, and substring candidate searches capped at 5).
+     - Extended `resolveUnit(Product $product, ?string $uomQuery, string $mode)` to support `$mode === 'sale'` using `sale_unit_id` with unit conversions.
+     - Extended `BatchRecordResolutionService` with set-based vectorized customer and line resolution for sales orders without early-exit.
+  3. **Input Completeness Evaluator & Three-Way Disambiguation Triad:**
+     - Evaluates customer, warehouse, and all line items in a single pass.
+     - Defaults prices to product `price` (master price) for sales orders vs `cost` for purchase orders.
+     - Defaults units to `sale_unit_id` for sales orders vs `purchase_unit_id` for purchase orders.
+     - Attaches the Three-Way Disambiguation Triad (`ResolutionOption`) with `select_existing`, `create_new`, and `correct_name` to unresolved/ambiguous master entities (`supplier_id`, `customer_id`, `product_id`, `warehouse_id`, `unit_id`).
+     - Emits downstream pending check for customer credit limits & GST place-of-supply determination.
+  4. **Governed Sales Order Action Pipeline (`sales_order.create.v1`):**
+     - `CreateSalesOrderInputSchema`: validates customer, warehouse, date, dynamic items, and expected commercial totals.
+     - `SalesOrderRequirementsProvider`: declarative requirement provider for `sales_order.create.v1`.
+     - `SalesOrderPreviewAdapter`: authoritative preview computing pricing, non-blocking ATP stock availability check via `InventoryAvailabilityService`, and live `source_state_hash`. Enforces `CanonicalActionPayload` decimal string formatting.
+     - `SalesOrderCommandAdapter`: row locks, fresh source state verification, and authoritative order creation via `OrderLifecycleService::createSale()`.
+     - Registered in `ActionCapabilityRegistry` and `ActionRequirementsRegistry`.
+  5. **AI SDK Tool & Agent Integration:**
+     - Created `PrepareSalesOrder` AI tool bridging natural language sales instructions to the governed pipeline.
+     - Registered `PrepareSalesOrder` in `ErpCopilot::tools()` and added system prompt guidance for sales order intent.
+  6. **Phase 2.2 Dependent Master Data Orchestration:**
+     - `DependentMasterOrchestrator`: spawns master requirements, generates Gate 1 master proposals (`setup.supplier.create.v1`, `setup.customer.create.v1`, `setup.product.create.v1`), executes them via `ActionExecutionService`, and automatically resumes the parent workflow task.
+     - Additive migration `2026_11_11_000003_add_dependent_masters_to_ai_workflow_tasks.php` adding `dependent_masters_json`.
+     - Mounted 3 REST endpoints under `/api/v1/ai/workflow-tasks/{id}/dependent-masters/` (`spawn`, `preview`, `approve-and-execute`).
+  7. **Feature Test Suites Passing 100%:**
+     - `tests/Feature/Ai/Commercial/MultiSlotSalesOrderWorkflowTest.php` (5 tests, 44 assertions): verifies batch resolution, clarification card with triad, non-blocking low-stock advisory, proposal creation without ERP mutations, approval execution via `SalesOrderCommandAdapter`, and cross-company isolation.
+     - `tests/Feature/Ai/Clarification/DependentMasterResolutionTest.php` (6 tests, 53 assertions): verifies Gate 1 master setup, automatic parent task resumption, and Gate 2 commercial transaction promotion.
+     - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **127/127 passed (860 assertions, 0 errors, 0 failures, 0 skipped)**.
+
+- **Next Steps:**
+  - Stage, commit, and push all deliverables on `feature/ai-unified-input-clarification`.
+  - Proceed with Phase 3 (Receipts, Bills & Full Ledger Invoices) or user-directed tasks.
+
+---
 
 ## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
@@ -419,6 +507,50 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Delivery Summary:**
+  - Fully extended the Unified Multi-Slot Input Collection & Clarification Engine across all enterprise transaction domains, specifically delivering `sales_order.create.v1` and Phase 2.2 Dependent Master Data Creation with the Three-Way Disambiguation Triad (`Select Existing`, `Create New Master`, `Correct Input`).
+  - Strict compliance with all core architectural invariants: Untrusted Model, Authoritative Server, Strict Tenancy Law 1 (zero unscoped queries), and Zero Autonomous Financial Writes.
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Dynamic Line-Item Addressing Contract:**
+     - Updated `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` to accept current slots and dynamically generate line schemas (`items[line-0]`, `items[line-1]`, etc.) with client line ID indexing and `_destroy: true` semantics.
+     - Implemented dynamic expansion in `PurchaseOrderRequirementsProvider` and `SalesOrderRequirementsProvider`.
+  2. **Single-Pass Batch Record Resolution Across Domains:**
+     - Extended `RecordResolutionService` with `resolveCustomer(CompanyContext $context, string $query)` (handling ID, tax_no/GSTIN, exact name, and substring candidate searches capped at 5).
+     - Extended `resolveUnit(Product $product, ?string $uomQuery, string $mode)` to support `$mode === 'sale'` using `sale_unit_id` with unit conversions.
+     - Extended `BatchRecordResolutionService` with set-based vectorized customer and line resolution for sales orders without early-exit.
+  3. **Input Completeness Evaluator & Three-Way Disambiguation Triad:**
+     - Evaluates customer, warehouse, and all line items in a single pass.
+     - Defaults prices to product `price` (master price) for sales orders vs `cost` for purchase orders.
+     - Defaults units to `sale_unit_id` for sales orders vs `purchase_unit_id` for purchase orders.
+     - Attaches the Three-Way Disambiguation Triad (`ResolutionOption`) with `select_existing`, `create_new`, and `correct_name` to unresolved/ambiguous master entities (`supplier_id`, `customer_id`, `product_id`, `warehouse_id`, `unit_id`).
+     - Emits downstream pending check for customer credit limits & GST place-of-supply determination.
+  4. **Governed Sales Order Action Pipeline (`sales_order.create.v1`):**
+     - `CreateSalesOrderInputSchema`: validates customer, warehouse, date, dynamic items, and expected commercial totals.
+     - `SalesOrderRequirementsProvider`: declarative requirement provider for `sales_order.create.v1`.
+     - `SalesOrderPreviewAdapter`: authoritative preview computing pricing, non-blocking ATP stock availability check via `InventoryAvailabilityService`, and live `source_state_hash`. Enforces `CanonicalActionPayload` decimal string formatting.
+     - `SalesOrderCommandAdapter`: row locks, fresh source state verification, and authoritative order creation via `OrderLifecycleService::createSale()`.
+     - Registered in `ActionCapabilityRegistry` and `ActionRequirementsRegistry`.
+  5. **AI SDK Tool & Agent Integration:**
+     - Created `PrepareSalesOrder` AI tool bridging natural language sales instructions to the governed pipeline.
+     - Registered `PrepareSalesOrder` in `ErpCopilot::tools()` and added system prompt guidance for sales order intent.
+  6. **Phase 2.2 Dependent Master Data Orchestration:**
+     - `DependentMasterOrchestrator`: spawns master requirements, generates Gate 1 master proposals (`setup.supplier.create.v1`, `setup.customer.create.v1`, `setup.product.create.v1`), executes them via `ActionExecutionService`, and automatically resumes the parent workflow task.
+     - Additive migration `2026_11_11_000003_add_dependent_masters_to_ai_workflow_tasks.php` adding `dependent_masters_json`.
+     - Mounted 3 REST endpoints under `/api/v1/ai/workflow-tasks/{id}/dependent-masters/` (`spawn`, `preview`, `approve-and-execute`).
+  7. **Feature Test Suites Passing 100%:**
+     - `tests/Feature/Ai/Commercial/MultiSlotSalesOrderWorkflowTest.php` (5 tests, 44 assertions): verifies batch resolution, clarification card with triad, non-blocking low-stock advisory, proposal creation without ERP mutations, approval execution via `SalesOrderCommandAdapter`, and cross-company isolation.
+     - `tests/Feature/Ai/Clarification/DependentMasterResolutionTest.php` (6 tests, 53 assertions): verifies Gate 1 master setup, automatic parent task resumption, and Gate 2 commercial transaction promotion.
+     - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **127/127 passed (860 assertions, 0 errors, 0 failures, 0 skipped)**.
+
+- **Next Steps:**
+  - Stage, commit, and push all deliverables on `feature/ai-unified-input-clarification`.
+  - Proceed with Phase 3 (Receipts, Bills & Full Ledger Invoices) or user-directed tasks.
+
+---
+
 ## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **User Direction & Confirmation:**
@@ -623,6 +755,50 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Delivery Summary:**
+  - Fully extended the Unified Multi-Slot Input Collection & Clarification Engine across all enterprise transaction domains, specifically delivering `sales_order.create.v1` and Phase 2.2 Dependent Master Data Creation with the Three-Way Disambiguation Triad (`Select Existing`, `Create New Master`, `Correct Input`).
+  - Strict compliance with all core architectural invariants: Untrusted Model, Authoritative Server, Strict Tenancy Law 1 (zero unscoped queries), and Zero Autonomous Financial Writes.
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Dynamic Line-Item Addressing Contract:**
+     - Updated `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` to accept current slots and dynamically generate line schemas (`items[line-0]`, `items[line-1]`, etc.) with client line ID indexing and `_destroy: true` semantics.
+     - Implemented dynamic expansion in `PurchaseOrderRequirementsProvider` and `SalesOrderRequirementsProvider`.
+  2. **Single-Pass Batch Record Resolution Across Domains:**
+     - Extended `RecordResolutionService` with `resolveCustomer(CompanyContext $context, string $query)` (handling ID, tax_no/GSTIN, exact name, and substring candidate searches capped at 5).
+     - Extended `resolveUnit(Product $product, ?string $uomQuery, string $mode)` to support `$mode === 'sale'` using `sale_unit_id` with unit conversions.
+     - Extended `BatchRecordResolutionService` with set-based vectorized customer and line resolution for sales orders without early-exit.
+  3. **Input Completeness Evaluator & Three-Way Disambiguation Triad:**
+     - Evaluates customer, warehouse, and all line items in a single pass.
+     - Defaults prices to product `price` (master price) for sales orders vs `cost` for purchase orders.
+     - Defaults units to `sale_unit_id` for sales orders vs `purchase_unit_id` for purchase orders.
+     - Attaches the Three-Way Disambiguation Triad (`ResolutionOption`) with `select_existing`, `create_new`, and `correct_name` to unresolved/ambiguous master entities (`supplier_id`, `customer_id`, `product_id`, `warehouse_id`, `unit_id`).
+     - Emits downstream pending check for customer credit limits & GST place-of-supply determination.
+  4. **Governed Sales Order Action Pipeline (`sales_order.create.v1`):**
+     - `CreateSalesOrderInputSchema`: validates customer, warehouse, date, dynamic items, and expected commercial totals.
+     - `SalesOrderRequirementsProvider`: declarative requirement provider for `sales_order.create.v1`.
+     - `SalesOrderPreviewAdapter`: authoritative preview computing pricing, non-blocking ATP stock availability check via `InventoryAvailabilityService`, and live `source_state_hash`. Enforces `CanonicalActionPayload` decimal string formatting.
+     - `SalesOrderCommandAdapter`: row locks, fresh source state verification, and authoritative order creation via `OrderLifecycleService::createSale()`.
+     - Registered in `ActionCapabilityRegistry` and `ActionRequirementsRegistry`.
+  5. **AI SDK Tool & Agent Integration:**
+     - Created `PrepareSalesOrder` AI tool bridging natural language sales instructions to the governed pipeline.
+     - Registered `PrepareSalesOrder` in `ErpCopilot::tools()` and added system prompt guidance for sales order intent.
+  6. **Phase 2.2 Dependent Master Data Orchestration:**
+     - `DependentMasterOrchestrator`: spawns master requirements, generates Gate 1 master proposals (`setup.supplier.create.v1`, `setup.customer.create.v1`, `setup.product.create.v1`), executes them via `ActionExecutionService`, and automatically resumes the parent workflow task.
+     - Additive migration `2026_11_11_000003_add_dependent_masters_to_ai_workflow_tasks.php` adding `dependent_masters_json`.
+     - Mounted 3 REST endpoints under `/api/v1/ai/workflow-tasks/{id}/dependent-masters/` (`spawn`, `preview`, `approve-and-execute`).
+  7. **Feature Test Suites Passing 100%:**
+     - `tests/Feature/Ai/Commercial/MultiSlotSalesOrderWorkflowTest.php` (5 tests, 44 assertions): verifies batch resolution, clarification card with triad, non-blocking low-stock advisory, proposal creation without ERP mutations, approval execution via `SalesOrderCommandAdapter`, and cross-company isolation.
+     - `tests/Feature/Ai/Clarification/DependentMasterResolutionTest.php` (6 tests, 53 assertions): verifies Gate 1 master setup, automatic parent task resumption, and Gate 2 commercial transaction promotion.
+     - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **127/127 passed (860 assertions, 0 errors, 0 failures, 0 skipped)**.
+
+- **Next Steps:**
+  - Stage, commit, and push all deliverables on `feature/ai-unified-input-clarification`.
+  - Proceed with Phase 3 (Receipts, Bills & Full Ledger Invoices) or user-directed tasks.
+
+---
 
 ## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 

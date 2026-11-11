@@ -12,6 +12,7 @@ use App\Ai\Services\ActionProposalService;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\BatchRecordResolutionService;
 use App\Ai\Services\ClarificationResponseBuilder;
+use App\Ai\Services\DependentMasterOrchestrator;
 use App\Ai\Services\InputCompletenessEvaluator;
 use App\Ai\Services\TaskCorrectionService;
 use App\Ai\Services\WorkflowTaskStateService;
@@ -34,6 +35,7 @@ final class AiWorkflowTaskController extends Controller
         private readonly InputCompletenessEvaluator $evaluator,
         private readonly ClarificationResponseBuilder $clarificationBuilder,
         private readonly ActionProposalService $proposalService,
+        private readonly DependentMasterOrchestrator $masterOrchestrator,
         private readonly CommercialPermission $permissions,
         private readonly CompanyContextResolver $contextResolver,
         private readonly AiFeatureGate $featureGate,
@@ -242,6 +244,94 @@ final class AiWorkflowTaskController extends Controller
             'task_id' => $id,
             'message' => 'Workflow task cancelled.',
         ]);
+    }
+
+    /**
+     * POST /api/v1/ai/workflow-tasks/{id}/dependent-masters/spawn
+     * Phase 2.2: Spawn requirements schema and prefilled defaults for a dependent master sub-flow.
+     */
+    public function spawnDependentMaster(Request $request, string $id): JsonResponse
+    {
+        $this->assertFoundationEnabled();
+
+        $validated = $request->validate([
+            'field' => ['required', 'string'],
+        ]);
+
+        $principal = $this->resolvePrincipal($request);
+        $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
+        $taskContext = new WorkflowTaskContext(
+            principal: $principal,
+            context: $context,
+            taskId: $id,
+        );
+
+        $result = $this->masterOrchestrator->spawnMasterRequirements($taskContext, $id, $validated['field']);
+
+        return response()->json($result);
+    }
+
+    /**
+     * POST /api/v1/ai/workflow-tasks/{id}/dependent-masters/preview
+     * Phase 2.2: Previews a governed master setup proposal linked to this task.
+     */
+    public function previewDependentMaster(Request $request, string $id): JsonResponse
+    {
+        $this->assertFoundationEnabled();
+
+        $validated = $request->validate([
+            'field' => ['required', 'string'],
+            'data' => ['required', 'array'],
+        ]);
+
+        $principal = $this->resolvePrincipal($request);
+        $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
+        $taskContext = new WorkflowTaskContext(
+            principal: $principal,
+            context: $context,
+            taskId: $id,
+        );
+
+        $result = $this->masterOrchestrator->previewMasterProposal($taskContext, $id, $validated['field'], $validated['data']);
+
+        return response()->json($result);
+    }
+
+    /**
+     * POST /api/v1/ai/workflow-tasks/{id}/dependent-masters/approve-and-execute
+     * Phase 2.2: Approves and executes the master proposal, then automatically resumes the parent task.
+     */
+    public function approveAndExecuteDependentMaster(Request $request, string $id): JsonResponse
+    {
+        $this->assertFoundationEnabled();
+
+        if (!config('ai_actions.execution_enabled', false)) {
+            abort(403, 'AI action execution is disabled.');
+        }
+
+        $validated = $request->validate([
+            'field' => ['required', 'string'],
+            'master_proposal_id' => ['required', 'uuid'],
+            'expected_version' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $principal = $this->resolvePrincipal($request);
+        $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
+        $taskContext = new WorkflowTaskContext(
+            principal: $principal,
+            context: $context,
+            taskId: $id,
+        );
+
+        $result = $this->masterOrchestrator->approveAndExecuteMaster(
+            $taskContext,
+            $id,
+            $validated['field'],
+            $validated['master_proposal_id'],
+            (int) ($validated['expected_version'] ?? 1)
+        );
+
+        return response()->json($result);
     }
 
     private function resolvePrincipal(Request $request, ?string $actionKey = null): AiPrincipal

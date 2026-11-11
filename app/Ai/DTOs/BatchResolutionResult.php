@@ -64,4 +64,12 @@ final class BatchResolutionResult
             'error' => $error,
         ];
     }
+
+    public function toArray(): array
+    {
+        return [
+            'resolved_ids' => $this->resolvedIds,
+            'field_resolutions' => $this->fieldResolutions,
+        ];
+    }
 }

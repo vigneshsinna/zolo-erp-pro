@@ -245,6 +245,11 @@ Route::prefix('v1')->group(function () {
                 Route::patch('{id}/inputs', 'updateInputs')->whereUuid('id')->name('api.v1.ai.workflow-tasks.update-inputs');
                 Route::post('{id}/prepare-proposal', 'prepareProposal')->whereUuid('id')->name('api.v1.ai.workflow-tasks.prepare-proposal');
                 Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('api.v1.ai.workflow-tasks.cancel');
+
+                // Phase 2.2: Dependent Master Data Creation & Workflow Resumption
+                Route::post('{id}/dependent-masters/spawn', 'spawnDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.spawn');
+                Route::post('{id}/dependent-masters/preview', 'previewDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.preview');
+                Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.approve-and-execute');
             });
         });
     });

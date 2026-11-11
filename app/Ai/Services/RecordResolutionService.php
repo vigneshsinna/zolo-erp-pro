@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Services;
 
+use App\Models\Customer;
 use App\Models\Product;
 use App\Models\ProductAlias;
 use App\Models\Supplier;
@@ -230,9 +231,9 @@ class RecordResolutionService
     }
 
     /**
-     * Resolve the appropriate purchase unit ID for a product.
+     * Resolve the appropriate unit ID for a product (purchase_unit_id or sale_unit_id).
      */
-    public function resolveUnit(Product $product, ?string $uomQuery = null): int
+    public function resolveUnit(Product $product, ?string $uomQuery = null, string $mode = 'purchase'): int
     {
         if ($uomQuery !== null && trim($uomQuery) !== '') {
             $trimmedUom = trim($uomQuery);
@@ -249,6 +250,69 @@ class RecordResolutionService
             }
         }
 
+        if ($mode === 'sale') {
+            return (int) ($product->sale_unit_id ?: $product->unit_id ?: 1);
+        }
+
         return (int) ($product->purchase_unit_id ?: $product->unit_id ?: 1);
+    }
+
+    /**
+     * Resolve a customer from a user query (name, company name, GSTIN/tax_no, phone, or ID).
+     *
+     * @return array{status: 'exact'|'candidates'|'none', customer: ?Customer, candidates: Collection<int, Customer>}
+     */
+    public function resolveCustomer(CompanyContext $context, string $query): array
+    {
+        $trimmed = trim($query);
+        if ($trimmed === '') {
+            return ['status' => 'none', 'customer' => null, 'candidates' => collect()];
+        }
+
+        // 1. Numeric ID lookup
+        if (is_numeric($trimmed)) {
+            $byPk = Customer::where('company_id', $context->companyId)
+                ->where('is_active', true)
+                ->find((int) $trimmed);
+            if ($byPk) {
+                return ['status' => 'exact', 'customer' => $byPk, 'candidates' => collect([$byPk])];
+            }
+        }
+
+        // 2. Exact match on tax_no, name, or company_name
+        $exact = Customer::where('company_id', $context->companyId)
+            ->where('is_active', true)
+            ->where(function ($q) use ($trimmed) {
+                $q->where('tax_no', $trimmed)
+                    ->orWhere('name', $trimmed)
+                    ->orWhere('company_name', $trimmed);
+            })
+            ->first();
+
+        if ($exact) {
+            return ['status' => 'exact', 'customer' => $exact, 'candidates' => collect([$exact])];
+        }
+
+        // 3. Substring matching across names, tax_no, and phone
+        $candidates = Customer::where('company_id', $context->companyId)
+            ->where('is_active', true)
+            ->where(function ($q) use ($trimmed) {
+                $q->where('name', 'LIKE', "%{$trimmed}%")
+                    ->orWhere('company_name', 'LIKE', "%{$trimmed}%")
+                    ->orWhere('tax_no', 'LIKE', "%{$trimmed}%")
+                    ->orWhere('phone_number', 'LIKE', "%{$trimmed}%");
+            })
+            ->limit(5)
+            ->get();
+
+        if ($candidates->count() === 1) {
+            return ['status' => 'exact', 'customer' => $candidates->first(), 'candidates' => $candidates];
+        }
+
+        if ($candidates->count() > 1) {
+            return ['status' => 'candidates', 'customer' => null, 'candidates' => $candidates];
+        }
+
+        return ['status' => 'none', 'customer' => null, 'candidates' => collect()];
     }
 }

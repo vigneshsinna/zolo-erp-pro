@@ -10,6 +10,7 @@ use App\Ai\DTOs\ActionPreviewResult;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Models\Supplier;
 use App\Services\Platform\CompanyContext;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
@@ -30,6 +31,15 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
 
         $companyName = trim((string) ($slots['company_name'] ?? ''));
         $vatNumber = strtoupper(trim((string) ($slots['vat_number'] ?? '')));
+        if ($vatNumber !== '') {
+            try {
+                $vatNumber = \App\Services\Tax\Gstin::normalize($vatNumber);
+            } catch (ValidationException $e) {
+                throw ValidationException::withMessages([
+                    'vat_number' => 'GSTIN checksum is invalid.',
+                ]);
+            }
+        }
 
         $existing = Supplier::where('company_id', $context->companyId)
             ->where(function ($q) use ($name, $companyName, $vatNumber) {

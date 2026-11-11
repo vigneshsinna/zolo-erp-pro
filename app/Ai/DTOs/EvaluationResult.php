@@ -50,4 +50,14 @@ final readonly class EvaluationResult
     {
         return array_map(fn (FieldIssue $i) => $i->toArray(), $this->issues);
     }
+
+    public function toArray(): array
+    {
+        return [
+            'is_ready' => $this->isReady(),
+            'confirmed_fields' => $this->confirmedFields,
+            'required_inputs' => $this->issuesArray(),
+            'pending_checks' => $this->pendingChecks,
+        ];
+    }
 }

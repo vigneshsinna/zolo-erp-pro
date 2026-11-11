@@ -336,4 +336,52 @@
     font-size: 0.82rem;
 }
 
+/* Phase 2.2: Intelligent Dependent Master Data Creation & Workflow Resumption */
+.ai-triad-container {
+    background: #fdfdfd;
+}
+.ai-triad-btn {
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+.ai-triad-btn.active {
+    background-color: #495057;
+    color: #ffffff;
+    border-color: #495057;
+}
+.ai-triad-btn.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.ai-section-create-new {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0 !important;
+}
+.ai-master-form-body label {
+    font-size: 0.75rem;
+    color: #475569;
+    margin-bottom: 0.2rem;
+}
+.ai-master-form-body .form-control-sm {
+    font-size: 0.8rem;
+    height: calc(1.5em + 0.5rem + 2px);
+}
+.ai-master-preview-box {
+    background-color: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.78rem;
+}
+.ai-resumed-success-badge {
+    background-color: #d1fae5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+    border-radius: 4px;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+}
+
 
