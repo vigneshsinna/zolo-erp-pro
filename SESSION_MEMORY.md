@@ -1,5 +1,45 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 1.5 Guided Initial Setup Agent Complete: Mode A Bootstrap & Mode B Master Setup — 2026-11-11 (`feature/ai-guided-setup-agent`)
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Mode A Pre-Company Bootstrap Security Isolation:**
+     - Created `App\Ai\Security\BootstrapSetupPrincipal`: strictly limited identity DTO for installation administrators (`actorId`, `roleId`, `allowedCapabilities`, `taskToken`, `expiresAt`, `isActive`). Never a general-purpose superuser.
+     - Implemented `App\Http\Middleware\VerifyBootstrapAdminContext`: gates access to installation administrators (`isInstallationAdmin()`), returns 403 `BOOTSTRAP_ADMIN_REQUIRED`. Registered alias `'ai.bootstrap.admin'`.
+     - Implemented `App\Ai\Services\BootstrapSetupSecurity`: validates input schemas and manages authorization for Mode A actions.
+  2. **Dedicated Bootstrap REST Endpoints (`routes/api.php`):**
+     - Mounted under `/api/v1/ai/setup/bootstrap/*` completely separated from tenant middleware (`company.context`):
+       - `POST /tasks`: Initiates setup task session, issues `task_id` and 64-char `task_token`.
+       - `POST /tasks/{id}/preview`: Computes simulated defaults and starter entities via `CompanyBootstrapPreviewAdapter` with **zero database writes**.
+       - `POST /tasks/{id}/change-request`: Increments proposal version (`vN -> vN+1`), invalidates previous hashes/approvals, updates slots.
+       - `POST /tasks/{id}/approve`: Verifies HMAC approval signature, enforces short database transaction boundary, executes `CompanyBootstrapCommandAdapter` once atomically.
+  3. **Authoritative Domain Command Delegation:**
+     - Implemented `App\Ai\Adapters\CompanyBootstrapCommandAdapter`: invokes `CompanyDirectoryService::createCompany` **exactly once** in a single database transaction. Provisions Company, MAIN branch, first FY, main warehouse, chart of accounts, industry settings, starter masters, and audit record.
+     - Implemented idempotent recovery: duplicate execution requests return cached receipt without duplicating companies.
+     - Returns transition metadata: `{"transition_action": "switch_context", "context_switch_url": "/select-company", "company_id": $id, "workspace_url": "/ai"}` to re-anchor the session into standard `CompanyContext`.
+  4. **Mode B Setup Readiness & Master Adapters:**
+     - Implemented `App\Ai\Services\SetupReadinessService`: evaluates 9 operational and commercial prerequisites (main branch, open FY, chart of accounts, warehouse, biller profile, customer group, tax registration, products, customers) before first commercial bill.
+     - Implemented Mode B branch setup: `CreateBranchInputSchema`, `BranchSetupPreviewAdapter`, and `BranchSetupCommandAdapter` delegating to `CompanySetupService::branch`.
+     - Implemented Mode B warehouse setup: `CreateWarehouseInputSchema`, `WarehouseSetupPreviewAdapter`, and `WarehouseSetupCommandAdapter` delegating to `CompanySetupService::location`.
+     - Registered Mode B capabilities via `ActionCapabilityRegistry::registerSetupCapabilities()`.
+  5. **Automated Verification Suite (100% Green):**
+     - Implemented `tests/Feature/Ai/Setup/BootstrapCompanyCreationTest.php` on disposable MySQL (`zolo_test_ai_release`):
+       - Non-admin access denied with 403 `BOOTSTRAP_ADMIN_REQUIRED`.
+       - Preview calculation verified zero database mutations.
+       - Version incrementing (`v1 -> v2`) and stale version edit rejection verified.
+       - Tampered HMAC approval rejected.
+       - Atomic company creation verified with all 11 starter entities, setup audit row, and idempotency check.
+       - Setup readiness check verified (100% ready for billing).
+       - Mode B branch and warehouse adapters verified under active `CompanyContext`.
+     - Full AI Test Suite (`phpunit.ai.xml`): **80/80 tests passed (509 assertions, 0 errors, 0 failures)**.
+     - Framework hygiene: `composer validate --strict` (valid), Blade and route caches compiled cleanly.
+
+- **Next Steps:**
+  1. Proceed to Phase 2: Purchase Order AI Workflow & Operational Action Proposals (`purchase_order.create.v1`, `purchase_bill.create.v1`).
+  2. Implement interactive setup wizard and preview card renderers in the AI Workspace desk UI.
+
+---
+
 ## Autonomous AI Operating Layer & Action Foundation Architecture Finalized — 2026-11-11 (`refactor/erp-copilot-stabilization`)
 
 - **EGM Bootstrap, Brainstorm & Design Finalization Complete:**
