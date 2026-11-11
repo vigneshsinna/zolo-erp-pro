@@ -30,6 +30,18 @@ final class CreatePurchaseOrderInputSchema implements ActionInputSchemaInterface
             'expected_totals.grand_total' => ['nullable', 'numeric'],
             'expected_totals.tax_total' => ['nullable', 'numeric'],
             'expected_totals.total_price' => ['nullable', 'numeric'],
+            'expected_totals.subtotal' => ['nullable', 'numeric'],
+            'expected_totals.tax_breakdown' => ['nullable', 'array'],
+            'expected_totals.tax_breakdown.cgst' => ['nullable', 'numeric'],
+            'expected_totals.tax_breakdown.sgst' => ['nullable', 'numeric'],
+            'expected_totals.tax_breakdown.igst' => ['nullable', 'numeric'],
+            'expected_totals.tax_breakdown.cess' => ['nullable', 'numeric'],
+            'expected_totals.line_totals' => ['nullable', 'array'],
+            'expected_totals.line_totals.*.product_id' => ['required_with:expected_totals.line_totals', 'integer'],
+            'expected_totals.line_totals.*.qty' => ['nullable', 'numeric'],
+            'expected_totals.line_totals.*.net_unit_cost' => ['nullable', 'numeric'],
+            'expected_totals.line_totals.*.tax_amount' => ['nullable', 'numeric'],
+            'expected_totals.line_totals.*.line_total' => ['nullable', 'numeric'],
             'note' => ['nullable', 'string', 'max:10000'],
         ];
     }

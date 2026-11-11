@@ -55,7 +55,19 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
 
         // 4. Execute company provisioning through authoritative ERP service
         // CompanyDirectoryService::createCompany encapsulates its own DB::transaction
-        $company = $this->directory->createCompany($actorId, $payload);
+        $payloadWithIdempotency = $payload;
+        $payloadWithIdempotency['idempotency_key'] = $idempotencyKey;
+        $company = $this->directory->createCompany($actorId, $payloadWithIdempotency);
+
+        // Record the durable resource link on the active execution claim
+        DB::table('ai_action_executions')
+            ->where('idempotency_key', $idempotencyKey)
+            ->where('executor_id', $actorId)
+            ->update([
+                'company_id' => $company->id,
+                'erp_resource_type' => 'company',
+                'erp_resource_id' => $company->id,
+            ]);
 
         $branch = $company->branches()->where('code', 'MAIN')->first();
         $year = $company->fiscalYears()->first();
@@ -124,7 +136,8 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
 
     /**
      * Safely reconcile a company that was committed to the ERP database prior to an AI crash.
-     * Reconciliation is strictly gated by an existing, approved, and active execution claim.
+     * Reconciliation is strictly gated by an existing, approved, and active execution claim,
+     * and requires a durable provenance link matching the exact idempotency key.
      */
     public function reconcileCommittedCompany(array $payload, int $actorId, string $idempotencyKey): ?ActionExecutionReceipt
     {
@@ -140,35 +153,50 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
             return null;
         }
 
+        // Durable Provenance Link: Look for a company creation audit specifically tagged
+        // with this exact idempotency key, or an execution claim linking this exact company.
         $code = strtoupper(trim((string) ($payload['code'] ?? '')));
-        $legalName = trim((string) ($payload['legal_name'] ?? ''));
+
+        $audit = DB::table('company_setup_audits')
+            ->where('actor_id', $actorId)
+            ->where('action', 'company_created')
+            ->where('after_json', 'like', '%"idempotency_key":"' . $idempotencyKey . '"%')
+            ->first();
 
         $company = null;
-        if (!empty($code)) {
-            $company = Company::where('code', $code)->first();
+        if ($audit && !empty($audit->company_id)) {
+            $company = Company::find($audit->company_id);
         }
 
-        if (!$company && !empty($legalName)) {
-            $company = Company::where('legal_name', $legalName)->latest('id')->first();
+        if (!$company) {
+            $execution = DB::table('ai_action_executions')
+                ->where('idempotency_key', $idempotencyKey)
+                ->where('executor_id', $actorId)
+                ->where('erp_resource_type', 'company')
+                ->whereNotNull('erp_resource_id')
+                ->first();
+
+            if ($execution && !empty($execution->erp_resource_id)) {
+                $company = Company::find($execution->erp_resource_id);
+            }
         }
 
         if (!$company) {
             return null;
         }
 
-        // Verify the company is actually administered by this actor and was created via setup audit
+        // Ensure matching code if code was supplied in payload
+        if (!empty($code) && strtoupper((string) $company->code) !== $code) {
+            return null;
+        }
+
+        // Verify the company is actually administered by this actor
         $hasMembership = DB::table('company_user')
             ->where('company_id', $company->id)
             ->where('user_id', $actorId)
             ->exists();
 
-        $hasSetupAudit = DB::table('company_setup_audits')
-            ->where('company_id', $company->id)
-            ->where('action', 'company_created')
-            ->where('actor_id', $actorId)
-            ->exists();
-
-        if ($hasMembership && $hasSetupAudit) {
+        if ($hasMembership) {
             return $this->buildReceiptFromCompany($company, isReconciled: true);
         }
 

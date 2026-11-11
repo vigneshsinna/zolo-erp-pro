@@ -34,8 +34,7 @@ final class ActionReviewCenterController extends Controller
         $enabled = (bool) config('ai_actions.foundation_enabled', false)
             && $featureGate->isEnabledForCompany($context->companyId);
 
-        $canApprove = $permissions->allows('ai.action.approve', $context, $actorId)
-            || (int) $request->user()->role_id === 1;
+        $canApprove = $permissions->allows('ai.action.approve', $context, $actorId);
 
         $requestedScope = (string) $request->query('scope', 'mine');
         $scope = ($canApprove && $requestedScope === 'all') ? 'all' : 'mine';

@@ -576,25 +576,11 @@ final class BootstrapCompanyCreationTest extends TestCase
         $uniqueCode = 'RECON_' . rand(1000, 9999);
         $uniqueName = 'Reconciliation Test Mills ' . uniqid();
 
-        // Simulate that CompanyDirectoryService committed the company to the database
-        // but an artificial network drop or crash prevented recording the AI completed receipt
-        $company = $directory->createCompany($this->adminUser->id, [
-            'legal_name' => $uniqueName,
-            'code' => $uniqueCode,
-            'industry' => 'textile',
-            'state_code' => '33',
-            'timezone' => 'Asia/Kolkata',
-            'fy_start' => '2026-04-01',
-            'fy_end' => '2027-03-31',
-        ]);
-        $this->assertNotNull($company);
-
-        // Now an AI bootstrap proposal with the same company payload attempts to execute/recover
+        // 1. Task 1 initiates and previews company creation
         $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
         $taskId = $task->json('task_id');
         $taskToken = $task->json('task_token');
 
-        // Preview creates the proposal row matching the committed company
         $this->withHeader('X-Setup-Task-Token', $taskToken)
             ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
                 'legal_name' => $uniqueName,
@@ -605,8 +591,38 @@ final class BootstrapCompanyCreationTest extends TestCase
                 'fy_end' => '2027-03-31',
             ])->assertStatus(200);
 
-        // When approving, the safe domain reconciler should recognize the committed ERP company
-        // and return the completed receipt without failing with duplicate code or creating duplicate records (Finding 3)
+        $key1 = "ai-bootstrap:{$taskId}:v1";
+
+        // 2. Simulate that execution began for Task 1:
+        // execution claim was inserted, and CompanyDirectoryService committed the company
+        // with the exact matching idempotency key in audit, but process crashed before AI receipt was saved.
+        DB::table('ai_action_executions')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'proposal_id' => $taskId,
+            'company_id' => null,
+            'executor_id' => $this->adminUser->id,
+            'version' => 1,
+            'idempotency_key' => $key1,
+            'status' => 'executing',
+            'result_json' => '{}',
+            'executed_at' => now(),
+        ]);
+        DB::table('ai_action_proposals')->where('id', $taskId)->update(['status' => 'executing']);
+
+        $company = $directory->createCompany($this->adminUser->id, [
+            'legal_name' => $uniqueName,
+            'code' => $uniqueCode,
+            'industry' => 'textile',
+            'state_code' => '33',
+            'timezone' => 'Asia/Kolkata',
+            'fy_start' => '2026-04-01',
+            'fy_end' => '2027-03-31',
+            'idempotency_key' => $key1,
+        ]);
+        $this->assertNotNull($company);
+
+        // 3. When approving Task 1 (retry), the durable provenance reconciler matches the exact
+        // idempotency key in company_setup_audits and successfully completes the execution receipt.
         $approve = $this->withHeader('X-Setup-Task-Token', $taskToken)
             ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
                 'expected_version' => 1,
@@ -615,6 +631,30 @@ final class BootstrapCompanyCreationTest extends TestCase
         $approve->assertStatus(200);
         $this->assertSame((int) $company->id, (int) $approve->json('company_id'));
         $this->assertTrue((bool) $approve->json('receipt.details.reconciled_from_erp'));
+
+        // 4. An unrelated Task 2 CANNOT hijack or reconcile Task 1's company
+        $task2 = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $taskId2 = $task2->json('task_id');
+        $taskToken2 = $task2->json('task_token');
+
+        $this->withHeader('X-Setup-Task-Token', $taskToken2)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId2}/preview", [
+                'legal_name' => $uniqueName,
+                'code' => $uniqueCode,
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ])->assertStatus(200);
+
+        // Task 2 approval must NOT reconcile Task 1's company; it attempts normal creation and fails
+        // closed with duplicate code validation rather than silently associating the foreign company.
+        $approve2 = $this->withHeader('X-Setup-Task-Token', $taskToken2)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId2}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approve2->assertStatus(422);
     }
 
     public function test_unapproved_proposal_cannot_trigger_reconciliation_without_active_execution_claim(): void

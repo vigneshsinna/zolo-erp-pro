@@ -610,4 +610,93 @@ final class PurchaseOrderActionTest extends TestCase
             $hash,
         );
     }
+
+    public function test_supplier_party_tax_profile_mutation_invalidates_source_state_hash_and_fails_closed(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $response = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id,
+                'items' => [
+                    ['product_id' => $this->productA->id, 'qty' => '10.00', 'net_unit_cost' => '250.00'],
+                ],
+            ],
+        ]);
+        $response->assertStatus(201);
+        $proposalId = $response->json('proposal.id');
+
+        // Mutate underlying supplier tax profile
+        DB::table('party_tax_profiles')
+            ->where('company_id', $this->company->id)
+            ->where('party_type', 'supplier')
+            ->where('party_id', $this->supplier->id)
+            ->update([
+                'state_code' => '29', // Inter-state change from Tamil Nadu (33) to Karnataka (29)
+                'updated_at' => now(),
+            ]);
+
+        // Attempting to approve must fail closed with 422 source_state
+        $approve = $this->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/proposals/{$proposalId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approve->assertStatus(422);
+        $approve->assertJsonValidationErrors(['source_state']);
+    }
+
+    public function test_tax_breakdown_discrepancy_fails_closed_with_totals_validation_error(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $adapter = app(\App\Ai\Adapters\PurchaseOrderCommandAdapter::class);
+        $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get('purchase_order.create.v1');
+        $context = new CompanyContext($this->company->id, $this->branch->id, $this->fiscalYear->id);
+
+        $hash = \App\Ai\Adapters\PurchaseOrderPreviewAdapter::computeSourceStateHash(
+            $context,
+            $this->supplier->id,
+            $this->warehouse->id,
+            [$this->productA->id],
+        );
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'items' => [
+                [
+                    'product_id' => $this->productA->id,
+                    'qty' => '10.00',
+                    'net_unit_cost' => '250.00',
+                    'tax_rate' => '5.00',
+                    'purchase_unit_id' => $this->productA->unit_id,
+                ],
+            ],
+            // Discrepancy: CGST tax breakdown does not match domain calculation
+            'expected_totals' => [
+                'grand_total' => '2625.00',
+                'tax_total' => '125.00',
+                'tax_breakdown' => [
+                    'cgst' => '999.00',
+                    'sgst' => '62.50',
+                    'igst' => '0.00',
+                    'cess' => '0.00',
+                ],
+            ],
+        ];
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+
+        $adapter->execute(
+            $definition,
+            $payload,
+            $context,
+            $this->adminUser->id,
+            'test-tax-breakdown-discrepancy-' . uniqid(),
+            $hash,
+        );
+    }
 }

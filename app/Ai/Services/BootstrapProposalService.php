@@ -226,6 +226,55 @@ final class BootstrapProposalService
             ];
         }
 
+        if ($existing && in_array($existing->status, ['executing', 'uncertain'])) {
+            $definition = $this->security->definition($proposal->action_key, $principal);
+            $adapter = app($definition->commandAdapterClass);
+            $payload = json_decode((string) $proposal->payload_json, true, flags: JSON_THROW_ON_ERROR);
+
+            $recovered = null;
+            if (method_exists($adapter, 'reconcileCommittedCompany') && $proposal->action_key === 'setup.company.create.v1') {
+                $recovered = $adapter->reconcileCommittedCompany($payload, $principal->actorId, $key);
+            } elseif (method_exists($adapter, 'reconcileCommittedGroup') && $proposal->action_key === 'setup.group.create.v1') {
+                $recovered = $adapter->reconcileCommittedGroup($payload, $principal->actorId, $key);
+            }
+
+            if ($recovered !== null) {
+                $receipt = [
+                    'resource_type' => $recovered->resourceType,
+                    'resource_id' => $recovered->resourceId,
+                    'status' => $recovered->status,
+                    'details' => $recovered->details,
+                ];
+
+                DB::transaction(function () use ($existing, $proposal, $receipt, $recovered): void {
+                    DB::table('ai_action_executions')->where('id', $existing->id)->update([
+                        'status' => 'completed',
+                        'company_id' => $recovered->resourceId,
+                        'result_json' => CanonicalActionPayload::json($receipt),
+                        'erp_resource_type' => $recovered->resourceType,
+                        'erp_resource_id' => $recovered->resourceId,
+                    ]);
+
+                    DB::table('ai_action_proposals')->where('id', $proposal->id)->update([
+                        'status' => 'completed',
+                        'company_id' => $recovered->resourceId,
+                        'updated_at' => now(),
+                    ]);
+                });
+
+                return [
+                    'status' => 'completed',
+                    'proposal_id' => $taskId,
+                    'execution_id' => $existing->id,
+                    'company_id' => $recovered->resourceId,
+                    'transition_action' => 'switch_context',
+                    'context_switch_url' => '/select-company',
+                    'workspace_url' => '/ai',
+                    'receipt' => $receipt,
+                ];
+            }
+        }
+
         $executionClaim = DB::transaction(function () use ($principal, $taskId, $expectedVersion, $suppliedSignature, $key): array {
             $proposal = DB::table('ai_action_proposals')
                 ->where('id', $taskId)

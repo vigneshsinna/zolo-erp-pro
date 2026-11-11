@@ -217,10 +217,40 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
         $subtotal = $totalPrice - $totalTax;
         $roundOff = (float) ($pricingResult['round_off'] ?? 0);
 
+        $cgstTotal = 0.0;
+        $sgstTotal = 0.0;
+        $igstTotal = 0.0;
+        $cessTotal = 0.0;
+        $lineTotals = [];
+
+        foreach ($pricingResult['items'] as $pItem) {
+            $lineTaxSnapshot = (array) ($pItem['_tax_snapshot'] ?? []);
+            $cgstTotal += (float) ($lineTaxSnapshot['cgst'] ?? 0);
+            $sgstTotal += (float) ($lineTaxSnapshot['sgst'] ?? 0);
+            $igstTotal += (float) ($lineTaxSnapshot['igst'] ?? 0);
+            $cessTotal += (float) ($lineTaxSnapshot['cess'] ?? 0);
+
+            $lineTotals[] = [
+                'product_id' => (int) $pItem['product_id'],
+                'qty' => sprintf('%.2f', (float) $pItem['qty']),
+                'net_unit_cost' => sprintf('%.2f', (float) ($pItem['net_unit_cost'] ?? 0)),
+                'tax_amount' => sprintf('%.2f', (float) ($pItem['tax'] ?? 0)),
+                'line_total' => sprintf('%.2f', (float) ($pItem['total'] ?? 0)),
+            ];
+        }
+
         $normalizedPayload['expected_totals'] = [
             'grand_total' => sprintf('%.2f', $grandTotal),
             'tax_total' => sprintf('%.2f', $totalTax),
             'total_price' => sprintf('%.2f', $totalPrice),
+            'subtotal' => sprintf('%.2f', $subtotal),
+            'tax_breakdown' => [
+                'cgst' => sprintf('%.2f', $cgstTotal),
+                'sgst' => sprintf('%.2f', $sgstTotal),
+                'igst' => sprintf('%.2f', $igstTotal),
+                'cess' => sprintf('%.2f', $cessTotal),
+            ],
+            'line_totals' => $lineTotals,
         ];
 
         $previewData = [
@@ -287,6 +317,13 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ->select(['id', 'is_active', 'vat_number', 'state', 'updated_at'])
             ->first();
 
+        $partyTaxProfile = DB::table('party_tax_profiles')
+            ->where('company_id', $context->companyId)
+            ->where('party_type', 'supplier')
+            ->where('party_id', $supplierId)
+            ->select(['id', 'gstin', 'state_code', 'registration_type', 'verified_at', 'updated_at'])
+            ->first();
+
         $warehouse = DB::table('warehouses')
             ->where('company_id', $context->companyId)
             ->where('id', $warehouseId)
@@ -305,6 +342,15 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ->orderBy('id')
             ->select(['id', 'cost', 'price', 'is_active', 'tax_category_id', 'tax_id', 'hsn_code', 'unit_id', 'purchase_unit_id', 'updated_at'])
             ->get();
+
+        $legacyTaxIds = $products->pluck('tax_id')->filter()->unique()->values()->all();
+        $legacyTaxes = !empty($legacyTaxIds)
+            ? DB::table('taxes')
+                ->whereIn('id', $legacyTaxIds)
+                ->orderBy('id')
+                ->select(['id', 'name', 'rate', 'is_active', 'updated_at'])
+                ->get()
+            : collect();
 
         $taxCategoryIds = $products->pluck('tax_category_id')->filter()->unique()->values()->all();
 
@@ -336,8 +382,10 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'financial_year_id' => $context->financialYearId,
             'fiscal_year' => $fiscalYear ? (array) $fiscalYear : null,
             'supplier' => $supplier ? (array) $supplier : null,
+            'party_tax_profile' => $partyTaxProfile ? (array) $partyTaxProfile : null,
             'warehouse' => $warehouse ? (array) $warehouse : null,
             'products' => $products->map(fn($p) => (array) $p)->all(),
+            'legacy_taxes' => $legacyTaxes->map(fn($t) => (array) $t)->all(),
             'tax_categories' => $taxCategories->map(fn($c) => (array) $c)->all(),
             'tax_rates' => $taxRates->map(fn($r) => (array) $r)->all(),
             'tax_registrations' => $taxRegistrations->map(fn($r) => (array) $r)->all(),

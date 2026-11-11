@@ -60,6 +60,14 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
             $idempotencyKey,
             $actorId,
         ): Purchase {
+            // 0. Acquire explicit domain row locks on dependencies before evaluating source state
+            DB::table('companies')->where('id', $context->companyId)->lockForUpdate()->first();
+            DB::table('fiscal_years')->where('company_id', $context->companyId)->where('id', $context->financialYearId)->lockForUpdate()->first();
+            DB::table('suppliers')->where('company_id', $context->companyId)->where('id', $supplierId)->lockForUpdate()->first();
+            DB::table('party_tax_profiles')->where('company_id', $context->companyId)->where('party_type', 'supplier')->where('party_id', $supplierId)->lockForUpdate()->first();
+            DB::table('warehouses')->where('company_id', $context->companyId)->where('id', $warehouseId)->lockForUpdate()->first();
+            DB::table('products')->where('company_id', $context->companyId)->whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->get();
+
             // 1. Transactional source-state verification: verify underlying business conditions have not changed
             $currentSourceStateHash = PurchaseOrderPreviewAdapter::computeSourceStateHash(
                 $context,
@@ -123,6 +131,96 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
                             $expectedGrandTotal,
                         ),
                     ]);
+                }
+            }
+
+            if (!empty($payload['expected_totals']['tax_total'])) {
+                $expectedTaxTotal = (float) $payload['expected_totals']['tax_total'];
+                $actualTaxTotal = (float) $createdPurchase->total_tax;
+                if (abs($actualTaxTotal - $expectedTaxTotal) > 0.01) {
+                    throw ValidationException::withMessages([
+                        'totals' => sprintf(
+                            'Executed order tax total (%.2f) differs from approved proposal tax total (%.2f). Execution aborted.',
+                            $actualTaxTotal,
+                            $expectedTaxTotal,
+                        ),
+                    ]);
+                }
+            }
+
+            // Tax breakdown assertion (CGST, SGST, IGST, CESS)
+            if (!empty($payload['expected_totals']['tax_breakdown']) && is_array($payload['expected_totals']['tax_breakdown'])) {
+                $actualTaxTotals = [
+                    'cgst' => 0.0,
+                    'sgst' => 0.0,
+                    'igst' => 0.0,
+                    'cess' => 0.0,
+                ];
+                foreach ($createdPurchase->productPurchases as $pLine) {
+                    $lineSnapshot = (array) ($pLine->tax_snapshot_json ?? []);
+                    $actualTaxTotals['cgst'] += (float) ($lineSnapshot['cgst'] ?? 0);
+                    $actualTaxTotals['sgst'] += (float) ($lineSnapshot['sgst'] ?? 0);
+                    $actualTaxTotals['igst'] += (float) ($lineSnapshot['igst'] ?? 0);
+                    $actualTaxTotals['cess'] += (float) ($lineSnapshot['cess'] ?? 0);
+                }
+
+                foreach (['cgst', 'sgst', 'igst', 'cess'] as $taxComponent) {
+                    if (isset($payload['expected_totals']['tax_breakdown'][$taxComponent])) {
+                        $expectedComp = (float) $payload['expected_totals']['tax_breakdown'][$taxComponent];
+                        $actualComp = $actualTaxTotals[$taxComponent];
+                        if (abs($actualComp - $expectedComp) > 0.01) {
+                            throw ValidationException::withMessages([
+                                'totals' => sprintf(
+                                    'Executed order tax breakdown %s (%.2f) differs from approved proposal (%.2f). Execution aborted.',
+                                    strtoupper($taxComponent),
+                                    $actualComp,
+                                    $expectedComp,
+                                ),
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            // Per-line item verification
+            if (!empty($payload['expected_totals']['line_totals']) && is_array($payload['expected_totals']['line_totals'])) {
+                $actualLines = $createdPurchase->productPurchases()->get();
+                foreach ($payload['expected_totals']['line_totals'] as $expectedLine) {
+                    $pId = (int) ($expectedLine['product_id'] ?? 0);
+                    $actualLine = $actualLines->first(fn ($l) => (int) $l->product_id === $pId);
+                    if (!$actualLine) {
+                        throw ValidationException::withMessages([
+                            'totals' => "Executed order missing line item for product ID {$pId}.",
+                        ]);
+                    }
+                    if (isset($expectedLine['line_total'])) {
+                        $expectedLineTotal = (float) $expectedLine['line_total'];
+                        $actualLineTotal = (float) $actualLine->total;
+                        if (abs($actualLineTotal - $expectedLineTotal) > 0.01) {
+                            throw ValidationException::withMessages([
+                                'totals' => sprintf(
+                                    'Executed line total for product ID %d (%.2f) differs from approved proposal (%.2f). Execution aborted.',
+                                    $pId,
+                                    $actualLineTotal,
+                                    $expectedLineTotal,
+                                ),
+                            ]);
+                        }
+                    }
+                    if (isset($expectedLine['tax_amount'])) {
+                        $expectedLineTax = (float) $expectedLine['tax_amount'];
+                        $actualLineTax = (float) $actualLine->tax;
+                        if (abs($actualLineTax - $expectedLineTax) > 0.01) {
+                            throw ValidationException::withMessages([
+                                'totals' => sprintf(
+                                    'Executed line tax for product ID %d (%.2f) differs from approved proposal (%.2f). Execution aborted.',
+                                    $pId,
+                                    $actualLineTax,
+                                    $expectedLineTax,
+                                ),
+                            ]);
+                        }
+                    }
                 }
             }
 

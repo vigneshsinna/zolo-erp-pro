@@ -1,5 +1,41 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Critical Code Review Findings (4 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
+
+- **Remediated Findings & Technical Security Hardening (100% Complete & Verified):**
+  1. **P1 #1 (Bootstrap Provenance & Durable Link):**
+     - Updated `App\Services\Platform\CompanyDirectoryService::createCompany`: Injects `'idempotency_key' => $input['idempotency_key'] ?? null` into `company_setup_audits.after_json`.
+     - Updated `App\Ai\Adapters\CompanyBootstrapCommandAdapter`: `reconcileCommittedCompany` queries `company_setup_audits` for the exact idempotency key (`"idempotency_key":"ai-bootstrap:{taskId}:v{version}"`) and verified `company_user` membership, or `ai_action_executions` for durably linked `erp_resource_id`. Requires matching `code` if specified.
+     - Updated `App\Ai\Adapters\GroupBootstrapCommandAdapter`: `reconcileCommittedGroup` strictly matches `ai_action_executions` for durably linked `erp_resource_id`.
+     - Updated `App\Ai\Services\BootstrapProposalService::approveAndExecute`: Added retry reconciliation block for executing/uncertain claims.
+     - Verified in `BootstrapCompanyCreationTest.php::test_company_creation_safely_reconciles_pre_committed_erp_company`: Proves Task 1 recovers the committed company with `reconciled_from_erp: true`, and an unrelated Task 2 cannot hijack or reconcile Task 1's company and fails closed.
+  2. **P1 #2 (Domain Row Locking Prior to Freshness Checks):**
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter::execute`: Inside `DB::transaction()`, acquires explicit `lockForUpdate()` on `companies`, `fiscal_years`, `suppliers`, `party_tax_profiles`, `warehouses`, and `products` *before* computing or asserting the live source-state hash.
+  3. **P1 #3 (Source-State Dependencies & Complete Totals/Tax Breakdown Verification):**
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter::computeSourceStateHash`: Includes supplier `party_tax_profiles` (`gstin`, `state_code`, `registration_type`, `verified_at`, `updated_at`) and legacy `taxes` on products.
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter::preview`: Populates `expected_totals` with `grand_total`, `tax_total`, `total_price`, `subtotal`, `tax_breakdown` (`cgst`, `sgst`, `igst`, `cess`), and `line_totals` (product_id, qty, net_unit_cost, tax_amount, line_total).
+     - Updated `App\Ai\Schemas\CreatePurchaseOrderInputSchema`: Validates `subtotal`, `tax_breakdown`, and `line_totals`.
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter::execute`: Asserts grand total, tax total, tax breakdown (CGST/SGST/IGST/CESS aggregated from line snapshots), and per-line amounts & taxes against executed purchase, failing closed on any discrepancy.
+     - Verified in `PurchaseOrderActionTest.php`: Tested tax profile mutation failure, tax breakdown discrepancy failure, and totals discrepancy failure.
+  4. **P2 #4 (Review Center Authorization Policy Alignment):**
+     - Updated `App\Http\Controllers\Ai\ActionReviewCenterController`: Removed `|| (int) $request->user()->role_id === 1;`, enforcing company-scoped `$permissions->allows('ai.action.approve', $context, $actorId)` to match `ActionApprovalService` and `AiChatController::proposals()`.
+
+- **Automated Verification Suite (100% Green Across All 109 AI Tests):**
+  - `BootstrapCompanyCreationTest.php`: **13/13 passed (88 assertions)**.
+  - `PurchaseOrderActionTest.php`: **10/10 passed (64 assertions)**.
+  - `ModeBSetupActionTest.php`: **6/6 passed (43 assertions)**.
+  - `NaturalLanguagePurchaseOrderWorkflowTest.php`: **4/4 passed (42 assertions)**.
+  - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **109/109 passed (709 assertions, 0 errors, 0 failures)**.
+  - Hygiene: `composer validate --strict` (valid), caches cleared (`route:clear`, `view:clear`, `config:clear`).
+
+- **Next Steps:**
+  - Proceed to Phase 2: Purchase Bill AI Workflow (`purchase_bill.create.v1` / linking Purchase Orders to Bills).
+  - Implement Sales Order / Quotation AI workflow proposals (`sales_order.create.v1`, `quotation.create.v1`).
+
+---
+
+# zoloERP Pro — Persistent Session Memory & State
+
 ## Critical Code Review Findings (8 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
 
 - **Remediated Findings & Technical Security Hardening (100% Complete & Verified):**
@@ -35,6 +71,42 @@
   - `PurchaseOrderActionTest.php`: **8/8 passed (59 assertions)** (tested tax-rate / fiscal-year mutation source-state failure, grand total discrepancy failure, actor proposal filtering).
   - `NaturalLanguagePurchaseOrderWorkflowTest.php`: **4/4 passed (42 assertions)** (tested end-to-end intent resolution, review center rendering with receipt reference_no, non-approver scope restriction).
   - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **107/107 passed (702 assertions, 0 errors, 0 failures)**.
+  - Hygiene: `composer validate --strict` (valid), caches cleared (`route:clear`, `view:clear`, `config:clear`).
+
+- **Next Steps:**
+  - Proceed to Phase 2: Purchase Bill AI Workflow (`purchase_bill.create.v1` / linking Purchase Orders to Bills).
+  - Implement Sales Order / Quotation AI workflow proposals (`sales_order.create.v1`, `quotation.create.v1`).
+
+---
+
+# zoloERP Pro — Persistent Session Memory & State
+
+## Critical Code Review Findings (4 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
+
+- **Remediated Findings & Technical Security Hardening (100% Complete & Verified):**
+  1. **P1 #1 (Bootstrap Provenance & Durable Link):**
+     - Updated `App\Services\Platform\CompanyDirectoryService::createCompany`: Injects `'idempotency_key' => $input['idempotency_key'] ?? null` into `company_setup_audits.after_json`.
+     - Updated `App\Ai\Adapters\CompanyBootstrapCommandAdapter`: `reconcileCommittedCompany` queries `company_setup_audits` for the exact idempotency key (`"idempotency_key":"ai-bootstrap:{taskId}:v{version}"`) and verified `company_user` membership, or `ai_action_executions` for durably linked `erp_resource_id`. Requires matching `code` if specified.
+     - Updated `App\Ai\Adapters\GroupBootstrapCommandAdapter`: `reconcileCommittedGroup` strictly matches `ai_action_executions` for durably linked `erp_resource_id`.
+     - Updated `App\Ai\Services\BootstrapProposalService::approveAndExecute`: Added retry reconciliation block for executing/uncertain claims.
+     - Verified in `BootstrapCompanyCreationTest.php::test_company_creation_safely_reconciles_pre_committed_erp_company`: Proves Task 1 recovers the committed company with `reconciled_from_erp: true`, and an unrelated Task 2 cannot hijack or reconcile Task 1's company and fails closed.
+  2. **P1 #2 (Domain Row Locking Prior to Freshness Checks):**
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter::execute`: Inside `DB::transaction()`, acquires explicit `lockForUpdate()` on `companies`, `fiscal_years`, `suppliers`, `party_tax_profiles`, `warehouses`, and `products` *before* computing or asserting the live source-state hash.
+  3. **P1 #3 (Source-State Dependencies & Complete Totals/Tax Breakdown Verification):**
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter::computeSourceStateHash`: Includes supplier `party_tax_profiles` (`gstin`, `state_code`, `registration_type`, `verified_at`, `updated_at`) and legacy `taxes` on products.
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter::preview`: Populates `expected_totals` with `grand_total`, `tax_total`, `total_price`, `subtotal`, `tax_breakdown` (`cgst`, `sgst`, `igst`, `cess`), and `line_totals` (product_id, qty, net_unit_cost, tax_amount, line_total).
+     - Updated `App\Ai\Schemas\CreatePurchaseOrderInputSchema`: Validates `subtotal`, `tax_breakdown`, and `line_totals`.
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter::execute`: Asserts grand total, tax total, tax breakdown (CGST/SGST/IGST/CESS aggregated from line snapshots), and per-line amounts & taxes against executed purchase, failing closed on any discrepancy.
+     - Verified in `PurchaseOrderActionTest.php`: Tested tax profile mutation failure, tax breakdown discrepancy failure, and totals discrepancy failure.
+  4. **P2 #4 (Review Center Authorization Policy Alignment):**
+     - Updated `App\Http\Controllers\Ai\ActionReviewCenterController`: Removed `|| (int) $request->user()->role_id === 1;`, enforcing company-scoped `$permissions->allows('ai.action.approve', $context, $actorId)` to match `ActionApprovalService` and `AiChatController::proposals()`.
+
+- **Automated Verification Suite (100% Green Across All 109 AI Tests):**
+  - `BootstrapCompanyCreationTest.php`: **13/13 passed (88 assertions)**.
+  - `PurchaseOrderActionTest.php`: **10/10 passed (64 assertions)**.
+  - `ModeBSetupActionTest.php`: **6/6 passed (43 assertions)**.
+  - `NaturalLanguagePurchaseOrderWorkflowTest.php`: **4/4 passed (42 assertions)**.
+  - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **109/109 passed (709 assertions, 0 errors, 0 failures)**.
   - Hygiene: `composer validate --strict` (valid), caches cleared (`route:clear`, `view:clear`, `config:clear`).
 
 - **Next Steps:**

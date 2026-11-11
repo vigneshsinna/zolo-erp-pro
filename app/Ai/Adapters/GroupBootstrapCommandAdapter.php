@@ -53,6 +53,15 @@ final class GroupBootstrapCommandAdapter implements ActionCommandAdapterInterfac
         // 4. Execute group creation through authoritative ERP domain service
         $group = $this->directory->createGroup($actorId, $payload);
 
+        // Record the durable resource link on the active execution claim
+        DB::table('ai_action_executions')
+            ->where('idempotency_key', $idempotencyKey)
+            ->where('executor_id', $actorId)
+            ->update([
+                'erp_resource_type' => 'company_group',
+                'erp_resource_id' => $group->id,
+            ]);
+
         return new ActionExecutionReceipt(
             resourceType: 'company_group',
             resourceId: (int) $group->id,
@@ -95,29 +104,20 @@ final class GroupBootstrapCommandAdapter implements ActionCommandAdapterInterfac
     public function reconcileCommittedGroup(array $payload, int $actorId, string $idempotencyKey): ?ActionExecutionReceipt
     {
         // Security Invariant: Reconciliation is ONLY permitted for an execution that was already
-        // authenticated, approved, and claimed using the exact proposal idempotency key.
-        $hasActiveClaim = DB::table('ai_action_executions')
+        // authenticated, approved, and claimed using the exact proposal idempotency key,
+        // and where the ERP resource was durably linked to this exact execution.
+        $execution = DB::table('ai_action_executions')
             ->where('idempotency_key', $idempotencyKey)
             ->where('executor_id', $actorId)
-            ->where('status', 'executing')
-            ->exists();
+            ->where('erp_resource_type', 'company_group')
+            ->whereNotNull('erp_resource_id')
+            ->first();
 
-        if (!$hasActiveClaim) {
+        if (!$execution || empty($execution->erp_resource_id)) {
             return null;
         }
 
-        $code = strtoupper(trim((string) ($payload['code'] ?? '')));
-        $name = trim((string) ($payload['name'] ?? ''));
-
-        $group = null;
-        if (!empty($code)) {
-            $group = CompanyGroup::where('code', $code)->first();
-        }
-
-        if (!$group && !empty($name)) {
-            $group = CompanyGroup::where('name', $name)->latest('id')->first();
-        }
-
+        $group = CompanyGroup::where('id', $execution->erp_resource_id)->first();
         if (!$group) {
             return null;
         }
