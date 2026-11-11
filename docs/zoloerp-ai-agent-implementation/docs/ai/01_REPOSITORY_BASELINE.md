@@ -1,44 +1,54 @@
-# 01 — Verified repository baseline and integration points
+# 01 — Verified Code Baseline, Risks and Starting Point
 
-## Source and inspection scope
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Inspected connected GitHub repository `vigneshsinna/zolo-erp-pro`, `main`, SHA `1b429a5b51d6d242e97347781938973c3e55015c` (2026-11-09). The following are **source-derived** findings. Production database size, credentials, Redis availability and live VPS health are **not independently verified** in this pack.
+**Status:** Design specification
 
-## Verified facts
+## Source review snapshot
+- Repository: `vigneshsinna/zolo-erp-pro`.
+- Original base `main` SHA `1b429a5b51d6d242e97347781938973c3e55015c` (Laravel 13, PHP >=8.5.12 <8.6).
+- Original AI feature branch: `feature/ai-agent-foundation` SHA `a1477a679dc0f9ea98ce8cc2d531a1c997e20864`.
+- Current Copilot refactor branch reviewed: `refactor/erp-copilot-stabilization` SHA `14195d8b5b195f65ca1283c96794c613de88eded`.
+- PR: https://github.com/vigneshsinna/zolo-erp-pro/pull/6 . No assumptions about future HEAD, merge, or deployed production status.
 
-- `composer.json`: PHP `>=8.5.12 <8.6`, `laravel/framework ^13.2`, Sanctum `^4.0`, Laravel Modules `^13.0`, Spatie Permission `^6.0`, PHPUnit `^12.0`. No `laravel/ai`, `laravel/mcp`, `laravel/horizon` package declared at this snapshot.
-- `routes/api.php`: `/api/v1` versioning, `auth:sanctum`, explicit `company.context` middleware on key ERP endpoints. Exposes sales, purchases, products, inventory valuation/transfer and finance reports. An AI endpoint should **not** reuse transaction POST endpoints as unsupervised tools.
-- `app/Services/Platform/CompanyContextResolver.php`: `resolve(userId, companyId?, branchId?, financialYearId?, businessDate?)` checks membership and branch access; `forActor()` uses authenticated context and rejects unverified request headers. Async jobs require explicit actor re-resolution rather than assumed HTTP auth.
-- `app/Services/Platform/CompanyContext.php`: `readonly` object with company, branch and financial-year IDs.
-- `app/Services/Accounting/FinancialReportService.php`: authoritative ageing, trial balance, P&L, balance sheet and ledger methods. Some methods internally invoke `CompanyWriteGuard::context($context, auth()->id())`; **do not call those directly from unauthenticated jobs**. Add a supported actor-explicit read facade.
-- `app/Services/Inventory/InventoryAvailabilityService.php`: `forProduct(productId, warehouseId?, variantId?, batchId?)` currently performs some raw queries without accepting `CompanyContext`; wrap/refactor for validated ownership before any AI exposure.
-- `app/Services/Platform/CompanyInsightService.php`: `companyInsight(companyId)` computes cross-company-level dashboards; it is **not safe** as a direct unrestricted tool for branch-limited users.
-- `.env.example`: `QUEUE_CONNECTION=sync`, `CACHE_DRIVER=file`, Redis host settings present. Do not assume Redis/Horizon is installed or configured in production.
-- Current frontend uses Blade, Bootstrap 4, jQuery and legacy Vue tooling. A small progressive-enhancement AI chat page avoids forcing a frontend rewrite.
-- `app/Jobs/DispatchDocument.php` exists. AI jobs need their own queue, retry, timeout and observability policy.
-- A review of the repository tree found **no dedicated `app/Ai`, `app/Mcp`, `config/ai.php` or AI route implementation** at the above SHA.
-
-## Existing domain ownership to preserve
-
-| Business subject | Existing source owner | AI integration rule |
+## Implemented / inspected at snapshot
+| Layer | Real source | Status |
 |---|---|---|
-| Identity/tenancy | `CompanyContextResolver`, policies, membership tables | Never trust context from model or unauthorised HTTP fields |
-| AR/AP ageing | `FinancialReportService::ageing()` | Reconcile with open-item/control ledger; branch and FY enforced |
-| Trial balance/P&L/BS | `FinancialReportService` | Present exact values with date basis and reconciliation status |
-| Inventory | `InventoryAvailabilityService`, stock movement services | Refactor for company/branch/warehouse validation; no direct updates |
-| Sales/purchases | Existing commercial application services | Read in Phase 1; drafts only after approvals phase |
-| Industry ops | Existing job work, manufacturing and capability services | Only when industry's capability enabled |
+| Read-only agents | `app/Ai/Agents/ErpCopilot.php`, `DeepSeekAgent.php` | Present; no new action agents assumed |
+| Model/provider | `app/Ai/Gateway/ApprovedModelGateway.php` | Present; limits, allowlist and model telemetry |
+| Shared SDK adapter | `app/Ai/Tools/GenericSdkTool.php` | Present; replaced 14 read SDK wrappers |
+| Read capability catalog | `app/Ai/Services/AiToolManifest.php`, `app/Ai/DTOs/AiToolRegistration.php` | Present; explicit read-only registration |
+| Business tool boundary | `ErpToolExecutor`, `AiPrincipalFactory`, `AiPrincipalAuthorizer`, `AiFeatureGate` | Present; permission and tenant enforcement |
+| Reporting facades | `ReadCustomerOutstanding`, `ReadSalesAnalytics`, `ReadInventoryStockSummary`, `ReadOpenOrders` and others | Present; per-report business semantics require ongoing regression |
+| API + UI | `AiChatController`, `resources/views/backend/ai/workspace.blade.php` | Present; read-only proposal endpoints deny |
+| Workflow write engine | Domain command adapters, approved action receipts, durable workflow state | **Not implemented/approved** |
 
-## Mandatory pre-implementation audit
+## Reviewed quality evidence
+**Latest:** GitHub Actions run [42870009218](https://github.com/vigneshsinna/zolo-erp-pro/actions/runs/42870009218) passed all **11 jobs**: AI, company, legacy MySQL, delivery, operations, compliance, commercial, concurrency, clean MySQL 8.0, clean MySQL 8.4 and aggregate ERP gate. Earlier run 42846498957 failed a product-alias expectation and design-token checks; those are **historical failures at prior commit `6ded371`**, not current blockers at `14195d8`. Passing CI does not prove live NVIDIA provider/tool-call behavior, company setup AI or financial action workflows.
 
-1. Run `composer validate --strict` and `composer audit --locked` on a current clean branch; record results.
-2. Inspect Spatie Permission usage and decide the exact **effective** role/capability checks for AI tools; do not equate API authentication with business authorisation.
-3. Trace read permissions through `CompanyWriteGuard`, `FinancialReportService`, sales and stock reporting so AI sees only what ordinary users are allowed to see.
-4. Validate Redis host and PHP extensions on **development/staging first**; identify dedicated AI worker process management on the shared VPS.
-5. Check feature flags and accounting reconciliation in a disposable, realistic MySQL dataset.
-6. Identify domain objects with personal/confidential data and define field-level redaction and provider-usage policies.
-7. Confirm SDK migration naming and model identifiers after Composer resolves versions; **do not manually duplicate vendor conversation tables**.
+## Existing ERP services identified for future action mapping
+| Business area | Existing owner (confirmed path/signature) | Adaptation requirement |
+|---|---|---|
+| Common commercial create | `CommercialApplicationService::create(string $kind, array $data, string $key, ?int $actor, ?CompanyContext $context, ?int $replacesId = null)` | Inspect valid `kind`, required fields, stages, idempotency and expected receipt |
+| Sales command | `SaleApplicationService::create(SaleCommand $command)` | Map typed approved request, no direct model calls |
+| Purchase command | `PurchaseApplicationService::create(PurchaseCommand $command)` | Map typed approved request, existing validation |
+| Drafts | `CommercialDraftService::save/load/assertPostable` | Reuse where semantic lifecycle matches; AI proposal remains distinct from ERP commercial draft |
+| Sales/purchase posting | `SalePostingService::post`, `PurchasePostingService::post` | Never post from LLM; require approval and fresh domain validation |
+| Order lifecycle | `OrderLifecycleService::createSale`, `receivePurchase`, `remaining`, `consume`, `amend` | Verify exact ordering, stock and idempotency behavior before composing workflows |
+| GST | `app/Services/Tax/TaxDeterminationService::prepare` | Determine statutory tax in domain layer; never estimate with a hardcoded rate |
+| Production | `ProductionService::plan/complete/reverse` | Manufacturing-specific permissions/capabilities |
 
-## Change-management note
+**Not validated:** production database state; live 3rd-party model credentials/data handling; live NVIDIA staging traffic; all business transaction shapes; capabilities for other ERP modules. Service signatures are integration candidates, not permission to call them unreviewed.
 
-Do not edit historical accounting, stock movement, opening balance or migration files simply to support AI. New AI-owned migrations must be additive; production deployment remains a separate release. Do not merge code into `main` before CI, privacy, pilot and rollback gates pass.
+## Current freeze rule
+The existing Copilot must remain **read-only for ERP business state**. It can write its own scoped conversations, counters and audit telemetry. Existing proposal endpoints return `AI_ACTIONS_DISABLED`, the read manifest rejects non-`read_only` handlers, and no model-controlled ERP write capability should be registered on this branch.
+
+## First tasks
+1. Preserve the new passing aggregate CI status; investigate any future regressions without weakening test assertions.
+2. Obtain exact ERP report parity for sales, receivables, open orders, GST and inventory.
+3. Verify live provider contract with synthetic staging data under a strict budget.
+4. Freeze read-tool schemas, provider aliases, permissions, fact cards, errors and source links as golden tests.
+5. Only then branch for the separate action foundation; no giant all-at-once ERP rewrite.
+
+
+---

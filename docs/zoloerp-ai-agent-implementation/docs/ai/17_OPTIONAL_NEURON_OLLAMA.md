@@ -1,31 +1,20 @@
-# 17 — Advanced multi-agent workflows (Neuron AI) and local models (Ollama)
+# 17 — Evaluation of Advanced Orchestration and Local Models
 
-## Neuron AI integration evaluation
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Project: https://github.com/neuron-core/neuron-ai, documentation: https://neuron-ai.dev. Neuron's PHP framework supports workflow orchestration, checkpointing, human-in-the-loop and RAG. It is an **optional alternative orchestrator**, not a required MVP dependency.
+**Status:** Design specification
 
-### Proposed isolated proof of concept
+## Default decision
+Stay Laravel-native until actual business workflow complexity justifies another runtime. The future orchestration state machine can be built with Laravel services, DB, queues and existing domain commands. Neuron AI is not required for the first purchase order or sales invoice action.
 
-- A separate `spike/neuron-workflows` branch/project after PH1 passes. Install a compatible released package in that project and review its official Laravel integration guidelines.
-- Build one bounded read-only workflow: `sales.summary → inventory.availability → merge deterministic facts → narrative response`.
-- Compare with the same flow using a custom Laravel orchestrator and Laravel AI SDK: compatibility, testability, state recovery, tool isolation, cost, latency, security, observability and operator burden.
-- Do not run the same business tool through both frameworks with divergent auth checks. The **single `ErpToolExecutor`** remains the source of tool authority regardless of orchestrator.
-- If chosen, document exact package version, ownership of memory/state, checkpoint recovery, approval handoff and how to avoid duplicate SDK calls or nested agents.
+## When to evaluate Neuron AI
+Require at least three production workflows with complex branching, pause/resume and checkpoint recovery that a Laravel-built workflow handles poorly. Build a separate PoC with sales + inventory read synthesis, then one synthetic approval pause. Measure authorization boundary, state persistence, developer burden, latency, token cost, testability and recovery. If adopted, `ErpToolExecutor` and business command boundary remain authoritative; never create duplicated permission logic.
 
-### Decision criteria
+## Ollama / self-hosted inference
+Evaluate on isolated, appropriately sized hardware with private network, TLS and model-specific licensing. Test multilingual input (English and Tamil if product needs it), Indian business nomenclature, structured tool calling, invoice extraction, GST terminology, hallucination, function call JSON, retries and privacy. Keep approved provider gateway; a local model is not inherently more accurate or more secure without isolation and policy.
 
-Adopt only if ≥3 production workflow needs require checkpoints, branching or human pause/resume, and the package measurably improves maintenance over our own bounded state machine. Remain Laravel-native for simple read/draft flows.
+## Decision criteria
+A component is added only if its measured benefit exceeds operational and security cost. No speculative packages in MVP. Record ADR including alternative, benchmark results, deployment cost, rollback and responsible owner.
 
-## Ollama and open-weight models
 
-Project: https://github.com/ollama/ollama. Optional separate model-serving runtime for controlled environments; **not** a substitute for ERP authorisation or privacy controls. Keep it off the shared ERP VPS unless capacity/performance review explicitly approves.
-
-- Verify GPU/CPU/RAM, operating-system service, queue throughput, TLS/private network and model-specific usage license.
-- Select models by structured tool-calling reliability, multilingual accuracy, data minimisation, latency, memory footprint and cost.
-- Put provider behind `ApprovedModelGateway`; confirm Laravel AI SDK supports the target backend/provider shape (for example via approved compatible endpoint) in the **actual installed SDK**. Do not assume provider-specific configuration keys.
-- Never expose model HTTP endpoint publicly without authentication; rate limits, sandbox and egress controls apply.
-- Perform separate adversarial evaluation for model hallucinations, tool schema selection and confidential data leakage.
-
-## Go/no-go gates
-
-If multi-agent orchestration adds more complexity than saved effort, defer Neuron. If local inference costs more operational effort or performs below accuracy thresholds, keep the managed provider. Neither option blocks PH1.
+---

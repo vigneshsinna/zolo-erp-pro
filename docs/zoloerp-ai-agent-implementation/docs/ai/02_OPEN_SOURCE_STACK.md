@@ -1,60 +1,39 @@
-# 02 — GitHub stack selection and integration decision record
+# 02 — Laravel-Native Open Source Stack and Selection Record
 
-## Selection principles
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Prioritise Laravel-native, supported projects with verifiable licensing and a small operational footprint. Reuse **upstream maintained packages** instead of copying repository code into zoloERP. Pin reviewed versions via `composer.lock` and record license and advisory checks before production.
+**Status:** Design specification
 
-| Project | URL | Role | Decision / deployment | Notes |
-|---|---|---|---|---|
-| **Laravel AI SDK** | https://github.com/laravel/ai | Agent, model providers, tools, structured output, streaming, conversation/testing support | **Required PH0** in existing Laravel app | Official docs: https://laravel.com/docs/13.x/ai-sdk; Composer `laravel/ai`. Confirm exact package version/API at installation |
-| **Laravel MCP** | https://github.com/laravel/mcp | MCP tool/server/client interoperability | **PH2**, install only when endpoint policy is ready; can evaluate PH0 | Composer `laravel/mcp`; avoid unauthenticated web servers |
-| **Laravel Horizon** | https://github.com/laravel/horizon | Supervised Laravel Redis queues/dashboard | **PH1** if Redis ready | Requires Redis; `composer require laravel/horizon`, `php artisan horizon:install`; dedicate AI supervisors |
-| **Langfuse** | https://github.com/langfuse/langfuse | LLM traces, feedback, experiments, evaluation | **PH2 optional** | External hosted/dedicated deployment preferred; PHP trace ingestion/OTel adapter is custom and version-verified |
-| **Qdrant** | https://github.com/qdrant/qdrant | Filterable vector database | **PH3 optional** | Do not add for live financial/stock queries. All retrieval must enforce tenant/ACL filters, then recheck document access |
-| **Neuron AI** | https://github.com/neuron-core/neuron-ai | PHP workflows, checkpoints, multi-agent and HITL | **PH4 evaluation only** | Alternative advanced orchestrator, not a second required runtime in MVP. Prototype isolated from production |
-| **Ollama** | https://github.com/ollama/ollama | Local open-weight model serving | **PH4 optional** | Use a separate properly sized machine; model license/security to be checked individually |
-| **Prism PHP** | https://github.com/prism-php/prism | Laravel/PHP LLM abstraction | **Fallback candidate, not installed** | Avoid two overlapping LLM SDKs in the MVP |
+## Stack principles
+Use upstream libraries for model interaction, queues, MCP and retrieval only where necessary. Keep ERP-specific authorization, transaction state, tool catalog, business validation and approvals owned by zoloERP. Avoid adding a second AI framework before there is a proven gap. Exact versions are controlled by `composer.lock` and audited for the deployment environment.
 
-### Selected integration boundaries
-
-- Laravel AI owns provider invocation, tool calling, test fakes and optional conversation transport, **not authorisation**.
-- zoloERP-owned services own `AgentPrincipal`, tool catalog, permission guards, business actions, approvals, audit, quotas and tenant-safe read facades.
-- Laravel MCP is **not** the in-process interface for our own tools. Both SDK tools and future MCP tools should call the **same** `ErpToolExecutor` guard and domain adapters to prevent bypasses.
-- Horizon supervises bounded background jobs; Redis is transport, not a customer-data archive.
-- Langfuse receives **redacted** telemetry only after consent/compliance review; no credentials, unredacted invoices or customer identifiers in default traces.
-- Qdrant holds approved documentation embeddings/chunks, not ledger balances. Its filter is a second isolation mechanism, not an authentication system.
-
-## Installation policy
-
-Install packages one at a time in `feature/ai-agent-foundation`; run `composer why-not`, `composer check-platform-reqs`, `composer audit`, SDK smoke tests, and lock the resolved versions. No `--ignore-platform-reqs`; no blind `composer update` across the ERP.
-
-## License and maintenance gates
-
-Before installation, record: GitHub release/tag SHA, Packagist lock version, license and third-party transitive licenses, current security advisories, version compatibility, support activity, data-processing policy and deployment footprint. Repository licenses and upstream APIs can change; this pack links official sources instead of freezing unverified release numbers. For models, verify each **model's** license separately from Ollama's license.
-
-## What to build, not buy
-
-1. `AiPrincipal` and `CompanyContext` enforcement at tool execution time.
-2. Strongly typed ERP tool registry, result evidence, audit and safe business adapters.
-3. Proposal/review/approval/revalidation/replay-protection workflow.
-4. Company settings, provider selection, budget and quotas.
-5. Chat UI integrated into zoloERP navigation and existing login.
-6. Regression and adversarial tests bound to real domain services.
-
-## Why not run n8n/Dify/Flowise inside the ERP MVP?
-
-They introduce separate runtimes, permission models and integration surfaces; n8n and Dify also warrant separate license/commercial review. They may be used outside the ERP later for non-authoritative notifications. Avoid relying on an archived/unmaintained agent UI as a production dependency. The selected stack is Laravel-native by design.
-
-## Verified upstream Composer constraints (2026-11-10)
-
-These are the **current GitHub repository `composer.json` constraints** observed at review time; resolve a tagged release in `composer.lock` before implementation. They are not a promise that every future version is compatible.
-
-| Package | PHP requirement | Laravel / Illuminate support observed | License |
+| Project | Link | Decision | Deployment timing |
 |---|---|---|---|
-| `laravel/ai` | `^8.3` | `illuminate/support ^12.0\|^13.0` | MIT |
-| `laravel/mcp` | `^8.2` | `illuminate/support ^12.41.1\|^13.0` | MIT |
-| `laravel/horizon` | `^8.0` | `illuminate/support ^9.21\|^10.0\|^11.0\|^12.0\|^13.0` | MIT |
-| `neuron-core/neuron-ai` | `^8.1` | Laravel integration is to be verified independently | MIT |
-| `prism-php/prism` | `^8.2` | `laravel/framework ^12.61.1\|^13.12.0` | MIT |
+| Laravel AI SDK `laravel/ai` | https://github.com/laravel/ai | **Primary provider/agent SDK**; installed API must be verified | Already integrated on AI branch |
+| Laravel Horizon | https://github.com/laravel/horizon | Redis job supervision for nonblocking workflows | Only after secure isolated Redis/worker validation |
+| Laravel MCP | https://github.com/laravel/mcp | Optional external authenticated interoperability | Later; not required for in-process AI actions |
+| Langfuse | https://github.com/langfuse/langfuse | Optional redacted trace/quality evaluation | Separate deployment, after privacy review |
+| Qdrant | https://github.com/qdrant/qdrant | Optional vector retrieval for approved documents | Knowledge phase only |
+| Neuron AI | https://github.com/neuron-core/neuron-ai | Compare for complex checkpoint orchestration | Isolated proof of concept only |
+| Ollama | https://github.com/ollama/ollama | Optional model serving for private environments | Capacity and model license review first |
+| Prism PHP | https://github.com/prism-php/prism | Alternative SDK, not installed alongside primary by default | Only with measured justification |
 
-All five declare compatible PHP version ranges with PHP 8.5, and the three recommended core packages declare Illuminate 13 support. This does **not** replace lockfile resolution, runtime tests or transitive dependency audits.
+## Ownership table
+- **Laravel AI SDK**: messages to approved provider, SDK-specific tool interface, model response, testing fakes.
+- **`ApprovedModelGateway`**: approved provider/model, request/token quotas, retry admission and usage telemetry.
+- **`AiToolManifest` + `GenericSdkTool` + `ErpToolExecutor`**: current read-tool contract and backend policy.
+- **Future action-capability registry**: explicit business command descriptors, intent mapping, risk level, preview, permission, approved executor. No arbitrary reflection-discovered service methods.
+- **Domain services**: business record creation, pricing, GST, accounting/stock posting, validation and authoritative receipts.
+- **Horizon/Redis (optional)**: durable workflow work execution; never source of financial truth.
+
+## Packages to avoid for MVP
+Do not make n8n, Dify or a general external multi-agent SaaS the ERP transaction authority. They add separate trust boundaries and may carry different licensing/operations implications. External automations can call tightly scoped zoloERP APIs later. Don't install MCP merely to communicate between Laravel classes in the same application.
+
+## Compatibility and license gates
+For every dependency: pin package release and lock hash, run `composer validate --strict`, `composer check-platform-reqs`, `composer audit --locked`, review maintainer/license, and test PHP 8.5/Laravel 13 on disposable MySQL. Upstream docs can evolve; verify actual installed SDK tool interface, schema builder, streaming and conversation contract rather than copying older snippets.
+
+## Deployment footprint
+Shared ERP VPS should not be burdened with an LLM GPU, full Langfuse stack, embeddings DB and new brokers during the first action pilot. Start with existing Laravel/MySQL and managed model, add dedicated AI workers only when long-running tasks require them. Document budget, outbound data policy and region for every approved provider.
+
+
+---

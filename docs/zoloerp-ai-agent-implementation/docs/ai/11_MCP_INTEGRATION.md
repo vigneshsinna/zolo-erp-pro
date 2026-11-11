@@ -1,77 +1,28 @@
-# 11 — Laravel MCP server and client integration
+# 11 — Optional Laravel MCP Integration with Shared ERP Guard
 
-## Purpose and release gating
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Use [Laravel MCP](https://github.com/laravel/mcp) to expose a **small, authenticated set of zoloERP read tools** to explicitly trusted external AI clients, or to consume vetted external MCP services. **Do not expose MCP publicly during PH1**. In-process Laravel AI tools should call `ErpToolExecutor` directly rather than making an HTTP call back into our own MCP server.
+**Status:** Design specification
 
-Official docs: https://laravel.com/docs/13.x/mcp.
+## Decision
+MCP is a **future interoperability surface**, not a prerequisite for chat-driven purchases and sales inside Laravel. In-process SDK read tools call `ErpToolExecutor` directly; don't call your own MCP endpoint over HTTP. External MCP clients must pass the same authorization and command policies as the native AI UI.
 
-## Installation after PH1 approval
+## Use cases
+Approved trusted external AI client asks for a limited stock or customer dues report, or zoloERP consumes a strictly scoped third-party service. Initial MCP server should expose only a small read-only capability set. Keep business writes disabled until a separate security and action-approval review.
 
-```bash
-composer require laravel/mcp
-php artisan vendor:publish --tag=ai-routes
-php artisan make:mcp-server ErpReadServer
-# inspect generated server/tool classes and route bootstrap integration
-```
+## MCP pipeline
+`External client + user-linked token → auth/scope → AiPrincipal → allowlisted MCP alias → schema validation → ErpToolExecutor → authoritative read facade → scoped redacted result`. Tool listing itself is filtered by actual capabilities. Never expose all company records or broad raw SQL.
 
-The package publishes `routes/ai.php`, separate from `routes/erp-ai.php` (internal chat endpoints).
+## Controls
+- Authenticate via reviewed Sanctum/OAuth flow and map external token to a real actor with scopes.
+- Prevent MCP from supplying arbitrary company or branch authority; resource IDs are revalidated.
+- Limit returned row count, size and sensitive fields. Reconcile tool version aliases with internal manifest.
+- Restrict outbound MCP server addresses against SSRF, redirects to internal metadata endpoints, credentials or localhost.
+- No general arbitrary web fetcher, code runner, file search outside approved ACLs or superuser server token.
+- Log tool ID, actor hash, company hash, decision and outcome with redaction; protect logs and retention.
 
-## Server registration sketch
+## Tests / gate
+Missing scope, expired token, cross-tenant parameter, mismatched alias, malicious tool descriptions and excessive request size all fail closed. Same request in native SDK and external MCP returns the same authoritative facts. Disable MCP routes entirely until these tests pass; introduce no MCP dependencies in core action workflow if not needed.
 
-```php
-<?php
-// routes/ai.php — after verifying actual installed package API
-use App\Mcp\Servers\ErpReadServer;
-use Laravel\Mcp\Facades\Mcp;
 
-Mcp::web('/mcp/zolo-erp', ErpReadServer::class)
-    ->middleware(['auth:sanctum', 'throttle:ai-mcp']);
-```
-
-- Define the rate limiter `ai-mcp` yourself. Use Sanctum bearer scopes or a standards-compliant OAuth flow based on client needs.
-- Tool-level authorization remains mandatory. Authentication alone is not sufficient.
-- Server must not expose all ERP models, public resources, write operations or raw SQL tools.
-- MCP server registry initially contains only `GetOutstandingTool` and perhaps `GetSalesSummaryTool`, both calling `ErpToolExecutor`.
-
-## Adapter pattern
-
-```
-MCP Request
-   -> Sanctum/OAuth user identity
-   -> MCP server/tool input schema
-   -> AiPrincipalFactory + existing CompanyContextResolver
-   -> ErpToolExecutor (same as in-process SDK)
-   -> authoritative read facade
-   -> tenant-scoped, redacted MCP response
-```
-
-Model-provided `company_id` and `branch_id` are **never authority**. If client must select a company, the server re-resolves it for the authenticated user; deny ambiguous or unauthorised selection.
-
-## Secure MCP tool implementation
-
-Create `App\Mcp\Tools\GetOutstandingTool` via the installed package generator. Its `handle(Laravel\Mcp\Request $request): Laravel\Mcp\Response` must:
-
-1. Read the authenticated user from `$request->user()` and enforce API token scopes.
-2. Validate `as_of` and `limit`, rejecting excessive values.
-3. Build an `AiPrincipal` with a **server-authorised** `CompanyContext`.
-4. Call `ErpToolExecutor::run('receivables.outstanding.v1', principal, validated)`.
-5. Return bounded JSON text (or structured MCP response supported by installed version) with scope/date/sources and explicit errors. Do not include secrets, raw customer exports or internal SQL.
-
-## External MCP client policy
-
-- Maintain allowed MCP server URLs and provider-specific credentials in a server-side registry. Restrict destination URLs and address ranges against SSRF; block local/cloud metadata destinations by default.
-- No general use of `Client::web($userProvidedUrl)` or `FileStorage::all()`.
-- Bind external client tools to a named requesting actor; map scopes and identity explicitly. Use OAuth or user-specific tokens for third-party accounts; never share ERP's owner token across tenants.
-- Inspect discovered tool schema, permissions, actions and destinations before exposing to user/agent. Default external tools to disabled and read-only.
-- Record request/audit IDs, redacted parameters, provider, external server ID and response status.
-
-## Testing checklist
-
-- No token: 401. Valid token but missing tool permission: deny.
-- Cross-company/branch requested in tool parameters: deny.
-- Tool discovery reveals only enabled, permitted tools.
-- Rate limit, malformed JSON, invalid date, oversized `limit`, replay and expired tokens all denied.
-- A malicious external MCP tool description cannot override system policy or invoke extra tools.
-- No web MCP routes registered in production when feature flag disabled.
-- Tool parity: identical internal SDK and MCP tool requests produce the same deterministic result and audit policy.
+---

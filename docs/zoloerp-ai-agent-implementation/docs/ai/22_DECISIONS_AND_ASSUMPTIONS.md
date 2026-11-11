@@ -1,41 +1,60 @@
-# 22 — Architecture decisions and open assumptions
+# 22 — Architecture Decision Log and Open Business Questions
 
-Each item must become an ADR or be resolved in the first implementation PR. **Source-derived** refers to inspected GitHub `main`; **proposed** refers to this plan; **needs verification** must not be represented as shipped.
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-| ID | Status | Decision / assumption | Evidence / resolution required |
-|---|---|---|---|
-| ADR-001 | Adopt proposed | `laravel/ai` core SDK, no custom LLM HTTP stack | Confirm Composer/PHP compatibility and vendor API after install |
-| ADR-002 | Adopt proposed | zoloERP-owned `ErpToolExecutor` shared by SDK + MCP | Tests prove no bypass; no arbitrary SQL |
-| ADR-003 | Source-derived | Existing app uses Laravel 13/PHP 8.5 + Sanctum and `CompanyContextResolver` | Repository `composer.json` and service classes |
-| ADR-004 | Pending | SDK conversation history vs stateless/bounded history | Confirm vendor table ID types, privacy and ownership mapping |
-| ADR-005 | Adopt proposed | Read-only receivables agent first | Compare exact AR ageing and control account reconciliation |
-| ADR-006 | Pending | Effective tool RBAC mapping to current permissions/Spatie/company override | Inspect actual role-policy enforcement across finance/stock APIs |
-| ADR-007 | Source-derived gap | `FinancialReportService` uses HTTP `auth()->id()` in core reports | Introduce actor-explicit read facade/refactor with regression |
-| ADR-008 | Source-derived gap | `InventoryAvailabilityService` lacks explicit `CompanyContext` parameter | Refactor/wrap before inventory tool exposure |
-| ADR-009 | Proposed | `AI_ENABLED=false` default, company flags and read-only mode | Implement config and kill-switch tests |
-| ADR-010 | Needs verification | Redis and Horizon operational on target VPS | Check Redis process, ACLs, queue configs and worker capacity |
-| ADR-011 | Adopt proposed | No direct model writes; approval proposal state machine | PH2 separate security/finance review |
-| ADR-012 | Proposed | Laravel MCP added only when server authentication and executor parity is tested | Confirm package route and token setup |
-| ADR-013 | Proposed | Managed model provider first; Ollama later only if metrics justify | Provider DPA, data residency, model choice, pricing |
-| ADR-014 | Proposed | Langfuse external/optional and redacted | Legal and telemetry payload inspection |
-| ADR-015 | Proposed | Qdrant only for approved knowledge | ACL filters + source revocation test |
-| ADR-016 | Proposed | Neuron AI evaluated in isolated PoC, not mixed by default | Compare real workflow benefit/complexity |
-| ADR-017 | Pending | Whether branch-limited users may access full-company dashboards | Derive from existing ERP business policy, not model defaults |
-| ADR-018 | Pending | Exact ERP route links and data presentation schemas | Inspect current named routes and stable report API output |
-| ADR-019 | Pending | Whether current live PHP 8.5 deployment and queue are ready | Operational check; repository code cannot confirm server state |
-| ADR-020 | Adopt proposed | Preserve existing ERP deploy gate; no auto-launch of AI | Release manager to approve staging/production rollout |
+**Status:** Design specification
 
-## Decisions to capture before PH1 deployment
+## Accepted architecture decisions
+| ID | Decision | Evidence or reason |
+|---|---|---|
+| ADR-001 | Laravel AI SDK remains model/agent integration | Current branch already uses it |
+| ADR-002 | Explicit `AiToolManifest` + `GenericSdkTool` for reads | Implemented shared adapter; no reflection-discovered arbitrary methods |
+| ADR-003 | Authenticated `AiPrincipal` and domain authorization on every tool | Current principal/factory/executor architecture |
+| ADR-004 | ERP service owns calculation and posting, not LLM | Financial/stock correctness and existing business transactions |
+| ADR-005 | Current Copilot stays read-only until CI/sign-off | Prevent legacy proposal path and accounting bypass |
+| ADR-006 | One Command Center + shared capabilities; specialist agents optional | Avoid duplicated services and agent dependency coupling |
+| ADR-007 | Action registry is separate from read registry | Distinct risk classification and explicit approved command boundary |
+| ADR-008 | Explicit approval binds sealed command and version | Prevent model self-approval and stale data edits |
+| ADR-009 | First commercial action vertical slice: Purchase Order, following admin-limited initial setup | Demonstrates low-risk commercial workflow after the Setup Agent proves authorised create/preview/receipt |
+| ADR-010 | MCP/Qdrant/Langfuse/Neuron optional/deferred | Not needed for core in-app actions; reduces VPS and security burden |
 
-- Which model provider/model, primary region and retention policy are contractually approved?
-- Which user roles have `ai.use` and AR report read rights in **each company**?
-- Are branch-specific or company-wide aggregates legally/product-correct for each role?
-- What is the retention period for conversations, traces, encrypted proposal drafts and knowledge sources?
-- What are hard cost limits, query timeouts and provider outage behaviours?
-- Are customers informed that prompts/business data are processed by a third-party model?
-- What is the approved use of document ingestion, invoices and PII?
-- Who is the deployment approver, AI on-call owner and incident escalation contact?
+## Outstanding decisions (must be resolved, not guessed)
+| Question | Owner to consult | Gate |
+|---|---|---|
+| Is the first PO a quotation/request, draft or approved order in ERP's true lifecycle? | Product + purchasing domain owner | Before PO action schema |
+| When does a receipt update stock and liability in each company configuration? | Inventory + finance | Before purchase receipt/bill workflow |
+| How do purchase bills link to receipts and avoid double stock? | Purchasing + finance | Before bill posting |
+| Which sales document statuses generate revenue/COGS/stock? | Sales + accounting | Before invoice posting |
+| Exact GST place-of-supply, tax-inclusive and party eligibility rules | Tax owner | Before monetary preview/transaction |
+| Currency rate policy and rounding | Finance | Before foreign-currency writes |
+| Who can create versus approve high-risk documents? Segregation of duties? | Company administrator + finance | Before approval enablement |
+| Customer/supplier duplicate and fuzzy match thresholds | Data operations/product | Before master create capability |
+| Reversal/cancellation rules and operational recovery | Finance + engineering | Before any financial action |
+| Provider data processing/retention and customer privacy notice | Security/legal | Before live prompts/uploads |
+| Synchronous vs queued workflow limits, VPS resources | Operations | Before long-running tasks |
+| Actual scheduled action autonomy allowed for each tenant | Product + admin | Before recurring writes/sends |
 
-## Change-log protocol
+## Change-log rule
+When an ADR changes, record date, author, old/new position, impacted modules, migrations, tests, feature flag and rollback. Decisions must be confirmed from current code/business owners; this pack does not fill missing business rules with guesses.
 
-When a decision changes, record date, owner, superseded design, reason, affected documents, migration risk and proof/test evidence. Never silently reinterpret a source-derived finding into a new implementation claim.
+
+---
+
+## V3 accepted design decisions
+| ID | Decision | Rationale |
+|---|---|---|
+| ADR-011 | Dedicated AI Setup Agent, before business actions | Faster time-to-first-transaction for a new company without building duplicate ERP setup rules |
+| ADR-012 | Separate BootstrapSetupPrincipal from company-scoped AiPrincipal | Creating the first company happens before any company/branch/FY exists; require installation/group-admin permission |
+| ADR-013 | Existing `CompanyDirectoryService::createCompany` remains creation authority | It already atomically provisions company, MAIN branch, FY, warehouse, COA, industry and starter masters |
+| ADR-014 | 'Business vertical' maps to `IndustryCatalog` profile/subtype + company capabilities, unless a separate real domain is confirmed | No new global vertical master should be invented without code/business evidence |
+| ADR-015 | Document lifecycle state restricts every AI edit | Submitted/posted records cannot be generically updated; use only supported amendment/cancellation/reversal/return adjustments |
+| ADR-016 | Approval binds exact draft revision and authoritative record state | Revisions and changed status invalidate approval and demand fresh review |
+| ADR-017 | No direct use of legacy unscoped CRUD controllers as privileged AI command adapters | UOM/warehouse/customer/supplier flows require reviewed company-scoped services and explicit permission, not `request()->all()` |
+
+## V3 open setup decisions to validate with product/finance
+- Meaning of company group versus financial consolidation, allowable group-admin actions, ownership when creating ungrouped companies.
+- Required legal company fields by country, registration/GST dates, profile selection and whether multi-industry configuration is supported (current code has one industry profile/subtype per company).
+- Whether initial UOM and product/party imports may be saved as drafts without posting, and what admin approval threshold applies.
+- How to handle existing companies with posted documents when changing base currency, FY dates, state/GSTIN, industry subtype or warehouse status.
+- Which master lookups, product starter templates and company readiness conditions are mandatory for each industry.
+- How to support optional opening balances without injecting stock or ledger data outside reviewed opening-balance services.
