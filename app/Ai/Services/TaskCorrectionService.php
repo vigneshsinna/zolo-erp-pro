@@ -99,14 +99,35 @@ final class TaskCorrectionService
     {
         // 1. Direct scalar / entity fields
         if ($field === 'supplier_id') {
-            $slots['supplier_id'] = (int) $value;
-            unset($slots['supplier_query']);
+            if (is_numeric($value) && (int) $value > 0) {
+                $slots['supplier_id'] = (int) $value;
+                unset($slots['supplier_query']);
+            } else {
+                $slots['supplier_query'] = trim((string) $value);
+                unset($slots['supplier_id']);
+            }
             return;
         }
 
         if ($field === 'warehouse_id') {
-            $slots['warehouse_id'] = (int) $value;
-            unset($slots['warehouse_query']);
+            if (is_numeric($value) && (int) $value > 0) {
+                $slots['warehouse_id'] = (int) $value;
+                unset($slots['warehouse_query']);
+            } else {
+                $slots['warehouse_query'] = trim((string) $value);
+                unset($slots['warehouse_id']);
+            }
+            return;
+        }
+
+        if ($field === 'customer_id') {
+            if (is_numeric($value) && (int) $value > 0) {
+                $slots['customer_id'] = (int) $value;
+                unset($slots['customer_query']);
+            } else {
+                $slots['customer_query'] = trim((string) $value);
+                unset($slots['customer_id']);
+            }
             return;
         }
 
@@ -141,8 +162,13 @@ final class TaskCorrectionService
             }
 
             if ($property === 'product_id') {
-                $slots['items'][$lineIndex]['product_id'] = (int) $value;
-                unset($slots['items'][$lineIndex]['product_query']);
+                if (is_numeric($value) && (int) $value > 0) {
+                    $slots['items'][$lineIndex]['product_id'] = (int) $value;
+                    unset($slots['items'][$lineIndex]['product_query']);
+                } else {
+                    $slots['items'][$lineIndex]['product_query'] = trim((string) $value);
+                    unset($slots['items'][$lineIndex]['product_id']);
+                }
                 // Dependency invalidation: clear previously assumed UOM or cost if product changed
                 unset($slots['items'][$lineIndex]['uom']);
             } elseif ($property === 'qty') {

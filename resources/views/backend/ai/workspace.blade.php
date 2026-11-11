@@ -937,12 +937,18 @@
                         card.append(cardBody);
                         bubble.append(card);
                     } else if (fact.tool === 'workflow.clarification.v1') {
+                        let currentTaskRevision = parseInt(data.task_revision || 1, 10);
                         const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card ai-clarification-card"></div>');
                         const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
                         const taskIdShort = data.task_id ? String(data.task_id).substring(0, 8) : 'New';
                         cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-question text-warning mr-1"></i> Details Required for Proposal · Task #' + $('<div>').text(taskIdShort).html() + '</span>'));
-                        cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Collecting Inputs (Rev ' + (data.task_revision || 1) + ')</span>'));
-                        card.append(cardHeader);
+                        const revBadge = $('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Collecting Inputs (Rev <span class="ai-rev-badge">' + currentTaskRevision + '</span>)</span>');
+                        cardHeader.append(revBadge);
+
+                        function updateTaskRevision(newRev) {
+                            currentTaskRevision = parseInt(newRev, 10);
+                            cardHeader.find('.ai-rev-badge').text(currentTaskRevision);
+                        }
 
                         const cardBody = $('<div class="card-body p-3 bg-white"></div>');
 
@@ -1164,6 +1170,9 @@
                                                                             expected_version: prop.version || 1
                                                                         }),
                                                                         success: function (resExec) {
+                                                                            if (resExec.revision) {
+                                                                                updateTaskRevision(resExec.revision);
+                                                                            }
                                                                             triadContainer.remove();
                                                                             triadPanel.remove();
                                                                             issueBox.attr('data-resolved', 'true');
@@ -1308,43 +1317,75 @@
                                     return;
                                 }
 
-                                btnSubmit.prop('disabled', true).text('Updating...');
-                                btnCancel.prop('disabled', true);
+                                function submitPatch(retryWithLatest) {
+                                    btnSubmit.prop('disabled', true).text('Updating...');
+                                    btnCancel.prop('disabled', true);
 
-                                $.ajax({
-                                    url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/inputs',
-                                    method: 'PATCH',
-                                    headers: headers,
-                                    data: JSON.stringify({
-                                        expected_revision: data.task_revision || 1,
-                                        corrections: corrections
-                                    }),
-                                    success: function (res) {
-                                        if (res.evaluation && res.evaluation.is_ready) {
-                                            btnSubmit.text('Preparing Proposal...');
-                                            $.ajax({
-                                                url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/prepare-proposal',
-                                                method: 'POST',
-                                                headers: headers,
-                                                success: function (prepRes) {
-                                                    footer.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>All details confirmed! Proposal ready. Send message or refresh to review.</span>');
-                                                },
-                                                error: function (prepXhr) {
-                                                    btnSubmit.prop('disabled', false).text('Submit Details');
-                                                    btnCancel.prop('disabled', false);
-                                                    alert('Preparation failed: ' + (prepXhr.responseJSON?.message || 'Error'));
-                                                }
-                                            });
-                                        } else {
-                                            footer.html('<span class="badge badge-info p-2"><i class="dripicons-checkmark mr-1"></i>Updated! Additional details required. Refreshing...</span>');
+                                    $.ajax({
+                                        url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/inputs',
+                                        method: 'PATCH',
+                                        headers: headers,
+                                        data: JSON.stringify({
+                                            expected_revision: currentTaskRevision,
+                                            corrections: corrections
+                                        }),
+                                        success: function (res) {
+                                            if (res.task && res.task.revision) {
+                                                updateTaskRevision(res.task.revision);
+                                            }
+                                            if (res.evaluation && res.evaluation.is_ready) {
+                                                btnSubmit.text('Preparing Proposal...');
+                                                $.ajax({
+                                                    url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/prepare-proposal',
+                                                    method: 'POST',
+                                                    headers: headers,
+                                                    success: function (prepRes) {
+                                                        footer.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>All details confirmed! Proposal ready. Send message or refresh to review.</span>');
+                                                    },
+                                                    error: function (prepXhr) {
+                                                        btnSubmit.prop('disabled', false).text('Submit Details');
+                                                        btnCancel.prop('disabled', false);
+                                                        alert('Preparation failed: ' + (prepXhr.responseJSON?.message || 'Error'));
+                                                    }
+                                                });
+                                            } else {
+                                                footer.html('<span class="badge badge-info p-2"><i class="dripicons-checkmark mr-1"></i>Updated! Additional details required. Refreshing...</span>');
+                                            }
+                                        },
+                                        error: function (xhr) {
+                                            if (xhr.status === 409 && !retryWithLatest) {
+                                                // Task revision conflict: auto-sync with latest task revision from server and retry seamlessly
+                                                $.ajax({
+                                                    url: aiBaseUrl + '/workflow-tasks/' + data.task_id,
+                                                    method: 'GET',
+                                                    headers: headers,
+                                                    success: function (latestTaskRes) {
+                                                        if (latestTaskRes.task && latestTaskRes.task.revision) {
+                                                            updateTaskRevision(latestTaskRes.task.revision);
+                                                            submitPatch(true);
+                                                            return;
+                                                        }
+                                                        btnSubmit.prop('disabled', false).text('Submit Details');
+                                                        btnCancel.prop('disabled', false);
+                                                        alert('Update failed: Task revision conflict. Please refresh to reload state.');
+                                                    },
+                                                    error: function () {
+                                                        btnSubmit.prop('disabled', false).text('Submit Details');
+                                                        btnCancel.prop('disabled', false);
+                                                        alert('Update failed: ' + (xhr.responseJSON?.message || 'Conflict or invalid input'));
+                                                    }
+                                                });
+                                                return;
+                                            }
+
+                                            btnSubmit.prop('disabled', false).text('Submit Details');
+                                            btnCancel.prop('disabled', false);
+                                            alert('Update failed: ' + (xhr.responseJSON?.message || 'Conflict or invalid input'));
                                         }
-                                    },
-                                    error: function (xhr) {
-                                        btnSubmit.prop('disabled', false).text('Submit Details');
-                                        btnCancel.prop('disabled', false);
-                                        alert('Update failed: ' + (xhr.responseJSON?.message || 'Conflict or invalid input'));
-                                    }
-                                });
+                                    });
+                                }
+
+                                submitPatch(false);
                             });
 
                             btnCancel.on('click', function () {

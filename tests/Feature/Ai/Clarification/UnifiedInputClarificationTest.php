@@ -567,4 +567,41 @@ final class UnifiedInputClarificationTest extends TestCase
         $forbiddenShow = $this->getJson("/api/v1/ai/workflow-tasks/{$taskId}", $headersOther);
         $forbiddenShow->assertStatus(403);
     }
+
+    /**
+     * Patching an entity slot with a text name (e.g. from existing record search) treats it as a query and resolves correctly.
+     */
+    public function test_patching_entity_slot_with_text_name_resolves_via_batch_resolver(): void
+    {
+        $this->actingAs($this->adminUser);
+
+        // Initiate task with confirmed supplier and product, but unresolved warehouse
+        $initResponse = $this->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplierA->id,
+                'items' => [
+                    ['product_id' => $this->productYarn->id, 'qty' => 50, 'net_unit_cost' => 250.0],
+                ],
+            ],
+        ], $this->contextHeaders());
+
+        $taskId = $initResponse->json('task.id');
+        $revision = (int) $initResponse->json('task.revision');
+
+        // User enters the text name of the warehouse (not numeric ID)
+        $patchResponse = $this->patchJson("/api/v1/ai/workflow-tasks/{$taskId}/inputs", [
+            'expected_revision' => $revision,
+            'corrections' => [
+                ['field' => 'warehouse_id', 'value' => $this->warehouse->name],
+            ],
+        ], $this->contextHeaders());
+
+        $patchResponse->assertStatus(200);
+        $this->assertTrue($patchResponse->json('evaluation.is_ready'));
+        $task = DB::table('ai_workflow_tasks')->where('id', $taskId)->first();
+        $this->assertSame('ready', $task->status);
+        $resolution = json_decode($task->resolution_json, true);
+        $this->assertSame((int) $this->warehouse->id, (int) $resolution['resolved_ids']['warehouse_id']);
+    }
 }
