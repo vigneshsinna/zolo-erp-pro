@@ -200,16 +200,7 @@ class DependentMasterOrchestrator
         }
 
         // 3. Resumption: Atomically update parent workflow task with newly created ERP resource ID
-        return DB::transaction(function () use (
-            $context,
-            $taskId,
-            $field,
-            $entityMeta,
-            $masterProposalId,
-            $createdResourceId,
-            $createdResourceType,
-            $receipt
-        ): array {
+        return DB::transaction(function () use ($context, $taskId, $field, $entityMeta, $masterProposalId, $createdResourceId, $createdResourceType, $receipt): array {
             $task = DB::table('ai_workflow_tasks')
                 ->where('id', $taskId)
                 ->where('company_id', $context->companyId())
@@ -360,7 +351,7 @@ class DependentMasterOrchestrator
             $prefilled['name'] = $query !== '' ? $query : null;
         }
 
-        return array_filter($prefilled, static fn ($v): bool => $v !== null && $v !== '');
+        return array_filter($prefilled, static fn($v): bool => $v !== null && $v !== '');
     }
 
     /**

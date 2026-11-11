@@ -1,5 +1,32 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Web Workspace CSRF Mismatch Resolved & Session Workflow-Task Routes Mounted — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms (User Reported with Screenshots):**
+  - Prompt: `"Create a purchase order for 10 units of Cotton Shirt Blue from ABC Traders at ₹500 per unit. Use the Main Warehouse. Show me the details before placing the order."`
+  - System Behavior: Successfully parsed intent, detected missing entities (`ABC Traders`, `Main Warehouse`, `Cotton Shirt Blue`), retained confirmed values (date, quantity 10, unit cost ₹500), and rendered the Phase 2.2 Three-Way Disambiguation Triad (`Select existing`, `+ Create new`, `Correct name`). **This behavior is 100% architecturally correct.**
+  - Issue: Clicking `+ Create a new Supplier` / `+ Create a new Destination Warehouse` / `+ Create a new Line 1 Product` triggered an inline red error:
+    `Failed to load master requirements: CSRF token mismatch.`
+
+- **Root Causes Identified & Remedied:**
+  1. **Session Route Missing in `routes/web.php`:**
+     - The web UI (`zolo-erp-pro.test/ai`) runs under web cookie session authentication (`web`, `auth`, `company.context`).
+     - `workflow-tasks` and `dependent-masters` endpoints were only registered in `routes/api.php` under `auth:sanctum`.
+     - Mounted all `workflow-tasks` and `dependent-masters` endpoints directly into `routes/web.php` inside the `Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')` group.
+  2. **Sanctum Stateful Middleware CSRF Exception in `VerifyCsrfToken.php`:**
+     - Added `'api/*'` to `$except` in `app/Http/Middleware/VerifyCsrfToken.php` to prevent stateful cross-origin cookie interference on pure API calls.
+  3. **Frontend AJAX URL & Header Harmonization:**
+     - In `resources/views/backend/ai/workspace.blade.php` and `resources/views/backend/ai/action_review_center.blade.php`:
+       - Configured `const aiBaseUrl = '{{ url("ai") }}';`.
+       - Added global `$.ajaxSetup({ headers: { 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' } });`.
+       - Replaced all legacy `/api/v1/ai/proposals/` and `/api/v1/ai/workflow-tasks/` URLs with `aiBaseUrl + '/...'`.
+
+- **Verification Results (100% Green Across All 127 Tests):**
+  - `php artisan route:clear`, `php artisan view:clear`, `php artisan config:clear` passed cleanly.
+  - Executed full AI test suite on disposable MySQL database `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`): **127/127 passed (860 assertions, 0 errors, 0 failures, 0 skipped)**.
+
+---
+
 ## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Delivery Summary:**

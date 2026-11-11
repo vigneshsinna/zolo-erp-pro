@@ -184,8 +184,8 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 });
 
 // Session-authenticated endpoints used by the workspace.
-Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')
-    ->controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
+Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group(function () {
+    Route::controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
         Route::get('settings', 'settings')->name('settings');
         Route::get('monitoring', 'monitoring')->name('monitoring');
         Route::get('threads', 'threads')->name('threads.index');
@@ -198,6 +198,21 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')
         Route::post('proposals/{id}/approve', 'approveProposal')->whereUuid('id')->name('proposals.approve');
         Route::post('proposals/{id}/reject', 'rejectProposal')->whereUuid('id')->name('proposals.reject');
     });
+
+    // Phase 2.1 & 2.2: Workflow Tasks & Dependent Masters (Session-authenticated workspace routes)
+    Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {
+        Route::post('/', 'store')->name('workflow-tasks.store');
+        Route::get('{id}', 'show')->whereUuid('id')->name('workflow-tasks.show');
+        Route::patch('{id}/inputs', 'updateInputs')->whereUuid('id')->name('workflow-tasks.update-inputs');
+        Route::post('{id}/prepare-proposal', 'prepareProposal')->whereUuid('id')->name('workflow-tasks.prepare-proposal');
+        Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('workflow-tasks.cancel');
+
+        // Phase 2.2: Dependent Master Data Creation & Workflow Resumption
+        Route::post('{id}/dependent-masters/spawn', 'spawnDependentMaster')->whereUuid('id')->name('workflow-tasks.dependent-masters.spawn');
+        Route::post('{id}/dependent-masters/preview', 'previewDependentMaster')->whereUuid('id')->name('workflow-tasks.dependent-masters.preview');
+        Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('workflow-tasks.dependent-masters.approve-and-execute');
+    });
+});
 
 // Developer console: admin logins and the sections switched off for the active company (developer accounts only).
 Route::middleware(['auth', 'company.context', 'common'])->prefix('developer')->name('developer.')->controller(\App\Http\Controllers\DeveloperController::class)->group(function () {

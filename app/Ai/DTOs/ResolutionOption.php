@@ -38,6 +38,7 @@ final readonly class ResolutionOption
             'disabled_reason' => $this->disabledReason,
             'search_endpoint' => $this->searchEndpoint,
             'prefilled_slots' => !empty($this->prefilledSlots) ? $this->prefilledSlots : null,
-        ], static fn ($val): bool => $val !== null);
+        ], static fn($val): bool => $val !== null);
     }
 }
+

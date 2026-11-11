@@ -29,3 +29,4 @@ return new class extends Migration
         // Additive migration: preserve data in production
     }
 };
+

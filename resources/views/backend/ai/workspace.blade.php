@@ -199,6 +199,14 @@
             let loadingHistory = false;
             let sending = false;
             const csrfToken = $('meta[name="csrf-token"]').attr('content');
+            const aiBaseUrl = '{{ url("ai") }}';
+
+            $.ajaxSetup({
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
 
             // Headers for API calls
             const headers = {
@@ -887,7 +895,7 @@
                                 btnApprove.prop('disabled', true).text('Approving...');
                                 btnReject.prop('disabled', true);
                                 $.ajax({
-                                    url: '/api/v1/ai/proposals/' + data.proposal_id + '/approve',
+                                    url: aiBaseUrl + '/proposals/' + data.proposal_id + '/approve',
                                     method: 'POST',
                                     headers: headers,
                                     data: JSON.stringify({ expected_version: data.version || 1 }),
@@ -906,7 +914,7 @@
                                 btnApprove.prop('disabled', true);
                                 btnReject.prop('disabled', true).text('Rejecting...');
                                 $.ajax({
-                                    url: '/api/v1/ai/proposals/' + data.proposal_id + '/reject',
+                                    url: aiBaseUrl + '/proposals/' + data.proposal_id + '/reject',
                                     method: 'POST',
                                     headers: headers,
                                     data: JSON.stringify({ expected_version: data.version || 1 }),
@@ -1039,7 +1047,7 @@
                                             triadPanel.append(loading);
 
                                             $.ajax({
-                                                url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/dependent-masters/spawn',
+                                                url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/dependent-masters/spawn',
                                                 method: 'POST',
                                                 headers: headers,
                                                 data: JSON.stringify({ field: issue.field }),
@@ -1124,7 +1132,7 @@
                                                         }
 
                                                         $.ajax({
-                                                            url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/dependent-masters/preview',
+                                                            url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/dependent-masters/preview',
                                                             method: 'POST',
                                                             headers: headers,
                                                             data: JSON.stringify({
@@ -1146,7 +1154,7 @@
                                                                     btnEdit.prop('disabled', true);
 
                                                                     $.ajax({
-                                                                        url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/dependent-masters/approve-and-execute',
+                                                                        url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/dependent-masters/approve-and-execute',
                                                                         method: 'POST',
                                                                         headers: headers,
                                                                         data: JSON.stringify({
@@ -1171,7 +1179,7 @@
                                                                                 readyBanner.find('.ai-btn-prepare-final-po').on('click', function () {
                                                                                     $(this).prop('disabled', true).text('Preparing Proposal...');
                                                                                     $.ajax({
-                                                                                        url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/prepare-proposal',
+                                                                                        url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/prepare-proposal',
                                                                                         method: 'POST',
                                                                                         headers: headers,
                                                                                         success: function () {
@@ -1303,7 +1311,7 @@
                                 btnCancel.prop('disabled', true);
 
                                 $.ajax({
-                                    url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/inputs',
+                                    url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/inputs',
                                     method: 'PATCH',
                                     headers: headers,
                                     data: JSON.stringify({
@@ -1314,7 +1322,7 @@
                                         if (res.evaluation && res.evaluation.is_ready) {
                                             btnSubmit.text('Preparing Proposal...');
                                             $.ajax({
-                                                url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/prepare-proposal',
+                                                url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/prepare-proposal',
                                                 method: 'POST',
                                                 headers: headers,
                                                 success: function (prepRes) {
@@ -1342,7 +1350,7 @@
                                 btnSubmit.prop('disabled', true);
                                 btnCancel.prop('disabled', true).text('Cancelling...');
                                 $.ajax({
-                                    url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/cancel',
+                                    url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/cancel',
                                     method: 'POST',
                                     headers: headers,
                                     success: function () {

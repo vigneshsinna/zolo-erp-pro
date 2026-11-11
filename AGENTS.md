@@ -1,4 +1,4 @@
-﻿# Agent Workspace Guidelines & Session Persistence
+# Agent Workspace Guidelines & Session Persistence
 
 This repository uses a persistent session memory protocol to guarantee zero context loss across IDE crashes, reboots, or conversation resets.
 

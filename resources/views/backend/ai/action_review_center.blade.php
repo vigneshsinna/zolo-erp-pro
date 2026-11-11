@@ -289,6 +289,15 @@
 <script>
 $(document).ready(function () {
     const csrfToken = $('meta[name="csrf-token"]').attr('content');
+    const aiBaseUrl = '{{ url("ai") }}';
+
+    $.ajaxSetup({
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    });
+
     const headers = {
         'X-CSRF-TOKEN': csrfToken,
         'Content-Type': 'application/json',
@@ -311,7 +320,7 @@ $(document).ready(function () {
         rejectBtn.prop('disabled', true);
 
         $.ajax({
-            url: '/api/v1/ai/proposals/' + proposalId + '/approve',
+            url: aiBaseUrl + '/proposals/' + proposalId + '/approve',
             method: 'POST',
             headers: headers,
             data: JSON.stringify({ expected_version: expectedVersion }),
@@ -345,7 +354,7 @@ $(document).ready(function () {
         approveBtn.prop('disabled', true);
 
         $.ajax({
-            url: '/api/v1/ai/proposals/' + proposalId + '/reject',
+            url: aiBaseUrl + '/proposals/' + proposalId + '/reject',
             method: 'POST',
             headers: headers,
             data: JSON.stringify({ expected_version: expectedVersion }),
