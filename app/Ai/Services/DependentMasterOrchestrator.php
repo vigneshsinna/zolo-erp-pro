@@ -133,6 +133,14 @@ class DependentMasterOrchestrator
 
         $principal = $this->resolvePrincipal($context);
 
+        // Ensure sensible defaults for warehouse and customer when missing
+        if ($entityMeta['entity_type'] === 'warehouse') {
+            unset($masterData['branch_id']);
+            if (empty($masterData['address'])) {
+                $masterData['address'] = '-';
+            }
+        }
+
         // Create the governed Action Proposal using existing setup capability
         $proposal = $this->proposalService->create(
             principal: $principal,
@@ -317,7 +325,7 @@ class DependentMasterOrchestrator
         } elseif ($entityMeta['entity_type'] === 'warehouse') {
             $query = trim((string) ($slots['warehouse_query'] ?? ''));
             $prefilled['name'] = $query !== '' ? $query : null;
-            $prefilled['branch_id'] = $context->branchId;
+            $prefilled['branch_id'] = $context->branchId ?: DB::table('company_branches')->where('company_id', $context->companyId)->value('id');
         } elseif ($entityMeta['entity_type'] === 'product') {
             $query = '';
             $unitCost = null;
@@ -383,6 +391,11 @@ class DependentMasterOrchestrator
                     ->get(['id', 'name'])
                     ->toArray();
             }
+        } elseif ($entityType === 'warehouse') {
+            $defaults['branches'] = DB::table('company_branches')
+                ->where('company_id', $context->companyId)
+                ->get(['id', 'name', 'code'])
+                ->toArray();
         }
 
         return $defaults;

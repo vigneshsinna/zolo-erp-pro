@@ -495,4 +495,57 @@ final class DependentMasterResolutionTest extends TestCase
 
         $res->assertStatus(403);
     }
+
+    /**
+     * Test 7: Warehouse dependent master creation automatically defaults branch_id from active session when omitted.
+     */
+    public function test_warehouse_creation_automatically_defaults_branch_id_when_omitted(): void
+    {
+        $tool = app(PreparePurchaseOrder::class, ['principal' => $this->principal()]);
+        $task = json_decode($tool->handle(new ToolRequest([
+            'supplier_query' => 'ABC Traders',
+            'warehouse_query' => 'Main Warehouse',
+            'items' => [['product_query' => 'Cotton Shirt', 'qty' => 10]],
+        ])), true);
+        $taskId = $task['task_id'];
+
+        // Preview warehouse without passing explicit branch_id or address
+        $resPreview = $this->actingAs($this->adminUser)
+            ->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/dependent-masters/preview", [
+                'field' => 'warehouse_id',
+                'data' => [
+                    'name' => 'Main Warehouse',
+                    'phone' => '98563214785',
+                    'address' => 'tamilnadu',
+                ],
+            ]);
+
+        $resPreview->assertStatus(200);
+        $proposal = $resPreview->json('proposal');
+        $this->assertNotNull($proposal);
+        $this->assertSame('setup.warehouse.create.v1', $proposal['action_key']);
+        $payload = json_decode($proposal['payload_json'], true);
+        $this->assertSame((int) $this->branch->id, (int) $payload['branch_id']);
+        $this->assertSame('Main Warehouse', $payload['name']);
+
+        // Execute master creation
+        $resExec = $this->actingAs($this->adminUser)
+            ->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/dependent-masters/approve-and-execute", [
+                'field' => 'warehouse_id',
+                'master_proposal_id' => $proposal['id'],
+                'expected_version' => 1,
+            ]);
+
+        $resExec->assertStatus(200);
+        $this->assertSame('warehouse', $resExec->json('newly_created.resource_type'));
+        $createdWhId = $resExec->json('newly_created.resource_id');
+        $this->assertGreaterThan(0, $createdWhId);
+
+        // Verify task updated with the new warehouse ID
+        $taskRecord = DB::table('ai_workflow_tasks')->where('id', $taskId)->first();
+        $taskSlots = json_decode($taskRecord->slots_json, true);
+        $this->assertSame($createdWhId, $taskSlots['warehouse_id']);
+    }
 }

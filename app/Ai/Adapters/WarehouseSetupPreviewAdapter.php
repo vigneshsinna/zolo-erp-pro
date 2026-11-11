@@ -24,7 +24,10 @@ final class WarehouseSetupPreviewAdapter implements ActionPreviewAdapterInterfac
             throw new \InvalidArgumentException('Mode B company context required for warehouse setup.');
         }
 
-        $branchId = (int) ($slots['branch_id'] ?? 0);
+        $branchId = (int) ($slots['branch_id'] ?? $context->branchId);
+        if ($branchId <= 0) {
+            $branchId = (int) (CompanyBranch::where('company_id', $context->companyId)->value('id') ?? 0);
+        }
         $name = trim((string) ($slots['name'] ?? ''));
         $address = trim((string) ($slots['address'] ?? '-'));
 

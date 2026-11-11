@@ -12,7 +12,6 @@ final class CreateWarehouseInputSchema implements ActionInputSchemaInterface
     public function rules(): array
     {
         return [
-            'branch_id' => ['required', 'integer', 'min:1'],
             'name' => ['required', 'string', 'max:255'],
             'address' => ['required', 'string', 'max:1000'],
             'phone' => ['nullable', 'string', 'max:50'],

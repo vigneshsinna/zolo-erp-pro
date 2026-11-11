@@ -1090,7 +1090,7 @@
                                                     } else if (spawnRes.entity_type === 'warehouse') {
                                                         formBody.append('<div class="form-group mb-1"><label>Warehouse Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Warehouse Name"></div>');
                                                         formBody.append('<div class="form-group mb-1"><label>Phone</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
-                                                        formBody.append('<div class="form-group mb-1"><label>Address / Location</label><input type="text" class="form-control form-control-sm mf-address" placeholder="Address"></div>');
+                                                        formBody.append('<div class="form-group mb-1"><label>Address / Location *</label><input type="text" class="form-control form-control-sm mf-address" placeholder="Address"></div>');
                                                     } else if (spawnRes.entity_type === 'customer') {
                                                         formBody.append('<div class="form-group mb-1"><label>Customer Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Customer Name"></div>');
                                                         formBody.append('<div class="form-group mb-1"><label>Phone</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
@@ -1125,9 +1125,10 @@
                                                             }
                                                         } else if (spawnRes.entity_type === 'warehouse') {
                                                             masterData.phone = formBody.find('.mf-phone').val() || null;
-                                                            masterData.address = formBody.find('.mf-address').val() || null;
+                                                            masterData.address = formBody.find('.mf-address').val() || '-';
                                                         } else if (spawnRes.entity_type === 'customer') {
                                                             masterData.phone_number = formBody.find('.mf-phone').val() || null;
+                                                            masterData.tax_no = formBody.find('.mf-vat').val() || null;
                                                             masterData.vat_number = formBody.find('.mf-vat').val() || null;
                                                         }
 
