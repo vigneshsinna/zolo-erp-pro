@@ -13,18 +13,21 @@ use App\Models\Supplier;
 use App\Models\Warehouse;
 use App\Services\Commercial\CommercialPricing;
 use App\Services\Platform\CompanyContext;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Preview adapter for purchase_order.create.v1.
- * Validates supplier, warehouse, products, and calculates deterministic pricing preview.
+ * Validates supplier, warehouse, products, and calculates deterministic pricing preview
+ * delegating strictly to the authoritative ERP CommercialPricing domain service.
  * Strictly READ-ONLY with ZERO database mutations.
  */
 final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
 {
     public function __construct(
         private readonly CommercialPricing $pricing,
-    ) {}
+    ) {
+    }
 
     public function preview(
         ActionDefinition $definition,
@@ -68,17 +71,15 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             $warnings[] = "Warehouse '{$warehouse->name}' belongs to a different branch than the active session branch.";
         }
 
-        // 3. Resolve & validate Products and compute exact-decimal lines
+        // 3. Resolve & validate Products and compute exact lines via authoritative CommercialPricing
         $rawItems = (array) ($slots['items'] ?? []);
         if (empty($rawItems)) {
             throw ValidationException::withMessages(['items' => 'At least one line item is required.']);
         }
 
-        $normalizedItems = [];
-        $detailedPreviewLines = [];
-        $totalQty = 0.0;
-        $subtotal = 0.0;
-        $totalTax = 0.0;
+        $productIds = [];
+        $pricingItems = [];
+        $productsById = [];
 
         foreach ($rawItems as $index => $item) {
             $productId = (int) ($item['product_id'] ?? 0);
@@ -93,36 +94,87 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 throw ValidationException::withMessages(["items.{$index}.product_id" => "Product '{$product->name}' is inactive."]);
             }
 
+            $productIds[] = $productId;
+            $productsById[$productId] = $product;
+
             $qty = (float) ($item['qty'] ?? 1);
             $unitCost = (float) ($item['net_unit_cost'] ?? $product->cost ?? 0);
+            $purchaseUnitId = (int) ($item['purchase_unit_id'] ?? $product->purchase_unit_id ?? $product->unit_id ?? 1);
             $discount = (float) ($item['discount'] ?? 0);
-            $taxRate = (float) ($item['tax_rate'] ?? 0);
 
-            $lineNet = ($qty * $unitCost) - $discount;
-            $lineTax = $lineNet * ($taxRate / 100);
-            $lineTotal = $lineNet + $lineTax;
+            $pricingLine = [
+                'product_id' => $productId,
+                'qty' => $qty,
+                'net_unit_cost' => $unitCost,
+                'purchase_unit_id' => $purchaseUnitId,
+                'discount' => $discount,
+            ];
 
+            if (isset($item['tax_rate']) && $item['tax_rate'] !== null && $item['tax_rate'] !== '') {
+                $pricingLine['tax_rate'] = (float) $item['tax_rate'];
+                $pricingLine['tax_rate_override'] = (string) $item['tax_rate'];
+            }
+
+            $pricingItems[] = $pricingLine;
+        }
+
+        $orderDiscount = (float) ($slots['order_discount'] ?? 0);
+        $shippingCost = (float) ($slots['shipping_cost'] ?? 0);
+
+        $pricingInput = [
+            'supplier_id' => $supplierId,
+            'warehouse_id' => $warehouseId,
+            'business_date' => $orderDate,
+            'items' => $pricingItems,
+        ];
+        if ($orderDiscount > 0) {
+            $pricingInput['order_discount'] = $orderDiscount;
+        }
+        if ($shippingCost > 0) {
+            $pricingInput['shipping_cost'] = $shippingCost;
+        }
+
+        // Authoritative ERP CommercialPricing calculation (Zero separate ad-hoc arithmetic)
+        $pricingResult = $this->pricing->preview($pricingInput, purchase: true, context: $context);
+
+        $normalizedItems = [];
+        $detailedPreviewLines = [];
+        $totalQty = 0.0;
+
+        foreach ($pricingResult['items'] as $index => $pricedLine) {
+            $productId = (int) $pricedLine['product_id'];
+            $product = $productsById[$productId];
+            $qty = (float) $pricedLine['qty'];
             $totalQty += $qty;
-            $subtotal += $lineNet;
-            $totalTax += $lineTax;
+
+            $unitCost = (float) ($pricedLine['net_unit_cost'] ?? $pricingItems[$index]['net_unit_cost']);
+            $lineDiscount = (float) ($pricedLine['discount'] ?? 0);
+            $lineTaxRate = (float) ($pricedLine['tax_rate'] ?? 0);
+            $lineTaxAmount = (float) ($pricedLine['tax'] ?? 0);
+            $lineTotal = (float) ($pricedLine['total'] ?? 0);
 
             $qtyStr = sprintf('%.2f', $qty);
             $costStr = sprintf('%.2f', $unitCost);
-            $discountStr = sprintf('%.2f', $discount);
-            $taxRateStr = sprintf('%.2f', $taxRate);
+            $discountStr = sprintf('%.2f', $lineDiscount);
+            $taxRateStr = sprintf('%.2f', $lineTaxRate);
+            $taxAmountStr = sprintf('%.2f', $lineTaxAmount);
             $lineTotalStr = sprintf('%.2f', $lineTotal);
 
-            $normalizedItems[] = [
+            $normalizedLine = [
                 'product_id' => $productId,
                 'qty' => $qtyStr,
                 'net_unit_cost' => $costStr,
                 'discount' => $discountStr,
                 'tax_rate' => $taxRateStr,
-                'purchase_unit_id' => (int) ($item['purchase_unit_id'] ?? $product->purchase_unit_id ?? $product->unit_id ?? 1),
-                'note' => isset($item['note']) ? (string) $item['note'] : null,
+                'purchase_unit_id' => (int) ($pricedLine['purchase_unit_id'] ?? $pricingItems[$index]['purchase_unit_id']),
+                'note' => isset($rawItems[$index]['note']) ? (string) $rawItems[$index]['note'] : null,
             ];
+            if (isset($pricingItems[$index]['tax_rate_override'])) {
+                $normalizedLine['tax_rate_override'] = $pricingItems[$index]['tax_rate_override'];
+            }
+            $normalizedItems[] = $normalizedLine;
 
-            $detailedPreviewLines[] = [
+            $previewLine = [
                 'product_id' => $productId,
                 'product_code' => $product->code,
                 'product_name' => $product->name,
@@ -130,17 +182,20 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'net_unit_cost' => $costStr,
                 'discount' => $discountStr,
                 'tax_rate' => $taxRateStr,
-                'tax_amount' => sprintf('%.2f', $lineTax),
+                'tax_amount' => $taxAmountStr,
                 'line_total' => $lineTotalStr,
             ];
+            if (!empty($pricedLine['_tax_snapshot'])) {
+                $previewLine['tax_breakdown'] = [
+                    'cgst' => sprintf('%.2f', (float) ($pricedLine['_tax_snapshot']['cgst'] ?? 0)),
+                    'sgst' => sprintf('%.2f', (float) ($pricedLine['_tax_snapshot']['sgst'] ?? 0)),
+                    'igst' => sprintf('%.2f', (float) ($pricedLine['_tax_snapshot']['igst'] ?? 0)),
+                    'cess' => sprintf('%.2f', (float) ($pricedLine['_tax_snapshot']['cess'] ?? 0)),
+                    'reverse_charge' => (bool) ($pricedLine['_tax_snapshot']['reverse_charge'] ?? false),
+                ];
+            }
+            $detailedPreviewLines[] = $previewLine;
         }
-
-        $orderTaxRate = (float) ($slots['order_tax_rate'] ?? 0);
-        $orderDiscount = (float) ($slots['order_discount'] ?? 0);
-        $shippingCost = (float) ($slots['shipping_cost'] ?? 0);
-
-        $orderTax = ($subtotal - $orderDiscount) * ($orderTaxRate / 100);
-        $grandTotal = $subtotal - $orderDiscount + $totalTax + $orderTax + $shippingCost;
 
         $normalizedPayload = [
             'supplier_id' => $supplierId,
@@ -149,16 +204,18 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'items' => $normalizedItems,
             'note' => isset($slots['note']) ? (string) $slots['note'] : null,
         ];
-
-        if ($orderTaxRate > 0) {
-            $normalizedPayload['order_tax_rate'] = sprintf('%.2f', $orderTaxRate);
-        }
         if ($orderDiscount > 0) {
             $normalizedPayload['order_discount'] = sprintf('%.2f', $orderDiscount);
         }
         if ($shippingCost > 0) {
             $normalizedPayload['shipping_cost'] = sprintf('%.2f', $shippingCost);
         }
+
+        $grandTotal = (float) $pricingResult['grand_total'];
+        $totalTax = (float) $pricingResult['total_tax'];
+        $totalPrice = (float) $pricingResult['total_price'];
+        $subtotal = $totalPrice - $totalTax;
+        $roundOff = (float) ($pricingResult['round_off'] ?? 0);
 
         $previewData = [
             'document_type' => 'Purchase Order (Status: Ordered)',
@@ -179,9 +236,10 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'totals' => [
                 'total_qty' => sprintf('%.2f', $totalQty),
                 'subtotal' => sprintf('%.2f', $subtotal),
-                'tax_total' => sprintf('%.2f', $totalTax + $orderTax),
+                'tax_total' => sprintf('%.2f', $totalTax),
                 'discount_total' => sprintf('%.2f', $orderDiscount),
                 'shipping_cost' => sprintf('%.2f', $shippingCost),
+                'round_off' => sprintf('%.2f', $roundOff),
                 'grand_total' => sprintf('%.2f', $grandTotal),
             ],
             'policy' => [
@@ -192,8 +250,12 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ],
         ];
 
-        // For new records, source_state_hash is hash of NEW_RECORD
-        $sourceStateHash = hash('sha256', 'NEW_RECORD');
+        $sourceStateHash = self::computeSourceStateHash(
+            $context,
+            $supplierId,
+            $warehouseId,
+            array_values(array_unique($productIds)),
+        );
 
         return new ActionPreviewResult(
             payload: $normalizedPayload,
@@ -201,5 +263,55 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             sourceStateHash: $sourceStateHash,
             warnings: $warnings,
         );
+    }
+
+    /**
+     * Compute a deterministic SHA-256 hash representing the current business state of the
+     * underlying entities that this purchase order depends upon (supplier, warehouse, products, tax).
+     */
+    public static function computeSourceStateHash(
+        CompanyContext $context,
+        int $supplierId,
+        int $warehouseId,
+        array $productIds,
+    ): string {
+        $supplier = DB::table('suppliers')
+            ->where('company_id', $context->companyId)
+            ->where('id', $supplierId)
+            ->select(['id', 'is_active', 'vat_number', 'state', 'updated_at'])
+            ->first();
+
+        $warehouse = DB::table('warehouses')
+            ->where('company_id', $context->companyId)
+            ->where('id', $warehouseId)
+            ->select(['id', 'branch_id', 'is_active', 'updated_at'])
+            ->first();
+
+        $products = DB::table('products')
+            ->where('company_id', $context->companyId)
+            ->whereIn('id', $productIds)
+            ->orderBy('id')
+            ->select(['id', 'cost', 'price', 'is_active', 'tax_category_id', 'tax_id', 'hsn_code', 'unit_id', 'purchase_unit_id', 'updated_at'])
+            ->get();
+
+        $taxRegistrations = DB::table('tax_registrations')
+            ->where('company_id', $context->companyId)
+            ->where('branch_id', $context->branchId)
+            ->where('status', 'active')
+            ->orderBy('id')
+            ->select(['id', 'gstin', 'state_code', 'status', 'effective_from', 'effective_to', 'updated_at'])
+            ->get();
+
+        $state = [
+            'company_id' => $context->companyId,
+            'branch_id' => $context->branchId,
+            'financial_year_id' => $context->financialYearId,
+            'supplier' => $supplier ? (array) $supplier : null,
+            'warehouse' => $warehouse ? (array) $warehouse : null,
+            'products' => $products->map(fn($p) => (array) $p)->all(),
+            'tax_registrations' => $taxRegistrations->map(fn($r) => (array) $r)->all(),
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }
 }

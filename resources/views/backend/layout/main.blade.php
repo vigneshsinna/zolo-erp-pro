@@ -4,14 +4,14 @@ $activeCompany = $companyContext ? \App\Models\Company::with('group')->find($com
 $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_years')->where('id', $companyContext->financialYearId)->value('name') : null;
 @endphp
 <!DOCTYPE html>
-<html dir="@if( Config::get('app.locale') == 'ar' || $general_setting->is_rtl){{'rtl'}}@endif" @if(Route::currentRouteName() != 'sale.pos') class="app-shell" @endif>
+<html dir="@if( Config::get('app.locale') == 'ar' || ($general_setting->is_rtl ?? false)){{'rtl'}}@endif" @if(Route::currentRouteName() != 'sale.pos') class="app-shell" @endif>
 
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   @if(!config('database.connections.zoloerp_landlord'))
-  <link rel="icon" type="image/png" href="{{url('logo', $general_setting->favicon ?? $general_setting->site_logo)}}" />
-  <title>{{$general_setting->site_title}}</title>
+  <link rel="icon" type="image/png" href="{{url('logo', ($general_setting->favicon ?? ($general_setting->site_logo ?? 'logo.png')))}}" />
+  <title>{{$general_setting->site_title ?? 'zoloERP Pro'}}</title>
   <meta name="description" content="">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="all,follow">

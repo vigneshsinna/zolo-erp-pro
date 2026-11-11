@@ -99,6 +99,13 @@ class AiPrincipalFactory
             $domains[] = $key;
         }
 
+        if (config('ai_actions.foundation_enabled', false)) {
+            $actionPerms = $this->permissions->allowed(['purchases-add'], $context, $user->id);
+            if (in_array('purchases-add', $actionPerms, true)) {
+                $domains[] = 'purchase_order.create.v1';
+            }
+        }
+
         return $domains === [] ? [] : [...$domains, ...$auxiliary];
     }
 }

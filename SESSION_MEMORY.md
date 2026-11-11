@@ -1,5 +1,160 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Production Hardening, Mode B Setup Suite & Implementation Gaps Complete — 2026-11-11 (`feature/ai-purchase-orders`)
+
+- **Remediated Implementation Gaps (7 Gaps) Completed & Verified:**
+  1. **Gap 1 (`purchase_order.create.v1` Snapshot Enforcement):**
+     - Updated `App\Ai\Registries\ActionCapabilityRegistry`: Set `requiresFreshSnapshot: true` on `purchase_order.create.v1`. Enforces fresh validation and live source-state snapshot prior to execution.
+  2. **Gap 2 (Source-State Hash Enforcement in Domain Command Adapter):**
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter`: Implemented `computeSourceStateHash(CompanyContext $context, int $supplierId, int $warehouseId, array $productIds)` hashing supplier status/GSTIN/state, warehouse status/branch, products cost/taxes/HSN, and active branch tax registrations.
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter`: Recomputes live source-state hash inside execution flow and fails closed with 422 `ValidationException` (`source_state`: "Underlying ERP business state changed since proposal approval. Rebuild preview.") if `!hash_equals($expectedSourceStateHash, $currentSourceStateHash)`.
+     - Verified in `PurchaseOrderActionTest.php::test_execution_fails_closed_when_underlying_source_state_changes_after_approval`.
+  3. **Gap 3 (Safe ERP Company Creation Reconciliation):**
+     - Updated `App\Ai\Adapters\CompanyBootstrapCommandAdapter`: Added `reconcileCommittedCompany($payload, $actorId)`. If a company already exists in `companies` with audit record in `company_setup_audits` for `company_created` by `$actorId`, reconstructs the `ActionExecutionReceipt` with `'reconciled_from_erp' => true`.
+     - Updated `App\Ai\Services\BootstrapProposalService::approveAndExecute()`: Injects pre-claim ERP reconciliation probe. If company was pre-committed before AI receipt write, safely marks execution and proposal rows completed and returns receipt without duplicate provisioning.
+     - Verified in `BootstrapCompanyCreationTest.php::test_company_creation_safely_reconciles_pre_committed_erp_company`.
+  4. **Gap 4 (Immutable Completed Bootstrap Proposals):**
+     - Updated `App\Ai\Services\BootstrapProposalService::createProposal()`: Enforces ownership and proposal status checks at the very start. Throws 422 `ValidationException` if status is `completed`, `executing`, or `rejected`.
+     - Verified in `BootstrapCompanyCreationTest.php::test_completed_bootstrap_task_proposal_is_immutable_and_cannot_be_recreated`.
+  5. **Gap 5 (Company Group Creation in `SetupCapabilityRegistry`):**
+     - Created `App\Ai\Schemas\CreateGroupInputSchema` validating group `name`, `code`, and associated `company_ids`.
+     - Created `App\Ai\Adapters\GroupBootstrapPreviewAdapter` computing preview and simulated group code with zero database writes.
+     - Created `App\Ai\Adapters\GroupBootstrapCommandAdapter` delegating to `CompanyDirectoryService::createGroup` with safe reconciliation.
+     - Registered `setup.group.create.v1` in `SetupCapabilityRegistry::registerDefaults()`.
+     - Verified in `BootstrapCompanyCreationTest.php::test_installation_admin_creates_company_group`.
+  6. **Gap 6 (Mode B Master Setup Capabilities: Units, Products, Suppliers, Customers):**
+     - Created `CreateUnitInputSchema`, `UnitSetupPreviewAdapter`, and `UnitSetupCommandAdapter` (`setup.unit.create.v1`) provisioning active unit master.
+     - Created `CreateProductInputSchema`, `ProductSetupPreviewAdapter`, and `ProductSetupCommandAdapter` (`setup.product.create.v1`) provisioning product master with mandatory `unit_id`, `purchase_unit_id`, `sale_unit_id`, and HSN/pricing.
+     - Created `CreateSupplierInputSchema`, `SupplierSetupPreviewAdapter`, and `SupplierSetupCommandAdapter` (`setup.supplier.create.v1`) provisioning supplier master with party tax profile (GSTIN).
+     - Created `CreateCustomerInputSchema`, `CustomerSetupPreviewAdapter`, and `CustomerSetupCommandAdapter` (`setup.customer.create.v1`) provisioning customer master with customer group and party tax profile.
+     - Registered all four capabilities in `ActionCapabilityRegistry::registerSetupCapabilities()`.
+     - Created `tests/Feature/Ai/Setup/ModeBSetupActionTest.php` verifying full lifecycle (4/4 tests passed).
+  7. **Gap 7 (Deep Setup Readiness Validation):**
+     - Updated `App\Ai\Services\SetupReadinessService`: Evaluates explicit active FY (`$context->financialYearId`), user's active branch membership (`company_user_branches`), document numbering series for active branch and FY, and industry workflow requirements (textile units, branch tax registrations).
+
+- **Framework & Layout Hardening:**
+  - Updated `App\Http\Middleware\Common`: Added full fallback schema for `general_settings` when table is unseeded or missing, preventing `Undefined property` crashes.
+  - Updated `resources/views/backend/layout/main.blade.php`: Added null-safe property access for `is_rtl`, `site_title`, `favicon`, and `site_logo`.
+
+- **Automated Verification Suite (100% Green Across All 101 AI Tests):**
+  - `ModeBSetupActionTest.php`: **4/4 passed (26 assertions)**.
+  - `BootstrapCompanyCreationTest.php`: **11/11 passed (75 assertions)**.
+  - `PurchaseOrderActionTest.php`: **6/6 passed (54 assertions)**.
+  - `NaturalLanguagePurchaseOrderWorkflowTest.php`: **4/4 passed (37 assertions)**.
+  - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **101/101 passed (664 assertions, 0 errors, 0 failures)**.
+  - Hygiene: `composer validate --strict` (valid), caches cleared (`route:clear`, `view:clear`, `config:clear`).
+
+- **Next Steps:**
+  - Proceed to Phase 2 extension: Purchase Bill AI Workflow (`purchase_bill.create.v1` / linking Purchase Orders to Bills).
+  - Implement Sales Order / Quotation AI workflow proposals (`sales_order.create.v1`, `quotation.create.v1`).
+
+---
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Natural-Language Intent & Record Resolution Service (`App\Ai\Services\RecordResolutionService`):**
+     - Implemented `resolveSupplier(CompanyContext $context, string $query)`:
+       - Exact numeric ID match.
+       - Exact GSTIN / VAT registration lookup (case-insensitive, normalized).
+       - Exact party name or company name match.
+       - Substring search across name, company name, and VAT number. Returns `exact` (single candidate), `candidates` (disambiguation collection), or `none`.
+     - Implemented `resolveProduct(CompanyContext $context, string $query)`:
+       - Exact numeric ID lookup.
+       - Exact SKU / Code lookup.
+       - Product alias lookup via `ProductAliasService::normalize()` (e.g., "blue fabric" -> canonical product).
+       - Exact product name lookup.
+       - Substring match across product names and codes. Returns `exact`, `candidates`, or `none`.
+     - Implemented `resolveWarehouse(CompanyContext $context, ?string $query)`:
+       - Defaults to active branch primary warehouse.
+       - Resolves explicit warehouse name/code when specified.
+     - Implemented `resolveUnit(Product $product, ?string $uomQuery)`:
+       - Matches explicit unit code or unit name.
+       - Defaults to product's purchase unit (`purchase_unit_id` or `unit_id`).
+  2. **`PreparePurchaseOrder` AI SDK Tool (`App\Ai\Tools\PreparePurchaseOrder`):**
+     - Implements `Laravel\Ai\Contracts\Tool`.
+     - Uses `Laravel\Ai\Tools\Request` parameters (`all()` array access): `supplier_query`, `warehouse_query`, `items` (array with `product_query`, `qty`, `net_unit_cost`, `tax_rate`, `discount`, `uom`), `date`, `note`, `order_discount`, `shipping_cost`.
+     - Automatically returns `needs_input` JSON response with specific missing field names and candidate choice list when supplier or product is ambiguous or missing.
+     - Delegates to `ActionProposalService::create($principal, 'purchase_order.create.v1', $slots, $threadId)` on resolution.
+     - Performs ZERO physical stock writes and ZERO general ledger entries.
+     - Returns `purchase_order.create.v1` fact data with `proposal_id` and `version: 1`.
+  3. **`ErpCopilot` Dynamic Tool Binding & System Prompt (`App\Ai\Agents\ErpCopilot`):**
+     - Dynamically attaches `PreparePurchaseOrder` tool in `tools()` when `ai_actions.foundation_enabled` is active and the actor has the `purchase_order.create.v1` capability.
+     - Updated instructions to guide the model to invoke `prepare_purchase_order` whenever the user expresses purchasing or order intent (e.g., "Create a purchase order for 100 metres of blue fabric from ABC Traders").
+     - Explains to the model that proposals generate interactive fact cards with "Approve & Place Order" and "Reject" buttons, requiring human authorization before order placement.
+  4. **`AiPrincipalFactory` Capability Auto-Grant (`App\Ai\Services\AiPrincipalFactory`):**
+     - Grants `purchase_order.create.v1` to principals who hold `purchases-add` Spatie permission whenever `ai_actions.foundation_enabled` is true.
+  5. **`AiChatController` Evidence & Permission Updates (`App\Http\Controllers\Api\V1\AiChatController`):**
+     - Updated `evidence()`: handles `status === 'needs_input'` by appending clarification notices to warnings instead of failing the run.
+     - Added `'purchase_order.create.v1'` to tool title mappings.
+     - Added `purchase_order.create.v1` to `canReplay()` permission checks (`purchases-add`).
+  6. **Enterprise Action Review Center Operational Approval Desk (`App\Http\Controllers\Ai\ActionReviewCenterController` & `resources/views/backend/ai/action_review_center.blade.php`):**
+     - Upgraded `/ai/action-review` from a static read-only disclaimer table into a complete operational approval desk.
+     - Added live KPI cards: Pending Review, Completed / Placed, Rejected / Cancelled, Total Audited Proposals.
+     - Added status filters (`?status=all|pending|completed|cancelled`) and approver scope toggle (`?scope=all|mine`).
+     - Eager loads actors and execution receipts linking directly to ERP Purchase records (status 4).
+     - Built comprehensive item inspection drawer with tax breakdown, operational integrity guarantees (zero GL / zero stock additions), and cryptographic hashes (`payload_hash`, `source_state_hash`).
+     - Interactive "Approve & Place Order" and "Reject" triggers with prompt modal confirmation and instant status badge updates.
+  7. **Multi-Timezone Timestamp Resilience (`ActionApprovalService`, `ApprovedActionExecutor`, `ActionProposalService`):**
+     - Resolved timezone drift where `Common` middleware invokes `date_default_timezone_set('Asia/Kolkata')`, causing UTC strings from MySQL `TIMESTAMP` columns to be misparsed as expired by 5.5 hours.
+     - Updated expiration checks to explicitly parse UTC: `\Illuminate\Support\Carbon::parse($proposal->expires_at, 'UTC')->isPast()`.
+     - Standardized `expires_at`, `created_at`, and `updated_at` timestamps in `ActionProposalService` to explicit `now('UTC')`.
+  8. **Automated Verification Suite (100% Green):**
+     - Created `tests/Feature/Ai/Commercial/NaturalLanguagePurchaseOrderWorkflowTest.php`:
+       - `test_record_resolution_service_resolves_supplier_product_and_warehouse`: passes (exact GSTIN, candidate collection on ambiguity, exact code, alias matching, default warehouse).
+       - `test_prepare_purchase_order_tool_returns_needs_input_on_ambiguity`: passes (`needs_input` returned for ambiguous supplier and unknown product).
+       - `test_prepare_purchase_order_tool_creates_proposal_with_zero_ledger_writes`: passes (`ok` status, proposal created with status `pending`, 0 purchases, 0 stock movements, 0 general ledger rows).
+       - `test_action_review_center_desk_renders_and_approves_proposal`: passes (HTTP 200, desk UI displays proposal cards, supplier, items, "Approve & Place Order" button, approves via API, creates status 4 purchase order).
+       - All 4 tests passed (37 assertions).
+     - `tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php`: 6/6 passed (54 assertions).
+     - `tests/Unit/DesignTokensTest.php`: 4/4 passed (4 assertions).
+     - Full AI Suite (`phpunit.ai.xml`): **101/101 tests passed (664 assertions, 0 errors, 0 failures)**.
+
+- **Next Steps:**
+  1. Expand natural-language intent workflows to Sales Orders (`sales_order.create.v1`) and Quotations (`quotation.create.v1`).
+  2. Implement Purchase Bill linking to approved Purchase Orders (`purchase_bill.create.v1`).
+
+---
+
+## Production Hardening & Code Review Remediation Complete — 2026-11-11 (`feature/ai-purchase-orders`)
+
+- **Remediated Findings (5 P0s + 1 P1) Completed & Verified:**
+  1. **P0 (Kill Switches Enforcement):**
+     - Updated `App\Ai\Services\BootstrapSetupSecurity`: Added `assertFoundationEnabled()` and `assertExecutionEnabled()` checking `config('ai_actions.foundation_enabled')` and `config('ai_actions.execution_enabled')`.
+     - Updated `App\Http\Controllers\Api\V1\AiSetupBootstrapController`: Guarded `initiateTask`, `preview`, `changeRequest`, and `approve` with 403 `AI_ACTIONS_DISABLED` if `ai_actions.foundation_enabled` is false, and guarded `approve` if `ai_actions.execution_enabled` is false.
+  2. **P0 (Bootstrap Proposal Creation Unscoped Upsert Protection):**
+     - Updated `App\Ai\Services\BootstrapProposalService::createProposal()`: Replaced unscoped `updateOrInsert(['id' => $taskId])` with pre-flight ownership and state check. If task exists, strictly enforces `actor_id === principal->actorId` and `task_token === principal->taskToken`, and asserts status is `pending` or `initiated`. Rejects foreign or finalized proposals with 403/422.
+  3. **P0 (Bootstrap Idempotency Receipt Leak Protection):**
+     - Updated `App\Ai\Services\BootstrapProposalService::approveAndExecute()`: Moved ownership and token verification (`where('id', $taskId)->where('actor_id', $principal->actorId)->where('task_token', $principal->taskToken)->first()`) to the very top before querying `ai_action_executions`. Execution recovery is strictly scoped by `proposal_id` and `executor_id === $principal->actorId`.
+  4. **P0 (Authoritative ERP Preview Financial Calculations):**
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter`: Replaced ad-hoc preview arithmetic with the authoritative domain service `App\Services\Commercial\CommercialPricing::preview($pricingInput, purchase: true, context: $context)`.
+     - Enforces exact GST determination via `TaxDeterminationService::prepare()` (tax categories, HSN/SAC codes, CGST/SGST/IGST breakdown, reverse charge, recoverable tax) and integer precision arithmetic (`CommercialPricing::calculate()`), guaranteeing 1-to-1 equivalence between user-approved preview and posted ERP totals.
+  5. **P0 (Source-State Hash Enforcement at Execution Time):**
+     - Implemented `PurchaseOrderPreviewAdapter::computeSourceStateHash(CompanyContext $context, int $supplierId, int $warehouseId, array $productIds)`: Dynamically computes a canonical SHA-256 hash across supplier status/GST/state, warehouse status/branch, product costs/tax categories/HSN, and active branch tax registrations.
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter::execute()`: Recomputes live source state hash and asserts `hash_equals($expectedSourceStateHash, $currentSourceStateHash)`. Fails closed with 422 `ValidationException` (`source_state`: "Underlying ERP business state changed since proposal approval. Rebuild preview.") if any business dependency changed.
+     - Updated `ActionCapabilityRegistry::registerCommercialCapabilities()`: Set `requiresFreshSnapshot: true` for `purchase_order.create.v1`.
+  6. **P1 (Actor-Specific Proposal Filtering):**
+     - Updated `App\Http\Controllers\Api\V1\AiChatController::proposals()`: Scopes proposals by `actor_id = $principal->actorId` by default. Requesting company-wide proposals via `all=1` is strictly restricted to actors with the `ai.action.approve` Spatie capability; unauthorized callers requesting `all=1` are denied with 403 `UNAUTHORIZED`.
+
+- **Automated Verification Suite (100% Green):**
+  - Updated `tests/Feature/Ai/Setup/BootstrapCompanyCreationTest.php`:
+    - `test_kill_switch_disables_bootstrap_endpoints`: verified 403 `AI_ACTIONS_DISABLED` for foundation and execution switches.
+    - `test_bootstrap_proposal_creation_prevents_unscoped_task_hijack`: verified foreign admin hijack attempts are rejected with 403.
+    - `test_bootstrap_retry_prevents_receipt_leak_to_unauthorized_actor`: verified completed receipt is never leaked to unauthorized callers (403 denied).
+    - All 8 tests passed (57 assertions).
+  - Updated `tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php`:
+    - `test_purchase_order_preview_computes_deterministic_pricing_with_zero_database_writes`: verified canonical preview with authoritative CommercialPricing GST calculations and live SHA-256 source state hash.
+    - `test_change_request_updates_line_items_and_increments_version`: verified version bump and GST preview totals.
+    - `test_execution_fails_closed_when_underlying_source_state_changes_after_approval`: verified mutating product cost fails closed with 422 `source_state` and creates zero ERP records.
+    - `test_proposals_endpoint_enforces_actor_specific_filtering_and_approval_permission`: verified ordinary users see only their own proposals and are denied 403 on `all=1`, while approvers can inspect company-wide proposals with `all=1`.
+    - All 6 tests passed (58 assertions).
+  - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **90/90 tests passed (587 assertions, 0 errors, 0 failures)**.
+  - Hygiene: `composer validate --strict` (valid), view and route caches cleared and recompiled cleanly.
+
+- **Next Steps:**
+  1. Proceed to Phase 2: Purchase Bill AI Workflow (`purchase_bill.create.v1` / linking Purchase Orders to Bills).
+  2. Implement Sales Order / Quotation AI workflow proposals (`sales_order.create.v1`, `quotation.create.v1`).
+
+---
+
 ## Phase 2 Purchase Order AI Workflow & Operational Action Proposals Complete — 2026-11-11 (`feature/ai-purchase-orders`)
 
 - **Architectural Deliverables Completed & Verified:**

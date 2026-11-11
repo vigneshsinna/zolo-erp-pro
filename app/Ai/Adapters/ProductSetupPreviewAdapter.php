@@ -1,0 +1,100 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Adapters;
+
+use App\Ai\Contracts\ActionPreviewAdapterInterface;
+use App\Ai\DTOs\ActionDefinition;
+use App\Ai\DTOs\ActionPreviewResult;
+use App\Ai\Security\BootstrapSetupPrincipal;
+use App\Models\Category;
+use App\Models\Product;
+use App\Models\Unit;
+use App\Services\Platform\CompanyContext;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
+{
+    public function preview(
+        ActionDefinition $definition,
+        array $slots,
+        CompanyContext|BootstrapSetupPrincipal $context,
+    ): ActionPreviewResult {
+        if (!($context instanceof CompanyContext)) {
+            throw new \InvalidArgumentException('Mode B company context required for product setup.');
+        }
+
+        $name = trim((string) ($slots['name'] ?? ''));
+        if ($name === '') {
+            throw ValidationException::withMessages(['name' => 'Product name is required.']);
+        }
+
+        $code = isset($slots['code']) && trim((string) $slots['code']) !== ''
+            ? strtoupper(trim((string) $slots['code']))
+            : $this->generateSimulatedCode($name, $context->companyId);
+
+        $existing = Product::where('company_id', $context->companyId)->where('code', $code)->first();
+        if ($existing && $existing->name !== $name) {
+            throw ValidationException::withMessages(['code' => 'Product code already exists with different details.']);
+        }
+
+        $unitId = !empty($slots['unit_id']) ? (int) $slots['unit_id'] : Unit::where('company_id', $context->companyId)->value('id');
+        $categoryId = !empty($slots['category_id']) ? (int) $slots['category_id'] : Category::where('company_id', $context->companyId)->value('id');
+        $cost = (float) ($slots['cost'] ?? 0);
+        $price = (float) ($slots['price'] ?? 0);
+        $taxCategoryId = !empty($slots['tax_category_id']) ? (int) $slots['tax_category_id'] : null;
+        $hsnCode = !empty($slots['hsn_code']) ? (string) $slots['hsn_code'] : null;
+
+        $payload = [
+            'name' => $name,
+            'code' => $code,
+            'type' => (string) ($slots['type'] ?? 'standard'),
+            'barcode_symbology' => (string) ($slots['barcode_symbology'] ?? 'code128'),
+            'unit_id' => $unitId,
+            'purchase_unit_id' => !empty($slots['purchase_unit_id']) ? (int) $slots['purchase_unit_id'] : $unitId,
+            'sale_unit_id' => !empty($slots['sale_unit_id']) ? (int) $slots['sale_unit_id'] : $unitId,
+            'category_id' => $categoryId,
+            'cost' => sprintf('%.2f', $cost),
+            'price' => sprintf('%.2f', $price),
+            'tax_category_id' => $taxCategoryId,
+            'hsn_code' => $hsnCode,
+        ];
+
+        $previewData = [
+            'entity' => 'Product Master',
+            'name' => $name,
+            'code' => $code,
+            'cost' => sprintf('%.2f', $cost),
+            'price' => sprintf('%.2f', $price),
+            'type' => $payload['type'],
+            'hsn_code' => $hsnCode,
+            'is_existing' => $existing !== null,
+        ];
+
+        $sourceStateHash = hash('sha256', 'PRODUCT_SETUP:' . $context->companyId . ':' . $code . ':' . ($existing?->id ?? 'NEW'));
+
+        return new ActionPreviewResult(
+            payload: $payload,
+            preview: $previewData,
+            sourceStateHash: $sourceStateHash,
+        );
+    }
+
+    private function generateSimulatedCode(string $name, int $companyId): string
+    {
+        $base = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', Str::ascii($name)));
+        if (strlen($base) < 3) {
+            $base = 'PRD';
+        }
+        $candidate = substr($base, 0, 8);
+
+        if (!Product::where('company_id', $companyId)->where('code', $candidate)->exists()) {
+            return $candidate;
+        }
+
+        return substr($candidate, 0, 5) . rand(100, 999);
+    }
+}

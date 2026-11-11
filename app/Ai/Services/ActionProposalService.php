@@ -24,7 +24,7 @@ final class ActionProposalService
         $definition = $this->security->definition($key, $principal);
         $validated = $this->security->validate($definition, $slots);
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
-        $now = now();
+        $now = now('UTC');
 
         $count = DB::table('ai_action_proposals')
             ->where('actor_id', $principal->actorId)
@@ -88,7 +88,7 @@ final class ActionProposalService
             ->where('financial_year_id', $principal->financialYearId)
             ->where('version', $expectedVersion)
             ->whereIn('status', ['pending', 'approved'])
-            ->where('expires_at', '>', now())
+            ->where('expires_at', '>', now('UTC'))
             ->update([
                 'version' => $expectedVersion + 1,
                 'payload_json' => CanonicalActionPayload::json($preview->payload),
@@ -96,8 +96,8 @@ final class ActionProposalService
                 'payload_hash' => CanonicalActionPayload::hash($preview->payload),
                 'source_state_hash' => $preview->sourceStateHash,
                 'status' => 'pending',
-                'expires_at' => now()->addMinutes((int) config('ai_actions.proposal_ttl_minutes', 30)),
-                'updated_at' => now(),
+                'expires_at' => now('UTC')->addMinutes((int) config('ai_actions.proposal_ttl_minutes', 30)),
+                'updated_at' => now('UTC'),
             ]);
 
         if ($updated !== 1) {

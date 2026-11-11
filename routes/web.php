@@ -186,18 +186,18 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 // Session-authenticated endpoints used by the workspace.
 Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')
     ->controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
-    Route::get('settings', 'settings')->name('settings');
-    Route::get('monitoring', 'monitoring')->name('monitoring');
-    Route::get('threads', 'threads')->name('threads.index');
-    Route::post('threads', 'createThread')->name('threads.store');
-    Route::get('threads/{id}', 'showThread')->whereUuid('id')->name('threads.show');
-    Route::post('chat', 'chat')->name('chat');
-    Route::get('proposals', 'proposals')->name('proposals.index');
-    Route::post('proposals', 'propose')->name('proposals.store');
-    Route::post('proposals/{id}/change-request', 'changeRequest')->whereUuid('id')->name('proposals.change-request');
-    Route::post('proposals/{id}/approve', 'approveProposal')->whereUuid('id')->name('proposals.approve');
-    Route::post('proposals/{id}/reject', 'rejectProposal')->whereUuid('id')->name('proposals.reject');
-});
+        Route::get('settings', 'settings')->name('settings');
+        Route::get('monitoring', 'monitoring')->name('monitoring');
+        Route::get('threads', 'threads')->name('threads.index');
+        Route::post('threads', 'createThread')->name('threads.store');
+        Route::get('threads/{id}', 'showThread')->whereUuid('id')->name('threads.show');
+        Route::post('chat', 'chat')->name('chat');
+        Route::get('proposals', 'proposals')->name('proposals.index');
+        Route::post('proposals', 'propose')->name('proposals.store');
+        Route::post('proposals/{id}/change-request', 'changeRequest')->whereUuid('id')->name('proposals.change-request');
+        Route::post('proposals/{id}/approve', 'approveProposal')->whereUuid('id')->name('proposals.approve');
+        Route::post('proposals/{id}/reject', 'rejectProposal')->whereUuid('id')->name('proposals.reject');
+    });
 
 // Developer console: admin logins and the sections switched off for the active company (developer accounts only).
 Route::middleware(['auth', 'company.context', 'common'])->prefix('developer')->name('developer.')->controller(\App\Http\Controllers\DeveloperController::class)->group(function () {

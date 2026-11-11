@@ -266,7 +266,14 @@ final class PurchaseOrderActionTest extends TestCase
 
         $proposal = $response->json('proposal');
         $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/D', $proposal['payload_hash']);
-        $this->assertSame(hash('sha256', 'NEW_RECORD'), $proposal['source_state_hash']);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/D', $proposal['source_state_hash']);
+        $expectedSourceHash = \App\Ai\Adapters\PurchaseOrderPreviewAdapter::computeSourceStateHash(
+            new \App\Services\Platform\CompanyContext($this->company->id, $this->branch->id, $this->fiscalYear->id),
+            $this->supplier->id,
+            $this->warehouse->id,
+            [$this->productA->id, $this->productB->id],
+        );
+        $this->assertSame($expectedSourceHash, $proposal['source_state_hash']);
 
         // Check preview calculation:
         // Line A: 50 * 240 = 12000, 5% tax = 600, total = 12600
@@ -324,7 +331,9 @@ final class PurchaseOrderActionTest extends TestCase
 
         $v2Hash = $changeResponse->json('proposal.payload_hash');
         $this->assertNotSame($v1Hash, $v2Hash);
-        $this->assertSame('5000.00', $changeResponse->json('proposal.preview.totals.grand_total'));
+        $this->assertSame('5250.00', $changeResponse->json('proposal.preview.totals.grand_total'));
+        $this->assertSame('5000.00', $changeResponse->json('proposal.preview.totals.subtotal'));
+        $this->assertSame('250.00', $changeResponse->json('proposal.preview.totals.tax_total'));
 
         // Editing stale version 1 fails
         $staleResponse = $this->withHeaders($this->contextHeaders())
@@ -436,5 +445,91 @@ final class PurchaseOrderActionTest extends TestCase
         $found = collect($orders)->firstWhere('order_id', $purchaseId);
         $this->assertNotNull($found, 'Open orders read tool must list the newly created purchase order.');
         $this->assertEquals(10000.0, (float) $found['grand_total']);
+    }
+
+    public function test_execution_fails_closed_when_underlying_source_state_changes_after_approval(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $initialPurchasesCount = Purchase::count();
+
+        // 1. Create initial proposal
+        $response = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id,
+                'items' => [
+                    ['product_id' => $this->productA->id, 'qty' => '20.00', 'net_unit_cost' => '250.00'],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(201);
+        $proposalId = $response->json('proposal.id');
+
+        // 2. Underlying ERP state mutates after proposal creation: product cost changes
+        $this->productA->update(['cost' => '320.00']);
+
+        // 3. Execution must fail closed with 422 because live source state hash diverges
+        $approveResponse = $this->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/proposals/{$proposalId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approveResponse->assertStatus(422);
+        $this->assertStringContainsString('Underlying ERP business state changed', (string) $approveResponse->json('errors.source_state.0'));
+
+        // Zero records created
+        $this->assertSame($initialPurchasesCount, Purchase::count());
+    }
+
+    public function test_proposals_endpoint_enforces_actor_specific_filtering_and_approval_permission(): void
+    {
+        // Grant ai.use and purchases-index to restrictedUser so they have AI read access, but NOT ai.action.approve
+        $aiUsePermId = DB::table('permissions')->where('name', 'ai.use')->value('id')
+            ?? DB::table('permissions')->insertGetId(['name' => 'ai.use', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()]);
+        $purchasesIndexPermId = DB::table('permissions')->where('name', 'purchases-index')->value('id')
+            ?? DB::table('permissions')->insertGetId(['name' => 'purchases-index', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()]);
+
+        DB::table('role_has_permissions')->updateOrInsert(
+            ['permission_id' => $aiUsePermId, 'role_id' => $this->restrictedUser->role_id]
+        );
+        DB::table('role_has_permissions')->updateOrInsert(
+            ['permission_id' => $purchasesIndexPermId, 'role_id' => $this->restrictedUser->role_id]
+        );
+
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $responseAdmin = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id,
+                'items' => [
+                    ['product_id' => $this->productA->id, 'qty' => '10.00', 'net_unit_cost' => '250.00'],
+                ],
+            ],
+        ]);
+        $responseAdmin->assertStatus(201);
+        $adminProposalId = $responseAdmin->json('proposal.id');
+
+        // Ordinary user (restrictedUser) viewing proposals only sees their own
+        $this->actingAs($this->restrictedUser, 'sanctum');
+        $listResponse = $this->withHeaders($this->contextHeaders())->getJson('/api/v1/ai/proposals');
+        $listResponse->assertStatus(200);
+        $proposals = $listResponse->json('proposals');
+        $this->assertEmpty(collect($proposals)->where('id', $adminProposalId));
+
+        // Unauthorized user requesting all=1 is forbidden with 403
+        $allForbidden = $this->withHeaders($this->contextHeaders())->getJson('/api/v1/ai/proposals?all=1');
+        $allForbidden->assertStatus(403);
+        $this->assertSame('UNAUTHORIZED', $allForbidden->json('error_code'));
+
+        // Admin with ai.action.approve can inspect all proposals
+        $this->actingAs($this->adminUser, 'sanctum');
+        $allAllowed = $this->withHeaders($this->contextHeaders())->getJson('/api/v1/ai/proposals?all=1');
+        $allAllowed->assertStatus(200);
+        $this->assertNotEmpty(collect($allAllowed->json('proposals'))->where('id', $adminProposalId));
     }
 }

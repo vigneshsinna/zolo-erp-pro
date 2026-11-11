@@ -24,7 +24,8 @@ final class BootstrapProposalService
     public function __construct(
         private readonly BootstrapSetupSecurity $security,
         private readonly ActionApprovalSignature $signatures,
-    ) {}
+    ) {
+    }
 
     public function initiateTask(BootstrapSetupPrincipal $principal): array
     {
@@ -43,6 +44,17 @@ final class BootstrapProposalService
         string $actionKey,
         array $slots,
     ): array {
+        // Enforce pre-flight check: immutable completed proposals and ownership-aware updates (Finding 4)
+        $existing = DB::table('ai_action_proposals')->where('id', $taskId)->first();
+        if ($existing) {
+            if ((int) $existing->actor_id !== $principal->actorId || $existing->task_token !== $principal->taskToken) {
+                throw new AuthorizationException('Task ID already exists or belongs to another session.');
+            }
+            if (!in_array($existing->status, ['pending', 'initiated'], true)) {
+                throw ValidationException::withMessages(['proposal' => 'The bootstrap proposal is already finalized and cannot be overwritten.']);
+            }
+        }
+
         $definition = $this->security->definition($actionKey, $principal);
         $validated = $this->security->validate($definition, $slots);
 
@@ -59,11 +71,29 @@ final class BootstrapProposalService
         $now = now();
         $ttlMinutes = (int) config('ai_actions.proposal_ttl_minutes', 30);
 
-        DB::table('ai_action_proposals')->updateOrInsert(
-            [
+        if ($existing) {
+            DB::table('ai_action_proposals')
+                ->where('id', $taskId)
+                ->where('actor_id', $principal->actorId)
+                ->where('task_token', $principal->taskToken)
+                ->whereNull('company_id')
+                ->update([
+                    'action_type' => $definition->key,
+                    'action_key' => $definition->key,
+                    'action_title' => $definition->businessModule,
+                    'risk_tier' => $definition->riskTier,
+                    'version' => 1,
+                    'payload_json' => CanonicalActionPayload::json($preview->payload),
+                    'preview_json' => CanonicalActionPayload::json($preview->preview),
+                    'payload_hash' => CanonicalActionPayload::hash($preview->payload),
+                    'source_state_hash' => $preview->sourceStateHash,
+                    'status' => 'pending',
+                    'expires_at' => $now->copy()->addMinutes($ttlMinutes),
+                    'updated_at' => $now,
+                ]);
+        } else {
+            DB::table('ai_action_proposals')->insert([
                 'id' => $taskId,
-            ],
-            [
                 'actor_id' => $principal->actorId,
                 'task_token' => $principal->taskToken,
                 'company_id' => null,
@@ -82,8 +112,8 @@ final class BootstrapProposalService
                 'expires_at' => $now->copy()->addMinutes($ttlMinutes),
                 'created_at' => $now,
                 'updated_at' => $now,
-            ]
-        );
+            ]);
+        }
 
         return $this->getProposal($principal, $taskId);
     }
@@ -141,10 +171,25 @@ final class BootstrapProposalService
         int $expectedVersion,
         ?string $suppliedSignature = null,
     ): array {
+        $this->security->assertExecutionEnabled();
+
+        // Verify proposal exists and belongs to this authenticated actor and session BEFORE checking execution receipts (Finding 3)
+        $proposal = DB::table('ai_action_proposals')
+            ->where('id', $taskId)
+            ->where('actor_id', $principal->actorId)
+            ->where('task_token', $principal->taskToken)
+            ->first();
+
+        if (!$proposal) {
+            throw new AuthorizationException('Bootstrap proposal not accessible.');
+        }
+
         $key = 'ai-bootstrap:' . $taskId . ':v' . $expectedVersion;
 
-        // Check if already executed (idempotency)
+        // Check if already executed for this verified proposal (idempotency)
         $existing = DB::table('ai_action_executions')
+            ->where('proposal_id', $taskId)
+            ->where('executor_id', $principal->actorId)
             ->where('idempotency_key', $key)
             ->first();
 
@@ -160,6 +205,59 @@ final class BootstrapProposalService
                 'workspace_url' => '/ai',
                 'receipt' => $receipt,
             ];
+        }
+
+        // Safe Domain Reconciliation: Check if command adapter can recover a company already committed in ERP (Finding 3)
+        $definition = $this->security->definition($proposal->action_key, $principal);
+        $adapter = app($definition->commandAdapterClass);
+        if ($adapter instanceof ActionCommandAdapterInterface) {
+            $recovered = $adapter->recover($key, $principal);
+            if (!$recovered && method_exists($adapter, 'reconcileCommittedCompany')) {
+                $payload = json_decode((string) $proposal->payload_json, true, flags: JSON_THROW_ON_ERROR);
+                $recovered = $adapter->reconcileCommittedCompany($payload, $principal->actorId);
+            }
+
+            if ($recovered !== null) {
+                $receipt = [
+                    'resource_type' => $recovered->resourceType,
+                    'resource_id' => $recovered->resourceId,
+                    'status' => $recovered->status,
+                    'details' => $recovered->details,
+                ];
+
+                DB::table('ai_action_executions')->updateOrInsert(
+                    ['proposal_id' => $taskId, 'idempotency_key' => $key],
+                    [
+                        'company_id' => $recovered->resourceId,
+                        'status' => 'completed',
+                        'result_json' => CanonicalActionPayload::json($receipt),
+                        'erp_resource_type' => $recovered->resourceType,
+                        'erp_resource_id' => $recovered->resourceId,
+                        'executor_id' => $principal->actorId,
+                        'version' => $expectedVersion,
+                        'domain_service' => $definition->commandAdapterClass,
+                        'domain_method' => 'execute',
+                        'executed_at' => now(),
+                    ]
+                );
+
+                DB::table('ai_action_proposals')->where('id', $taskId)->update([
+                    'status' => 'completed',
+                    'company_id' => $recovered->resourceId,
+                    'updated_at' => now(),
+                ]);
+
+                return [
+                    'status' => 'completed',
+                    'proposal_id' => $taskId,
+                    'execution_id' => $existing?->id ?? (string) Str::uuid(),
+                    'company_id' => $recovered->resourceId,
+                    'transition_action' => 'switch_context',
+                    'context_switch_url' => '/select-company',
+                    'workspace_url' => '/ai',
+                    'receipt' => $receipt,
+                ];
+            }
         }
 
         $executionClaim = DB::transaction(function () use ($principal, $taskId, $expectedVersion, $suppliedSignature, $key): array {

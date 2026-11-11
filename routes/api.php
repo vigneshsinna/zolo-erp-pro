@@ -1,6 +1,6 @@
 <?php
 $operationsApi = true;
-require __DIR__.'/operations.php';
+require __DIR__ . '/operations.php';
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -241,4 +241,4 @@ Route::prefix('v1')->group(function () {
     });
 });
 
-require __DIR__.'/compliance_api.php';
+require __DIR__ . '/compliance_api.php';

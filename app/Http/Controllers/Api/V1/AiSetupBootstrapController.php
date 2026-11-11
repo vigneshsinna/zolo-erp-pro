@@ -19,6 +19,10 @@ final class AiSetupBootstrapController extends Controller
 
     public function initiateTask(Request $request): JsonResponse
     {
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return response()->json(['error_code' => 'AI_ACTIONS_DISABLED', 'error_message' => 'Bootstrap setup actions are unavailable.'], 403);
+        }
+
         $actorId = (int) $request->user()->id;
         $principal = $this->security->resolvePrincipal($actorId);
         $task = $this->proposals->initiateTask($principal);
@@ -28,6 +32,10 @@ final class AiSetupBootstrapController extends Controller
 
     public function preview(Request $request, string $id): JsonResponse
     {
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return response()->json(['error_code' => 'AI_ACTIONS_DISABLED', 'error_message' => 'Bootstrap setup actions are unavailable.'], 403);
+        }
+
         $actorId = (int) $request->user()->id;
         $taskToken = $request->header('X-Setup-Task-Token') ?: (string) $request->input('task_token');
         $principal = $this->security->resolvePrincipal($actorId, $taskToken ?: null);
@@ -51,6 +59,10 @@ final class AiSetupBootstrapController extends Controller
 
     public function changeRequest(Request $request, string $id): JsonResponse
     {
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return response()->json(['error_code' => 'AI_ACTIONS_DISABLED', 'error_message' => 'Bootstrap setup actions are unavailable.'], 403);
+        }
+
         $actorId = (int) $request->user()->id;
         $taskToken = $request->header('X-Setup-Task-Token') ?: (string) $request->input('task_token');
         $principal = $this->security->resolvePrincipal($actorId, $taskToken ?: null);
@@ -73,6 +85,14 @@ final class AiSetupBootstrapController extends Controller
 
     public function approve(Request $request, string $id): JsonResponse
     {
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return response()->json(['error_code' => 'AI_ACTIONS_DISABLED', 'error_message' => 'Bootstrap setup actions are unavailable.'], 403);
+        }
+
+        if (!config('ai_actions.execution_enabled', false)) {
+            return response()->json(['error_code' => 'AI_ACTIONS_DISABLED', 'error_message' => 'Bootstrap setup action execution is disabled.'], 403);
+        }
+
         $actorId = (int) $request->user()->id;
         $taskToken = $request->header('X-Setup-Task-Token') ?: (string) $request->input('task_token');
         $principal = $this->security->resolvePrincipal($actorId, $taskToken ?: null);

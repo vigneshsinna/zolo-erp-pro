@@ -56,6 +56,15 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
                 . " When the user asks about payments for an invoice, invoke InvoiceAllocations with the target open_item_id.";
         }
 
+        $actionsGuidance = ' Copilot provides read-only ERP information. Action proposals and execution are unavailable.';
+        $canProposePurchases = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('purchase_order.create.v1');
+        if ($canProposePurchases) {
+            $actionsGuidance = ' When the user asks to order, buy, purchase, or prepare a purchase order (e.g., "Create a purchase order for 100 metres of blue fabric from ABC Traders"), invoke the prepare_purchase_order tool with the supplier name, product query, quantity, unit cost, and warehouse.'
+                . ' If the tool returns missing fields or multiple candidates, ask the user to clarify.'
+                . ' When a proposal is generated, inform the user that a draft proposal with an editable preview has been prepared for their review and approval.'
+                . ' Remember: all purchase orders require explicit human approval and are never placed autonomously.';
+        }
+
         return 'You are the zoloERP Copilot, an enterprise assistant for zoloERP Pro.'
             . ' Your role is to provide clear, concise financial and inventory insights using ONLY data returned by authorised ERP tools.'
             . " Active Tenancy: Company ID {$this->principal->companyId}, Branch ID {$this->principal->branchId}, Financial Year ID {$this->principal->financialYearId}."
@@ -67,7 +76,7 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
             . ' The UI automatically renders verified financial Fact Cards and detailed Invoice tables directly from the ERP data payload, '
             . ' so provide a concise, high-level summary rather than generating huge raw markdown tables.'
             . ' If there are reconciliation warnings, control account variances, or stock disparities, state them clearly.'
-            . ' Copilot provides read-only ERP information. Action proposals and execution are unavailable.'
+            . $actionsGuidance
             . ' When the user asks to view or preview a specific invoice, sale, or purchase, invoke document_preview.'
             . ' When asked about company policies, return rules, payment terms, or tax profile, invoke company_knowledge.'
             . ' If the user asks about an unsupported business area where no tool is available, '
@@ -100,6 +109,12 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
      */
     public function tools(): iterable
     {
-        return app(AiToolManifest::class)->sdkTools($this->principal);
+        $tools = app(AiToolManifest::class)->sdkTools($this->principal);
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('purchase_order.create.v1')) {
+            $tools[] = new \App\Ai\Tools\PreparePurchaseOrder($this->principal, app(\App\Ai\Services\RecordResolutionService::class));
+        }
+
+        return $tools;
     }
 }

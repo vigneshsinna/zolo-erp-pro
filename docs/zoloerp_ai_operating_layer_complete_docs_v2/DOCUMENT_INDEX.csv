@@ -1,0 +1,38 @@
+filename,title,words,bytes
+01_REPOSITORY_BASELINE.md,"01 — Verified Code Baseline, Risks and Starting Point",627,5384
+02_OPEN_SOURCE_STACK.md,02 — Laravel-Native Open Source Stack and Selection Record,514,3998
+03_ARCHITECTURE.md,03 — Current vs Target Architecture and Trust Boundaries,645,4876
+04_SECURITY_AND_TENANCY.md,"04 — Security, Tenancy, Privacy and Approval Model",636,4791
+05_INSTALLATION.md,"05 — Installation, Version Gates and Environment Setup",493,3762
+06_DATABASE_SCHEMA.md,"06 — Canonical AI, Task, Proposal and Audit Data Model",685,5378
+07_LARAVEL_AI_SDK.md,07 — Laravel AI SDK Usage and Copilot Compatibility Contract,515,4117
+08_ERP_TOOL_REGISTRY.md,08 — Shared ERP Read Tool Registry and Capability Conventions,511,4231
+09_FIRST_VERTICAL_SLICE.md,09 — Read-Only Receivables Copilot Vertical Slice and Regression Baseline,442,3446
+10_AGENT_CATALOG.md,10 — Agent Experiences vs Shared ERP Capabilities,512,3660
+11_MCP_INTEGRATION.md,11 — Optional Laravel MCP Integration with Shared ERP Guard,342,2436
+12_APPROVAL_AND_ACTIONS.md,12 — Human Approval and Transactional Action Safety,538,4401
+13_API_AND_FRONTEND.md,"13 — Authenticated Chat, Task API and AI Command Center Frontend",495,3778
+14_HORIZON_AND_QUEUES.md,"14 — Async Workers, Scheduling, Resumption and Recovery",425,3197
+15_RAG_AND_QDRANT.md,15 — RAG and Document Knowledge Retrieval (Optional),317,2519
+16_LANGFUSE_OBSERVABILITY.md,"16 — AI Observability, Telemetry, Costs and Business Audit",455,3317
+17_OPTIONAL_NEURON_OLLAMA.md,17 — Evaluation of Advanced Orchestration and Local Models,256,1995
+18_TESTING_AND_EVALUATIONS.md,"18 — Quality Engineering, Golden Data and Adversarial Tests",502,3881
+19_CI_CD_AND_PRODUCTION.md,"19 — CI, Staging, Release Controls and VPS Deployment",468,3582
+20_DELIVERY_BACKLOG.md,20 — Full Delivery Backlog and Dependency Gates,866,5977
+21_ROLLOUT_AND_OPERATIONS.md,"21 — Product Rollout, Quotas, Monitoring and Support Runbook",418,3226
+22_DECISIONS_AND_ASSUMPTIONS.md,22 — Architecture Decision Log and Open Business Questions,524,3621
+23_CODING_AGENT_HANDOFF.md,"23 — Coding-Agent Handoff: Stabilize, Then Implement Action Foundation",483,3928
+24_SOURCE_REFERENCES.md,"24 — Source References, Provenance and Verification Rules",236,3182
+25_PRODUCT_VISION_AND_AUTONOMY.md,"25 — Product Vision, User Outcomes and Autonomy Policy",723,5057
+26_COMMAND_CENTER_UX.md,"26 — AI Command Center, Conversational Forms and Review UX",732,5284
+27_INTENT_AND_RECORD_RESOLUTION.md,"27 — Natural-Language Intent, Slot Filling and Record Resolution",617,5080
+28_ACTION_CAPABILITY_CATALOG.md,28 — Action Capability Registry and ERP Command Ownership,688,5736
+29_WORKFLOW_ORCHESTRATION.md,29 — Durable Natural-Language Workflow Orchestration and Recovery,704,5586
+30_PURCHASE_WORKFLOWS.md,"30 — Purchase Order, Goods Receipt and Supplier Bill Workflows",818,6318
+31_SALES_AND_COLLECTION_WORKFLOWS.md,"31 — Sales Quotation, Sales Order, Invoice and Collections",611,5001
+32_INVENTORY_FINANCE_MANUFACTURING.md,"32 — Inventory, Accounting, Manufacturing and Other High-Risk Effects",631,4955
+33_MASTERS_OTHER_MODULES.md,33 — Guided Master Data and Full ERP Module Onboarding,649,4514
+34_DOCUMENT_AND_BULK_ENTRY.md,"34 — Document Extraction, Matching, Excel/CSV Bulk Entry and Error Review",554,4312
+35_SCENARIO_EVALUATION_CATALOG.md,"35 — End-to-End Acceptance Scenarios, Metrics and Traceability",804,5348
+36_REPLACEMENT_MIGRATION_AND_RELEASE_GATES.md,36 — Replacing the Old Documents and Safely Migrating the Product,711,5484
+README.md,zoloERP — AI Operating Layer: Master Documentation Index,800,6703

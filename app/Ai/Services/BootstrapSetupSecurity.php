@@ -29,6 +29,8 @@ final class BootstrapSetupSecurity
 
     public function resolvePrincipal(int $actorId, ?string $taskToken = null): BootstrapSetupPrincipal
     {
+        $this->assertFoundationEnabled();
+
         $user = User::find($actorId);
         if (!$user || !$this->directory->isInstallationAdmin($actorId)) {
             throw new AuthorizationException('Installation administrator required for bootstrap setup.');
@@ -52,6 +54,8 @@ final class BootstrapSetupSecurity
 
     public function definition(string $key, BootstrapSetupPrincipal $principal): ActionDefinition
     {
+        $this->assertFoundationEnabled();
+
         if (!$principal->hasCapability($key)) {
             throw new AuthorizationException('Capability not authorized for bootstrap actor.');
         }
@@ -62,6 +66,22 @@ final class BootstrapSetupSecurity
         }
 
         return $definition;
+    }
+
+    public function assertFoundationEnabled(): void
+    {
+        if (!config('ai_actions.foundation_enabled', false)) {
+            throw new AuthorizationException('AI Action Foundation is disabled.');
+        }
+    }
+
+    public function assertExecutionEnabled(): void
+    {
+        $this->assertFoundationEnabled();
+
+        if (!config('ai_actions.execution_enabled', false)) {
+            throw new AuthorizationException('AI action execution is disabled.');
+        }
     }
 
     public function validate(ActionDefinition $definition, array $input): array

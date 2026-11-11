@@ -40,7 +40,8 @@ class AiChatController extends Controller
         protected AiPrincipalFactory $principalFactory,
         protected AiFeatureGate $featureGate,
         protected ApprovedModelGateway $modelGateway,
-    ) {}
+    ) {
+    }
 
     public function settings(Request $request): JsonResponse
     {
@@ -171,11 +172,28 @@ class AiChatController extends Controller
             return $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
         }
 
-        $rows = DB::table('ai_action_proposals')
+        $query = DB::table('ai_action_proposals')
             ->where('company_id', $principal->companyId)
             ->where('branch_id', $principal->branchId)
-            ->where('financial_year_id', $principal->financialYearId)
-            ->orderByDesc('created_at')
+            ->where('financial_year_id', $principal->financialYearId);
+
+        // Strict actor filtering: ordinary users only see their own proposals.
+        // Reviewers with ai.action.approve can inspect company-wide proposals only when requesting all=1.
+        $canReviewAll = app(\App\Services\Commercial\CommercialPermission::class)->allows(
+            'ai.action.approve',
+            new \App\Services\Platform\CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
+            $principal->actorId
+        );
+
+        if ($request->boolean('all', false)) {
+            if (!$canReviewAll) {
+                return response()->json(['error_code' => 'UNAUTHORIZED', 'error_message' => 'Unauthorized to view all proposals.'], 403);
+            }
+        } else {
+            $query->where('actor_id', $principal->actorId);
+        }
+
+        $rows = $query->orderByDesc('created_at')
             ->limit(50)
             ->get();
 
@@ -221,6 +239,7 @@ class AiChatController extends Controller
                 'id' => $proposal['id'],
                 'action_key' => $proposal['action_key'],
                 'version' => (int) $proposal['version'],
+                'status' => $proposal['status'] ?? 'pending',
                 'payload_hash' => $proposal['payload_hash'],
                 'source_state_hash' => $proposal['source_state_hash'],
                 'preview' => json_decode((string) $proposal['preview_json'], true) ?? [],
@@ -255,6 +274,7 @@ class AiChatController extends Controller
             'proposal' => [
                 'id' => $proposal['id'],
                 'version' => (int) $proposal['version'],
+                'status' => $proposal['status'] ?? 'pending',
                 'payload_hash' => $proposal['payload_hash'],
                 'source_state_hash' => $proposal['source_state_hash'],
                 'preview' => json_decode((string) $proposal['preview_json'], true) ?? [],
@@ -449,8 +469,8 @@ class AiChatController extends Controller
         try {
             $history = $this->messages($threadId, newestFirst: true)->limit(8)
                 ->get(['role', 'content', 'meta'])->reverse()
-                ->filter(fn (stdClass $message) => $this->canReplay($principal, json_decode($message->meta, true) ?? []))
-                ->map(fn (stdClass $message) => new Message($message->role, mb_substr($message->content, 0, 2000)))
+                ->filter(fn(stdClass $message) => $this->canReplay($principal, json_decode($message->meta, true) ?? []))
+                ->map(fn(stdClass $message) => new Message($message->role, mb_substr($message->content, 0, 2000)))
                 ->values()->all();
 
             $attachments = [];
@@ -475,13 +495,13 @@ class AiChatController extends Controller
                 ->latest('updated_at')
                 ->limit(5)
                 ->get(['entity_type', 'entity_id', 'as_of'])
-                ->map(fn (stdClass $r): array => (array) $r)
+                ->map(fn(stdClass $r): array => (array) $r)
                 ->all();
 
             $copilot = new ErpCopilot(
                 $principal,
                 $history,
-                fn (PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
+                fn(PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
                 $activeEntities
             );
             $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
@@ -499,7 +519,7 @@ class AiChatController extends Controller
             $rawText = trim((string) ($response->text ?? ''));
             $answerStatus = $evidence['answer_status'];
 
-            if (! empty($evidence['facts'])) {
+            if (!empty($evidence['facts'])) {
                 $answer = $rawText !== ''
                     ? $rawText
                     : app(VerifiedSummaryBuilder::class)->build($evidence['facts'], $evidence['warnings']);
@@ -537,7 +557,7 @@ class AiChatController extends Controller
                 $error instanceof TooManyRequestsHttpException => ['AI_QUOTA_EXCEEDED', $error->getMessage(), 429],
                 $error instanceof ServiceUnavailableHttpException => ['AI_DISABLED', $error->getMessage(), 503],
                 $error instanceof AiException || $error instanceof RequestException || $error instanceof ConnectionException
-                    => ['AI_PROVIDER_UNAVAILABLE', 'The AI provider could not complete this request.', 502],
+                => ['AI_PROVIDER_UNAVAILABLE', 'The AI provider could not complete this request.', 502],
                 default => ['AI_INTERNAL_ERROR', 'The ERP could not complete this request.', 500],
             };
             $run->update(['status' => 'failed', 'error_code' => $code, 'completed_at' => now(), 'updated_at' => now()]);
@@ -564,7 +584,9 @@ class AiChatController extends Controller
         $context = $this->contextResolver->forActor(userId: $actor);
         $workspaceScope = $request->header('X-AI-Scope');
         abort_if($workspaceScope !== null && $workspaceScope !== implode('/', [
-            $context->companyId, $context->branchId, $context->financialYearId,
+            $context->companyId,
+            $context->branchId,
+            $context->financialYearId,
         ]), 409, 'The active ERP context changed. Reload the copilot workspace.');
 
         return $this->principalFactory->createForUser($actor, $context->companyId, $context->branchId, $context->financialYearId);
@@ -595,7 +617,7 @@ class AiChatController extends Controller
     {
         return DB::table('ai_thread_scopes')->where($this->scope($principal))
             ->where('user_id', $principal->actorId)->where('status', 'active')
-            ->where(fn (Builder $query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()));
+            ->where(fn(Builder $query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()));
     }
 
     private function insertThread(AiPrincipal $principal, string $id, string $title): void
@@ -634,10 +656,16 @@ class AiChatController extends Controller
                 return false;
             }
 
-            if (!isset($metadata['answer_status']) && in_array($tool, [
-                'documents.preview.v1', 'orders.open.v1', 'inventory.stock_summary.v1',
-                'knowledge.query.v1', 'receivables.invoice_allocations.v1', 'sales.summary.v1',
-            ], true)) {
+            if (
+                !isset($metadata['answer_status']) && in_array($tool, [
+                    'documents.preview.v1',
+                    'orders.open.v1',
+                    'inventory.stock_summary.v1',
+                    'knowledge.query.v1',
+                    'receivables.invoice_allocations.v1',
+                    'sales.summary.v1',
+                ], true)
+            ) {
                 return false;
             }
 
@@ -653,6 +681,9 @@ class AiChatController extends Controller
             if ($tool === 'inventory.stock_summary.v1' && ($data['valuation_visible'] ?? true)) {
                 $required[] = 'purchases-index';
             }
+            if ($tool === 'purchase_order.create.v1') {
+                $required[] = 'purchases-add';
+            }
         }
 
         $required = array_unique($required);
@@ -665,6 +696,11 @@ class AiChatController extends Controller
         $failed = $unreconciled = $noData = false;
         foreach ($response->toolResults as $result) {
             $payload = $result->successful() ? json_decode($result->text(), true) : null;
+            if (($payload['status'] ?? null) === 'needs_input') {
+                $warnings[] = $payload['message'] ?? 'Additional details are required to complete this proposal.';
+                continue;
+            }
+
             if (($payload['status'] ?? null) !== 'ok') {
                 $failed = true;
                 $errorCode = $payload['error_code'] ?? null;
@@ -715,6 +751,7 @@ class AiChatController extends Controller
                 'orders.open.v1' => 'Open orders & fulfilment report',
                 'documents.preview.v1' => 'Document preview',
                 'knowledge.query.v1' => 'Company policy & terms',
+                'purchase_order.create.v1' => 'Purchase order proposal',
                 default => 'Authoritative ERP report',
             };
             foreach ($payload['source_refs'] ?? [] as $href) {

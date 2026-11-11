@@ -20,7 +20,8 @@ final class ActionCapabilityRegistry
 
     public function register(ActionDefinition $definition): void
     {
-        if (!preg_match('/^[a-z][a-z0-9_.]*\.v[1-9][0-9]*$/D', $definition->key)
+        if (
+            !preg_match('/^[a-z][a-z0-9_.]*\.v[1-9][0-9]*$/D', $definition->key)
             || $definition->mode !== 'company'
             || isset($this->definitions[$definition->key])
             || !in_array('ai.use', $definition->requiredPermissions, true)
@@ -86,6 +87,70 @@ final class ActionCapabilityRegistry
                 mode: 'company',
             ));
         }
+
+        if (!$this->has('setup.unit.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'setup.unit.create.v1',
+                businessModule: 'unit_setup',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use'],
+                inputSchemaClass: \App\Ai\Schemas\CreateUnitInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\UnitSetupPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\UnitSetupCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+
+        if (!$this->has('setup.product.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'setup.product.create.v1',
+                businessModule: 'product_setup',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use'],
+                inputSchemaClass: \App\Ai\Schemas\CreateProductInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\ProductSetupPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\ProductSetupCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+
+        if (!$this->has('setup.supplier.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'setup.supplier.create.v1',
+                businessModule: 'supplier_setup',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use'],
+                inputSchemaClass: \App\Ai\Schemas\CreateSupplierInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\SupplierSetupPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\SupplierSetupCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+
+        if (!$this->has('setup.customer.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'setup.customer.create.v1',
+                businessModule: 'customer_setup',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use'],
+                inputSchemaClass: \App\Ai\Schemas\CreateCustomerInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\CustomerSetupPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\CustomerSetupCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
     }
 
     public function registerCommercialCapabilities(): void
@@ -101,7 +166,7 @@ final class ActionCapabilityRegistry
                 commandAdapterClass: \App\Ai\Adapters\PurchaseOrderCommandAdapter::class,
                 domainOwnsTransaction: true,
                 requiresApproval: true,
-                requiresFreshSnapshot: false,
+                requiresFreshSnapshot: true,
                 enabledByDefault: false,
                 mode: 'company',
             ));

@@ -1,0 +1,250 @@
+﻿{
+    "version":  "3.0",
+    "base_commit":  "14195d8b5b195f65ca1283c96794c613de88eded",
+    "ci_run":  "42870009218",
+    "total_documents":  40,
+    "total_words":  29130,
+    "total_bytes":  229217,
+    "documents":  [
+                      {
+                          "filename":  "01_REPOSITORY_BASELINE.md",
+                          "title":  "01 â€” Verified Code Baseline, Risks and Starting Point",
+                          "words":  628,
+                          "bytes":  5382
+                      },
+                      {
+                          "filename":  "02_OPEN_SOURCE_STACK.md",
+                          "title":  "02 â€” Laravel-Native Open Source Stack and Selection Record",
+                          "words":  515,
+                          "bytes":  4011
+                      },
+                      {
+                          "filename":  "03_ARCHITECTURE.md",
+                          "title":  "03 â€” Current vs Target Architecture and Trust Boundaries",
+                          "words":  896,
+                          "bytes":  7685
+                      },
+                      {
+                          "filename":  "04_SECURITY_AND_TENANCY.md",
+                          "title":  "04 â€” Security, Tenancy, Privacy and Approval Model",
+                          "words":  833,
+                          "bytes":  6570
+                      },
+                      {
+                          "filename":  "05_INSTALLATION.md",
+                          "title":  "05 â€” Installation, Version Gates and Environment Setup",
+                          "words":  494,
+                          "bytes":  3775
+                      },
+                      {
+                          "filename":  "06_DATABASE_SCHEMA.md",
+                          "title":  "06 â€” Canonical AI, Task, Proposal and Audit Data Model",
+                          "words":  869,
+                          "bytes":  6963
+                      },
+                      {
+                          "filename":  "07_LARAVEL_AI_SDK.md",
+                          "title":  "07 â€” Laravel AI SDK Usage and Copilot Compatibility Contract",
+                          "words":  587,
+                          "bytes":  4637
+                      },
+                      {
+                          "filename":  "08_ERP_TOOL_REGISTRY.md",
+                          "title":  "08 â€” Shared ERP Read Tool Registry and Capability Conventions",
+                          "words":  575,
+                          "bytes":  4813
+                      },
+                      {
+                          "filename":  "09_FIRST_VERTICAL_SLICE.md",
+                          "title":  "09 â€” Read-Only Receivables Copilot Vertical Slice and Regression Baseline",
+                          "words":  441,
+                          "bytes":  3555
+                      },
+                      {
+                          "filename":  "10_AGENT_CATALOG.md",
+                          "title":  "10 â€” Agent Experiences vs Shared ERP Capabilities",
+                          "words":  604,
+                          "bytes":  4472
+                      },
+                      {
+                          "filename":  "11_MCP_INTEGRATION.md",
+                          "title":  "11 â€” Optional Laravel MCP Integration with Shared ERP Guard",
+                          "words":  343,
+                          "bytes":  2484
+                      },
+                      {
+                          "filename":  "12_APPROVAL_AND_ACTIONS.md",
+                          "title":  "12 â€” Human Approval and Transactional Action Safety",
+                          "words":  930,
+                          "bytes":  7325
+                      },
+                      {
+                          "filename":  "13_API_AND_FRONTEND.md",
+                          "title":  "13 â€” Authenticated Chat, Task API and AI Command Center Frontend",
+                          "words":  638,
+                          "bytes":  4855
+                      },
+                      {
+                          "filename":  "14_HORIZON_AND_QUEUES.md",
+                          "title":  "14 â€” Async Workers, Scheduling, Resumption and Recovery",
+                          "words":  533,
+                          "bytes":  4062
+                      },
+                      {
+                          "filename":  "15_RAG_AND_QDRANT.md",
+                          "title":  "15 â€” RAG and Document Knowledge Retrieval (Optional)",
+                          "words":  318,
+                          "bytes":  2585
+                      },
+                      {
+                          "filename":  "16_LANGFUSE_OBSERVABILITY.md",
+                          "title":  "16 â€” AI Observability, Telemetry, Costs and Business Audit",
+                          "words":  456,
+                          "bytes":  3334
+                      },
+                      {
+                          "filename":  "17_OPTIONAL_NEURON_OLLAMA.md",
+                          "title":  "17 â€” Evaluation of Advanced Orchestration and Local Models",
+                          "words":  257,
+                          "bytes":  2008
+                      },
+                      {
+                          "filename":  "18_TESTING_AND_EVALUATIONS.md",
+                          "title":  "18 â€” Quality Engineering, Golden Data and Adversarial Tests",
+                          "words":  619,
+                          "bytes":  4868
+                      },
+                      {
+                          "filename":  "19_CI_CD_AND_PRODUCTION.md",
+                          "title":  "19 â€” CI, Staging, Release Controls and VPS Deployment",
+                          "words":  576,
+                          "bytes":  4445
+                      },
+                      {
+                          "filename":  "20_DELIVERY_BACKLOG.md",
+                          "title":  "20 â€” Full Delivery Backlog and Dependency Gates",
+                          "words":  1250,
+                          "bytes":  8917
+                      },
+                      {
+                          "filename":  "21_ROLLOUT_AND_OPERATIONS.md",
+                          "title":  "21 â€” Product Rollout, Quotas, Monitoring and Support Runbook",
+                          "words":  532,
+                          "bytes":  4141
+                      },
+                      {
+                          "filename":  "22_DECISIONS_AND_ASSUMPTIONS.md",
+                          "title":  "22 â€” Architecture Decision Log and Open Business Questions",
+                          "words":  843,
+                          "bytes":  6036
+                      },
+                      {
+                          "filename":  "23_CODING_AGENT_HANDOFF.md",
+                          "title":  "23 â€” Coding-Agent Handoff: Stabilize, Then Implement Action Foundation",
+                          "words":  637,
+                          "bytes":  5212
+                      },
+                      {
+                          "filename":  "24_SOURCE_REFERENCES.md",
+                          "title":  "24 â€” Source References, Provenance and Verification Rules",
+                          "words":  340,
+                          "bytes":  4625
+                      },
+                      {
+                          "filename":  "25_PRODUCT_VISION_AND_AUTONOMY.md",
+                          "title":  "25 â€” Product Vision, User Outcomes and Autonomy Policy",
+                          "words":  820,
+                          "bytes":  5925
+                      },
+                      {
+                          "filename":  "26_COMMAND_CENTER_UX.md",
+                          "title":  "26 â€” AI Command Center, Conversational Forms and Review UX",
+                          "words":  807,
+                          "bytes":  5999
+                      },
+                      {
+                          "filename":  "27_INTENT_AND_RECORD_RESOLUTION.md",
+                          "title":  "27 â€” Natural-Language Intent, Slot Filling and Record Resolution",
+                          "words":  692,
+                          "bytes":  5790
+                      },
+                      {
+                          "filename":  "28_ACTION_CAPABILITY_CATALOG.md",
+                          "title":  "28 â€” Action Capability Registry and ERP Command Ownership",
+                          "words":  725,
+                          "bytes":  6463
+                      },
+                      {
+                          "filename":  "29_WORKFLOW_ORCHESTRATION.md",
+                          "title":  "29 â€” Durable Natural-Language Workflow Orchestration and Recovery",
+                          "words":  652,
+                          "bytes":  5557
+                      },
+                      {
+                          "filename":  "30_PURCHASE_WORKFLOWS.md",
+                          "title":  "30 â€” Purchase Order, Goods Receipt and Supplier Bill Workflows",
+                          "words":  893,
+                          "bytes":  7047
+                      },
+                      {
+                          "filename":  "31_SALES_AND_COLLECTION_WORKFLOWS.md",
+                          "title":  "31 â€” Sales Quotation, Sales Order, Invoice and Collections",
+                          "words":  686,
+                          "bytes":  5740
+                      },
+                      {
+                          "filename":  "32_INVENTORY_FINANCE_MANUFACTURING.md",
+                          "title":  "32 â€” Inventory, Accounting, Manufacturing and Other High-Risk Effects",
+                          "words":  706,
+                          "bytes":  5695
+                      },
+                      {
+                          "filename":  "33_MASTERS_OTHER_MODULES.md",
+                          "title":  "33 â€” Guided Master Data and Full ERP Module Onboarding",
+                          "words":  803,
+                          "bytes":  6068
+                      },
+                      {
+                          "filename":  "34_DOCUMENT_AND_BULK_ENTRY.md",
+                          "title":  "34 â€” Document Extraction, Matching, Excel/CSV Bulk Entry and Error Review",
+                          "words":  629,
+                          "bytes":  5082
+                      },
+                      {
+                          "filename":  "35_SCENARIO_EVALUATION_CATALOG.md",
+                          "title":  "35 â€” End-to-End Acceptance Scenarios, Metrics and Traceability",
+                          "words":  948,
+                          "bytes":  6704
+                      },
+                      {
+                          "filename":  "36_REPLACEMENT_MIGRATION_AND_RELEASE_GATES.md",
+                          "title":  "36 â€” Replacing the Old Documents and Safely Migrating the Product",
+                          "words":  945,
+                          "bytes":  7482
+                      },
+                      {
+                          "filename":  "37_GUIDED_INITIAL_SETUP_AGENT.md",
+                          "title":  "37 â€” Guided Initial ERP Setup Agent: Company to Business Readiness",
+                          "words":  1165,
+                          "bytes":  9263
+                      },
+                      {
+                          "filename":  "38_TRANSACTION_LIFECYCLE_ENFORCEMENT.md",
+                          "title":  "38 â€” Mandatory ERP Transaction Lifecycle and AI Edit Restrictions",
+                          "words":  975,
+                          "bytes":  7393
+                      },
+                      {
+                          "filename":  "39_INITIAL_SETUP_CAPABILITY_AND_TEST_MATRIX.md",
+                          "title":  "39 â€” Initial Setup Service Inventory, Capability Map and Acceptance Matrix",
+                          "words":  1948,
+                          "bytes":  13357
+                      },
+                      {
+                          "filename":  "README.md",
+                          "title":  "zoloERP â€” AI Operating Layer: Master Documentation Index",
+                          "words":  1022,
+                          "bytes":  8892
+                      }
+                  ]
+}

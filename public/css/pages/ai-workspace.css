@@ -276,3 +276,41 @@
     font-size: 0.85rem;
 }
 
+/* Action Review Center Operational Desk */
+.ai-review-desk .ai-review-card {
+    transition: box-shadow 0.15s ease-in-out;
+    border-radius: 8px;
+}
+.ai-review-desk .ai-review-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.ai-review-desk .ai-review-kpi-card {
+    border-radius: 8px;
+    background-color: #ffffff;
+    border: 1px solid #e9ecef;
+}
+.ai-review-desk .ai-proposal-items-table {
+    font-size: 0.82rem;
+}
+.ai-review-desk .ai-review-badge-pending {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+.ai-review-desk .ai-review-badge-completed {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+.ai-review-desk .ai-review-badge-cancelled {
+    background-color: #e2e3e5;
+    color: #383d41;
+    border: 1px solid #d6d8db;
+}
+.ai-review-desk .ai-hash-code {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    color: #6c757d;
+}
+
+

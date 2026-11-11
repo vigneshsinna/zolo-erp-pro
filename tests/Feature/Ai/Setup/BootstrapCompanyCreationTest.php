@@ -344,5 +344,277 @@ final class BootstrapCompanyCreationTest extends TestCase
         $this->assertSame('warehouse', $whReceipt->resourceType);
         $this->assertGreaterThan(0, $whReceipt->resourceId);
     }
+
+    public function test_kill_switch_disables_bootstrap_endpoints(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        // Test foundation kill switch
+        config()->set('ai_actions.foundation_enabled', false);
+
+        $initResponse = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $initResponse->assertStatus(403);
+        $this->assertSame('AI_ACTIONS_DISABLED', $initResponse->json('error_code'));
+
+        // Re-enable foundation, disable execution switch
+        config()->set('ai_actions.foundation_enabled', true);
+        config()->set('ai_actions.execution_enabled', false);
+
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $task->assertStatus(201);
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        $preview = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Kill Switch Company Ltd',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+        $preview->assertStatus(200);
+
+        // Approve must fail closed when execution is disabled
+        $approve = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+        $approve->assertStatus(403);
+        $this->assertSame('AI_ACTIONS_DISABLED', $approve->json('error_code'));
+    }
+
+    public function test_bootstrap_proposal_creation_prevents_unscoped_task_hijack(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $task->assertStatus(201);
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        // Admin 1 previews and sets up proposal
+        $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Legit Company Ltd',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ])->assertStatus(200);
+
+        // Another admin user attempts to overwrite or approve Admin 1's task
+        $admin2 = User::create([
+            'name' => 'Second Admin User',
+            'email' => 'admin2_' . uniqid() . '@example.com',
+            'phone' => '9888888889',
+            'password' => bcrypt('secret'),
+            'role_id' => 1,
+            'is_active' => true,
+            'is_deleted' => false,
+        ]);
+
+        $this->actingAs($admin2, 'sanctum');
+
+        // Attempting to overwrite Admin 1's task with foreign task token or foreign session
+        $hijackAttempt = $this->withHeader('X-Setup-Task-Token', 'foreign_token_' . str_repeat('a', 50))
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Hijacked Company Ltd',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+
+        $hijackAttempt->assertStatus(403);
+    }
+
+    public function test_bootstrap_retry_prevents_receipt_leak_to_unauthorized_actor(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Receipt Leak Test Co ' . uniqid(),
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ])->assertStatus(200);
+
+        $approve = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+        $approve->assertStatus(200);
+        $companyId = $approve->json('company_id');
+        $this->assertGreaterThan(0, $companyId);
+
+        // Another admin attempts to probe the completed task ID to steal receipt info
+        $admin2 = User::create([
+            'name' => 'Snooping Admin User',
+            'email' => 'admin_snoop_' . uniqid() . '@example.com',
+            'phone' => '9888888888',
+            'password' => bcrypt('secret'),
+            'role_id' => 1,
+            'is_active' => true,
+            'is_deleted' => false,
+        ]);
+
+        $this->actingAs($admin2, 'sanctum');
+
+        $snoopAttempt = $this->withHeader('X-Setup-Task-Token', 'foreign_token_' . str_repeat('b', 50))
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        // Must reject with 403 rather than returning the existing company creation receipt
+        $snoopAttempt->assertStatus(403);
+    }
+
+    public function test_installation_admin_creates_company_group(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $task->assertStatus(201);
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        $uniqueGroupName = 'Heritage Textiles Conglomerate ' . uniqid();
+        $previewResponse = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'action_key' => 'setup.group.create.v1',
+                'slots' => [
+                    'name' => $uniqueGroupName,
+                ],
+            ]);
+
+        $previewResponse->assertStatus(200);
+        $previewResponse->assertJson([
+            'status' => 'pending',
+            'action_key' => 'setup.group.create.v1',
+            'version' => 1,
+            'preview' => [
+                'entity' => 'Company Group',
+                'name' => $uniqueGroupName,
+            ],
+        ]);
+
+        $approveResponse = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approveResponse->assertStatus(200);
+        $approveResponse->assertJson([
+            'status' => 'completed',
+            'receipt' => [
+                'resource_type' => 'company_group',
+            ],
+        ]);
+
+        $groupId = (int) $approveResponse->json('receipt.details.group_id');
+        $this->assertGreaterThan(0, $groupId);
+
+        $group = \App\Models\CompanyGroup::find($groupId);
+        $this->assertNotNull($group);
+        $this->assertSame($uniqueGroupName, $group->name);
+
+        $isAdmin = DB::table('company_group_admins')
+            ->where('company_group_id', $groupId)
+            ->where('user_id', $this->adminUser->id)
+            ->exists();
+        $this->assertTrue($isAdmin);
+    }
+
+    public function test_completed_bootstrap_task_proposal_is_immutable_and_cannot_be_recreated(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Immutable Co ' . uniqid(),
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ])->assertStatus(200);
+
+        $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ])->assertStatus(200);
+
+        // Attempting to generate a new preview on an already completed task must fail closed (Finding 4)
+        $recreateAttempt = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Should Not Overwrite',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+
+        $recreateAttempt->assertStatus(422);
+        $this->assertStringContainsString('finalized and cannot be overwritten', (string) $recreateAttempt->json('message'));
+    }
+
+    public function test_company_creation_safely_reconciles_pre_committed_erp_company(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $directory = app(\App\Services\Platform\CompanyDirectoryService::class);
+        $uniqueCode = 'RECON_' . rand(1000, 9999);
+        $uniqueName = 'Reconciliation Test Mills ' . uniqid();
+
+        // Simulate that CompanyDirectoryService committed the company to the database
+        // but an artificial network drop or crash prevented recording the AI completed receipt
+        $company = $directory->createCompany($this->adminUser->id, [
+            'legal_name' => $uniqueName,
+            'code' => $uniqueCode,
+            'industry' => 'textile',
+            'state_code' => '33',
+            'timezone' => 'Asia/Kolkata',
+            'fy_start' => '2026-04-01',
+            'fy_end' => '2027-03-31',
+        ]);
+        $this->assertNotNull($company);
+
+        // Now an AI bootstrap proposal with the same company payload attempts to execute/recover
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        // Preview creates the proposal row matching the committed company
+        $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => $uniqueName,
+                'code' => $uniqueCode,
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ])->assertStatus(200);
+
+        // When approving, the safe domain reconciler should recognize the committed ERP company
+        // and return the completed receipt without failing with duplicate code or creating duplicate records (Finding 3)
+        $approve = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approve->assertStatus(200);
+        $this->assertSame((int) $company->id, (int) $approve->json('company_id'));
+        $this->assertTrue((bool) $approve->json('receipt.details.reconciled_from_erp'));
+    }
 }
 

@@ -70,8 +70,8 @@ final class ApprovedActionExecutor
                 return ['existing' => $existing, 'definition' => $definition, 'proposal' => $proposal, 'key' => $key];
             }
 
-            if ($proposal->status !== 'approved' || !$proposal->expires_at
-                || now()->greaterThanOrEqualTo($proposal->expires_at)) {
+            $isExpired = !$proposal->expires_at || \Illuminate\Support\Carbon::parse($proposal->expires_at, 'UTC')->isPast();
+            if ($proposal->status !== 'approved' || $isExpired) {
                 throw ValidationException::withMessages(['proposal' => 'Proposal is not an approved current version.']);
             }
 

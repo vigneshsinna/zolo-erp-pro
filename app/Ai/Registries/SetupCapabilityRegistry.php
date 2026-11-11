@@ -29,6 +29,21 @@ final class SetupCapabilityRegistry
     private function registerDefaults(): void
     {
         $this->register(new ActionDefinition(
+            key: 'setup.group.create.v1',
+            businessModule: 'group_bootstrap',
+            riskTier: 'r4_restricted',
+            requiredPermissions: ['ai.use'],
+            inputSchemaClass: \App\Ai\Schemas\CreateGroupInputSchema::class,
+            previewAdapterClass: \App\Ai\Adapters\GroupBootstrapPreviewAdapter::class,
+            commandAdapterClass: \App\Ai\Adapters\GroupBootstrapCommandAdapter::class,
+            domainOwnsTransaction: true,
+            requiresApproval: true,
+            requiresFreshSnapshot: false,
+            enabledByDefault: false,
+            mode: 'bootstrap',
+        ));
+
+        $this->register(new ActionDefinition(
             key: 'setup.company.create.v1',
             businessModule: 'company_bootstrap',
             riskTier: 'r4_restricted',

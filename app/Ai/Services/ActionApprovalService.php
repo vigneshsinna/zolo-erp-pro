@@ -39,8 +39,8 @@ final class ActionApprovalService
                 throw new AuthorizationException('Action proposal not accessible.');
             }
             $this->security->definition($proposal->action_key, $approver);
-            if ($proposal->status !== 'pending' || (int) $proposal->version !== $expectedVersion
-                || !$proposal->expires_at || now()->greaterThanOrEqualTo($proposal->expires_at)) {
+            $isExpired = !$proposal->expires_at || \Illuminate\Support\Carbon::parse($proposal->expires_at, 'UTC')->isPast();
+            if ($proposal->status !== 'pending' || (int) $proposal->version !== $expectedVersion || $isExpired) {
                 throw ValidationException::withMessages(['proposal' => 'The proposal is stale or already decided.']);
             }
 

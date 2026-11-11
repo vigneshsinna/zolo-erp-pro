@@ -12,18 +12,20 @@ use App\Models\Purchase;
 use App\Services\Commercial\CommercialApplicationService;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use LogicException;
 
 /**
  * Command adapter for purchase_order.create.v1.
  * Creates an authoritative Purchase Order (status 4: Ordered) via CommercialApplicationService.
- * Enforces atomic idempotency and freezes order lines in commercial_order_items.
+ * Enforces atomic idempotency, source-state freshness validation, and freezes order lines in commercial_order_items.
  */
 final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
 {
     public function __construct(
         private readonly CommercialApplicationService $commercialService,
-    ) {}
+    ) {
+    }
 
     public function execute(
         ActionDefinition $definition,
@@ -41,6 +43,25 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
         $existing = $this->recover($idempotencyKey, $context);
         if ($existing !== null) {
             return $existing;
+        }
+
+        $supplierId = (int) ($payload['supplier_id'] ?? 0);
+        $warehouseId = (int) ($payload['warehouse_id'] ?? 0);
+        $items = (array) ($payload['items'] ?? []);
+        $productIds = array_map(fn ($item) => (int) ($item['product_id'] ?? 0), $items);
+
+        // Enforce source-state hash to guarantee underlying ERP conditions have not changed since approval (Finding 5)
+        $currentSourceStateHash = PurchaseOrderPreviewAdapter::computeSourceStateHash(
+            $context,
+            $supplierId,
+            $warehouseId,
+            array_values(array_unique($productIds)),
+        );
+
+        if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
+            throw ValidationException::withMessages([
+                'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
+            ]);
         }
 
         // Prepare domain command data: status 4 = Purchase Order (Ordered)

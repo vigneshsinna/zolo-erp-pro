@@ -28,8 +28,48 @@ class Common
         // Installation settings remain shared; company identity comes from trusted context.
         //get general setting value: installation-wide, so it stays cached even under a company context; the legacy
         // reports and dashboard read this key directly. Company identity and currency come from the company below.
-        $general_setting =  Cache::remember('general_setting', 60*60*24*365, function () {
-            return DB::table('general_settings')->latest()->first();
+        $general_setting = Cache::remember('general_setting', 60*60*24*365, function () {
+            return DB::table('general_settings')->latest()->first() ?? (object) [
+                'id' => 1,
+                'site_title' => 'zoloERP Pro',
+                'site_logo' => null,
+                'favicon' => null,
+                'is_rtl' => false,
+                'currency' => 1,
+                'package_id' => 1,
+                'subscription_type' => 'yearly',
+                'staff_access' => 'all',
+                'without_stock' => 'yes',
+                'date_format' => 'd-m-Y',
+                'developed_by' => 'zoloERP',
+                'invoice_format' => 'standard',
+                'decimal' => 2,
+                'state' => 1,
+                'theme' => 'default.css',
+                'modules' => null,
+                'currency_position' => 'prefix',
+                'expiry_date' => null,
+                'expiry_type' => null,
+                'expiry_value' => null,
+                'expiry_alert_days' => 0,
+                'is_zatca' => false,
+                'company_name' => 'zoloERP',
+                'vat_registration_number' => null,
+                'is_packing_slip' => false,
+                'app_key' => null,
+                'token' => null,
+                'show_products_details_in_sales_table' => 0,
+                'show_products_details_in_purchase_table' => 0,
+                'default_margin_value' => 0,
+                'timezone' => 'Asia/Kolkata',
+                'font_css' => null,
+                'auth_css' => null,
+                'pos_css' => null,
+                'custom_css' => null,
+                'disable_signup' => 1,
+                'disable_forgot_password' => 0,
+                'margin_type' => 'percentage',
+            ];
         });
 
         // ✅ Timezone setup
@@ -73,15 +113,15 @@ class Common
         }
         $currency = $remember('currency', 60*60*24*365, function () {
             $settingData = DB::table('general_settings')->select('currency')->latest()->first();
-            return \App\Models\Currency::find($settingData->currency);
+            return $settingData?->currency ? \App\Models\Currency::find($settingData->currency) : \App\Models\Currency::first();
         });
 
         if ($company?->base_currency_id) {
-            $currency = \App\Models\Currency::findOrFail($company->base_currency_id);
+            $currency = \App\Models\Currency::find($company->base_currency_id) ?? $currency;
         }
         View::share('general_setting', $general_setting);
         View::share('currency', $currency);
-        config(['staff_access' => $general_setting->staff_access, 'is_packing_slip' => $general_setting->is_packing_slip, 'date_format' => $general_setting->date_format, 'currency' => $currency->symbol ?? $currency->code, 'currency_position' => $general_setting->currency_position, 'decimal' => $general_setting->decimal, 'is_zatca' => $general_setting->is_zatca, 'company_name' => $company?->legal_name ?? $general_setting->company_name, 'vat_registration_number' => $general_setting->vat_registration_number, 'without_stock' => $general_setting->without_stock, 'addons' => $general_setting->modules]);
+        config(['staff_access' => $general_setting?->staff_access, 'is_packing_slip' => $general_setting?->is_packing_slip, 'date_format' => $general_setting?->date_format, 'currency' => $currency?->symbol ?? $currency?->code ?? '₹', 'currency_position' => $general_setting?->currency_position, 'decimal' => $general_setting?->decimal, 'is_zatca' => $general_setting?->is_zatca, 'company_name' => $company?->legal_name ?? $general_setting?->company_name, 'vat_registration_number' => $general_setting?->vat_registration_number, 'without_stock' => $general_setting?->without_stock, 'addons' => $general_setting?->modules]);
 
         $alert_product = $context ? 0 : DB::table('products')->when($context, fn ($q) => $q->where('company_id', $context->companyId))->where('is_active', true)->whereColumn('alert_quantity', '>', 'qty')->count();
         $dso_alert_product = $context ? null : DB::table('dso_alerts')->select('number_of_products')->whereDate('created_at', date("Y-m-d"))->first();

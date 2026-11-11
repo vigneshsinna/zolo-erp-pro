@@ -1,0 +1,207 @@
+{
+  "pack": "zoloERP AI Operating Layer v2",
+  "created": "2026-11-10",
+  "repository": "vigneshsinna/zolo-erp-pro",
+  "reviewed_branch": "refactor/erp-copilot-stabilization",
+  "reviewed_sha": "6ded3715275e7ad8bd60eb7410428af03e4fc304",
+  "existing_docs_replaced": 25,
+  "new_docs_added": 12,
+  "total_docs": 37,
+  "files": [
+    {
+      "path": "IMPLEMENTATION_MASTER_PLAN.md",
+      "sha256": "9ce116a82e39cc000e9ad11b6b65fa7a6f16f1a19ecc599740ed13a1775d2aa0",
+      "bytes": 2810
+    },
+    {
+      "path": "REPLACEMENT_GUIDE.md",
+      "sha256": "1b5ef4e3f353382c60c3ba5f0c0fc968ba368f63acf761cd02ca9f3ce572b99c",
+      "bytes": 1789
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/01_REPOSITORY_BASELINE.md",
+      "sha256": "49d2ec9b7cc6adc2a6283609474d7fa68e1ed87d4a2091ca898ed71554fb25ce",
+      "bytes": 5384
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/02_OPEN_SOURCE_STACK.md",
+      "sha256": "be0a9a7068f73f2562aaf2c578aaf858336bdc8242df148138af487d2474040d",
+      "bytes": 3998
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md",
+      "sha256": "9135b9ae7c89f816559a7de3a196269be61176940c800fa147a3e7b76c2142f7",
+      "bytes": 4876
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/04_SECURITY_AND_TENANCY.md",
+      "sha256": "7489cfb4cb6b5eae1b1ff5a6bb57cad641252784ad1b27baf82ee7e00735aa9d",
+      "bytes": 4791
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/05_INSTALLATION.md",
+      "sha256": "4bceb510053d958f20b9fa03224ee6dc7cd7d8c55bdad584921a313a0e43eb98",
+      "bytes": 3762
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md",
+      "sha256": "a306b2a1a1269ed8e86a4325c7b1d067d113dee1645578620895f5f704cd3be6",
+      "bytes": 5378
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/07_LARAVEL_AI_SDK.md",
+      "sha256": "24ae9fb9b4a68b8fe7feb3f4bf9ea5392aa535b1413f0577fc03705568245ed0",
+      "bytes": 4117
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/08_ERP_TOOL_REGISTRY.md",
+      "sha256": "4a037ae86e7c9442d57554745ff50da8af22d502eada5ecf8355b5fd5bd3e6e4",
+      "bytes": 4231
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/09_FIRST_VERTICAL_SLICE.md",
+      "sha256": "9b453698cca88e7cd61cfb0055c582e25f63805ab867ee1e4ef92b8b152c9089",
+      "bytes": 3446
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/10_AGENT_CATALOG.md",
+      "sha256": "31a7e0bb778fc388086eb61ad96a111c616de0afc7089797501c41be15378d10",
+      "bytes": 3660
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/11_MCP_INTEGRATION.md",
+      "sha256": "737282fbd69198a9c85425c23e0e351d012d7c01abb0b60cfaff395306b87406",
+      "bytes": 2436
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/12_APPROVAL_AND_ACTIONS.md",
+      "sha256": "451e6acf2d2179fca22580562b9951b685cf5c6627b076f69cfcf88a3d282f9b",
+      "bytes": 4401
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/13_API_AND_FRONTEND.md",
+      "sha256": "07539411e6c5328a212c06fa556d57c05193cddd737630054dc33f7f06fffccc",
+      "bytes": 3778
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/14_HORIZON_AND_QUEUES.md",
+      "sha256": "92360924b8b7f3fc6246ee6085a27385470aacaf97989faf64f5e02ccfacdb2a",
+      "bytes": 3197
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md",
+      "sha256": "34a80ffc133b4a0d7b035cbcfb9ad66c12906f87995c1805da93f3cac9280344",
+      "bytes": 2519
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/16_LANGFUSE_OBSERVABILITY.md",
+      "sha256": "a7ff614accb108f4069cb84ef4182a57f4f64b14db5ffc0b5afc29482a0fb81d",
+      "bytes": 3317
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/17_OPTIONAL_NEURON_OLLAMA.md",
+      "sha256": "e403f091220348d87e851657fcc8916ff5b80bc834f46c90c8de6c0865d40033",
+      "bytes": 1995
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/18_TESTING_AND_EVALUATIONS.md",
+      "sha256": "71aefd46d11fff3cd49b4993d7263f4623ceb0d12ee068390834ee4bf6c908f2",
+      "bytes": 3881
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/19_CI_CD_AND_PRODUCTION.md",
+      "sha256": "54369410d2a3428ac20eea264c64fa4a9fb8191e160dd4e96dafac0082d7e6d8",
+      "bytes": 3582
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md",
+      "sha256": "9e4baa050dadd30eacd2db6d2d443455be8a8cf2d1b2070d481df7e6dbbd84b7",
+      "bytes": 5977
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/21_ROLLOUT_AND_OPERATIONS.md",
+      "sha256": "6dcedf56e7fcb298e85a7270018ce7a57f4e9f0d8c884529c5ad3cc6fbb26b27",
+      "bytes": 3226
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/22_DECISIONS_AND_ASSUMPTIONS.md",
+      "sha256": "5e5fa24cad6b12af2d81f2fde1eddff199002997010043486f1a68b13853951d",
+      "bytes": 3621
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/23_CODING_AGENT_HANDOFF.md",
+      "sha256": "99b5c13c56892cc0d54e80a60f0a26e9800fe6192bff32de445232a0d62609f4",
+      "bytes": 3928
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/24_SOURCE_REFERENCES.md",
+      "sha256": "dc5d91e38da2a2c0859860d88832494174302575373a8e64cbc308fd9bef1363",
+      "bytes": 3182
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/25_PRODUCT_VISION_AND_AUTONOMY.md",
+      "sha256": "0f75cdc5c7a7602d3b2aab32ec0a737daefafa5a086daf53842715fe9669864f",
+      "bytes": 5057
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/26_COMMAND_CENTER_UX.md",
+      "sha256": "21105266a4061350d28ad885f32c408a61c746ce6d1619d98fa29214a07fcfe1",
+      "bytes": 5284
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md",
+      "sha256": "dc944ae40e18c6c401bcbae749293fc1ac570f64119dce09f9792460cae6e07b",
+      "bytes": 5080
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md",
+      "sha256": "ef442972ba860e9a3fa2509505642ad06d0ed4c02ece5084e2f42c5ff3ab6b45",
+      "bytes": 5736
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md",
+      "sha256": "5ec5d9bedc04e29121a91babbe9e1c20ba0864e794d5e9994aa97e9a07d8654c",
+      "bytes": 5586
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/30_PURCHASE_WORKFLOWS.md",
+      "sha256": "ca7f73c75d0c2cdbe50296a4e8468630074086ece850dfca7b3795ed9b490c05",
+      "bytes": 6318
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md",
+      "sha256": "81ab00c746477d4c8818c60dd069a47590fbc529d911215548bb3c7eab7cb1b5",
+      "bytes": 5001
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/32_INVENTORY_FINANCE_MANUFACTURING.md",
+      "sha256": "51d4ca6c7b6257eed4f1f1edf38444ae231428018b4b58751ee6553d4455196a",
+      "bytes": 4955
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/33_MASTERS_OTHER_MODULES.md",
+      "sha256": "28423cc5c4f19fa8c632d39526df15603791e92f8491b7f01eac791af427a762",
+      "bytes": 4514
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/34_DOCUMENT_AND_BULK_ENTRY.md",
+      "sha256": "fb5fb59959bfc50899f4dd746c362ff02546b2f7e3d74110758863045d87e797",
+      "bytes": 4312
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/35_SCENARIO_EVALUATION_CATALOG.md",
+      "sha256": "66c5c157c1f5784f1954698b33f3c834a0619dc376cca3fb2ec96eb34d5127d1",
+      "bytes": 5348
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/36_REPLACEMENT_MIGRATION_AND_RELEASE_GATES.md",
+      "sha256": "31c92d0c7ffbd9c93a60f3ea0e33bdefbf75c215f12cd6d04cc3c123f449fe52",
+      "bytes": 5484
+    },
+    {
+      "path": "docs/zoloerp-ai-agent-implementation/docs/ai/README.md",
+      "sha256": "c61cb57620e5326c5801d3df3a1177219222247afef6aa8518e36b757237ecae",
+      "bytes": 6703
+    }
+  ]
+}
