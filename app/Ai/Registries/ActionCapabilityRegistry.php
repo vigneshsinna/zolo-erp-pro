@@ -87,4 +87,24 @@ final class ActionCapabilityRegistry
             ));
         }
     }
+
+    public function registerCommercialCapabilities(): void
+    {
+        if (!$this->has('purchase_order.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'purchase_order.create.v1',
+                businessModule: 'commercial',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use', 'purchases-add'],
+                inputSchemaClass: \App\Ai\Schemas\CreatePurchaseOrderInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\PurchaseOrderPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\PurchaseOrderCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                requiresFreshSnapshot: false,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+    }
 }

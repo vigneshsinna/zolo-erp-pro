@@ -142,5 +142,41 @@ class VerifiedSummaryBuilderTest extends TestCase
         $this->assertStringContainsString('Main Warehouse', $summary);
         $this->assertStringContainsString('₹125,000.00', $summary);
     }
+
+    public function test_purchase_order_proposal_formats_deterministic_preview(): void
+    {
+        $facts = [
+            [
+                'tool' => 'purchase_order.create.v1',
+                'as_of' => '2026-11-11',
+                'reconciled' => true,
+                'data' => [
+                    'supplier' => ['name' => 'Sri Lakshmi Cotton Ltd'],
+                    'warehouse' => ['name' => 'Main Yarn Store'],
+                    'date' => '2026-11-11',
+                    'totals' => [
+                        'total_qty' => '75.00',
+                        'subtotal' => '19500.00',
+                        'tax_total' => '975.00',
+                        'grand_total' => '20475.00',
+                    ],
+                    'items' => [
+                        ['product_name' => 'Combed Cotton Yarn 40s', 'qty' => '50.00'],
+                        ['product_name' => 'Carded Cotton Yarn 60s', 'qty' => '25.00'],
+                    ],
+                ],
+            ],
+        ];
+
+        $summary = $this->builder->build($facts);
+
+        $this->assertStringContainsString('Purchase Order Proposal (Status: Ordered)', $summary);
+        $this->assertStringContainsString('Sri Lakshmi Cotton Ltd', $summary);
+        $this->assertStringContainsString('Main Yarn Store', $summary);
+        $this->assertStringContainsString('2 lines (Qty: 75.00)', $summary);
+        $this->assertStringContainsString('₹19500.00', $summary);
+        $this->assertStringContainsString('₹20475.00', $summary);
+        $this->assertStringContainsString('This draft proposal requires explicit approval', $summary);
+    }
 }
 

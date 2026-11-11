@@ -193,6 +193,8 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')
     Route::get('threads/{id}', 'showThread')->whereUuid('id')->name('threads.show');
     Route::post('chat', 'chat')->name('chat');
     Route::get('proposals', 'proposals')->name('proposals.index');
+    Route::post('proposals', 'propose')->name('proposals.store');
+    Route::post('proposals/{id}/change-request', 'changeRequest')->whereUuid('id')->name('proposals.change-request');
     Route::post('proposals/{id}/approve', 'approveProposal')->whereUuid('id')->name('proposals.approve');
     Route::post('proposals/{id}/reject', 'rejectProposal')->whereUuid('id')->name('proposals.reject');
 });

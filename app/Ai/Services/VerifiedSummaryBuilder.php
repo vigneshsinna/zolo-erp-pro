@@ -44,6 +44,7 @@ class VerifiedSummaryBuilder
                 'documents.preview.v1' => $this->summarizeDocumentPreview($data),
                 'knowledge.query.v1' => $this->summarizeKnowledge($data),
                 'copilot.help.v1' => $this->summarizeHelp($data),
+                'purchase_order.create.v1' => $this->summarizePurchaseOrderProposal($data),
                 default => $this->summarizeGeneric($tool, $data),
             };
 
@@ -411,6 +412,29 @@ class VerifiedSummaryBuilder
         }
 
         return implode("\n\n", $lines);
+    }
+
+    protected function summarizePurchaseOrderProposal(array $data): string
+    {
+        $supplier = $data['supplier']['name'] ?? 'Supplier';
+        $warehouse = $data['warehouse']['name'] ?? 'Warehouse';
+        $date = $data['date'] ?? now()->toDateString();
+        $totals = $data['totals'] ?? [];
+        $grandTotal = $totals['grand_total'] ?? '0.00';
+        $itemCount = count($data['items'] ?? []);
+
+        $lines = [];
+        $lines[] = "### Purchase Order Proposal (Status: Ordered)";
+        $lines[] = "- **Supplier:** {$supplier}";
+        $lines[] = "- **Warehouse:** {$warehouse}";
+        $lines[] = "- **Order Date:** {$date}";
+        $lines[] = "- **Total Items:** {$itemCount} lines (Qty: " . ($totals['total_qty'] ?? '0.00') . ")";
+        $lines[] = "- **Subtotal:** ₹" . ($totals['subtotal'] ?? '0.00');
+        $lines[] = "- **Tax Total:** ₹" . ($totals['tax_total'] ?? '0.00');
+        $lines[] = "- **Grand Total:** ₹{$grandTotal}";
+        $lines[] = "\n*This draft proposal requires explicit approval before placing the order in the purchase order register.*";
+
+        return implode("\n", $lines);
     }
 
     protected function summarizeHelp(array $data): string

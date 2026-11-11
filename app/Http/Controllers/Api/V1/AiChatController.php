@@ -162,18 +162,177 @@ class AiChatController extends Controller
 
     public function proposals(Request $request): JsonResponse
     {
-        return $this->accessDenial($this->principal($request))
-            ?? $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+        }
+
+        $rows = DB::table('ai_action_proposals')
+            ->where('company_id', $principal->companyId)
+            ->where('branch_id', $principal->branchId)
+            ->where('financial_year_id', $principal->financialYearId)
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'proposals' => $rows->map(function ($row) {
+                return [
+                    'id' => $row->id,
+                    'action_key' => $row->action_key,
+                    'action_title' => $row->action_title,
+                    'risk_tier' => $row->risk_tier,
+                    'version' => (int) $row->version,
+                    'status' => $row->status,
+                    'payload_hash' => $row->payload_hash,
+                    'source_state_hash' => $row->source_state_hash,
+                    'preview' => json_decode((string) $row->preview_json, true) ?? [],
+                    'expires_at' => $row->expires_at,
+                    'created_at' => $row->created_at,
+                ];
+            }),
+        ]);
     }
 
-    public function approveProposal(Request $request): JsonResponse
+    public function propose(Request $request): JsonResponse
     {
-        return $this->proposals($request);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+        }
+
+        $actionKey = (string) $request->input('action_key');
+        $slots = (array) $request->input('slots', []);
+        $threadId = $request->input('thread_id') ? (string) $request->input('thread_id') : null;
+
+        $proposal = app(\App\Ai\Services\ActionProposalService::class)->create($principal, $actionKey, $slots, $threadId);
+
+        return response()->json([
+            'status' => 'pending',
+            'proposal' => [
+                'id' => $proposal['id'],
+                'action_key' => $proposal['action_key'],
+                'version' => (int) $proposal['version'],
+                'payload_hash' => $proposal['payload_hash'],
+                'source_state_hash' => $proposal['source_state_hash'],
+                'preview' => json_decode((string) $proposal['preview_json'], true) ?? [],
+                'expires_at' => $proposal['expires_at'],
+            ],
+        ], 201);
     }
 
-    public function rejectProposal(Request $request): JsonResponse
+    public function changeRequest(Request $request, string $id): JsonResponse
     {
-        return $this->proposals($request);
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+        }
+
+        $changes = (array) $request->input('changes', []);
+        $expectedVersion = (int) $request->input('expected_version', 1);
+
+        $proposal = app(\App\Ai\Services\ActionProposalService::class)->applyChangeRequest(
+            $principal,
+            $id,
+            $changes,
+            $expectedVersion
+        );
+
+        return response()->json([
+            'status' => 'pending',
+            'proposal' => [
+                'id' => $proposal['id'],
+                'version' => (int) $proposal['version'],
+                'payload_hash' => $proposal['payload_hash'],
+                'source_state_hash' => $proposal['source_state_hash'],
+                'preview' => json_decode((string) $proposal['preview_json'], true) ?? [],
+                'expires_at' => $proposal['expires_at'],
+            ],
+        ]);
+    }
+
+    public function approveProposal(Request $request, string $id): JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+        }
+
+        $expectedVersion = (int) $request->input('expected_version', 1);
+
+        if (config('ai_actions.execution_enabled', false)) {
+            $existingExecution = DB::table('ai_action_executions')
+                ->where('company_id', $principal->companyId)
+                ->where('proposal_id', $id)
+                ->where('version', $expectedVersion)
+                ->first();
+
+            if ($existingExecution && $existingExecution->status === 'completed') {
+                $execution = app(\App\Ai\Services\ApprovedActionExecutor::class)->execute($principal, $id, $expectedVersion);
+                return response()->json([
+                    'status' => 'completed',
+                    'proposal_id' => $id,
+                    'version' => $expectedVersion,
+                    'execution' => $execution,
+                ]);
+            }
+        }
+
+        $approval = app(\App\Ai\Services\ActionApprovalService::class)->approve($principal, $id, $expectedVersion);
+
+        if (config('ai_actions.execution_enabled', false)) {
+            $execution = app(\App\Ai\Services\ApprovedActionExecutor::class)->execute($principal, $id, $expectedVersion);
+            return response()->json([
+                'status' => 'completed',
+                'proposal_id' => $id,
+                'version' => $expectedVersion,
+                'execution' => $execution,
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'approved',
+            'proposal_id' => $id,
+            'version' => $expectedVersion,
+            'approval' => $approval,
+        ]);
+    }
+
+    public function rejectProposal(Request $request, string $id): JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        if (!config('ai_actions.foundation_enabled', false)) {
+            return $this->error('AI_ACTIONS_DISABLED', 'Copilot action proposals are unavailable.', 403);
+        }
+
+        $expectedVersion = (int) $request->input('expected_version', 1);
+
+        app(\App\Ai\Services\ActionProposalService::class)->reject($principal, $id, $expectedVersion);
+
+        return response()->json([
+            'status' => 'cancelled',
+            'proposal_id' => $id,
+        ]);
     }
 
     public function createThread(Request $request): JsonResponse

@@ -233,6 +233,8 @@ Route::prefix('v1')->group(function () {
             Route::get('threads/{id}', [\App\Http\Controllers\Api\V1\AiChatController::class, 'showThread'])->whereUuid('id')->name('api.v1.ai.threads.show');
             Route::post('chat', [\App\Http\Controllers\Api\V1\AiChatController::class, 'chat'])->name('api.v1.ai.chat');
             Route::get('proposals', [\App\Http\Controllers\Api\V1\AiChatController::class, 'proposals'])->name('api.v1.ai.proposals.index');
+            Route::post('proposals', [\App\Http\Controllers\Api\V1\AiChatController::class, 'propose'])->name('api.v1.ai.proposals.store');
+            Route::post('proposals/{id}/change-request', [\App\Http\Controllers\Api\V1\AiChatController::class, 'changeRequest'])->whereUuid('id')->name('api.v1.ai.proposals.change-request');
             Route::post('proposals/{id}/approve', [\App\Http\Controllers\Api\V1\AiChatController::class, 'approveProposal'])->whereUuid('id')->name('api.v1.ai.proposals.approve');
             Route::post('proposals/{id}/reject', [\App\Http\Controllers\Api\V1\AiChatController::class, 'rejectProposal'])->whereUuid('id')->name('api.v1.ai.proposals.reject');
         });

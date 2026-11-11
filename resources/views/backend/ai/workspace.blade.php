@@ -813,6 +813,102 @@
                 }
                 card.append(cardBody);
                 bubble.append(card);
+            } else if (fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1') {
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> Purchase Order Proposal · ' + $('<div>').text(data.supplier?.name || 'Supplier').html() + '</span>'));
+                cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Requires Approval</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+                cardBody.append('<div class="row no-gutters mb-2 ai-diff-row">' +
+                    '<div class="col-6">Warehouse: <strong>' + $('<div>').text(data.warehouse?.name || '').html() + '</strong></div>' +
+                    '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
+                    '</div>');
+
+                if (data.items && data.items.length > 0) {
+                    const tableWrapper = $('<div class="table-responsive my-2"></div>');
+                    const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
+                    table.append('<thead class="thead-light"><tr>' +
+                        '<th>Item</th>' +
+                        '<th class="text-right">Qty</th>' +
+                        '<th class="text-right">Cost</th>' +
+                        '<th class="text-right">Total</th>' +
+                        '</tr></thead>');
+
+                    const tbody = $('<tbody></tbody>');
+                    data.items.forEach(function(item) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td></td>').append($('<div class="font-weight-bold"></div>').text(item.product_name || item.product_code || 'Product')).append($('<small class="text-muted"></small>').text(item.product_code || '')));
+                        tr.append($('<td class="text-right"></td>').text(item.qty));
+                        tr.append($('<td class="text-right"></td>').text(currencySymbol + item.net_unit_cost));
+                        tr.append($('<td class="text-right font-weight-bold"></td>').text(currencySymbol + (item.line_total || item.total || '0.00')));
+                        tbody.append(tr);
+                    });
+                    table.append(tbody);
+                    tableWrapper.append(table);
+                    cardBody.append(tableWrapper);
+                }
+
+                const totals = data.totals || {};
+                const footer = $('<div class="border-top pt-2"></div>');
+                const totalsRow = $('<div class="row no-gutters small text-muted mb-2">' +
+                    '<div class="col-4">Subtotal: <strong class="text-dark">' + currencySymbol + (totals.subtotal || '0.00') + '</strong></div>' +
+                    '<div class="col-4 text-center">Tax: <strong class="text-dark">' + currencySymbol + (totals.tax_total || '0.00') + '</strong></div>' +
+                    '<div class="col-4 text-right">Grand Total: <strong class="text-dark font-weight-bold">' + currencySymbol + (totals.grand_total || '0.00') + '</strong></div>' +
+                    '</div>');
+                footer.append(totalsRow);
+
+                if (data.proposal_id) {
+                    const actionRow = $('<div class="d-flex justify-content-end align-items-center mt-2 pt-2 border-top"></div>');
+                    const btnApprove = $('<button type="button" class="btn btn-sm btn-success mr-2 py-1 px-3"><i class="dripicons-checkmark mr-1"></i>Approve & Place Order</button>');
+                    const btnReject = $('<button type="button" class="btn btn-sm btn-outline-danger py-1 px-3"><i class="dripicons-cross mr-1"></i>Reject</button>');
+
+                    btnApprove.on('click', function() {
+                        btnApprove.prop('disabled', true).text('Approving...');
+                        btnReject.prop('disabled', true);
+                        $.ajax({
+                            url: '/api/v1/ai/proposals/' + data.proposal_id + '/approve',
+                            method: 'POST',
+                            headers: headers,
+                            data: JSON.stringify({ expected_version: data.version || 1 }),
+                            success: function(res) {
+                                actionRow.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>Order Placed: PO #' + (res.execution?.receipt?.details?.reference_no || res.proposal_id) + '</span>');
+                            },
+                            error: function(xhr) {
+                                btnApprove.prop('disabled', false).text('Approve & Place Order');
+                                btnReject.prop('disabled', false);
+                                alert('Approval failed: ' + (xhr.responseJSON?.error_message || 'Unexpected error'));
+                            }
+                        });
+                    });
+
+                    btnReject.on('click', function() {
+                        btnApprove.prop('disabled', true);
+                        btnReject.prop('disabled', true).text('Rejecting...');
+                        $.ajax({
+                            url: '/api/v1/ai/proposals/' + data.proposal_id + '/reject',
+                            method: 'POST',
+                            headers: headers,
+                            data: JSON.stringify({ expected_version: data.version || 1 }),
+                            success: function(res) {
+                                actionRow.html('<span class="badge badge-secondary p-2"><i class="dripicons-cross mr-1"></i>Proposal Cancelled</span>');
+                            },
+                            error: function(xhr) {
+                                btnApprove.prop('disabled', false);
+                                btnReject.prop('disabled', false).text('Reject');
+                                alert('Rejection failed: ' + (xhr.responseJSON?.error_message || 'Unexpected error'));
+                            }
+                        });
+                    });
+
+                    actionRow.append(btnApprove).append(btnReject);
+                    footer.append(actionRow);
+                }
+
+                cardBody.append(footer);
+                card.append(cardBody);
+                bubble.append(card);
             }
         });
 

@@ -88,7 +88,12 @@ class AiServiceProvider extends ServiceProvider
         ));
         $this->app->scoped(ApprovedModelGateway::class);
         $this->app->singleton(AiPrincipalFactory::class);
-        $this->app->singleton(\App\Ai\Registries\ActionCapabilityRegistry::class);
+        $this->app->singleton(\App\Ai\Registries\ActionCapabilityRegistry::class, function () {
+            $registry = new \App\Ai\Registries\ActionCapabilityRegistry();
+            $registry->registerSetupCapabilities();
+            $registry->registerCommercialCapabilities();
+            return $registry;
+        });
         $this->app->singleton(\App\Ai\Registries\SetupCapabilityRegistry::class);
         $this->app->singleton(\App\Ai\Services\ActionApprovalSignature::class);
     }
