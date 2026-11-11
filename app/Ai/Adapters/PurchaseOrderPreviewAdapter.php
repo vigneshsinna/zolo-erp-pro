@@ -217,6 +217,12 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
         $subtotal = $totalPrice - $totalTax;
         $roundOff = (float) ($pricingResult['round_off'] ?? 0);
 
+        $normalizedPayload['expected_totals'] = [
+            'grand_total' => sprintf('%.2f', $grandTotal),
+            'tax_total' => sprintf('%.2f', $totalTax),
+            'total_price' => sprintf('%.2f', $totalPrice),
+        ];
+
         $previewData = [
             'document_type' => 'Purchase Order (Status: Ordered)',
             'supplier' => [
@@ -267,7 +273,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
 
     /**
      * Compute a deterministic SHA-256 hash representing the current business state of the
-     * underlying entities that this purchase order depends upon (supplier, warehouse, products, tax).
+     * underlying entities that this purchase order depends upon (supplier, warehouse, fiscal year, products, tax).
      */
     public static function computeSourceStateHash(
         CompanyContext $context,
@@ -287,11 +293,33 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ->select(['id', 'branch_id', 'is_active', 'updated_at'])
             ->first();
 
+        $fiscalYear = DB::table('fiscal_years')
+            ->where('company_id', $context->companyId)
+            ->where('id', $context->financialYearId)
+            ->select(['id', 'status', 'is_closed', 'lock_date', 'start_date', 'end_date', 'updated_at'])
+            ->first();
+
         $products = DB::table('products')
             ->where('company_id', $context->companyId)
             ->whereIn('id', $productIds)
             ->orderBy('id')
             ->select(['id', 'cost', 'price', 'is_active', 'tax_category_id', 'tax_id', 'hsn_code', 'unit_id', 'purchase_unit_id', 'updated_at'])
+            ->get();
+
+        $taxCategoryIds = $products->pluck('tax_category_id')->filter()->unique()->values()->all();
+
+        $taxCategories = DB::table('tax_categories')
+            ->where('company_id', $context->companyId)
+            ->whereIn('id', $taxCategoryIds)
+            ->orderBy('id')
+            ->select(['id', 'name', 'supply_type', 'input_credit_allowed', 'updated_at'])
+            ->get();
+
+        $taxRates = DB::table('tax_rates')
+            ->where('company_id', $context->companyId)
+            ->whereIn('tax_category_id', $taxCategoryIds)
+            ->orderBy('id')
+            ->select(['id', 'tax_category_id', 'rate', 'cess_rate', 'effective_from', 'effective_to', 'updated_at'])
             ->get();
 
         $taxRegistrations = DB::table('tax_registrations')
@@ -306,9 +334,12 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'company_id' => $context->companyId,
             'branch_id' => $context->branchId,
             'financial_year_id' => $context->financialYearId,
+            'fiscal_year' => $fiscalYear ? (array) $fiscalYear : null,
             'supplier' => $supplier ? (array) $supplier : null,
             'warehouse' => $warehouse ? (array) $warehouse : null,
             'products' => $products->map(fn($p) => (array) $p)->all(),
+            'tax_categories' => $taxCategories->map(fn($c) => (array) $c)->all(),
+            'tax_rates' => $taxRates->map(fn($r) => (array) $r)->all(),
             'tax_registrations' => $taxRegistrations->map(fn($r) => (array) $r)->all(),
         ];
 

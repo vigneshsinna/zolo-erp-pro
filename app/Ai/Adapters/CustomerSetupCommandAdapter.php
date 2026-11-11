@@ -9,8 +9,10 @@ use App\Ai\DTOs\ActionDefinition;
 use App\Ai\DTOs\ActionExecutionReceipt;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Models\Customer;
+use App\Services\Commercial\CommercialPermission;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class CustomerSetupCommandAdapter implements ActionCommandAdapterInterface
 {
@@ -26,12 +28,38 @@ final class CustomerSetupCommandAdapter implements ActionCommandAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for customer setup execution.');
         }
 
+        // 1. Assert action-specific Spatie permission
+        app(CommercialPermission::class)->assert('customers-add', $context, $actorId);
+
+        // 2. Idempotency recovery
         $existing = $this->recover($idempotencyKey, $context);
         if ($existing !== null) {
             return $existing;
         }
 
-        $customer = DB::transaction(function () use ($context, $payload) {
+        $name = (string) ($payload['name'] ?? '');
+        $customerGroupId = !empty($payload['customer_group_id']) ? (int) $payload['customer_group_id'] : null;
+        $taxNo = !empty($payload['tax_no']) ? (string) $payload['tax_no'] : null;
+
+        // 3. Enforce source-state hash
+        $currentSourceStateHash = CustomerSetupPreviewAdapter::computeSourceStateHash($context, $name, $customerGroupId, $taxNo);
+        if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
+            throw ValidationException::withMessages([
+                'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
+            ]);
+        }
+
+        $customer = DB::transaction(function () use ($context, $payload, $customerGroupId) {
+            if ($customerGroupId !== null) {
+                $groupExists = DB::table('customer_groups')
+                    ->where('company_id', $context->companyId)
+                    ->where('id', $customerGroupId)
+                    ->exists();
+                if (!$groupExists) {
+                    throw ValidationException::withMessages(['customer_group_id' => 'Selected customer group does not belong to the company.']);
+                }
+            }
+
             $row = Customer::where('company_id', $context->companyId)
                 ->where('name', $payload['name'])
                 ->first();

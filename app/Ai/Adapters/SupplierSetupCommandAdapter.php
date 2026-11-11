@@ -9,8 +9,10 @@ use App\Ai\DTOs\ActionDefinition;
 use App\Ai\DTOs\ActionExecutionReceipt;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Models\Supplier;
+use App\Services\Commercial\CommercialPermission;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class SupplierSetupCommandAdapter implements ActionCommandAdapterInterface
 {
@@ -26,9 +28,24 @@ final class SupplierSetupCommandAdapter implements ActionCommandAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for supplier setup execution.');
         }
 
+        // 1. Assert action-specific Spatie permission
+        app(CommercialPermission::class)->assert('suppliers-add', $context, $actorId);
+
+        // 2. Idempotency recovery
         $existing = $this->recover($idempotencyKey, $context);
         if ($existing !== null) {
             return $existing;
+        }
+
+        $name = (string) ($payload['name'] ?? '');
+        $vatNumber = !empty($payload['vat_number']) ? (string) $payload['vat_number'] : null;
+
+        // 3. Enforce source-state hash
+        $currentSourceStateHash = SupplierSetupPreviewAdapter::computeSourceStateHash($context, $name, $vatNumber);
+        if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
+            throw ValidationException::withMessages([
+                'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
+            ]);
         }
 
         $supplier = DB::transaction(function () use ($context, $payload) {

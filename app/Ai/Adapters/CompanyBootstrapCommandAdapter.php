@@ -24,7 +24,8 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
 {
     public function __construct(
         private readonly CompanyDirectoryService $directory,
-    ) {}
+    ) {
+    }
 
     public function execute(
         ActionDefinition $definition,
@@ -42,7 +43,7 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
 
         // 2. Safe Domain Reconciliation: Check if company was already committed to the ERP database
         // (e.g. process died or connection timed out after CompanyDirectoryService committed but before AI receipt was saved)
-        $reconciled = $this->reconcileCommittedCompany($payload, $actorId);
+        $reconciled = $this->reconcileCommittedCompany($payload, $actorId, $idempotencyKey);
         if ($reconciled !== null) {
             return $reconciled;
         }
@@ -123,9 +124,22 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
 
     /**
      * Safely reconcile a company that was committed to the ERP database prior to an AI crash.
+     * Reconciliation is strictly gated by an existing, approved, and active execution claim.
      */
-    public function reconcileCommittedCompany(array $payload, int $actorId): ?ActionExecutionReceipt
+    public function reconcileCommittedCompany(array $payload, int $actorId, string $idempotencyKey): ?ActionExecutionReceipt
     {
+        // Security Invariant: Reconciliation is ONLY permitted for an execution that was already
+        // authenticated, approved, and claimed using the exact proposal idempotency key.
+        $hasActiveClaim = DB::table('ai_action_executions')
+            ->where('idempotency_key', $idempotencyKey)
+            ->where('executor_id', $actorId)
+            ->where('status', 'executing')
+            ->exists();
+
+        if (!$hasActiveClaim) {
+            return null;
+        }
+
         $code = strtoupper(trim((string) ($payload['code'] ?? '')));
         $legalName = trim((string) ($payload['legal_name'] ?? ''));
 

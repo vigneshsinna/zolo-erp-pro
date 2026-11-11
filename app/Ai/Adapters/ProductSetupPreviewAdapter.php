@@ -41,11 +41,41 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             throw ValidationException::withMessages(['code' => 'Product code already exists with different details.']);
         }
 
-        $unitId = !empty($slots['unit_id']) ? (int) $slots['unit_id'] : Unit::where('company_id', $context->companyId)->value('id');
-        $categoryId = !empty($slots['category_id']) ? (int) $slots['category_id'] : Category::where('company_id', $context->companyId)->value('id');
+        $unitId = null;
+        if (!empty($slots['unit_id'])) {
+            $unitId = (int) $slots['unit_id'];
+            if (!Unit::where('company_id', $context->companyId)->where('id', $unitId)->exists()) {
+                throw ValidationException::withMessages(['unit_id' => 'The selected unit does not belong to this company.']);
+            }
+        } else {
+            $unitId = Unit::where('company_id', $context->companyId)->where('is_active', true)->value('id');
+        }
+
+        if (!$unitId) {
+            throw ValidationException::withMessages(['unit_id' => 'No active units configured for this company.']);
+        }
+
+        $categoryId = null;
+        if (!empty($slots['category_id'])) {
+            $categoryId = (int) $slots['category_id'];
+            if (!Category::where('company_id', $context->companyId)->where('id', $categoryId)->exists()) {
+                throw ValidationException::withMessages(['category_id' => 'The selected category does not belong to this company.']);
+            }
+        } else {
+            $categoryId = Category::where('company_id', $context->companyId)->value('id');
+        }
+
         $cost = (float) ($slots['cost'] ?? 0);
         $price = (float) ($slots['price'] ?? 0);
-        $taxCategoryId = !empty($slots['tax_category_id']) ? (int) $slots['tax_category_id'] : null;
+
+        $taxCategoryId = null;
+        if (!empty($slots['tax_category_id'])) {
+            $taxCategoryId = (int) $slots['tax_category_id'];
+            if (!DB::table('tax_categories')->where('company_id', $context->companyId)->where('id', $taxCategoryId)->exists()) {
+                throw ValidationException::withMessages(['tax_category_id' => 'Select a GST rate of this company.']);
+            }
+        }
+
         $hsnCode = !empty($slots['hsn_code']) ? (string) $slots['hsn_code'] : null;
 
         $payload = [
@@ -74,13 +104,43 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'is_existing' => $existing !== null,
         ];
 
-        $sourceStateHash = hash('sha256', 'PRODUCT_SETUP:' . $context->companyId . ':' . $code . ':' . ($existing?->id ?? 'NEW'));
+        $sourceStateHash = self::computeSourceStateHash(
+            $context,
+            $code,
+            $unitId,
+            $categoryId,
+            $taxCategoryId,
+        );
 
         return new ActionPreviewResult(
             payload: $payload,
             preview: $previewData,
             sourceStateHash: $sourceStateHash,
         );
+    }
+
+    public static function computeSourceStateHash(
+        CompanyContext $context,
+        string $code,
+        ?int $unitId,
+        ?int $categoryId,
+        ?int $taxCategoryId,
+    ): string {
+        $existing = Product::where('company_id', $context->companyId)->where('code', $code)->first();
+        $unit = $unitId ? DB::table('units')->where('company_id', $context->companyId)->where('id', $unitId)->select(['id', 'updated_at'])->first() : null;
+        $category = $categoryId ? DB::table('categories')->where('company_id', $context->companyId)->where('id', $categoryId)->select(['id', 'updated_at'])->first() : null;
+        $taxCat = $taxCategoryId ? DB::table('tax_categories')->where('company_id', $context->companyId)->where('id', $taxCategoryId)->select(['id', 'updated_at'])->first() : null;
+
+        $state = [
+            'company_id' => $context->companyId,
+            'code' => $code,
+            'existing_id' => $existing?->id,
+            'unit' => (array) $unit,
+            'category' => (array) $category,
+            'tax_category' => (array) $taxCat,
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }
 
     private function generateSimulatedCode(string $name, int $companyId): string

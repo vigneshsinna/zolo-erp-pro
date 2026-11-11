@@ -44,6 +44,7 @@ final class PurchaseOrderActionTest extends TestCase
         config()->set('commercial.enabled', true);
         config()->set('erp_ai.enabled', true);
         config()->set('erp_ai.read_only', false);
+        $this->app->forgetInstance(\App\Ai\Services\AiFeatureGate::class);
 
         // Ensure roles
         DB::table('roles')->updateOrInsert(['id' => 1], ['name' => 'Admin', 'is_active' => true, 'guard_name' => 'web']);
@@ -531,5 +532,82 @@ final class PurchaseOrderActionTest extends TestCase
         $allAllowed = $this->withHeaders($this->contextHeaders())->getJson('/api/v1/ai/proposals?all=1');
         $allAllowed->assertStatus(200);
         $this->assertNotEmpty(collect($allAllowed->json('proposals'))->where('id', $adminProposalId));
+    }
+
+    public function test_tax_rate_or_fiscal_year_modification_fails_closed_with_source_state_validation_exception(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $response = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id,
+                'items' => [
+                    ['product_id' => $this->productA->id, 'qty' => '10.00', 'net_unit_cost' => '250.00'],
+                ],
+            ],
+        ]);
+        $response->assertStatus(201);
+        $proposalId = $response->json('proposal.id');
+
+        // Mutate underlying state: update fiscal year updated_at
+        DB::table('fiscal_years')->where('id', $this->fiscalYear->id)->update([
+            'updated_at' => now()->addMinutes(10),
+        ]);
+
+        // Attempting to approve proposal must fail closed with 422 source_state
+        $approve = $this->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/proposals/{$proposalId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approve->assertStatus(422);
+        $approve->assertJsonValidationErrors(['source_state']);
+    }
+
+    public function test_order_grand_total_discrepancy_fails_closed_with_totals_validation_error(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $adapter = app(\App\Ai\Adapters\PurchaseOrderCommandAdapter::class);
+        $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get('purchase_order.create.v1');
+        $context = new CompanyContext($this->company->id, $this->branch->id, $this->fiscalYear->id);
+
+        $hash = \App\Ai\Adapters\PurchaseOrderPreviewAdapter::computeSourceStateHash(
+            $context,
+            $this->supplier->id,
+            $this->warehouse->id,
+            [$this->productA->id],
+        );
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'items' => [
+                [
+                    'product_id' => $this->productA->id,
+                    'qty' => '10.00',
+                    'net_unit_cost' => '250.00',
+                    'tax_rate' => '5.00',
+                    'purchase_unit_id' => $this->productA->unit_id,
+                ],
+            ],
+            // Discrepancy: Expected total does not match actual domain calculation
+            'expected_totals' => [
+                'grand_total' => '99999.00',
+            ],
+        ];
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+
+        $adapter->execute(
+            $definition,
+            $payload,
+            $context,
+            $this->adminUser->id,
+            'test-totals-discrepancy-' . uniqid(),
+            $hash,
+        );
     }
 }

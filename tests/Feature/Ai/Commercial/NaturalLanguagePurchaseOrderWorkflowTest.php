@@ -387,10 +387,41 @@ final class NaturalLanguagePurchaseOrderWorkflowTest extends TestCase
             'supplier_id' => $this->supplierA->id,
             'status' => 4,
         ]);
+        $purchase = \App\Models\Purchase::where('company_id', $this->company->id)
+            ->where('supplier_id', $this->supplierA->id)
+            ->first();
 
-        // 4. Action Review Center now reflects Completed
+        // 4. Action Review Center now reflects Completed and displays reference number from result_json
         $afterView = $this->withHeaders($this->contextHeaders())->get('/ai/action-review?status=completed');
         $afterView->assertStatus(200);
         $afterView->assertSee('Completed');
+        $afterView->assertSee('PO #' . $purchase->reference_no);
+
+        // 5. Non-approver user accessing Review Center is restricted to scope=mine and cannot approve
+        DB::table('roles')->updateOrInsert(['id' => 4], ['name' => 'Viewer', 'is_active' => true, 'guard_name' => 'web']);
+        $viewer = User::create([
+            'name' => 'Review Center Viewer',
+            'email' => 'viewer_' . uniqid() . '@example.com',
+            'phone' => '9555555551',
+            'password' => bcrypt('secret'),
+            'role_id' => 4,
+            'is_active' => true,
+            'is_deleted' => false,
+        ]);
+        $this->company->users()->syncWithoutDetaching([$viewer->id => ['is_default' => true]]);
+        DB::table('company_user_branches')->updateOrInsert(
+            ['company_id' => $this->company->id, 'user_id' => $viewer->id, 'branch_id' => $this->branch->id]
+        );
+        $aiUseId = DB::table('permissions')->where('name', 'ai.use')->value('id');
+        if ($aiUseId) {
+            DB::table('role_has_permissions')->updateOrInsert(['permission_id' => $aiUseId, 'role_id' => 4]);
+        }
+
+        $this->actingAs($viewer, 'sanctum');
+        $viewerResponse = $this->withHeaders($this->contextHeaders())->get('/ai/action-review?scope=all');
+        $viewerResponse->assertStatus(200);
+        $this->assertFalse($viewerResponse->viewData('canApprove'));
+        $this->assertSame('mine', $viewerResponse->viewData('scope'));
+        $viewerResponse->assertDontSee('Approve & Place Order');
     }
 }

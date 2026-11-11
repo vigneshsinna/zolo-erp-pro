@@ -35,10 +35,10 @@ final class ActionReviewCenterController extends Controller
             && $featureGate->isEnabledForCompany($context->companyId);
 
         $canApprove = $permissions->allows('ai.action.approve', $context, $actorId)
-            || $permissions->allows('purchases-add', $context, $actorId)
             || (int) $request->user()->role_id === 1;
 
-        $scope = $canApprove ? (string) $request->query('scope', 'all') : 'mine';
+        $requestedScope = (string) $request->query('scope', 'mine');
+        $scope = ($canApprove && $requestedScope === 'all') ? 'all' : 'mine';
         $statusFilter = (string) $request->query('status', 'all');
 
         $proposals = collect();
@@ -105,7 +105,7 @@ final class ActionReviewCenterController extends Controller
             $proposals = $rawProposals->map(function ($row) use ($actors, $executions) {
                 $preview = json_decode((string) ($row->preview_json ?? '{}'), true) ?? [];
                 $execution = $executions[$row->id] ?? null;
-                $receipt = $execution ? json_decode((string) ($execution->execution_receipt_json ?? '{}'), true) : [];
+                $receipt = $execution ? (json_decode((string) ($execution->result_json ?? '{}'), true) ?? []) : [];
 
                 return (object) [
                     'id' => $row->id,

@@ -43,9 +43,19 @@ final class CustomerSetupPreviewAdapter implements ActionPreviewAdapterInterface
                 }
             })->first();
 
-        $customerGroupId = !empty($slots['customer_group_id'])
-            ? (int) $slots['customer_group_id']
-            : (int) (DB::table('customer_groups')->where('company_id', $context->companyId)->value('id') ?? 1);
+        if (!empty($slots['customer_group_id'])) {
+            $customerGroupId = (int) $slots['customer_group_id'];
+            $groupExists = DB::table('customer_groups')
+                ->where('company_id', $context->companyId)
+                ->where('id', $customerGroupId)
+                ->exists();
+
+            if (!$groupExists) {
+                throw ValidationException::withMessages(['customer_group_id' => 'Selected customer group does not belong to the company.']);
+            }
+        } else {
+            $customerGroupId = (int) (DB::table('customer_groups')->where('company_id', $context->companyId)->value('id') ?? 1);
+        }
 
         $payload = [
             'name' => $name,
@@ -69,13 +79,49 @@ final class CustomerSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'is_existing' => $existing !== null,
         ];
 
-        $sourceStateHash = hash('sha256', 'CUSTOMER_SETUP:' . $context->companyId . ':' . $name . ':' . ($existing?->id ?? 'NEW'));
+        $sourceStateHash = self::computeSourceStateHash($context, $name, $customerGroupId, $taxNo !== '' ? $taxNo : null);
 
         return new ActionPreviewResult(
             payload: $payload,
             preview: $previewData,
             sourceStateHash: $sourceStateHash,
         );
+    }
+
+    public static function computeSourceStateHash(
+        CompanyContext $context,
+        string $name,
+        ?int $customerGroupId,
+        ?string $taxNo,
+    ): string {
+        $existing = Customer::where('company_id', $context->companyId)
+            ->where(function ($q) use ($name, $taxNo) {
+                $q->where('name', $name);
+                if (!empty($taxNo)) {
+                    $q->orWhere('tax_no', $taxNo);
+                }
+            })
+            ->first();
+
+        $group = $customerGroupId ? DB::table('customer_groups')->where('company_id', $context->companyId)->where('id', $customerGroupId)->first() : null;
+        $taxProfile = $existing ? DB::table('party_tax_profiles')
+            ->where('company_id', $context->companyId)
+            ->where('party_type', 'customer')
+            ->where('party_id', $existing->id)
+            ->first() : null;
+
+        $state = [
+            'company_id' => $context->companyId,
+            'name' => $name,
+            'tax_no' => $taxNo,
+            'customer_group_id' => $customerGroupId,
+            'customer_group_updated_at' => $group?->updated_at,
+            'existing_id' => $existing?->id,
+            'existing_updated_at' => $existing?->updated_at?->toIso8601String(),
+            'tax_profile_updated_at' => $taxProfile?->updated_at,
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }
 }
 

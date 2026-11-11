@@ -62,13 +62,45 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'is_existing' => $existing !== null,
         ];
 
-        $sourceStateHash = hash('sha256', 'SUPPLIER_SETUP:' . $context->companyId . ':' . $name . ':' . ($existing?->id ?? 'NEW'));
+        $sourceStateHash = self::computeSourceStateHash($context, $name, $vatNumber !== '' ? $vatNumber : null);
 
         return new ActionPreviewResult(
             payload: $payload,
             preview: $previewData,
             sourceStateHash: $sourceStateHash,
         );
+    }
+
+    public static function computeSourceStateHash(
+        CompanyContext $context,
+        string $name,
+        ?string $vatNumber,
+    ): string {
+        $existing = Supplier::where('company_id', $context->companyId)
+            ->where(function ($q) use ($name, $vatNumber) {
+                $q->where('name', $name);
+                if (!empty($vatNumber)) {
+                    $q->orWhere('vat_number', $vatNumber);
+                }
+            })
+            ->first();
+
+        $taxProfile = $existing ? DB::table('party_tax_profiles')
+            ->where('company_id', $context->companyId)
+            ->where('party_type', 'supplier')
+            ->where('party_id', $existing->id)
+            ->first() : null;
+
+        $state = [
+            'company_id' => $context->companyId,
+            'name' => $name,
+            'vat_number' => $vatNumber,
+            'existing_id' => $existing?->id,
+            'existing_updated_at' => $existing?->updated_at?->toIso8601String(),
+            'tax_profile_updated_at' => $taxProfile?->updated_at,
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }
 }
 

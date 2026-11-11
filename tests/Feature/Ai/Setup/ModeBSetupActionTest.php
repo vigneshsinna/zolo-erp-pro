@@ -75,6 +75,11 @@ final class ModeBSetupActionTest extends TestCase
         DB::table('company_user_branches')->updateOrInsert(
             ['company_id' => $this->company->id, 'user_id' => $this->adminUser->id, 'branch_id' => $this->branch->id]
         );
+
+        Unit::updateOrCreate(
+            ['company_id' => $this->company->id, 'unit_code' => 'MTR'],
+            ['unit_name' => 'Meter', 'operator' => '*', 'operation_value' => 1.0, 'is_active' => true]
+        );
     }
 
     private function contextHeaders(): array
@@ -229,5 +234,123 @@ final class ModeBSetupActionTest extends TestCase
             ->first();
         $this->assertNotNull($taxProfile);
         $this->assertSame('33AAACB1206D1ZM', $taxProfile->gstin);
+    }
+
+    public function test_cross_company_unit_or_category_reference_is_rejected(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $foreignCompany = Company::create([
+            'legal_name' => 'Foreign Adversary Mills',
+            'code' => 'FOREIGN_' . rand(1000, 9999),
+            'status' => 'active',
+            'country_code' => 'IN',
+            'state_code' => '33',
+        ]);
+
+        $foreignUnit = Unit::create([
+            'company_id' => $foreignCompany->id,
+            'unit_code' => 'FOREIGN_UOM',
+            'unit_name' => 'Foreign UOM',
+            'is_active' => true,
+        ]);
+
+        $foreignCategory = Category::create([
+            'company_id' => $foreignCompany->id,
+            'name' => 'Foreign Category',
+            'is_active' => true,
+        ]);
+
+        $foreignGroup = DB::table('customer_groups')->insertGetId([
+            'company_id' => $foreignCompany->id,
+            'name' => 'Foreign Customer Group',
+            'percentage' => '0.00',
+            'is_active' => true,
+        ]);
+
+        // 1. Cross-company unit in product creation rejected with 422
+        $resUnit = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'setup.product.create.v1',
+            'slots' => [
+                'name' => 'Adversarial Product',
+                'code' => 'ADV_PROD_1',
+                'unit_id' => $foreignUnit->id,
+            ],
+        ]);
+        $resUnit->assertStatus(422);
+        $resUnit->assertJsonValidationErrors(['unit_id']);
+
+        // 2. Cross-company category in product creation rejected with 422
+        $resCat = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'setup.product.create.v1',
+            'slots' => [
+                'name' => 'Adversarial Product 2',
+                'code' => 'ADV_PROD_2',
+                'category_id' => $foreignCategory->id,
+            ],
+        ]);
+        $resCat->assertStatus(422);
+        $resCat->assertJsonValidationErrors(['category_id']);
+
+        // 3. Cross-company base unit in unit creation rejected with 422
+        $resBaseUnit = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'setup.unit.create.v1',
+            'slots' => [
+                'unit_code' => 'ADV_UOM',
+                'unit_name' => 'Adversarial UOM',
+                'base_unit' => $foreignUnit->id,
+            ],
+        ]);
+        $resBaseUnit->assertStatus(422);
+        $resBaseUnit->assertJsonValidationErrors(['base_unit']);
+
+        // 4. Cross-company customer group in customer creation rejected with 422
+        $resCustGroup = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'setup.customer.create.v1',
+            'slots' => [
+                'name' => 'Adversarial Customer',
+                'customer_group_id' => $foreignGroup,
+            ],
+        ]);
+        $resCustGroup->assertStatus(422);
+        $resCustGroup->assertJsonValidationErrors(['customer_group_id']);
+    }
+
+    public function test_source_state_change_fails_closed_before_product_setup_execution(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $uniqueCode = 'COT_FAB_' . rand(100, 999);
+        $response = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'setup.product.create.v1',
+            'slots' => [
+                'name' => 'Cotton Cambric Fabric 60s',
+                'code' => $uniqueCode,
+                'cost' => '120.00',
+                'price' => '150.00',
+            ],
+        ]);
+
+        $response->assertStatus(201);
+        $proposalId = $response->json('proposal.id');
+
+        // Modify underlying state: Touch unit updated_at
+        $unit = Unit::where('company_id', $this->company->id)->first();
+        DB::table('units')->where('id', $unit->id)->update(['updated_at' => now()->addMinutes(5)]);
+
+        // Approval execution must fail closed with 422 source_state
+        $approveResponse = $this->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/proposals/{$proposalId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approveResponse->assertStatus(422);
+        $approveResponse->assertJsonValidationErrors(['source_state']);
+
+        // Assert product was NOT created in ERP
+        $this->assertDatabaseMissing('products', [
+            'company_id' => $this->company->id,
+            'code' => $uniqueCode,
+        ]);
     }
 }

@@ -9,8 +9,11 @@ use App\Ai\DTOs\ActionDefinition;
 use App\Ai\DTOs\ActionExecutionReceipt;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Models\Unit;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\ERP\CompanyWriteGuard;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class UnitSetupCommandAdapter implements ActionCommandAdapterInterface
 {
@@ -26,12 +29,32 @@ final class UnitSetupCommandAdapter implements ActionCommandAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for unit setup execution.');
         }
 
+        // 1. Assert action-specific Spatie permission
+        app(CommercialPermission::class)->assert('unit', $context, $actorId);
+
+        // 2. Idempotency recovery
         $existing = $this->recover($idempotencyKey, $context);
         if ($existing !== null) {
             return $existing;
         }
 
-        $unit = DB::transaction(function () use ($context, $payload) {
+        $code = (string) ($payload['unit_code'] ?? '');
+        $baseUnitId = !empty($payload['base_unit']) ? (int) $payload['base_unit'] : null;
+
+        // 3. Enforce source-state hash
+        $currentSourceStateHash = UnitSetupPreviewAdapter::computeSourceStateHash($context, $code, $baseUnitId);
+        if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
+            throw ValidationException::withMessages([
+                'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
+            ]);
+        }
+
+        // 4. Validate ownership and execute within transactional boundary
+        $unit = DB::transaction(function () use ($context, $payload, $baseUnitId) {
+            if ($baseUnitId !== null) {
+                app(CompanyWriteGuard::class)->owned(Unit::class, $baseUnitId, $context, 'base_unit');
+            }
+
             $row = Unit::where('company_id', $context->companyId)
                 ->where('unit_code', $payload['unit_code'])
                 ->first();
@@ -41,7 +64,7 @@ final class UnitSetupCommandAdapter implements ActionCommandAdapterInterface
                     'company_id' => $context->companyId,
                     'unit_code' => $payload['unit_code'],
                     'unit_name' => $payload['unit_name'],
-                    'base_unit' => $payload['base_unit'] ?? null,
+                    'base_unit' => $baseUnitId,
                     'operator' => $payload['operator'] ?? '*',
                     'operation_value' => $payload['operation_value'] ?? 1.0,
                     'is_active' => true,

@@ -40,7 +40,7 @@ final class GroupBootstrapCommandAdapter implements ActionCommandAdapterInterfac
         }
 
         // 2. Safe Domain Reconciliation: Check if group was already committed to the ERP database
-        $reconciled = $this->reconcileCommittedGroup($payload, $actorId);
+        $reconciled = $this->reconcileCommittedGroup($payload, $actorId, $idempotencyKey);
         if ($reconciled !== null) {
             return $reconciled;
         }
@@ -92,8 +92,20 @@ final class GroupBootstrapCommandAdapter implements ActionCommandAdapterInterfac
         return null;
     }
 
-    public function reconcileCommittedGroup(array $payload, int $actorId): ?ActionExecutionReceipt
+    public function reconcileCommittedGroup(array $payload, int $actorId, string $idempotencyKey): ?ActionExecutionReceipt
     {
+        // Security Invariant: Reconciliation is ONLY permitted for an execution that was already
+        // authenticated, approved, and claimed using the exact proposal idempotency key.
+        $hasActiveClaim = DB::table('ai_action_executions')
+            ->where('idempotency_key', $idempotencyKey)
+            ->where('executor_id', $actorId)
+            ->where('status', 'executing')
+            ->exists();
+
+        if (!$hasActiveClaim) {
+            return null;
+        }
+
         $code = strtoupper(trim((string) ($payload['code'] ?? '')));
         $name = trim((string) ($payload['name'] ?? ''));
 

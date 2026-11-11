@@ -50,56 +50,84 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
         $items = (array) ($payload['items'] ?? []);
         $productIds = array_map(fn ($item) => (int) ($item['product_id'] ?? 0), $items);
 
-        // Enforce source-state hash to guarantee underlying ERP conditions have not changed since approval (Finding 5)
-        $currentSourceStateHash = PurchaseOrderPreviewAdapter::computeSourceStateHash(
+        $purchase = DB::transaction(function () use (
             $context,
+            $payload,
             $supplierId,
             $warehouseId,
-            array_values(array_unique($productIds)),
-        );
+            $productIds,
+            $expectedSourceStateHash,
+            $idempotencyKey,
+            $actorId,
+        ): Purchase {
+            // 1. Transactional source-state verification: verify underlying business conditions have not changed
+            $currentSourceStateHash = PurchaseOrderPreviewAdapter::computeSourceStateHash(
+                $context,
+                $supplierId,
+                $warehouseId,
+                array_values(array_unique($productIds)),
+            );
 
-        if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
-            throw ValidationException::withMessages([
-                'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
-            ]);
-        }
+            if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
+                throw ValidationException::withMessages([
+                    'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
+                ]);
+            }
 
-        // Prepare domain command data: status 4 = Purchase Order (Ordered)
-        $data = $payload;
-        $data['status'] = 4;
-        $data['payment_status'] = 1; // Due / unpaid
+            // 2. Prepare domain command data: status 4 = Purchase Order (Ordered)
+            $data = $payload;
+            $data['status'] = 4;
+            $data['payment_status'] = 1; // Due / unpaid
+            unset($data['expected_totals']);
 
-        // CommercialApplicationService rejects non-empty order_tax_rate, shipping_cost, or order_discount if zero
-        if (isset($data['order_tax_rate']) && (empty($data['order_tax_rate']) || (float) $data['order_tax_rate'] === 0.0)) {
-            unset($data['order_tax_rate']);
-        }
-        if (isset($data['shipping_cost']) && (empty($data['shipping_cost']) || (float) $data['shipping_cost'] === 0.0)) {
-            unset($data['shipping_cost']);
-        }
-        if (isset($data['order_discount']) && (empty($data['order_discount']) || (float) $data['order_discount'] === 0.0)) {
-            unset($data['order_discount']);
-        }
+            // CommercialApplicationService rejects non-empty order_tax_rate, shipping_cost, or order_discount if zero
+            if (isset($data['order_tax_rate']) && (empty($data['order_tax_rate']) || (float) $data['order_tax_rate'] === 0.0)) {
+                unset($data['order_tax_rate']);
+            }
+            if (isset($data['shipping_cost']) && (empty($data['shipping_cost']) || (float) $data['shipping_cost'] === 0.0)) {
+                unset($data['shipping_cost']);
+            }
+            if (isset($data['order_discount']) && (empty($data['order_discount']) || (float) $data['order_discount'] === 0.0)) {
+                unset($data['order_discount']);
+            }
 
-        // Ensure tax_rate_override is populated if tax_rate is explicitly specified on line items
-        if (!empty($data['items']) && is_array($data['items'])) {
-            foreach ($data['items'] as &$item) {
-                if (isset($item['tax_rate']) && !isset($item['tax_rate_override'])) {
-                    $item['tax_rate_override'] = (string) $item['tax_rate'];
+            // Ensure tax_rate_override is populated if tax_rate is explicitly specified on line items
+            if (!empty($data['items']) && is_array($data['items'])) {
+                foreach ($data['items'] as &$item) {
+                    if (isset($item['tax_rate']) && !isset($item['tax_rate_override'])) {
+                        $item['tax_rate_override'] = (string) $item['tax_rate'];
+                    }
+                }
+                unset($item);
+            }
+
+            // 3. Execute via authoritative ERP domain service
+            /** @var Purchase $createdPurchase */
+            $createdPurchase = $this->commercialService->create(
+                kind: 'purchase',
+                data: $data,
+                key: $idempotencyKey,
+                actor: $actorId,
+                context: $context,
+            );
+
+            // 4. Assert executed totals match approved proposal totals exactly
+            if (!empty($payload['expected_totals']['grand_total'])) {
+                $expectedGrandTotal = (float) $payload['expected_totals']['grand_total'];
+                $actualGrandTotal = (float) $createdPurchase->grand_total;
+                if (abs($actualGrandTotal - $expectedGrandTotal) > 0.01) {
+                    throw ValidationException::withMessages([
+                        'totals' => sprintf(
+                            'Executed order grand total (%.2f) differs from approved proposal grand total (%.2f). Execution aborted.',
+                            $actualGrandTotal,
+                            $expectedGrandTotal,
+                        ),
+                    ]);
                 }
             }
-            unset($item);
-        }
 
-        // Execute via authoritative ERP domain service
-        // CommercialApplicationService::create encapsulates its own DB::transaction
-        /** @var Purchase $purchase */
-        $purchase = $this->commercialService->create(
-            kind: 'purchase',
-            data: $data,
-            key: $idempotencyKey,
-            actor: $actorId,
-            context: $context,
-        );
+            return $createdPurchase;
+        });
 
         return new ActionExecutionReceipt(
             resourceType: 'purchase_order',

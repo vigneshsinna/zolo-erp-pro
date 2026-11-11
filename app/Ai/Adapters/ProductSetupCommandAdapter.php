@@ -9,8 +9,11 @@ use App\Ai\DTOs\ActionDefinition;
 use App\Ai\DTOs\ActionExecutionReceipt;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Models\Product;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\ERP\ProductMasterService;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class ProductSetupCommandAdapter implements ActionCommandAdapterInterface
 {
@@ -26,51 +29,74 @@ final class ProductSetupCommandAdapter implements ActionCommandAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for product setup execution.');
         }
 
+        // 1. Assert action-specific permission
+        app(CommercialPermission::class)->assert('products-add', $context, $actorId);
+
+        // 2. Idempotency recovery
         $existing = $this->recover($idempotencyKey, $context);
         if ($existing !== null) {
             return $existing;
         }
 
-        $product = DB::transaction(function () use ($context, $payload) {
-            $row = Product::where('company_id', $context->companyId)
-                ->where('code', $payload['code'])
+        $code = (string) ($payload['code'] ?? '');
+        $unitId = !empty($payload['unit_id']) ? (int) $payload['unit_id'] : null;
+        $categoryId = !empty($payload['category_id']) ? (int) $payload['category_id'] : null;
+        $taxCategoryId = !empty($payload['tax_category_id']) ? (int) $payload['tax_category_id'] : null;
+
+        // 3. Enforce source-state hash to guarantee underlying ERP state has not drifted
+        $currentSourceStateHash = ProductSetupPreviewAdapter::computeSourceStateHash(
+            $context,
+            $code,
+            $unitId,
+            $categoryId,
+            $taxCategoryId,
+        );
+
+        if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
+            throw ValidationException::withMessages([
+                'source_state' => 'Underlying ERP business state changed since proposal approval. Rebuild preview.',
+            ]);
+        }
+
+        // 4. Delegate to authoritative ERP domain service ProductMasterService
+        $product = DB::transaction(function () use ($context, $payload, $unitId, $categoryId, $taxCategoryId) {
+            $existingProduct = Product::forCompany($context)
+                ->whereRaw('LOWER(code) = ?', [mb_strtolower($payload['code'])])
+                ->where('is_active', true)
                 ->first();
 
-            if (!$row) {
-                $unitId = $payload['unit_id'] ?? null;
-                if (!$unitId) {
-                    $unitId = \App\Models\Unit::where('company_id', $context->companyId)->value('id');
-                }
-                if (!$unitId) {
-                    $unit = \App\Models\Unit::firstOrCreate(
-                        ['company_id' => $context->companyId, 'unit_code' => 'PCS'],
-                        ['unit_name' => 'Pieces', 'is_active' => true]
-                    );
-                    $unitId = $unit->id;
-                }
-                $purchaseUnitId = $payload['purchase_unit_id'] ?? $unitId;
-                $saleUnitId = $payload['sale_unit_id'] ?? $unitId;
-
-                $row = Product::forceCreate([
-                    'company_id' => $context->companyId,
-                    'name' => $payload['name'],
-                    'code' => $payload['code'],
-                    'type' => $payload['type'] ?? 'standard',
-                    'barcode_symbology' => $payload['barcode_symbology'] ?? 'code128',
-                    'unit_id' => $unitId,
-                    'purchase_unit_id' => $purchaseUnitId,
-                    'sale_unit_id' => $saleUnitId,
-                    'category_id' => $payload['category_id'] ?? null,
-                    'cost' => $payload['cost'] ?? '0.00',
-                    'price' => $payload['price'] ?? '0.00',
-                    'tax_category_id' => $payload['tax_category_id'] ?? null,
-                    'hsn_code' => $payload['hsn_code'] ?? null,
-                    'qty' => 0,
-                    'is_active' => true,
-                ]);
+            if ($existingProduct) {
+                return $existingProduct;
             }
 
-            return $row;
+            $resolvedUnitId = $unitId;
+            if (!$resolvedUnitId) {
+                $resolvedUnitId = \App\Models\Unit::where('company_id', $context->companyId)->where('is_active', true)->value('id');
+            }
+            if (!$resolvedUnitId) {
+                throw ValidationException::withMessages(['unit_id' => 'No active units configured for this company.']);
+            }
+
+            $attributes = [
+                'name' => $payload['name'],
+                'code' => $payload['code'],
+                'type' => $payload['type'] ?? 'standard',
+                'barcode_symbology' => $payload['barcode_symbology'] ?? 'code128',
+                'unit_id' => $resolvedUnitId,
+                'purchase_unit_id' => !empty($payload['purchase_unit_id']) ? (int) $payload['purchase_unit_id'] : $resolvedUnitId,
+                'sale_unit_id' => !empty($payload['sale_unit_id']) ? (int) $payload['sale_unit_id'] : $resolvedUnitId,
+                'category_id' => $categoryId,
+                'cost' => $payload['cost'] ?? '0.00',
+                'price' => $payload['price'] ?? '0.00',
+            ];
+
+            $metadata = [
+                'tax_category_id' => $taxCategoryId,
+                'hsn_code' => $payload['hsn_code'] ?? null,
+                'negative_stock_policy' => $payload['negative_stock_policy'] ?? 'warn',
+            ];
+
+            return app(ProductMasterService::class)->create($attributes, $metadata, $context);
         });
 
         return new ActionExecutionReceipt(

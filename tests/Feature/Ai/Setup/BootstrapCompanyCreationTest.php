@@ -616,5 +616,92 @@ final class BootstrapCompanyCreationTest extends TestCase
         $this->assertSame((int) $company->id, (int) $approve->json('company_id'));
         $this->assertTrue((bool) $approve->json('receipt.details.reconciled_from_erp'));
     }
+
+    public function test_unapproved_proposal_cannot_trigger_reconciliation_without_active_execution_claim(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $companyAdapter = app(\App\Ai\Adapters\CompanyBootstrapCommandAdapter::class);
+        $groupAdapter = app(\App\Ai\Adapters\GroupBootstrapCommandAdapter::class);
+
+        // Attempting to reconcile a company without an active execution claim in ai_action_executions must return null
+        $companyReceipt = $companyAdapter->reconcileCommittedCompany(
+            ['code' => 'NON_CLAIMED', 'legal_name' => 'Non Claimed Corp'],
+            $this->adminUser->id,
+            'ai-bootstrap:fake-task:v1'
+        );
+        $this->assertNull($companyReceipt);
+
+        // Attempting to reconcile a group without an active execution claim must return null
+        $groupReceipt = $groupAdapter->reconcileCommittedGroup(
+            ['code' => 'NON_CLAIMED_GRP', 'name' => 'Non Claimed Group'],
+            $this->adminUser->id,
+            'ai-bootstrap:fake-task:v1'
+        );
+        $this->assertNull($groupReceipt);
+    }
+
+    public function test_repeated_preview_creation_increments_version_and_preserves_monotonicity(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $task = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $taskId = $task->json('task_id');
+        $taskToken = $task->json('task_token');
+
+        // Preview 1 -> Version 1
+        $p1 = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Version Test Ltd',
+                'trade_name' => 'Version Test',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+        $p1->assertStatus(200);
+        $this->assertSame(1, (int) $p1->json('version'));
+
+        // Preview 2 with same task ID -> Version 2 (Never resets to 1)
+        $p2 = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Version Test Updated Ltd',
+                'trade_name' => 'Version Test Updated',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+        $p2->assertStatus(200);
+        $this->assertSame(2, (int) $p2->json('version'));
+
+        // Preview 3 with same task ID -> Version 3
+        $p3 = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => 'Version Test Final Ltd',
+                'trade_name' => 'Version Test Final',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+        $p3->assertStatus(200);
+        $this->assertSame(3, (int) $p3->json('version'));
+
+        // Approving with stale version 1 must be rejected
+        $staleApprove = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+        $staleApprove->assertStatus(422);
+
+        // Approving with latest version 3 succeeds
+        $approve = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 3,
+            ]);
+        $approve->assertStatus(200);
+        $this->assertSame('completed', $approve->json('status'));
+    }
 }
 

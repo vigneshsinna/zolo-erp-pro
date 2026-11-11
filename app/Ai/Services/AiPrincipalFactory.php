@@ -100,9 +100,28 @@ class AiPrincipalFactory
         }
 
         if (config('ai_actions.foundation_enabled', false)) {
-            $actionPerms = $this->permissions->allowed(['purchases-add'], $context, $user->id);
+            $actionPerms = $this->permissions->allowed([
+                'purchases-add',
+                'products-add',
+                'unit',
+                'suppliers-add',
+                'customers-add',
+            ], $context, $user->id);
+
             if (in_array('purchases-add', $actionPerms, true)) {
                 $domains[] = 'purchase_order.create.v1';
+            }
+            if (in_array('products-add', $actionPerms, true)) {
+                $domains[] = 'setup.product.create.v1';
+            }
+            if (in_array('unit', $actionPerms, true)) {
+                $domains[] = 'setup.unit.create.v1';
+            }
+            if (in_array('suppliers-add', $actionPerms, true)) {
+                $domains[] = 'setup.supplier.create.v1';
+            }
+            if (in_array('customers-add', $actionPerms, true)) {
+                $domains[] = 'setup.customer.create.v1';
             }
         }
 

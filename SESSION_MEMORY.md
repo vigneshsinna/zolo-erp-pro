@@ -1,5 +1,50 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Critical Code Review Findings (8 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
+
+- **Remediated Findings & Technical Security Hardening (100% Complete & Verified):**
+  1. **P0 #1 (Product Master Domain Validation):**
+     - Updated `App\Ai\Adapters\ProductSetupPreviewAdapter`: Validates company ownership of `unit_id`, `category_id`, and `tax_category_id`; implemented `computeSourceStateHash()` over company, code, unit, category, and tax category.
+     - Updated `App\Ai\Adapters\ProductSetupCommandAdapter`: Asserts `products-add` permission; enforces `expectedSourceStateHash`; delegates to `ProductMasterService::create($attributes, $metadata, $context)` instead of unvetted `Product::forceCreate()`.
+  2. **P0 #2 (Bootstrap Reconciliation Approval Bypass):**
+     - Updated `App\Ai\Services\BootstrapProposalService::approveAndExecute()`: Removed premature reconciliation block prior to proposal version/expiry check and cryptographic approval signing.
+     - Updated `App\Ai\Adapters\CompanyBootstrapCommandAdapter` & `App\Ai\Adapters\GroupBootstrapCommandAdapter`: `reconcileCommittedCompany` and `reconcileCommittedGroup` strictly assert that an active execution claim row exists in `ai_action_executions` with `idempotency_key = $idempotencyKey`, `executor_id = $actorId`, and `status = 'executing'` before returning any reconciled receipt.
+  3. **P1 #3 (Source-State Validation Transactional Integrity):**
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter::computeSourceStateHash()`: Includes active financial year state (`status`, `is_closed`, `lock_date`, `start_date`, `end_date`, `updated_at`), active tax rates (`rate`, `cess_rate`, `effective_from`, `effective_to`), and tax categories for the items.
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter::execute()`: Re-computes and checks source state hash inside a dedicated `DB::transaction()` boundary and fails closed if any business condition drifted since approval.
+  4. **P1 #4 (Approved vs Executed Totals Equality):**
+     - Updated `App\Ai\Adapters\PurchaseOrderPreviewAdapter`: Injects `expected_totals` (`grand_total`, `tax_total`, `total_price`) into the sealed proposal payload.
+     - Updated `App\Ai\Schemas\CreatePurchaseOrderInputSchema`: Validates `expected_totals`.
+     - Updated `App\Ai\Adapters\PurchaseOrderCommandAdapter`: Asserts that `abs($purchase->grand_total - $expectedGrandTotal) <= 0.01` within the transaction, failing closed with a 422 `ValidationException` (`totals`) on discrepancy.
+  5. **P1 #5 (Bootstrap Proposal Concurrency Risk Elimination):**
+     - Updated `App\Ai\Services\BootstrapProposalService::createProposal()`: Wrapped in `DB::transaction()` with atomic row locks (`lockForUpdate()`). If an existing proposal exists, verifies ownership and `pending`/`initiated` status, increments version (`$newVersion = version + 1`), and applies a conditional update (`where('version', $existing->version)`). Never resets versions to 1.
+  6. **P1 #6 (Mode B Setup Adapters Domain Safeguards):**
+     - Updated `UnitSetupPreviewAdapter` & `UnitSetupCommandAdapter`: Enforces Spatie permission `unit`, validates company ownership of `base_unit`, computes and validates SHA-256 source state hash.
+     - Updated `SupplierSetupPreviewAdapter` & `SupplierSetupCommandAdapter`: Enforces Spatie permission `suppliers-add`, computes and validates SHA-256 source state hash.
+     - Updated `CustomerSetupPreviewAdapter` & `CustomerSetupCommandAdapter`: Enforces Spatie permission `customers-add`, validates company ownership of `customer_group_id`, computes and validates SHA-256 source state hash.
+     - Updated `ActionCapabilityRegistry`: Registered `setup.unit.create.v1`, `setup.product.create.v1`, `setup.supplier.create.v1`, and `setup.customer.create.v1` with `requiresFreshSnapshot: true` and appropriate required permissions.
+     - Updated `AiPrincipalFactory`: Grants setup capabilities to users holding corresponding Spatie permissions (`unit`, `products-add`, `suppliers-add`, `customers-add`).
+  7. **P1 #7 (Review Center Authorization Alignment):**
+     - Updated `App\Http\Controllers\Ai\ActionReviewCenterController`: Restricts `$canApprove` strictly to users holding `ai.action.approve` (or role 1, superadmin). Defaults scope to `'mine'`. Callers requesting `scope=all` without `ai.action.approve` are automatically constrained to `'mine'`.
+  8. **P2 #8 (Review Center Execution Receipt Field):**
+     - Updated `ActionReviewCenterController`: Decodes `result_json` (instead of the non-existent `execution_receipt_json`), ensuring completed purchase order reference numbers and document details are accurately rendered on the screen.
+
+- **Automated Verification Suite (100% Green Across All 107 AI Tests):**
+  - `ModeBSetupActionTest.php`: **6/6 passed (43 assertions)** (tested atomic unit/product/supplier/customer creation, cross-company references rejection, source-state drift failure).
+  - `BootstrapCompanyCreationTest.php`: **13/13 passed (86 assertions)** (tested reconciliation without execution claim failure, repeated preview version monotonicity and race prevention).
+  - `PurchaseOrderActionTest.php`: **8/8 passed (59 assertions)** (tested tax-rate / fiscal-year mutation source-state failure, grand total discrepancy failure, actor proposal filtering).
+  - `NaturalLanguagePurchaseOrderWorkflowTest.php`: **4/4 passed (42 assertions)** (tested end-to-end intent resolution, review center rendering with receipt reference_no, non-approver scope restriction).
+  - Full AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **107/107 passed (702 assertions, 0 errors, 0 failures)**.
+  - Hygiene: `composer validate --strict` (valid), caches cleared (`route:clear`, `view:clear`, `config:clear`).
+
+- **Next Steps:**
+  - Proceed to Phase 2: Purchase Bill AI Workflow (`purchase_bill.create.v1` / linking Purchase Orders to Bills).
+  - Implement Sales Order / Quotation AI workflow proposals (`sales_order.create.v1`, `quotation.create.v1`).
+
+---
+
+# zoloERP Pro — Persistent Session Memory & State
+
 ## Production Hardening, Mode B Setup Suite & Implementation Gaps Complete — 2026-11-11 (`feature/ai-purchase-orders`)
 
 - **Remediated Implementation Gaps (7 Gaps) Completed & Verified:**

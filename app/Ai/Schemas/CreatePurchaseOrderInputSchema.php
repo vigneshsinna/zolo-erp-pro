@@ -26,6 +26,10 @@ final class CreatePurchaseOrderInputSchema implements ActionInputSchemaInterface
             'order_tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'order_discount' => ['nullable', 'numeric', 'min:0'],
             'shipping_cost' => ['nullable', 'numeric', 'min:0'],
+            'expected_totals' => ['nullable', 'array'],
+            'expected_totals.grand_total' => ['nullable', 'numeric'],
+            'expected_totals.tax_total' => ['nullable', 'numeric'],
+            'expected_totals.total_price' => ['nullable', 'numeric'],
             'note' => ['nullable', 'string', 'max:10000'],
         ];
     }

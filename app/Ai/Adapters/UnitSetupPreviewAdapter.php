@@ -36,7 +36,13 @@ final class UnitSetupPreviewAdapter implements ActionPreviewAdapterInterface
         }
 
         $baseUnitId = !empty($slots['base_unit']) ? (int) $slots['base_unit'] : null;
-        $baseUnit = $baseUnitId ? Unit::where('company_id', $context->companyId)->find($baseUnitId) : null;
+        $baseUnit = null;
+        if ($baseUnitId) {
+            $baseUnit = Unit::where('company_id', $context->companyId)->find($baseUnitId);
+            if (!$baseUnit) {
+                throw ValidationException::withMessages(['base_unit' => 'Selected base unit not found in company.']);
+            }
+        }
         $operator = (string) ($slots['operator'] ?? '*');
         $operationValue = (float) ($slots['operation_value'] ?? 1.0);
 
@@ -56,12 +62,31 @@ final class UnitSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'conversion' => $baseUnit ? "1 {$code} = {$operationValue} {$operator} {$baseUnit->unit_code}" : 'Base UOM',
         ];
 
-        $sourceStateHash = hash('sha256', 'UNIT_SETUP:' . $context->companyId . ':' . $code . ':' . ($existing?->id ?? 'NEW'));
+        $sourceStateHash = self::computeSourceStateHash($context, $code, $baseUnit?->id);
 
         return new ActionPreviewResult(
             payload: $payload,
             preview: $previewData,
             sourceStateHash: $sourceStateHash,
         );
+    }
+
+    public static function computeSourceStateHash(
+        CompanyContext $context,
+        string $code,
+        ?int $baseUnitId,
+    ): string {
+        $existing = Unit::where('company_id', $context->companyId)->where('unit_code', $code)->first();
+        $baseUnit = $baseUnitId ? Unit::where('company_id', $context->companyId)->where('id', $baseUnitId)->first() : null;
+
+        $state = [
+            'company_id' => $context->companyId,
+            'unit_code' => $code,
+            'existing_id' => $existing?->id,
+            'base_unit_id' => $baseUnit?->id,
+            'base_unit_updated_at' => $baseUnit?->updated_at?->toIso8601String(),
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }
 }

@@ -9,9 +9,8 @@ class Unit extends Model
 {
     use ScopesCompanyQueries;
 
-    protected $fillable =[
-
-        "unit_code", "unit_name", "base_unit", "operator", "operation_value", "is_active"
+    protected $fillable = [
+        "company_id", "unit_code", "unit_name", "base_unit", "operator", "operation_value", "is_active"
     ];
 
     public function product()
