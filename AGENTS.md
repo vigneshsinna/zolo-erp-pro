@@ -192,7 +192,8 @@ flowchart LR
     PH1 --> PH15["PH1.5: Guided Setup (Mode A & B)"]
     PH15 --> PH2["PH2: Governed Purchase Orders"]
     PH2 --> PH21["PH2.1: Unified Multi-Slot Clarification"]
-    PH21 --> PH3["PH3: Receipts, Bills & Sales"]
+    PH21 --> PH22["PH2.2: Dependent Masters & Resumption"]
+    PH22 --> PH3["PH3: Receipts, Bills & Sales"]
     PH3 --> PH4["PH4: Autonomous Orchestration"]
 ```
 
@@ -234,6 +235,8 @@ flowchart LR
 | **AI-035** | **PH2** | P2 | Langfuse Observability Integration | Anonymized distributed tracing, model latency metrics, cost monitoring. | [16_LANGFUSE_OBSERVABILITY.md](docs/zoloerp-ai-agent-implementation/docs/ai/16_LANGFUSE_OBSERVABILITY.md) |
 | **AI-036** | **PH2.1+**| P1 | Sales Order & Quote Multi-Slot Intake | `SalesOrderRequirementsProvider`, customer lookup, sale UOM, non-blocking ATP stock warnings. | [31_SALES_AND_COLLECTION_WORKFLOWS.md](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md)<br>[41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
 | **AI-037** | **PH2.1+**| P1 | Sales Order Execution via `OrderLifecycleService` | Action adapters routing to `OrderLifecycleService::createSale()`, stock reservations, zero premature ledger writes. | [31_SALES_AND_COLLECTION_WORKFLOWS.md](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md) |
+| **AI-038** | **PH2.2** | P0 | Intelligent Dependent Master Data Creation | `DependentMasterOrchestrator`, Three-Way Disambiguation Triad (`Select`, `Create`, `Correct`), Gate 1 Master Approval. | [42_DEPENDENT_MASTER_DATA_CREATION_AND_WORKFLOW_RESUMPTION.md](docs/zoloerp-ai-agent-implementation/docs/ai/42_DEPENDENT_MASTER_DATA_CREATION_AND_WORKFLOW_RESUMPTION.md) |
+| **AI-039** | **PH2.2** | P0 | In-Flight Workflow Resumption & Promotion | Auto-resume parent workflow tasks, slot injection, revision incrementing, Gate 2 Commercial Transaction Promotion. | [42_DEPENDENT_MASTER_DATA_CREATION_AND_WORKFLOW_RESUMPTION.md](docs/zoloerp-ai-agent-implementation/docs/ai/42_DEPENDENT_MASTER_DATA_CREATION_AND_WORKFLOW_RESUMPTION.md) |
 | **AI-040** | **PH3** | P3 | Document Ingestion Quarantine & ACL | File validation, malware scan, tenant permission binding for uploads. | [15_RAG_AND_QDRANT.md](docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md) |
 | **AI-041** | **PH3** | P3 | Vector Embeddings & Qdrant | Tenant-isolated vector collections, metadata payload filters. | [15_RAG_AND_QDRANT.md](docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md) |
 | **AI-042** | **PH3** | P3 | Verifiable Cited Knowledge Answers | RAG responses with strict document version citations and excerpt links. | [15_RAG_AND_QDRANT.md](docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md) |

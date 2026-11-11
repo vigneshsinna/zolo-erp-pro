@@ -47,18 +47,9 @@ final class SalesOrderCommandAdapter implements ActionCommandAdapterInterface
         $customerId = (int) ($payload['customer_id'] ?? 0);
         $warehouseId = (int) ($payload['warehouse_id'] ?? 0);
         $items = (array) ($payload['items'] ?? []);
-        $productIds = array_map(fn ($item) => (int) ($item['product_id'] ?? 0), $items);
+        $productIds = array_map(fn($item) => (int) ($item['product_id'] ?? 0), $items);
 
-        $salesOrder = DB::transaction(function () use (
-            $context,
-            $payload,
-            $customerId,
-            $warehouseId,
-            $productIds,
-            $expectedSourceStateHash,
-            $idempotencyKey,
-            $actorId,
-        ): SalesOrder {
+        $salesOrder = DB::transaction(function () use ($context, $payload, $customerId, $warehouseId, $productIds, $expectedSourceStateHash, $idempotencyKey, $actorId, ): SalesOrder {
             // 0. Acquire explicit domain row locks on dependencies before evaluating source state
             DB::table('companies')->where('id', $context->companyId)->lockForUpdate()->first();
             DB::table('fiscal_years')->where('company_id', $context->companyId)->where('id', $context->financialYearId)->lockForUpdate()->first();
@@ -132,8 +123,7 @@ final class SalesOrderCommandAdapter implements ActionCommandAdapterInterface
     public function recover(
         string $idempotencyKey,
         CompanyContext|\App\Ai\Security\BootstrapSetupPrincipal $context
-    ): ?ActionExecutionReceipt
-    {
+    ): ?ActionExecutionReceipt {
         if (!($context instanceof CompanyContext)) {
             return null;
         }

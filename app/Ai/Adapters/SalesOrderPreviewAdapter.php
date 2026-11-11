@@ -210,7 +210,7 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'cess' => sprintf('%.2f', (float) ($pricingResult['tax_breakdown']['cess'] ?? 0)),
         ];
 
-        $lineTotals = array_map(fn (array $line) => [
+        $lineTotals = array_map(fn(array $line) => [
             'product_id' => $line['product_id'],
             'qty' => sprintf('%.2f', $line['qty']),
             'net_unit_price' => sprintf('%.2f', $line['net_unit_price']),
@@ -370,7 +370,7 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'customer' => $customer ? (array) $customer : null,
             'warehouse' => $warehouse ? (array) $warehouse : null,
             'fiscal_year' => $fiscalYear ? (array) $fiscalYear : null,
-            'products' => $products->map(fn ($p) => (array) $p)->all(),
+            'products' => $products->map(fn($p) => (array) $p)->all(),
         ];
 
         return hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR));

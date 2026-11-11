@@ -50,7 +50,7 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                     }
                     $wh = Warehouse::where('company_id', $ctx->companyId())
                         ->where('is_active', true)
-                        ->when($ctx->branchId(), fn ($q) => $q->where('branch_id', $ctx->branchId()))
+                        ->when($ctx->branchId(), fn($q) => $q->where('branch_id', $ctx->branchId()))
                         ->first();
                     return $wh ? (int) $wh->id : null;
                 },
@@ -61,7 +61,7 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                 dataType: 'date',
                 inputControl: 'date',
                 helpText: 'Date of the purchase order.',
-                defaultPolicy: fn (): string => now()->toDateString(),
+                defaultPolicy: fn(): string => now()->toDateString(),
             ),
             new ActionFieldRequirement(
                 fieldPath: 'items',
@@ -92,7 +92,7 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                         inputControl: 'number',
                         helpText: 'Agreed unit price or product master cost.',
                         dependencies: ['product_id'],
-                        requiredWhen: fn (): bool => false, // Can default from product master
+                        requiredWhen: fn(): bool => false, // Can default from product master
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'purchase_unit_id',
@@ -101,28 +101,28 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                         entityType: 'unit',
                         inputControl: 'entity_select',
                         dependencies: ['product_id'],
-                        requiredWhen: fn (): bool => false, // Can default from product purchase_unit_id
+                        requiredWhen: fn(): bool => false, // Can default from product purchase_unit_id
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'discount',
                         label: 'Line Discount',
                         dataType: 'decimal_string',
                         inputControl: 'number',
-                        requiredWhen: fn (): bool => false,
+                        requiredWhen: fn(): bool => false,
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'tax_rate',
                         label: 'Tax Rate Override',
                         dataType: 'decimal_string',
                         inputControl: 'number',
-                        requiredWhen: fn (): bool => false,
+                        requiredWhen: fn(): bool => false,
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'note',
                         label: 'Line Note',
                         dataType: 'string',
                         inputControl: 'text',
-                        requiredWhen: fn (): bool => false,
+                        requiredWhen: fn(): bool => false,
                     ),
                 ],
             ),
@@ -131,21 +131,21 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                 label: 'Order Discount',
                 dataType: 'decimal_string',
                 inputControl: 'number',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'shipping_cost',
                 label: 'Shipping / Freight Cost',
                 dataType: 'decimal_string',
                 inputControl: 'number',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'note',
                 label: 'Order Note / Reference',
                 dataType: 'string',
                 inputControl: 'text',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
         ];
     }

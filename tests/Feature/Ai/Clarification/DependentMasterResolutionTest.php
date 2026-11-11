@@ -196,7 +196,7 @@ final class DependentMasterResolutionTest extends TestCase
         $this->assertNotNull($supplierOptions->firstWhere('key', 'correct_name'));
 
         // 2. Product Line Issue
-        $productIssue = $issues->first(fn ($i) => str_contains($i['field'], 'items') && str_contains($i['field'], 'product_id'));
+        $productIssue = $issues->first(fn($i) => str_contains($i['field'], 'items') && str_contains($i['field'], 'product_id'));
         $this->assertNotNull($productIssue);
         $this->assertNotEmpty($productIssue['resolution_options']);
         $this->assertCount(3, $productIssue['resolution_options']);

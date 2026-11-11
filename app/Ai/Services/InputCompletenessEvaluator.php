@@ -51,17 +51,17 @@ final class InputCompletenessEvaluator
         }
 
         // Add downstream pending checks when prerequisite entities are unresolved
-        $hasSupplierIssue = collect($issues)->contains(fn (FieldIssue $i) => $i->field === 'supplier_id');
+        $hasSupplierIssue = collect($issues)->contains(fn(FieldIssue $i) => $i->field === 'supplier_id');
         if ($hasSupplierIssue) {
             $pendingChecks[] = 'Authoritative GST determination and party tax calculation';
         }
 
-        $hasCustomerIssue = collect($issues)->contains(fn (FieldIssue $i) => $i->field === 'customer_id');
+        $hasCustomerIssue = collect($issues)->contains(fn(FieldIssue $i) => $i->field === 'customer_id');
         if ($hasCustomerIssue) {
             $pendingChecks[] = 'Customer credit limit check and GST place-of-supply determination';
         }
 
-        $hasProductIssue = collect($issues)->contains(fn (FieldIssue $i) => str_contains($i->field, 'product_id') || str_contains($i->field, 'qty'));
+        $hasProductIssue = collect($issues)->contains(fn(FieldIssue $i) => str_contains($i->field, 'product_id') || str_contains($i->field, 'qty'));
         if ($hasProductIssue) {
             $pendingChecks[] = 'Commercial order line pricing and grand total reconciliation';
         }
@@ -468,7 +468,7 @@ final class InputCompletenessEvaluator
                 capabilityKey: $capabilityKey,
                 canCreate: $canCreate,
                 disabledReason: $disabledReason,
-                prefilledSlots: array_filter($prefilled, static fn ($v): bool => $v !== null && $v !== ''),
+                prefilledSlots: array_filter($prefilled, static fn($v): bool => $v !== null && $v !== ''),
             ),
             new ResolutionOption(
                 key: 'correct_name',

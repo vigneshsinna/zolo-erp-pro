@@ -152,7 +152,7 @@ final class BatchRecordResolutionService
             if ($res['status'] === 'exact' && $res['warehouse']) {
                 $result->setResolved('warehouse_id', (int) $res['warehouse']->id, $res['warehouse']);
             } elseif ($res['status'] === 'candidates') {
-                $candidates = $res['candidates']->map(fn (Warehouse $w): array => [
+                $candidates = $res['candidates']->map(fn(Warehouse $w): array => [
                     'id' => (int) $w->id,
                     'label' => $w->name,
                     'branch_id' => (int) $w->branch_id,
@@ -207,7 +207,7 @@ final class BatchRecordResolutionService
                     $result->setResolved($fieldKey, (int) $product->id, $product);
                     $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
                 } elseif ($res['status'] === 'candidates') {
-                    $candidates = $res['candidates']->map(fn (Product $p): array => [
+                    $candidates = $res['candidates']->map(fn(Product $p): array => [
                         'id' => (int) $p->id,
                         'label' => "{$p->name} (SKU: {$p->code})",
                         'name' => $p->name,
