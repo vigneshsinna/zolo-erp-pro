@@ -179,6 +179,8 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 
     // AI Operating Layer Workspace
     Route::get('ai', [\App\Http\Controllers\Ai\AiWorkspaceController::class, 'index'])->name('ai.workspace');
+    // PH1 review desk is read-only until an explicitly reviewed action capability is enabled.
+    Route::get('ai/action-review', [\App\Http\Controllers\Ai\ActionReviewCenterController::class, 'index'])->name('ai.actions.review');
 });
 
 // Session-authenticated endpoints used by the workspace.
