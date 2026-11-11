@@ -1,5 +1,70 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms:**
+  - When user sent natural language prompt in the web UI (`zolo-erp-pro.test/ai`):
+    `"Create a purchase order for 10 units of Cotton Shirt Blue from ABC Traders at ₹500 per unit. Use the Main Warehouse. Show me the details before placing the order."`
+  - Web UI returned: `[AI_INTERNAL_ERROR] The ERP could not complete this request.`
+  - `storage/logs/laravel.log`:
+    `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'http_attempts' in 'field list'`
+    `Failed to record AI model invocation telemetry {"run_id":"...","exception_type":"QueryException"}`
+
+- **Root Causes Identified & Remedied:**
+  1. **Dev Database Schema Drift (Port 3307 `zoloerp`):**
+     - Three additive migrations (`2026_11_10_000006`, `2026_11_11_000001`, `2026_11_11_000002`) had run on test databases but were pending on the development database.
+     - Executed `php artisan migrate` on dev MySQL (port 3307), cleanly creating `ai_workflow_tasks`, `ai_workflow_task_events`, and adding `http_attempts` column.
+  2. **Tool Instantiation Container Resolution in `ErpCopilot.php`:**
+     - `ErpCopilot::tools()` was previously calling `new PreparePurchaseOrder($this->principal, app(RecordResolutionService::class))` with the obsolete constructor signature.
+     - Refactored to container resolution: `app(PreparePurchaseOrder::class, ['principal' => $this->principal])`, resolving all 7 typed dependencies via Laravel service container.
+  3. **Bootstrap Provenance JSON Whitespace Handling in `CompanyBootstrapCommandAdapter`:**
+     - JSON audit matching `like '%"idempotency_key":"' . $idempotencyKey . '"%'` failed when MySQL formatted with space (`"idempotency_key": "..."`).
+     - Added whitespace-tolerant matching (`orWhere('after_json', 'like', '%"idempotency_key": "' . $idempotencyKey . '"%')`), unblocking bootstrap recovery.
+  4. **Clarification Card Summary in `VerifiedSummaryBuilder.php`:**
+     - Added dedicated `'workflow.clarification.v1' => $this->summarizeClarification($data)` handler, rendering clean human-readable summaries of confirmed and required fields alongside interactive desk clarification cards.
+  5. **Agent Guidance for Action Tools in `ErpCopilot.php`:**
+     - Explicitly instructed Copilot to invoke `prepare_purchase_order` once and refrain from issuing extraneous inventory/payables report queries when processing purchase order workflows.
+
+- **Verification Results (100% Green):**
+  - Simulated live Copilot prompt end-to-end with active NVIDIA model: Tool executed successfully, returning `status: needs_input` with `workflow.clarification.v1` fact card, confirmed line quantities and costs, and interactive input selectors.
+  - Complete AI test suite (`phpunit.ai.xml`): **116/116 passed (763 assertions, 0 failures, 0 errors)**.
+  - Caches cleared: `config:clear`, `route:clear`, `view:clear`.
+
+---
+
+
+
+## EGM Architectural Review & Master Documentation Sync Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **EGM 7-Lens Swarm Audit & Architectural Remediations (`design_draft.md`):**
+  - Executed full 7-lens review swarm (`egm-zoom-out`, `egm-comprehension`, `egm-design`, `egm-codebase-details`, `egm-implementation-readiness`, `egm-inventive-catalyst`, `egm-style`).
+  - Synthesized findings into `consolidated_review_report.md`.
+  - Addressed and remediated the 7 core blockers and key findings with author verification:
+    1. **B-01 (Sales Order Service Delegation):** Clarified routing to `OrderLifecycleService::createSale()` (commercial orders) instead of `CommercialApplicationService::create('sale')` (posted invoices with immediate stock deductions).
+    2. **B-02 (Sales Order Action Pipeline):** Specified full Action Foundation pipeline (`CreateSalesOrderInputSchema`, `SalesOrderPreviewAdapter`, `SalesOrderCommandAdapter`) in `ActionCapabilityRegistry`.
+    3. **B-03 (Tenancy Boundaries & Bootstrap Isolation):** Enforced `company_id BIGINT UNSIGNED NOT NULL` on `ai_workflow_tasks` with compound ownership queries (`WHERE id = :id AND company_id = :company_id AND actor_id = :actor_id`). Kept Mode A bootstrap strictly isolated under `ai_bootstrap_tasks`.
+    4. **B-04 (Dynamic Line-Item Addressing):** Updated contract to `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` with stable `client_line_id` indexing and `_destroy: true` semantics.
+    5. **B-05 (Batch Record Resolution Safeguards):** Specified set-based SQL `WHERE IN` queries, candidate caps of 5, and dirty-slot memoization in `resolution_json` to eliminate N+1 query storms.
+    6. **B-06 (Proposal Promotion Atomicity):** Required `expected_revision` on `prepare-proposal`, pessimistic row locking (`lockForUpdate()`), atomic status transition, and HTTP 423 Locked guards against post-promotion mutations.
+    7. **B-07 (Customer & Sales UOM Resolution):** Expanded `RecordResolutionService` and `BatchRecordResolutionService` to support customer resolution (`resolveCustomer()`) and sales unit resolution (`sale_unit_id`).
+  - Streamlined infrastructure: Dropped speculative `ai_workflow_task_events` table for v1; formal auditing via `ai_action_proposals` and `ai_action_executions`.
+  - Added dedicated `## Risks & Mitigations` section.
+
+- **Master Repository Documents Synchronized:**
+  - Created [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) as permanent Phase 2.1 architecture specification.
+  - Updated [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md): Spliced PH2.1 into Phased Delivery Progression flowchart and added deliverables `UC-001` through `UC-007`.
+  - Updated [`AGENTS.md`](AGENTS.md): Spliced PH2.1 into Phased AI Roadmap diagram and added stories `AI-025` through `AI-029` to the delivery catalog.
+  - Updated [`design_draft.md`](design_draft.md): Staged, reviewed, and finalized complete design specification.
+
+- **Next Steps:**
+  - Proceed with Phase 2.1 implementation and test validation on `feature/ai-unified-input-clarification`:
+    - Ensure `requirements(WorkflowTaskContext $context, array $currentSlots = [])` signature is implemented across providers.
+    - Connect `PreparePurchaseOrder` to `BatchRecordResolutionService` and `InputCompletenessEvaluator`.
+    - Verify `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` and run full AI test suite (`phpunit.ai.xml`).
+  - Next Capability Track: Sales Order Multi-Slot Clarification (`sales_order.create.v1`).
+
+---
+
 ## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Architectural Deliverables Completed & Verified (100% Invariant Compliance):**
@@ -92,6 +157,71 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms:**
+  - When user sent natural language prompt in the web UI (`zolo-erp-pro.test/ai`):
+    `"Create a purchase order for 10 units of Cotton Shirt Blue from ABC Traders at ₹500 per unit. Use the Main Warehouse. Show me the details before placing the order."`
+  - Web UI returned: `[AI_INTERNAL_ERROR] The ERP could not complete this request.`
+  - `storage/logs/laravel.log`:
+    `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'http_attempts' in 'field list'`
+    `Failed to record AI model invocation telemetry {"run_id":"...","exception_type":"QueryException"}`
+
+- **Root Causes Identified & Remedied:**
+  1. **Dev Database Schema Drift (Port 3307 `zoloerp`):**
+     - Three additive migrations (`2026_11_10_000006`, `2026_11_11_000001`, `2026_11_11_000002`) had run on test databases but were pending on the development database.
+     - Executed `php artisan migrate` on dev MySQL (port 3307), cleanly creating `ai_workflow_tasks`, `ai_workflow_task_events`, and adding `http_attempts` column.
+  2. **Tool Instantiation Container Resolution in `ErpCopilot.php`:**
+     - `ErpCopilot::tools()` was previously calling `new PreparePurchaseOrder($this->principal, app(RecordResolutionService::class))` with the obsolete constructor signature.
+     - Refactored to container resolution: `app(PreparePurchaseOrder::class, ['principal' => $this->principal])`, resolving all 7 typed dependencies via Laravel service container.
+  3. **Bootstrap Provenance JSON Whitespace Handling in `CompanyBootstrapCommandAdapter`:**
+     - JSON audit matching `like '%"idempotency_key":"' . $idempotencyKey . '"%'` failed when MySQL formatted with space (`"idempotency_key": "..."`).
+     - Added whitespace-tolerant matching (`orWhere('after_json', 'like', '%"idempotency_key": "' . $idempotencyKey . '"%')`), unblocking bootstrap recovery.
+  4. **Clarification Card Summary in `VerifiedSummaryBuilder.php`:**
+     - Added dedicated `'workflow.clarification.v1' => $this->summarizeClarification($data)` handler, rendering clean human-readable summaries of confirmed and required fields alongside interactive desk clarification cards.
+  5. **Agent Guidance for Action Tools in `ErpCopilot.php`:**
+     - Explicitly instructed Copilot to invoke `prepare_purchase_order` once and refrain from issuing extraneous inventory/payables report queries when processing purchase order workflows.
+
+- **Verification Results (100% Green):**
+  - Simulated live Copilot prompt end-to-end with active NVIDIA model: Tool executed successfully, returning `status: needs_input` with `workflow.clarification.v1` fact card, confirmed line quantities and costs, and interactive input selectors.
+  - Complete AI test suite (`phpunit.ai.xml`): **116/116 passed (763 assertions, 0 failures, 0 errors)**.
+  - Caches cleared: `config:clear`, `route:clear`, `view:clear`.
+
+---
+
+
+
+## EGM Architectural Review & Master Documentation Sync Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **EGM 7-Lens Swarm Audit & Architectural Remediations (`design_draft.md`):**
+  - Executed full 7-lens review swarm (`egm-zoom-out`, `egm-comprehension`, `egm-design`, `egm-codebase-details`, `egm-implementation-readiness`, `egm-inventive-catalyst`, `egm-style`).
+  - Synthesized findings into `consolidated_review_report.md`.
+  - Addressed and remediated the 7 core blockers and key findings with author verification:
+    1. **B-01 (Sales Order Service Delegation):** Clarified routing to `OrderLifecycleService::createSale()` (commercial orders) instead of `CommercialApplicationService::create('sale')` (posted invoices with immediate stock deductions).
+    2. **B-02 (Sales Order Action Pipeline):** Specified full Action Foundation pipeline (`CreateSalesOrderInputSchema`, `SalesOrderPreviewAdapter`, `SalesOrderCommandAdapter`) in `ActionCapabilityRegistry`.
+    3. **B-03 (Tenancy Boundaries & Bootstrap Isolation):** Enforced `company_id BIGINT UNSIGNED NOT NULL` on `ai_workflow_tasks` with compound ownership queries (`WHERE id = :id AND company_id = :company_id AND actor_id = :actor_id`). Kept Mode A bootstrap strictly isolated under `ai_bootstrap_tasks`.
+    4. **B-04 (Dynamic Line-Item Addressing):** Updated contract to `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` with stable `client_line_id` indexing and `_destroy: true` semantics.
+    5. **B-05 (Batch Record Resolution Safeguards):** Specified set-based SQL `WHERE IN` queries, candidate caps of 5, and dirty-slot memoization in `resolution_json` to eliminate N+1 query storms.
+    6. **B-06 (Proposal Promotion Atomicity):** Required `expected_revision` on `prepare-proposal`, pessimistic row locking (`lockForUpdate()`), atomic status transition, and HTTP 423 Locked guards against post-promotion mutations.
+    7. **B-07 (Customer & Sales UOM Resolution):** Expanded `RecordResolutionService` and `BatchRecordResolutionService` to support customer resolution (`resolveCustomer()`) and sales unit resolution (`sale_unit_id`).
+  - Streamlined infrastructure: Dropped speculative `ai_workflow_task_events` table for v1; formal auditing via `ai_action_proposals` and `ai_action_executions`.
+  - Added dedicated `## Risks & Mitigations` section.
+
+- **Master Repository Documents Synchronized:**
+  - Created [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) as permanent Phase 2.1 architecture specification.
+  - Updated [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md): Spliced PH2.1 into Phased Delivery Progression flowchart and added deliverables `UC-001` through `UC-007`.
+  - Updated [`AGENTS.md`](AGENTS.md): Spliced PH2.1 into Phased AI Roadmap diagram and added stories `AI-025` through `AI-029` to the delivery catalog.
+  - Updated [`design_draft.md`](design_draft.md): Staged, reviewed, and finalized complete design specification.
+
+- **Next Steps:**
+  - Proceed with Phase 2.1 implementation and test validation on `feature/ai-unified-input-clarification`:
+    - Ensure `requirements(WorkflowTaskContext $context, array $currentSlots = [])` signature is implemented across providers.
+    - Connect `PreparePurchaseOrder` to `BatchRecordResolutionService` and `InputCompletenessEvaluator`.
+    - Verify `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` and run full AI test suite (`phpunit.ai.xml`).
+  - Next Capability Track: Sales Order Multi-Slot Clarification (`sales_order.create.v1`).
+
+---
 
 ## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
@@ -195,6 +325,71 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms:**
+  - When user sent natural language prompt in the web UI (`zolo-erp-pro.test/ai`):
+    `"Create a purchase order for 10 units of Cotton Shirt Blue from ABC Traders at ₹500 per unit. Use the Main Warehouse. Show me the details before placing the order."`
+  - Web UI returned: `[AI_INTERNAL_ERROR] The ERP could not complete this request.`
+  - `storage/logs/laravel.log`:
+    `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'http_attempts' in 'field list'`
+    `Failed to record AI model invocation telemetry {"run_id":"...","exception_type":"QueryException"}`
+
+- **Root Causes Identified & Remedied:**
+  1. **Dev Database Schema Drift (Port 3307 `zoloerp`):**
+     - Three additive migrations (`2026_11_10_000006`, `2026_11_11_000001`, `2026_11_11_000002`) had run on test databases but were pending on the development database.
+     - Executed `php artisan migrate` on dev MySQL (port 3307), cleanly creating `ai_workflow_tasks`, `ai_workflow_task_events`, and adding `http_attempts` column.
+  2. **Tool Instantiation Container Resolution in `ErpCopilot.php`:**
+     - `ErpCopilot::tools()` was previously calling `new PreparePurchaseOrder($this->principal, app(RecordResolutionService::class))` with the obsolete constructor signature.
+     - Refactored to container resolution: `app(PreparePurchaseOrder::class, ['principal' => $this->principal])`, resolving all 7 typed dependencies via Laravel service container.
+  3. **Bootstrap Provenance JSON Whitespace Handling in `CompanyBootstrapCommandAdapter`:**
+     - JSON audit matching `like '%"idempotency_key":"' . $idempotencyKey . '"%'` failed when MySQL formatted with space (`"idempotency_key": "..."`).
+     - Added whitespace-tolerant matching (`orWhere('after_json', 'like', '%"idempotency_key": "' . $idempotencyKey . '"%')`), unblocking bootstrap recovery.
+  4. **Clarification Card Summary in `VerifiedSummaryBuilder.php`:**
+     - Added dedicated `'workflow.clarification.v1' => $this->summarizeClarification($data)` handler, rendering clean human-readable summaries of confirmed and required fields alongside interactive desk clarification cards.
+  5. **Agent Guidance for Action Tools in `ErpCopilot.php`:**
+     - Explicitly instructed Copilot to invoke `prepare_purchase_order` once and refrain from issuing extraneous inventory/payables report queries when processing purchase order workflows.
+
+- **Verification Results (100% Green):**
+  - Simulated live Copilot prompt end-to-end with active NVIDIA model: Tool executed successfully, returning `status: needs_input` with `workflow.clarification.v1` fact card, confirmed line quantities and costs, and interactive input selectors.
+  - Complete AI test suite (`phpunit.ai.xml`): **116/116 passed (763 assertions, 0 failures, 0 errors)**.
+  - Caches cleared: `config:clear`, `route:clear`, `view:clear`.
+
+---
+
+
+
+## EGM Architectural Review & Master Documentation Sync Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **EGM 7-Lens Swarm Audit & Architectural Remediations (`design_draft.md`):**
+  - Executed full 7-lens review swarm (`egm-zoom-out`, `egm-comprehension`, `egm-design`, `egm-codebase-details`, `egm-implementation-readiness`, `egm-inventive-catalyst`, `egm-style`).
+  - Synthesized findings into `consolidated_review_report.md`.
+  - Addressed and remediated the 7 core blockers and key findings with author verification:
+    1. **B-01 (Sales Order Service Delegation):** Clarified routing to `OrderLifecycleService::createSale()` (commercial orders) instead of `CommercialApplicationService::create('sale')` (posted invoices with immediate stock deductions).
+    2. **B-02 (Sales Order Action Pipeline):** Specified full Action Foundation pipeline (`CreateSalesOrderInputSchema`, `SalesOrderPreviewAdapter`, `SalesOrderCommandAdapter`) in `ActionCapabilityRegistry`.
+    3. **B-03 (Tenancy Boundaries & Bootstrap Isolation):** Enforced `company_id BIGINT UNSIGNED NOT NULL` on `ai_workflow_tasks` with compound ownership queries (`WHERE id = :id AND company_id = :company_id AND actor_id = :actor_id`). Kept Mode A bootstrap strictly isolated under `ai_bootstrap_tasks`.
+    4. **B-04 (Dynamic Line-Item Addressing):** Updated contract to `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` with stable `client_line_id` indexing and `_destroy: true` semantics.
+    5. **B-05 (Batch Record Resolution Safeguards):** Specified set-based SQL `WHERE IN` queries, candidate caps of 5, and dirty-slot memoization in `resolution_json` to eliminate N+1 query storms.
+    6. **B-06 (Proposal Promotion Atomicity):** Required `expected_revision` on `prepare-proposal`, pessimistic row locking (`lockForUpdate()`), atomic status transition, and HTTP 423 Locked guards against post-promotion mutations.
+    7. **B-07 (Customer & Sales UOM Resolution):** Expanded `RecordResolutionService` and `BatchRecordResolutionService` to support customer resolution (`resolveCustomer()`) and sales unit resolution (`sale_unit_id`).
+  - Streamlined infrastructure: Dropped speculative `ai_workflow_task_events` table for v1; formal auditing via `ai_action_proposals` and `ai_action_executions`.
+  - Added dedicated `## Risks & Mitigations` section.
+
+- **Master Repository Documents Synchronized:**
+  - Created [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) as permanent Phase 2.1 architecture specification.
+  - Updated [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md): Spliced PH2.1 into Phased Delivery Progression flowchart and added deliverables `UC-001` through `UC-007`.
+  - Updated [`AGENTS.md`](AGENTS.md): Spliced PH2.1 into Phased AI Roadmap diagram and added stories `AI-025` through `AI-029` to the delivery catalog.
+  - Updated [`design_draft.md`](design_draft.md): Staged, reviewed, and finalized complete design specification.
+
+- **Next Steps:**
+  - Proceed with Phase 2.1 implementation and test validation on `feature/ai-unified-input-clarification`:
+    - Ensure `requirements(WorkflowTaskContext $context, array $currentSlots = [])` signature is implemented across providers.
+    - Connect `PreparePurchaseOrder` to `BatchRecordResolutionService` and `InputCompletenessEvaluator`.
+    - Verify `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` and run full AI test suite (`phpunit.ai.xml`).
+  - Next Capability Track: Sales Order Multi-Slot Clarification (`sales_order.create.v1`).
+
+---
+
 ## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Architectural Deliverables Completed & Verified (100% Invariant Compliance):**
@@ -287,6 +482,71 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms:**
+  - When user sent natural language prompt in the web UI (`zolo-erp-pro.test/ai`):
+    `"Create a purchase order for 10 units of Cotton Shirt Blue from ABC Traders at ₹500 per unit. Use the Main Warehouse. Show me the details before placing the order."`
+  - Web UI returned: `[AI_INTERNAL_ERROR] The ERP could not complete this request.`
+  - `storage/logs/laravel.log`:
+    `SQLSTATE[42S22]: Column not found: 1054 Unknown column 'http_attempts' in 'field list'`
+    `Failed to record AI model invocation telemetry {"run_id":"...","exception_type":"QueryException"}`
+
+- **Root Causes Identified & Remedied:**
+  1. **Dev Database Schema Drift (Port 3307 `zoloerp`):**
+     - Three additive migrations (`2026_11_10_000006`, `2026_11_11_000001`, `2026_11_11_000002`) had run on test databases but were pending on the development database.
+     - Executed `php artisan migrate` on dev MySQL (port 3307), cleanly creating `ai_workflow_tasks`, `ai_workflow_task_events`, and adding `http_attempts` column.
+  2. **Tool Instantiation Container Resolution in `ErpCopilot.php`:**
+     - `ErpCopilot::tools()` was previously calling `new PreparePurchaseOrder($this->principal, app(RecordResolutionService::class))` with the obsolete constructor signature.
+     - Refactored to container resolution: `app(PreparePurchaseOrder::class, ['principal' => $this->principal])`, resolving all 7 typed dependencies via Laravel service container.
+  3. **Bootstrap Provenance JSON Whitespace Handling in `CompanyBootstrapCommandAdapter`:**
+     - JSON audit matching `like '%"idempotency_key":"' . $idempotencyKey . '"%'` failed when MySQL formatted with space (`"idempotency_key": "..."`).
+     - Added whitespace-tolerant matching (`orWhere('after_json', 'like', '%"idempotency_key": "' . $idempotencyKey . '"%')`), unblocking bootstrap recovery.
+  4. **Clarification Card Summary in `VerifiedSummaryBuilder.php`:**
+     - Added dedicated `'workflow.clarification.v1' => $this->summarizeClarification($data)` handler, rendering clean human-readable summaries of confirmed and required fields alongside interactive desk clarification cards.
+  5. **Agent Guidance for Action Tools in `ErpCopilot.php`:**
+     - Explicitly instructed Copilot to invoke `prepare_purchase_order` once and refrain from issuing extraneous inventory/payables report queries when processing purchase order workflows.
+
+- **Verification Results (100% Green):**
+  - Simulated live Copilot prompt end-to-end with active NVIDIA model: Tool executed successfully, returning `status: needs_input` with `workflow.clarification.v1` fact card, confirmed line quantities and costs, and interactive input selectors.
+  - Complete AI test suite (`phpunit.ai.xml`): **116/116 passed (763 assertions, 0 failures, 0 errors)**.
+  - Caches cleared: `config:clear`, `route:clear`, `view:clear`.
+
+---
+
+
+
+## EGM Architectural Review & Master Documentation Sync Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **EGM 7-Lens Swarm Audit & Architectural Remediations (`design_draft.md`):**
+  - Executed full 7-lens review swarm (`egm-zoom-out`, `egm-comprehension`, `egm-design`, `egm-codebase-details`, `egm-implementation-readiness`, `egm-inventive-catalyst`, `egm-style`).
+  - Synthesized findings into `consolidated_review_report.md`.
+  - Addressed and remediated the 7 core blockers and key findings with author verification:
+    1. **B-01 (Sales Order Service Delegation):** Clarified routing to `OrderLifecycleService::createSale()` (commercial orders) instead of `CommercialApplicationService::create('sale')` (posted invoices with immediate stock deductions).
+    2. **B-02 (Sales Order Action Pipeline):** Specified full Action Foundation pipeline (`CreateSalesOrderInputSchema`, `SalesOrderPreviewAdapter`, `SalesOrderCommandAdapter`) in `ActionCapabilityRegistry`.
+    3. **B-03 (Tenancy Boundaries & Bootstrap Isolation):** Enforced `company_id BIGINT UNSIGNED NOT NULL` on `ai_workflow_tasks` with compound ownership queries (`WHERE id = :id AND company_id = :company_id AND actor_id = :actor_id`). Kept Mode A bootstrap strictly isolated under `ai_bootstrap_tasks`.
+    4. **B-04 (Dynamic Line-Item Addressing):** Updated contract to `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context, array $currentSlots = []): array` with stable `client_line_id` indexing and `_destroy: true` semantics.
+    5. **B-05 (Batch Record Resolution Safeguards):** Specified set-based SQL `WHERE IN` queries, candidate caps of 5, and dirty-slot memoization in `resolution_json` to eliminate N+1 query storms.
+    6. **B-06 (Proposal Promotion Atomicity):** Required `expected_revision` on `prepare-proposal`, pessimistic row locking (`lockForUpdate()`), atomic status transition, and HTTP 423 Locked guards against post-promotion mutations.
+    7. **B-07 (Customer & Sales UOM Resolution):** Expanded `RecordResolutionService` and `BatchRecordResolutionService` to support customer resolution (`resolveCustomer()`) and sales unit resolution (`sale_unit_id`).
+  - Streamlined infrastructure: Dropped speculative `ai_workflow_task_events` table for v1; formal auditing via `ai_action_proposals` and `ai_action_executions`.
+  - Added dedicated `## Risks & Mitigations` section.
+
+- **Master Repository Documents Synchronized:**
+  - Created [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) as permanent Phase 2.1 architecture specification.
+  - Updated [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md): Spliced PH2.1 into Phased Delivery Progression flowchart and added deliverables `UC-001` through `UC-007`.
+  - Updated [`AGENTS.md`](AGENTS.md): Spliced PH2.1 into Phased AI Roadmap diagram and added stories `AI-025` through `AI-029` to the delivery catalog.
+  - Updated [`design_draft.md`](design_draft.md): Staged, reviewed, and finalized complete design specification.
+
+- **Next Steps:**
+  - Proceed with Phase 2.1 implementation and test validation on `feature/ai-unified-input-clarification`:
+    - Ensure `requirements(WorkflowTaskContext $context, array $currentSlots = [])` signature is implemented across providers.
+    - Connect `PreparePurchaseOrder` to `BatchRecordResolutionService` and `InputCompletenessEvaluator`.
+    - Verify `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` and run full AI test suite (`phpunit.ai.xml`).
+  - Next Capability Track: Sales Order Multi-Slot Clarification (`sales_order.create.v1`).
+
+---
 
 ## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
 

@@ -25,19 +25,30 @@ This is **illustrative and untrusted**. The server attaches actor/company/branch
 ## Intent taxonomy
 Define stable versioned intent families: `report.*`, `master.customer.*`, `master.supplier.*`, `master.product.*`, `purchase_order.*`, `purchase_receipt.*`, `purchase_bill.*`, `sales_quote.*`, `sales_order.*`, `sales_invoice.*`, `payment.*`, `inventory_transfer.*`, `stock_adjustment.*`, `journal.*`, `manufacturing.*`, `document_import.*`, `workflow_schedule.*`. Unknown or unsupported intents return safe unsupported clarification rather than being routed to arbitrary PHP.
 
-## Record resolution stages
-1. Server derives scope and allowed capability set.
-2. Normalize user phrase (trim, case, Unicode, local aliases), preserving original user input.
-3. Query authorized exact IDs/codes/reference numbers first, then reviewed aliases, then fuzzy candidates with strict limit and ranking.
-4. Include distinguishing fields: product SKU, UOM, variant, batch, warehouse; customer/supplier code, branch/region; document number/date; show only permitted data.
-5. If no match: ask whether user means a different record or wants to create new master (separate permission/flow). If multiple high-ranked candidates: ask to select explicitly; don't silently choose on LLM confidence.
-6. Validate selected record under current company/branch/FY and check active state; save candidate ID + type + source version + user-confirmed flag; recheck at proposal/execute.
+## Record resolution stages (Single-Pass Batch Vectorization)
+In accordance with Phase 2.1 (`BatchRecordResolutionService`), resolution executes in a single bulk pass across all lines and headers rather than halting on the first error:
+1. Server derives authenticated `CompanyContext` (company, branch, financial year) and authorized actor permissions.
+2. Normalize user phrase (trim, case, Unicode, local aliases), preserving original raw input in draft audit.
+3. Vectorized Set-Based Queries:
+   - **Parties (Suppliers / Customers):** Match company-scoped party records via exact ID, GSTIN, code, legal name, or phone. Ambiguous matches return bounded candidate pickers (maximum 5 options).
+   - **Warehouses:** Resolves active primary warehouse for the authenticated branch by default; matches explicit warehouse names or codes.
+   - **Products Across All Lines:** Collects all product codes/barcodes across line items and executes a single bulk `Product::where('company_id', $companyId)->where(function ($q) use ($codes) { $q->whereIn('code', $codes)->orWhereIn('barcode', $codes); })->get()` query, eliminating N+1 query storms.
+   - **Units of Measurement:** Resolves `purchase_unit_id` for purchasing flows or `sale_unit_id` for sales flows, applying verified conversion rates from `product_unit_conversions`.
+4. Dirty-Slot Memoization: Re-evaluations inspect `resolution_json` and skip lines whose inputs have not mutated since previous evaluation.
+5. Missing Entity Gate: If no match exists, present selectable candidate options or an explicit action to trigger an in-flight master setup proposal (`setup.customer.create.v1`, `setup.product.create.v1`) without losing active draft state.
 
 ## Required slots per command
-For each action define required, defaultable, optional and conditional slots in a schema. Example PO: supplier; requested date, branch and FY resolved server-side; warehouse/delivery site; line item product ID, quantity, UOM; agreed prices/discount, GST metadata where applicable; delivery terms/expected date if ERP requires them. Distinguish 'missing but safely defaultable under ERP policy' from 'must ask'. Any legal/tax/financial required values demand domain validation even if inferred.
+Requirements are declared via `ActionRequirementsRegistry` by domain-specific providers (`PurchaseOrderRequirementsProvider`, `SalesOrderRequirementsProvider`, `QuotationRequirementsProvider`, etc.). Each slot specifies `dataType`, `entityType`, `isRequired`, `resolutionPolicy`, `defaultPolicy`, and dynamic dependencies. Line items are indexed by stable client IDs (`client_line_id`, e.g. `items[line-1].product_id`), supporting in-place line additions, quantity modifications, and deletions (`_destroy: true`).
 
-## Clarification policy
-Ask one concise question covering the next blocking ambiguity, or show an editable form when several fields are missing. Persist what was already confirmed and its provenance. If user says "change quantity to 75" target the selected task line, not an unrelated past invoice. A confirmed supplier ID is sticky only while company/branch scope and record version remain valid. Support undo/edit and show summary of accumulated choices.
+## Clarification policy (Single Consolidated Clarification Card)
+Never ask repetitive one-by-one questions that stop at the first missing field.
+1. **Single-Pass Evaluation:** When inputs are incomplete, ambiguous, or invalid, `InputCompletenessEvaluator` collects all issues across headers and all line items into a single diagnostic payload.
+2. **Interactive Clarification Fact Card (`workflow.clarification.v1`):** Surfaces in the AI Workspace displaying:
+   - **Confirmed Fields Summary:** Read-only pills of verified supplier/customer, warehouse, order date, and validated line items.
+   - **Candidate Disambiguation Buttons:** Bounded candidate selectors (max 5) for ambiguous parties or products.
+   - **Missing Input Controls:** Dedicated inputs for required dates, quantities, or prices.
+   - **Advisory Stock / Credit Warnings:** Non-blocking availability badges for low stock or credit limit cautions.
+3. **Consolidated Correction Patch:** The client submits all corrections simultaneously via `PATCH /api/v1/ai/workflow-tasks/{id}/inputs` with `expected_revision`. Stale edits fail closed with HTTP 409 Conflict. Once zero blocking issues remain, the task is promoted to an authoritative, sealed `ai_action_proposals` record.
 
 ## Entity and instruction confidence
 Confidence is for UI presentation and choosing whether to ask a question, **never** for skipping authorization or approval. Product matching uses deterministic source identity; if model provides 'Blue Cotton' but two SKUs exist, require human selection. Quantity/UOM/currency phrases require strict parsing, decimal representation and reviewed conversions. Locale-aware number parsing of `1,00,000` vs `100,000` must be tested; don't let an LLM reinterpret ambiguous prices.

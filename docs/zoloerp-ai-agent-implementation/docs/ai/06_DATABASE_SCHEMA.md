@@ -16,9 +16,36 @@ Do not recreate Laravel AI SDK-owned `agent_conversation*` tables. Keep applicat
 | `ai_usage_counters`, model-invocation log | RPM, daily/user/company quotas and provider attempts | Atomic accounting, no raw content |
 | `ai_feature_settings` | Company enablement and budgets | Fail-closed and operator-controlled |
 | `ai_thread_entities` | Confirmed entity context for follow-up | Actor/FY/branch verification and expiry |
-| `ai_action_proposals`, approvals/executions | Historical/quarantined data from earlier branch | Preserve history; do not revive legacy write logic |
+| `ai_action_proposals`, approvals/executions | Sealed proposals, cryptographic HMAC approval receipts, execution records | Immutable history; SHA-256 payload & source-state hash |
+| `ai_workflow_tasks` (Phase 2.1) | Mutable pre-proposal draft slot storage across Sales, Purchase & Setup | Strict tenancy (`company_id NOT NULL`), optimistic `revision` locking |
 
-## New logical tables for *future* action workflow
+## Pre-Proposal Task Draft Schema (`ai_workflow_tasks` — Additive Migration)
+Introduced via `database/migrations/2026_11_11_000002_create_ai_workflow_tasks_tables.php`:
+```sql
+CREATE TABLE ai_workflow_tasks (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    action_key VARCHAR(100) NOT NULL,
+    actor_id BIGINT UNSIGNED NOT NULL,
+    thread_id VARCHAR(120) NULL,
+    company_id BIGINT UNSIGNED NOT NULL,
+    branch_id BIGINT UNSIGNED NOT NULL,
+    financial_year_id BIGINT UNSIGNED NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'collecting',
+    revision INT UNSIGNED NOT NULL DEFAULT 1,
+    slots_json JSON NOT NULL,
+    resolution_json JSON NULL,
+    issues_json JSON NULL,
+    linked_proposal_id CHAR(36) NULL,
+    expires_at TIMESTAMP NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    INDEX idx_wf_tasks_company_actor (company_id, actor_id, status),
+    INDEX idx_wf_tasks_thread (thread_id),
+    INDEX idx_wf_tasks_proposal (linked_proposal_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+## Physical Action Foundation Schema (Phase 1/2)
 | Table | Essential fields | Constraints |
 |---|---|---|
 | `ai_tasks` | id UUID, actor, company, branch, FY, intent, workflow version, state, priority, expires_at | Scoped owner index; unique correlation ID; terminal states immutable |

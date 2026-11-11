@@ -16,15 +16,16 @@ A user can create a purchase order from natural language; later record actual re
 - `TaxDeterminationService::prepare` (under `app/Services/Tax`)
 The correct command kind, posting events, tax rules and stock/GL side effects **must be traced in code and approved by purchasing/finance**. Do not assume that one signature is interchangeable with another.
 
-## Workflow A — Create Purchase Order (first production action)
+## Workflow A — Create Purchase Order (Unified Clarification Engine)
 **Example:** "Order 100 metres of blue fabric from ABC Traders at ₹120 per metre for Warehouse 1."
-1. Detect `purchase_order.prepare` and check user's purchase create capability.
-2. Resolve supplier exact/alias/fuzzy with company/branch and active state. Ask user to choose when ambiguous.
-3. Resolve product SKU/variant/lot and UOM; check whether price is user-specified or existing supplier rate; normalize decimal amounts.
-4. Determine warehouse and expected delivery date from authorised defaults or clarification. Supplier terms/discount/GST computed by domain pricing and tax policies, not prompt guesses.
-5. Build validated PO draft using actual command/draft service. Preview supplier, line items, UOM conversions, discounts, taxes, expected delivery and total. Confirm that no stock/liability is created merely by the PO unless business rules specify otherwise.
-6. Show `Create Purchase Order` explicit confirmation; revalidate source state and permission, execute domain command with idempotency key, return actual PO ID/reference/status.
-7. Persist audit and link; task may remain open awaiting physical goods.
+1. Intent Mapping: Detects `purchase_order.create.v1` and verifies user's `purchase.create` capability.
+2. Unified Intake & Draft: Creates or resumes pre-proposal draft in `ai_workflow_tasks` with `expected_revision`.
+3. Vectorized Batch Resolution (`BatchRecordResolutionService`): Resolves supplier, warehouse, and all product lines in a single pass. Eliminates legacy stop-at-first-error bottleneck.
+4. Completeness Evaluation (`InputCompletenessEvaluator`):
+   - If supplier, warehouse, or line items are ambiguous or missing: surfaces a single consolidated clarification card (`workflow.clarification.v1`) with candidate buttons (max 5) and input fields.
+   - User submits batch corrections via `PATCH /api/v1/ai/workflow-tasks/{id}/inputs`.
+5. Proposal Promotion: Once 100% complete, acquires transaction row lock and creates immutable `ActionProposal` with live `CommercialPricing` calculation, SHA-256 source-state hash, and cryptographic HMAC approval binding.
+6. Execution: Upon human approval, `ApprovedActionExecutor` delegates to `CommercialApplicationService::create('purchase')` (status 4). Returns authoritative PO receipt; zero unapproved inventory or ledger impact.
 
 **Required inputs:** supplier, product/quantity/UOM, branch and FY (server resolved), correct warehouse, date, currency/rate under ERP policy and all mandatory domain fields. **Never default an ambiguous supplier/product.**
 

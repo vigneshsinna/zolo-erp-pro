@@ -22,41 +22,57 @@ flowchart TD
     PROVISION_DEFAULTS --> MODE_B["Mode B: Company-Scoped Setup"]
     MODE_B --> CONFIGURE_MASTERS["Units, Warehouses, Products, Parties + Tax/Accounts"]
     CONFIGURE_MASTERS --> READINESS["Setup Readiness Validation"]
-    READINESS --> PO_FLOW["Purchase Order AI Workflow"]
-    PO_FLOW --> BILLS_SALES["Purchase Bills + Sales"]
-    BILLS_SALES --> ERP_MODULES["Inventory + Accounting + Other ERP Modules"]
+    READINESS --> PO_FLOW["Phase 2: Purchase Order AI Workflow"]
+    PO_FLOW --> UNIFIED_ENGINE["Phase 2.1: Unified Input Collection & Clarification\n(Generalized Pre-Proposal Task Engine)"]
+    UNIFIED_ENGINE --> SALES_FLOW["Phase 2.1+: Sales Orders, Quotes & Invoices"]
+    SALES_FLOW --> BILLS_FLOW["Phase 3: Purchase Bills & 3-Way Matching"]
+    BILLS_FLOW --> ERP_MODULES["Phase 4: Inventory, Finance & Manufacturing"]
 ```
 
 ---
 
 ## Governed Intent-Proposal-Approval-Execution Lifecycle
 
-Every non-read workflow follows this strict lifecycle:
+Every non-read workflow follows this strict lifecycle, incorporating the Phase 2.1 Pre-Proposal Task Collection Engine:
 
 ```mermaid
 flowchart TD
-    INPUT["Image / Voice / Message"] --> NORM["Normalize + Authenticate"]
-    NORM --> PLANNER["AI Intent and Workflow Planner"]
-    PLANNER --> RESOLVE["Resolve Records + Validate with ERP"]
-    RESOLVE --> PROPOSAL["Create Versioned Proposal"]
-    PROPOSAL --> PREVIEW["Editable Preview + Human Review"]
+    INPUT["Image / Voice / Message"] --> NORM["Normalize + Authenticate Context"]
+    NORM --> PLANNER["AI Intent & Slot Extraction"]
+    PLANNER --> REQUIREMENTS["ActionRequirementsRegistry\n(PO, SO, Quote, Setup, etc.)"]
+    REQUIREMENTS --> TASK_DRAFT["ai_workflow_tasks (Draft State)\nOptimistic Revision Lock"]
+    TASK_DRAFT --> BATCH_RESOLVE["BatchRecordResolutionService\n(Single-Pass Vectorized Resolution)"]
+    BATCH_RESOLVE --> EVAL{"InputCompletenessEvaluator\nAll Slots Ready?"}
+    
+    EVAL -- "No (Missing / Ambiguous)" --> CLARIFY["Consolidated Clarification Card\n(Details Required Fact Card)"]
+    CLARIFY --> USER_PATCH["User Supplies Details / Batch Correction"]
+    USER_PATCH --> MERGE["WorkflowTaskStateService\nMerge & Update Revision"]
+    MERGE --> BATCH_RESOLVE
+    
+    EVAL -- "Yes (100% Ready)" --> PROPOSAL["Create Versioned Proposal\n(ai_action_proposals)"]
+    PROPOSAL --> PREVIEW["Authoritative Commercial Preview + Human Review"]
     PREVIEW --> DECISION{"Human Decision"}
 
-    DECISION -->|Change Request| EDIT_PROP["Edit Proposal + Increment Version"]
-    EDIT_PROP --> RESOLVE
+    DECISION -->|Change Request| EDIT_DRAFT["Re-open Task Draft in ai_workflow_tasks"]
+    EDIT_DRAFT --> BATCH_RESOLVE
 
-    DECISION -->|Cancel| CANCEL["Cancel without ERP Write"]
+    DECISION -->|Cancel| CANCEL["Cancel Draft / Proposal without ERP Write"]
 
     DECISION -->|Approve| BIND["Bind Approval to Exact Payload Hash"]
     BIND --> REVALIDATE["Fresh Authorization, State + Lifecycle Checks"]
     REVALIDATE --> STILL_VALID{"Still Valid?"}
 
     STILL_VALID -->|No| REBUILD["Rebuild Preview + Require New Approval"]
-    REBUILD --> RESOLVE
+    REBUILD --> BATCH_RESOLVE
 
-    STILL_VALID -->|Yes| EXECUTE["Idempotent Existing ERP Domain Command"]
-    EXECUTE --> RECEIPT["Committed Receipt + Audit Trail"]
+    STILL_VALID -->|Yes| EXECUTE["Idempotent Existing ERP Domain Command\n(PO: CommercialApplicationService, SO: OrderLifecycleService)"]
+    EXECUTE --> RECEIPT["Committed ERP Receipt + Audit Trail"]
 ```
+
+### Pre-Proposal Task Draft vs. Sealed Proposal Invariant
+1. **Mutable Draft Phase (`ai_workflow_tasks`):** Incomplete inputs, missing line quantities, ambiguous products, or unresolved parties remain in the mutable `ai_workflow_tasks` table under optimistic concurrency (`expected_revision`). No cryptographic approval proposal is generated while any blocking issues remain.
+2. **Immutable Proposal Phase (`ai_action_proposals`):** Once `InputCompletenessEvaluator` returns zero blocking issues, the draft is promoted under database transaction lock (`SELECT ... FOR UPDATE`) into a sealed proposal with HMAC cryptographic seal, authoritative `CommercialPricing` calculation, and live SHA-256 source-state hash. Post-promotion mutations on the task draft are strictly rejected (HTTP 423 Locked).
+3. **Enterprise-Wide Generalization:** This lifecycle governs all transactional inputs across Sales Orders, Quotations, Sales Invoices, Purchase Orders, Goods Receipts, Supplier Bills, Inventory Transfers, and In-Flight Master Setup.
 
 ---
 

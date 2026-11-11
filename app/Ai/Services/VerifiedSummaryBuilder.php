@@ -45,6 +45,7 @@ class VerifiedSummaryBuilder
                 'knowledge.query.v1' => $this->summarizeKnowledge($data),
                 'copilot.help.v1' => $this->summarizeHelp($data),
                 'purchase_order.create.v1' => $this->summarizePurchaseOrderProposal($data),
+                'workflow.clarification.v1' => $this->summarizeClarification($data),
                 default => $this->summarizeGeneric($tool, $data),
             };
 
@@ -433,6 +434,27 @@ class VerifiedSummaryBuilder
         $lines[] = "- **Tax Total:** ₹" . ($totals['tax_total'] ?? '0.00');
         $lines[] = "- **Grand Total:** ₹{$grandTotal}";
         $lines[] = "\n*This draft proposal requires explicit approval before placing the order in the purchase order register.*";
+
+        return implode("\n", $lines);
+    }
+
+    protected function summarizeClarification(array $data): string
+    {
+        $message = $data['message'] ?? 'Additional details are required to proceed with this proposal.';
+        $requiredInputs = (array) ($data['required_inputs'] ?? []);
+        $confirmedFields = (array) ($data['confirmed_fields'] ?? []);
+
+        $lines = ['### Purchase Order — Missing Information Required'];
+        $lines[] = $message;
+
+        if (!empty($confirmedFields)) {
+            $confirmedNames = array_map(fn(array $f): string => $f['label'] ?? $f['field'], $confirmedFields);
+            $lines[] = "\n**Identified & Confirmed:** " . implode(', ', $confirmedNames) . '.';
+        }
+
+        if (!empty($requiredInputs)) {
+            $lines[] = "\nPlease provide the required inputs in the form below to continue.";
+        }
 
         return implode("\n", $lines);
     }

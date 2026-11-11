@@ -60,7 +60,8 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
         $canProposePurchases = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('purchase_order.create.v1');
         if ($canProposePurchases) {
             $actionsGuidance = ' When the user asks to order, buy, purchase, or prepare a purchase order (e.g., "Create a purchase order for 100 metres of blue fabric from ABC Traders"), invoke the prepare_purchase_order tool with the supplier name, product query, quantity, unit cost, and warehouse.'
-                . ' If the tool returns missing fields or multiple candidates, ask the user to clarify.'
+                . ' When preparing a purchase order, invoke prepare_purchase_order and do not invoke other reporting tools unless specifically requested by the user.'
+                . ' If prepare_purchase_order returns missing fields, needs_input, or multiple candidates, do not run other tools; present the required clarification clearly to the user.'
                 . ' When a proposal is generated, inform the user that a draft proposal with an editable preview has been prepared for their review and approval.'
                 . ' Remember: all purchase orders require explicit human approval and are never placed autonomously.';
         }
@@ -112,7 +113,7 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
         $tools = app(AiToolManifest::class)->sdkTools($this->principal);
 
         if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('purchase_order.create.v1')) {
-            $tools[] = new \App\Ai\Tools\PreparePurchaseOrder($this->principal, app(\App\Ai\Services\RecordResolutionService::class));
+            $tools[] = app(\App\Ai\Tools\PreparePurchaseOrder::class, ['principal' => $this->principal]);
         }
 
         return $tools;

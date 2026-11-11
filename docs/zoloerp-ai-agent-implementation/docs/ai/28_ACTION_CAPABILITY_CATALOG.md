@@ -4,10 +4,12 @@
 
 **Status:** Design specification
 
-## Separation of Registries: Read, Setup, and Action
-The existing `AiToolManifest` is strictly read-only. Action execution must not compromise this boundary. The system establishes two distinct write registries:
-1. **`SetupCapabilityRegistry` (Mode A — Pre-Company Bootstrap):** Allowlisted capabilities accessible exclusively to verified installation administrators via `BootstrapSetupPrincipal`. Handles company group creation and atomic initial company creation.
-2. **`ActionCapabilityRegistry` (Mode B — Company-Scoped Operations):** Allowlisted operational capabilities executed within an active `CompanyContext`.
+## Separation of Registries: Read, Requirements, and Execution
+The AI Operating Layer maintains three strictly decoupled registries to guarantee that untrusted model input is systematically clarified, validated, and approved before ERP mutations:
+
+1. **`AiToolManifest` (Read Plane):** Strictly read-only tools (e.g. receivables enquiry, stock lookups, balance enquiries). Unrestricted write access is completely forbidden on this plane.
+2. **`ActionRequirementsRegistry` (Pre-Proposal Intake Plane):** Enterprise-wide registry mapping capability keys to `ActionRequirementsProviderInterface` implementations (e.g. `PurchaseOrderRequirementsProvider`, `SalesOrderRequirementsProvider`, `QuotationRequirementsProvider`). Declares mandatory slots, dynamic line-item addressing (`client_line_id`), default policies, and non-destructive domain validators for pre-proposal draft collection in `ai_workflow_tasks`.
+3. **`ActionCapabilityRegistry` (Proposal & Execution Plane):** Contains typed `ActionDefinition` descriptors binding approved action keys to input schemas, deterministic preview adapters, HMAC signing requirements, and authoritative domain command adapters.
 
 ---
 
@@ -76,13 +78,19 @@ Executed within verified `CompanyContext` after initial company provisioning:
 The action pipeline strictly decouples untrusted LLM generation from authoritative execution:
 
 ```text
-ActionInputNormalizer (untrusted model slots)
-  → ActionPreviewAdapter (calls domain service; computes taxes/totals/effects)
-  → ActionProposalService (seals canonical SHA-256 hash, action version, TTL)
+Natural-Language Intake (Chat, Voice, Document Upload)
+  → Intent Extraction & Action Key Mapping (e.g. sales_order.create.v1, purchase_order.create.v1)
+  → ActionRequirementsRegistry (loads declarative slot requirements & dynamic line schemas)
+  → WorkflowTaskStateService (persists mutable draft in ai_workflow_tasks with expected_revision)
+  → BatchRecordResolutionService (single-pass bulk query for parties, warehouses, products, UOMs)
+  → InputCompletenessEvaluator (evaluates completeness; returns consolidated clarification if incomplete)
+  → [Clarification Card in AI Workspace ⟷ Batch User Patch via PATCH /workflow-tasks/{id}/inputs]
+  → [Once 100% complete] ActionProposalService (promotes draft to sealed proposal under transaction lock)
+  → ActionPreviewAdapter (calls domain pricing service; computes authoritative taxes, totals, stock effects)
   → Human Review (AI Workspace preview / Action Review Center pending queue)
   → ActionApprovalService (validates session, permissions; creates HMAC approval signature)
   → ApprovedActionExecutor (brief row lock, fresh revalidation, live lifecycle check)
-  → DomainCommandAdapter (calls authoritative ERP domain service)
+  → DomainCommandAdapter (calls authoritative ERP domain service: CommercialApplicationService, OrderLifecycleService, etc.)
   → ActionReceiptMapper (returns actual committed ERP record ID and audit reference)
 ```
 

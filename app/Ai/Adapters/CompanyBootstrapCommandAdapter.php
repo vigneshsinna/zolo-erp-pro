@@ -160,7 +160,10 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
         $audit = DB::table('company_setup_audits')
             ->where('actor_id', $actorId)
             ->where('action', 'company_created')
-            ->where('after_json', 'like', '%"idempotency_key":"' . $idempotencyKey . '"%')
+            ->where(function ($q) use ($idempotencyKey) {
+                $q->where('after_json', 'like', '%"idempotency_key":"' . $idempotencyKey . '"%')
+                    ->orWhere('after_json', 'like', '%"idempotency_key": "' . $idempotencyKey . '"%');
+            })
             ->first();
 
         $company = null;

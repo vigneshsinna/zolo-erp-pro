@@ -189,9 +189,10 @@ The development plan is structured into five distinct, gated phases based on the
 ```mermaid
 flowchart LR
     PH0["PH0: Foundation & Guardrails"] --> PH1["PH1: Read-Only Copilot MVP"]
-    PH1 --> PH1Plus["PH1+: Extended Insights & Horizon"]
-    PH1Plus --> PH2["PH2: MCP & Governed Proposals"]
-    PH2 --> PH3["PH3: Knowledge & RAG Ingestion"]
+    PH1 --> PH15["PH1.5: Guided Setup (Mode A & B)"]
+    PH15 --> PH2["PH2: Governed Purchase Orders"]
+    PH2 --> PH21["PH2.1: Unified Multi-Slot Clarification"]
+    PH21 --> PH3["PH3: Receipts, Bills & Sales"]
     PH3 --> PH4["PH4: Autonomous Orchestration"]
 ```
 
@@ -220,12 +221,19 @@ flowchart LR
 | **AI-022** | **PH1+**| P1 | Financial Statements Tool | Trial Balance, Profit & Loss, Balance Sheet query facade. | [08_ERP_TOOL_REGISTRY.md](docs/zoloerp-ai-agent-implementation/docs/ai/08_ERP_TOOL_REGISTRY.md) |
 | **AI-023** | **PH1+**| P1 | Visual Report Cards & Sparklines | Deterministic UI data widgets based solely on verified tool output. | [13_API_AND_FRONTEND.md](docs/zoloerp-ai-agent-implementation/docs/ai/13_API_AND_FRONTEND.md) |
 | **AI-024** | **PH1+**| P1 | Redis Queues & Laravel Horizon | Dedicated AI background queue worker pool isolated from ERP core. | [14_HORIZON_AND_QUEUES.md](docs/zoloerp-ai-agent-implementation/docs/ai/14_HORIZON_AND_QUEUES.md) |
+| **AI-025** | **PH2.1**| P0 | Capability Requirements Registry | `ActionRequirementsRegistry`, `ActionRequirementsProviderInterface` with dynamic line expansion. | [41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
+| **AI-026** | **PH2.1**| P0 | Single-Pass Batch Record Resolution Service | `BatchRecordResolutionService`, set-based SQL `WHERE IN`, customer/supplier/UOM lookups, candidate caps. | [41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
+| **AI-027** | **PH2.1**| P0 | Input Completeness Evaluator & Diagnostic Diagnostics | `InputCompletenessEvaluator`, 5-status field classification, gates proposal readiness. | [41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
+| **AI-028** | **PH2.1**| P0 | Workflow Task Draft Persistence (`ai_workflow_tasks`) | Additive migration, `company_id NOT NULL`, optimistic revision locking, 24h expiration. | [41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
+| **AI-029** | **PH2.1**| P0 | Consolidated "Details Required" Workspace Card & Controller | `AiWorkflowTaskController`, `/api/v1/ai/workflow-tasks/*`, interactive card UI, batch patch submission. | [41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
 | **AI-030** | **PH2** | P2 | Laravel MCP Server Integration | Secure Model Context Protocol endpoints exposing approved read tools. | [11_MCP_INTEGRATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/11_MCP_INTEGRATION.md) |
 | **AI-031** | **PH2** | P2 | External MCP Client Allowlist | Strict SSRF protection, token validation, forbidden tool discovery. | [11_MCP_INTEGRATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/11_MCP_INTEGRATION.md) |
 | **AI-032** | **PH2** | P2 | Action Proposal Engine | Immutable encrypted proposal schema (`ai_action_proposals`), TTL limits. | [12_APPROVAL_AND_ACTIONS.md](docs/zoloerp-ai-agent-implementation/docs/ai/12_APPROVAL_AND_ACTIONS.md) |
 | **AI-033** | **PH2** | P2 | Human Approval Review UI | Visual diff preview, multi-tier approvals, zero automatic posting. | [12_APPROVAL_AND_ACTIONS.md](docs/zoloerp-ai-agent-implementation/docs/ai/12_APPROVAL_AND_ACTIONS.md) |
 | **AI-034** | **PH2** | P2 | Safe Action Execution Engine | Concurrency-safe execution, idempotency keys, domain service dispatch. | [12_APPROVAL_AND_ACTIONS.md](docs/zoloerp-ai-agent-implementation/docs/ai/12_APPROVAL_AND_ACTIONS.md) |
 | **AI-035** | **PH2** | P2 | Langfuse Observability Integration | Anonymized distributed tracing, model latency metrics, cost monitoring. | [16_LANGFUSE_OBSERVABILITY.md](docs/zoloerp-ai-agent-implementation/docs/ai/16_LANGFUSE_OBSERVABILITY.md) |
+| **AI-036** | **PH2.1+**| P1 | Sales Order & Quote Multi-Slot Intake | `SalesOrderRequirementsProvider`, customer lookup, sale UOM, non-blocking ATP stock warnings. | [31_SALES_AND_COLLECTION_WORKFLOWS.md](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md)<br>[41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md) |
+| **AI-037** | **PH2.1+**| P1 | Sales Order Execution via `OrderLifecycleService` | Action adapters routing to `OrderLifecycleService::createSale()`, stock reservations, zero premature ledger writes. | [31_SALES_AND_COLLECTION_WORKFLOWS.md](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md) |
 | **AI-040** | **PH3** | P3 | Document Ingestion Quarantine & ACL | File validation, malware scan, tenant permission binding for uploads. | [15_RAG_AND_QDRANT.md](docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md) |
 | **AI-041** | **PH3** | P3 | Vector Embeddings & Qdrant | Tenant-isolated vector collections, metadata payload filters. | [15_RAG_AND_QDRANT.md](docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md) |
 | **AI-042** | **PH3** | P3 | Verifiable Cited Knowledge Answers | RAG responses with strict document version citations and excerpt links. | [15_RAG_AND_QDRANT.md](docs/zoloerp-ai-agent-implementation/docs/ai/15_RAG_AND_QDRANT.md) |

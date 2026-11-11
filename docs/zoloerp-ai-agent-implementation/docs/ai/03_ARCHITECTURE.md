@@ -64,10 +64,11 @@ flowchart TD
 
 ---
 
-## Three Independent Planes
-1. **Experience plane**: Chat, contextual assistant, editable cards, document uploads, pending approval queues, and task status across both the AI Workspace and the Action Review Center.
-2. **Intelligence plane**: Models parse language, choose allowlisted capabilities, extract slots, and generate explanations. Models are strictly forbidden from deciding authorization, executing database writes, or computing ledger balances.
-3. **Execution plane**: Read tools via `AiToolManifest`, and governed write actions via `ActionCapabilityRegistry`. Business writes occur solely through verified domain service execution upon explicit human approval.
+## Four Coordinated Architectural Planes
+1. **Experience plane**: Chat, contextual assistant, dynamic clarification fact cards (`workflow.clarification.v1`), document uploads, pending approval queues, and task status across both the AI Workspace and the Action Review Center.
+2. **Intelligence plane**: Models parse language, map intents to capability keys, extract slots, and generate bounded explanations. Models are strictly forbidden from deciding authorization, executing database writes, or computing financial totals.
+3. **Pre-Proposal Task Orchestration plane**: Manages mutable draft state in `ai_workflow_tasks` with optimistic revision locking (`expected_revision`). Executes single-pass vectorized entity resolution (`BatchRecordResolutionService`) across Sales, Purchase, and Masters, evaluates completeness (`InputCompletenessEvaluator`), and emits consolidated clarification responses.
+4. **Governed Execution plane**: Read tools via `AiToolManifest`, and governed write actions via `ActionCapabilityRegistry`. Proposals are sealed with HMAC signatures and live source-state hashes. Business writes occur solely through verified domain service execution upon explicit human approval.
 
 ---
 
@@ -76,8 +77,23 @@ flowchart TD
 
 ---
 
-## Future Action Flow (Governed Two-Phase Protocol)
-`instruction → intent → disambiguate master data → check mandatory inputs → draft using domain rules → editable preview → explicit scope-bound approval → re-resolve actor and source versions → idempotent command → actual ERP receipt → refresh related records → final response`.
+## Action Flow (Governed Two-Phase Protocol Across All Domains)
+```text
+Intake (Text/Voice/Doc)
+  → Intent Extraction & Capability Mapping (sales_order, purchase_order, quotation, setup)
+  → ActionRequirementsRegistry (Declarative field requirements & dynamic line schemas)
+  → WorkflowTaskStateService (ai_workflow_tasks draft persistence with optimistic revision)
+  → BatchRecordResolutionService (Single-pass vectorized party, warehouse, product & UOM resolution)
+  → InputCompletenessEvaluator (Evaluates complete inputs; emits single clarification card if incomplete)
+  → [AI Workspace Clarification Card ⟷ User Patch via PATCH /workflow-tasks/{id}/inputs]
+  → [When 100% Ready] ActionProposalService (Pessimistic row lock & promotion to sealed proposal)
+  → ActionPreviewAdapter (Authoritative CommercialPricing, live SHA-256 source-state hash)
+  → Human Decision (Action Review Desk / AI Workspace interactive sign-off)
+  → ActionApprovalService (HMAC cryptographic approval signature bound to payload hash)
+  → ApprovedActionExecutor (Fresh revalidation, brief row lock, lifecycle policy check)
+  → Authoritative Domain Command (PO: CommercialApplicationService, SO: OrderLifecycleService)
+  → ActionReceiptMapper (Authoritative committed ERP record ID and audit trail)
+```
 
 A task pauses at required inputs, approval, external events, or failed domain validation; each transition is audited.
 

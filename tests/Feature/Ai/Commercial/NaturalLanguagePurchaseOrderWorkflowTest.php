@@ -255,7 +255,7 @@ final class NaturalLanguagePurchaseOrderWorkflowTest extends TestCase
             requestId: 'req-test-ambiguity'
         );
 
-        $tool = new PreparePurchaseOrder($principal, app(RecordResolutionService::class));
+        $tool = app(PreparePurchaseOrder::class, ['principal' => $principal]);
 
         // When supplier is ambiguous ('ABC')
         $request = new ToolRequest([
@@ -296,7 +296,7 @@ final class NaturalLanguagePurchaseOrderWorkflowTest extends TestCase
             requestId: 'req-nl-po-success'
         );
 
-        $tool = new PreparePurchaseOrder($principal, app(RecordResolutionService::class));
+        $tool = app(PreparePurchaseOrder::class, ['principal' => $principal]);
 
         $request = new ToolRequest([
             'supplier_query' => 'ABC Traders Coimbatore',
@@ -355,7 +355,7 @@ final class NaturalLanguagePurchaseOrderWorkflowTest extends TestCase
             permittedToolNames: ['purchase_order.create.v1'],
             requestId: 'req-review-desk'
         );
-        $tool = new PreparePurchaseOrder($principal, app(RecordResolutionService::class));
+        $tool = app(PreparePurchaseOrder::class, ['principal' => $principal]);
         $request = new ToolRequest([
             'supplier_query' => 'ABC Traders Coimbatore',
             'items' => [

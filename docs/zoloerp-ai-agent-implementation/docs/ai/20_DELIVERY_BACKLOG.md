@@ -9,11 +9,12 @@ Implementation proceeds sequentially through discrete, independently testable ph
 
 ```mermaid
 flowchart TD
-    PH0["PH0: Existing Read-Only Copilot"] --> PH1["PH1: Shared Action Foundation"]
+    PH0["PH0: Complete Read-Only Copilot Baseline"] --> PH1["PH1: Shared Action Foundation"]
     PH1 --> PH15A["PH1.5 Mode A: Installation Admin Bootstrap"]
     PH15A --> PH15B["PH1.5 Mode B: Company-Scoped Setup"]
     PH15B --> PH2["PH2: Purchase Order AI Workflow"]
-    PH2 --> PH3["PH3: Purchase Bills + Sales"]
+    PH2 --> PH21["PH2.1: Unified Multi-Slot Input Collection & Clarification Engine"]
+    PH21 --> PH3["PH3: Purchase Bills & Sales Orders"]
     PH3 --> PH4["PH4: Inventory + Accounting + Other Modules"]
 ```
 
@@ -63,14 +64,29 @@ flowchart TD
 
 ---
 
-### PH2 — Commercial Action Vertical Slice: Purchase Order
+### PH2 — Commercial Action Vertical Slice: Purchase Order (Completed & Verified)
 | ID | Deliverable | Dependencies | Exit Gate |
 |---|---|---|---|
-| **PO-001** | Natural-language supplier, product, UOM, and warehouse resolution | AC-003 | Correct tenant ownership, alias resolution, handles ambiguity |
-| **PO-002** | Deterministic preview calculation via `CommercialApplicationService` | PO-001 | Authoritative pricing and GST; zero LLM monetary arithmetic |
-| **PO-003** | Hash-bound approval and PO creation command | AC-004..006, PO-002 | Exactly one PO created with idempotency key and source links |
-| **PO-004** | Change request loop and Action Review Center status tracking | PO-003 | User can edit line items, re-preview, or cancel without write |
-| **PO-005** | Domain accounting and stock isolation verification | PO-001..004 | Ledger and on-hand stock remain unaffected by order creation |
+| **PO-001** | Natural-language supplier, product, UOM, and warehouse resolution | AC-003 | Correct tenant ownership, alias resolution, handles ambiguity [Verified] |
+| **PO-002** | Deterministic preview calculation via `CommercialApplicationService` | PO-001 | Authoritative pricing and GST; zero LLM monetary arithmetic [Verified] |
+| **PO-003** | Hash-bound approval and PO creation command | AC-004..006, PO-002 | Exactly one PO created with idempotency key and source links [Verified] |
+| **PO-004** | Change request loop and Action Review Center status tracking | PO-003 | User can edit line items, re-preview, or cancel without write [Verified] |
+| **PO-005** | Domain accounting and stock isolation verification | PO-001..004 | Ledger and on-hand stock remain unaffected by order creation [Verified] |
+
+---
+
+### PH2.1 — Unified Multi-Slot Input Collection & Clarification Engine (Active Sprint)
+*Specification Reference:* [`41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md)
+
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **UC-001** | Additive Schema & Task State Service (`ai_workflow_tasks`) | PO-005 | Additive migration; `company_id NOT NULL`; optimistic revision locking; 24h expiration |
+| **UC-002** | Action Requirements Registry & Provider Interface | UC-001 | Dynamic line-item expansion (`requirements($context, $currentSlots)`); DTO contracts |
+| **UC-003** | Single-Pass Batch Record Resolution Service | UC-002 | Set-based bulk `whereIn` queries; customer/supplier/UOM lookups; candidate caps; dirty-slot memoization |
+| **UC-004** | Input Completeness Evaluator & Diagnostic Engine | UC-002..003 | 5-status field classification; zero early-exit; gates proposal readiness |
+| **UC-005** | Purchase Order Multi-Slot Clarification Vertical Slice | UC-003..004 | `PreparePurchaseOrder` refactored to eliminate first-error return; consolidated `needs_input` card |
+| **UC-006** | AI Workspace "Details Required" Card & REST Controller | UC-001..005 | `AiWorkflowTaskController` endpoints; batch patch submissions; HTTP 409/410/423 semantics |
+| **UC-007** | Automated Verification & Cross-Tenant Regression Suite | UC-001..006 | 100% green tests on disposable MySQL; verifies multi-slot clarification, concurrency, and tenant isolation |
 
 ---
 
@@ -85,8 +101,8 @@ flowchart TD
 ### PH4 — Sales & Collections Workflows
 | ID | Deliverable | Dependencies | Exit Gate |
 |---|---|---|---|
-| **SL-001** | Sales quotation and sales order draft/creation | AC-006 | Customer credit check, stock reservation, pricing tiers |
-| **SL-002** | Sales tax invoice issue and payment allocation proposal | SL-001 | AR ledger booked; tax liability recorded; no duplicate COGS |
+| **SL-001** | Sales Quotation and Sales Order Multi-Slot Intake & Clarification | UC-007 | `SalesOrderRequirementsProvider` & `QuotationRequirementsProvider`; batch customer & sale UOM resolution; non-blocking ATP stock warning check; `OrderLifecycleService::createSale()` execution; zero ledger mutations on order draft |
+| **SL-002** | Sales Tax Invoice Proposal & Post via `SalePostingService` | SL-001 | AR ledger booked; tax liability recorded; source SO/dispatch quantity tracking; zero duplicate COGS |
 | **SL-003** | Payment reminder drafts and controlled outbound sending | SL-002 | Customer consent verified; explicit sign-off per communication |
 
 ---
