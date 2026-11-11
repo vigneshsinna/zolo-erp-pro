@@ -1,5 +1,49 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 2 Purchase Order AI Workflow & Operational Action Proposals Complete — 2026-11-11 (`feature/ai-purchase-orders`)
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Strict Input Schema Validation (`CreatePurchaseOrderInputSchema`):**
+     - Implemented `App\Ai\Schemas\CreatePurchaseOrderInputSchema` defining validated types for `supplier_id`, `warehouse_id`, `date`, `items` (array with `product_id`, `qty`, `net_unit_cost`, `discount`, `tax_rate`, `purchase_unit_id`, `note`), `order_discount`, `shipping_cost`, and `note`.
+  2. **Deterministic Preview Adapter (`PurchaseOrderPreviewAdapter`):**
+     - Implemented `App\Ai\Adapters\PurchaseOrderPreviewAdapter`: validates supplier and warehouse against active `CompanyContext` (branch verification, active status).
+     - Performs exact mathematical computation of line subtotals, item taxes, order taxes, discounts, shipping, and grand totals with zero floating-point errors (`sprintf('%.2f', ...)`).
+     - **Strictly READ-ONLY with ZERO database mutations**.
+     - Returns canonical payload and `source_state_hash = hash('sha256', 'NEW_RECORD')`.
+  3. **Authoritative Domain Command Delegation (`PurchaseOrderCommandAdapter`):**
+     - Implemented `App\Ai\Adapters\PurchaseOrderCommandAdapter`: enforces Zero Autonomous Financial Writes.
+     - Creates status 4 (`Ordered`) Purchase record in the order register via `CommercialApplicationService::create('purchase', ...)`.
+     - Freezes order line allocations in `commercial_order_items` via `OrderLifecycleService::initializePurchase()`.
+     - Guarantees **zero physical stock additions** in `stock_movements` and **zero general ledger journal entries** in `journal_entries` until the order is received and billed.
+     - Implemented idempotent recovery via `ai-action:{proposalId}:v{version}` key.
+  4. **Action Capability Registry Integration:**
+     - Registered `purchase_order.create.v1` in `ActionCapabilityRegistry::registerCommercialCapabilities()` (`r2_operational`, `requiresApproval = true`, `domainOwnsTransaction = true`, `mode = 'company'`).
+     - Gated by `ai.use` and `purchases-add` permissions.
+     - Bound into Laravel service container via `AiServiceProvider`.
+  5. **Proposal Endpoints in `AiChatController`:**
+     - Connected `/api/v1/ai/proposals` (list, propose, change-request, approve, reject) with `ActionProposalService`, `ActionApprovalService`, and `ApprovedActionExecutor`.
+     - Implemented idempotency guard in `approveProposal`: re-approving an already completed proposal returns the cached execution receipt without re-executing or failing.
+  6. **Interactive AI Workspace Desk UI Fact Card (`workspace.blade.php`):**
+     - Added Fact Card renderer for `purchase_order.create.v1`: renders supplier, warehouse, order date, line items table, and totals breakdown.
+     - Embedded interactive "Approve & Place Order" and "Reject" AJAX buttons calling `/api/v1/ai/proposals/{id}/approve` and `/api/v1/ai/proposals/{id}/reject`.
+     - Added deterministic Markdown summary builder in `VerifiedSummaryBuilder`.
+  7. **Automated Verification Suite (100% Green):**
+     - Created `tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php` on disposable MySQL (`zolo_test_ai_release`):
+       - `test_unauthorized_user_cannot_create_purchase_order_proposal`: passes (403 denied).
+       - `test_purchase_order_preview_computes_deterministic_pricing_with_zero_database_writes`: passes (201 created, SHA-256 payload hash, exact pricing, 0 DB writes).
+       - `test_change_request_updates_line_items_and_increments_version`: passes (v1 -> v2 version bump, stale version rejected).
+       - `test_execution_creates_status_4_purchase_order_in_order_register_atomically`: passes (status 4 purchase, line allocations in `commercial_order_items`, 0 stock movements, 0 GL entries, idempotent retry, reflected in `ReadOpenOrders`).
+     - Added unit test in `tests/Unit/Ai/VerifiedSummaryBuilderTest.php` (5/5 passed, 28 assertions).
+     - Full AI Test Suite (`phpunit.ai.xml`): **84/84 tests passed (549 assertions, 0 errors, 0 failures)**.
+     - Design tokens test: **4/4 passed (4 assertions)**.
+     - Package and caches hygiene: `composer validate --strict` (valid), Blade and route caches compiled cleanly.
+
+- **Next Steps:**
+  1. Proceed to Phase 2 extension: Purchase Bill AI Workflow (`purchase_bill.create.v1` / linking Purchase Orders to Bills).
+  2. Implement Sales Order / Quotation AI workflow proposals (`sales_order.create.v1`, `quotation.create.v1`).
+
+---
+
 ## Phase 1.5 Guided Initial Setup Agent Complete: Mode A Bootstrap & Mode B Master Setup — 2026-11-11 (`feature/ai-guided-setup-agent`)
 
 - **Architectural Deliverables Completed & Verified:**
