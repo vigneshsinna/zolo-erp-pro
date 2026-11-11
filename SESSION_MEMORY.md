@@ -1,5 +1,46 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **User Direction & Confirmation:**
+  - User approved Option 1 (Staged EGM architecture specification and master documentation synchronization).
+  - Explicit architectural steering: **The Unified Multi-Slot Input Collection and Clarification strategy is enterprise-wide and applies equally to Sales (Quotations, Sales Orders, Invoices) and other user inputs (GRNs, Transfers, Payments, In-Flight Masters), not just Purchase Orders.**
+
+- **Repository Master Architecture Specifications Synchronized:**
+  1. [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md):
+     - Added Multi-Domain Capability Coverage Matrix and visual flowchart mapping Purchasing (`purchase_order.create.v1`, `grn.create.v1`), Sales (`sales_order.create.v1`, `quotation.create.v1`), Inventory (`stock_transfer.create.v1`), Finance (`payment_receipt.create.v1`), and Master Setup (`setup.customer.create.v1`, `setup.product.create.v1`).
+  2. [`docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md`](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md):
+     - Restructured and expanded to natively embed the Phase 2.1 engine.
+     - Documented `SalesOrderRequirementsProvider` and `QuotationRequirementsProvider` implementing `ActionRequirementsProviderInterface`.
+     - Specified batch customer resolution (`resolveCustomer` with max 5 candidates) and sales unit resolution (`sale_unit_id` with conversions).
+     - Defined Available-to-Promise (ATP) non-blocking stock check via `InventoryAvailabilityService`, generating advisory warnings rather than failing closed.
+     - Enforced domain boundary: Sales Orders route strictly to `OrderLifecycleService::createSale()` (commercial orders with stock reservations), distinct from `CommercialApplicationService::create('sale')` / `SalePostingService::post()` (posted invoices with immediate ledger writes and inventory deductions).
+  3. [`docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md):
+     - Spliced Phase 2.1 into Phased Platform Architecture and updated the Governed Intent-Proposal-Approval-Execution lifecycle diagram to include the Pre-Proposal Task Draft (`ai_workflow_tasks`) and Consolidated Clarification Card loop.
+  4. [`docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md):
+     - Replaced legacy stop-at-first-error resolution with vectorized set-based queries in `BatchRecordResolutionService` across Customers, Suppliers, Products, and UOMs.
+     - Updated clarification policy to mandate the single consolidated clarification card.
+  5. [`docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md):
+     - Formalized the three coordinated registries: `AiToolManifest` (Read Plane), `ActionRequirementsRegistry` (Pre-Proposal Intake Plane), and `ActionCapabilityRegistry` (Proposal & Execution Plane).
+     - Prefixed execution pipeline with the pre-proposal collection engine.
+  6. [`docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md`](docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md):
+     - Upgraded system architecture to Four Coordinated Planes: Experience Plane, Intelligence Plane, Pre-Proposal Task Orchestration Plane, and Governed Execution Plane.
+  7. [`docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md`](docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md):
+     - Documented additive `ai_workflow_tasks` table schema and indexes.
+  8. [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md) & [`AGENTS.md`](AGENTS.md):
+     - Updated `SL-001` and `SL-002` deliverables and added stories `AI-036` and `AI-037` for Sales Order & Quotation Multi-Slot Intake and execution.
+
+- **Next Steps:**
+  1. Continue Phase 2.1 implementation and verification on `feature/ai-unified-input-clarification`:
+     - Refactor `PreparePurchaseOrder` to eliminate early return and return `workflow.clarification.v1`.
+     - Implement `SalesOrderRequirementsProvider` for `sales_order.create.v1`.
+     - Run feature verification tests via `phpunit.ai.xml`.
+  2. Maintain 100% adherence to Untrusted Model, Authoritative Server, Strict Tenancy Law 1, and Zero Autonomous Financial Writes.
+
+---
+
+
+
 ## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Incident & Symptoms:**
@@ -157,6 +198,47 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **User Direction & Confirmation:**
+  - User approved Option 1 (Staged EGM architecture specification and master documentation synchronization).
+  - Explicit architectural steering: **The Unified Multi-Slot Input Collection and Clarification strategy is enterprise-wide and applies equally to Sales (Quotations, Sales Orders, Invoices) and other user inputs (GRNs, Transfers, Payments, In-Flight Masters), not just Purchase Orders.**
+
+- **Repository Master Architecture Specifications Synchronized:**
+  1. [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md):
+     - Added Multi-Domain Capability Coverage Matrix and visual flowchart mapping Purchasing (`purchase_order.create.v1`, `grn.create.v1`), Sales (`sales_order.create.v1`, `quotation.create.v1`), Inventory (`stock_transfer.create.v1`), Finance (`payment_receipt.create.v1`), and Master Setup (`setup.customer.create.v1`, `setup.product.create.v1`).
+  2. [`docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md`](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md):
+     - Restructured and expanded to natively embed the Phase 2.1 engine.
+     - Documented `SalesOrderRequirementsProvider` and `QuotationRequirementsProvider` implementing `ActionRequirementsProviderInterface`.
+     - Specified batch customer resolution (`resolveCustomer` with max 5 candidates) and sales unit resolution (`sale_unit_id` with conversions).
+     - Defined Available-to-Promise (ATP) non-blocking stock check via `InventoryAvailabilityService`, generating advisory warnings rather than failing closed.
+     - Enforced domain boundary: Sales Orders route strictly to `OrderLifecycleService::createSale()` (commercial orders with stock reservations), distinct from `CommercialApplicationService::create('sale')` / `SalePostingService::post()` (posted invoices with immediate ledger writes and inventory deductions).
+  3. [`docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md):
+     - Spliced Phase 2.1 into Phased Platform Architecture and updated the Governed Intent-Proposal-Approval-Execution lifecycle diagram to include the Pre-Proposal Task Draft (`ai_workflow_tasks`) and Consolidated Clarification Card loop.
+  4. [`docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md):
+     - Replaced legacy stop-at-first-error resolution with vectorized set-based queries in `BatchRecordResolutionService` across Customers, Suppliers, Products, and UOMs.
+     - Updated clarification policy to mandate the single consolidated clarification card.
+  5. [`docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md):
+     - Formalized the three coordinated registries: `AiToolManifest` (Read Plane), `ActionRequirementsRegistry` (Pre-Proposal Intake Plane), and `ActionCapabilityRegistry` (Proposal & Execution Plane).
+     - Prefixed execution pipeline with the pre-proposal collection engine.
+  6. [`docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md`](docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md):
+     - Upgraded system architecture to Four Coordinated Planes: Experience Plane, Intelligence Plane, Pre-Proposal Task Orchestration Plane, and Governed Execution Plane.
+  7. [`docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md`](docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md):
+     - Documented additive `ai_workflow_tasks` table schema and indexes.
+  8. [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md) & [`AGENTS.md`](AGENTS.md):
+     - Updated `SL-001` and `SL-002` deliverables and added stories `AI-036` and `AI-037` for Sales Order & Quotation Multi-Slot Intake and execution.
+
+- **Next Steps:**
+  1. Continue Phase 2.1 implementation and verification on `feature/ai-unified-input-clarification`:
+     - Refactor `PreparePurchaseOrder` to eliminate early return and return `workflow.clarification.v1`.
+     - Implement `SalesOrderRequirementsProvider` for `sales_order.create.v1`.
+     - Run feature verification tests via `phpunit.ai.xml`.
+  2. Maintain 100% adherence to Untrusted Model, Authoritative Server, Strict Tenancy Law 1, and Zero Autonomous Financial Writes.
+
+---
+
+
 
 ## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
@@ -325,6 +407,47 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **User Direction & Confirmation:**
+  - User approved Option 1 (Staged EGM architecture specification and master documentation synchronization).
+  - Explicit architectural steering: **The Unified Multi-Slot Input Collection and Clarification strategy is enterprise-wide and applies equally to Sales (Quotations, Sales Orders, Invoices) and other user inputs (GRNs, Transfers, Payments, In-Flight Masters), not just Purchase Orders.**
+
+- **Repository Master Architecture Specifications Synchronized:**
+  1. [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md):
+     - Added Multi-Domain Capability Coverage Matrix and visual flowchart mapping Purchasing (`purchase_order.create.v1`, `grn.create.v1`), Sales (`sales_order.create.v1`, `quotation.create.v1`), Inventory (`stock_transfer.create.v1`), Finance (`payment_receipt.create.v1`), and Master Setup (`setup.customer.create.v1`, `setup.product.create.v1`).
+  2. [`docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md`](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md):
+     - Restructured and expanded to natively embed the Phase 2.1 engine.
+     - Documented `SalesOrderRequirementsProvider` and `QuotationRequirementsProvider` implementing `ActionRequirementsProviderInterface`.
+     - Specified batch customer resolution (`resolveCustomer` with max 5 candidates) and sales unit resolution (`sale_unit_id` with conversions).
+     - Defined Available-to-Promise (ATP) non-blocking stock check via `InventoryAvailabilityService`, generating advisory warnings rather than failing closed.
+     - Enforced domain boundary: Sales Orders route strictly to `OrderLifecycleService::createSale()` (commercial orders with stock reservations), distinct from `CommercialApplicationService::create('sale')` / `SalePostingService::post()` (posted invoices with immediate ledger writes and inventory deductions).
+  3. [`docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md):
+     - Spliced Phase 2.1 into Phased Platform Architecture and updated the Governed Intent-Proposal-Approval-Execution lifecycle diagram to include the Pre-Proposal Task Draft (`ai_workflow_tasks`) and Consolidated Clarification Card loop.
+  4. [`docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md):
+     - Replaced legacy stop-at-first-error resolution with vectorized set-based queries in `BatchRecordResolutionService` across Customers, Suppliers, Products, and UOMs.
+     - Updated clarification policy to mandate the single consolidated clarification card.
+  5. [`docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md):
+     - Formalized the three coordinated registries: `AiToolManifest` (Read Plane), `ActionRequirementsRegistry` (Pre-Proposal Intake Plane), and `ActionCapabilityRegistry` (Proposal & Execution Plane).
+     - Prefixed execution pipeline with the pre-proposal collection engine.
+  6. [`docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md`](docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md):
+     - Upgraded system architecture to Four Coordinated Planes: Experience Plane, Intelligence Plane, Pre-Proposal Task Orchestration Plane, and Governed Execution Plane.
+  7. [`docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md`](docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md):
+     - Documented additive `ai_workflow_tasks` table schema and indexes.
+  8. [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md) & [`AGENTS.md`](AGENTS.md):
+     - Updated `SL-001` and `SL-002` deliverables and added stories `AI-036` and `AI-037` for Sales Order & Quotation Multi-Slot Intake and execution.
+
+- **Next Steps:**
+  1. Continue Phase 2.1 implementation and verification on `feature/ai-unified-input-clarification`:
+     - Refactor `PreparePurchaseOrder` to eliminate early return and return `workflow.clarification.v1`.
+     - Implement `SalesOrderRequirementsProvider` for `sales_order.create.v1`.
+     - Run feature verification tests via `phpunit.ai.xml`.
+  2. Maintain 100% adherence to Untrusted Model, Authoritative Server, Strict Tenancy Law 1, and Zero Autonomous Financial Writes.
+
+---
+
+
+
 ## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Incident & Symptoms:**
@@ -482,6 +605,47 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Cross-Domain Architecture Sync: Sales & Unified Multi-Slot Input Collection Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **User Direction & Confirmation:**
+  - User approved Option 1 (Staged EGM architecture specification and master documentation synchronization).
+  - Explicit architectural steering: **The Unified Multi-Slot Input Collection and Clarification strategy is enterprise-wide and applies equally to Sales (Quotations, Sales Orders, Invoices) and other user inputs (GRNs, Transfers, Payments, In-Flight Masters), not just Purchase Orders.**
+
+- **Repository Master Architecture Specifications Synchronized:**
+  1. [`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md):
+     - Added Multi-Domain Capability Coverage Matrix and visual flowchart mapping Purchasing (`purchase_order.create.v1`, `grn.create.v1`), Sales (`sales_order.create.v1`, `quotation.create.v1`), Inventory (`stock_transfer.create.v1`), Finance (`payment_receipt.create.v1`), and Master Setup (`setup.customer.create.v1`, `setup.product.create.v1`).
+  2. [`docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md`](docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md):
+     - Restructured and expanded to natively embed the Phase 2.1 engine.
+     - Documented `SalesOrderRequirementsProvider` and `QuotationRequirementsProvider` implementing `ActionRequirementsProviderInterface`.
+     - Specified batch customer resolution (`resolveCustomer` with max 5 candidates) and sales unit resolution (`sale_unit_id` with conversions).
+     - Defined Available-to-Promise (ATP) non-blocking stock check via `InventoryAvailabilityService`, generating advisory warnings rather than failing closed.
+     - Enforced domain boundary: Sales Orders route strictly to `OrderLifecycleService::createSale()` (commercial orders with stock reservations), distinct from `CommercialApplicationService::create('sale')` / `SalePostingService::post()` (posted invoices with immediate ledger writes and inventory deductions).
+  3. [`docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md):
+     - Spliced Phase 2.1 into Phased Platform Architecture and updated the Governed Intent-Proposal-Approval-Execution lifecycle diagram to include the Pre-Proposal Task Draft (`ai_workflow_tasks`) and Consolidated Clarification Card loop.
+  4. [`docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md`](docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md):
+     - Replaced legacy stop-at-first-error resolution with vectorized set-based queries in `BatchRecordResolutionService` across Customers, Suppliers, Products, and UOMs.
+     - Updated clarification policy to mandate the single consolidated clarification card.
+  5. [`docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/28_ACTION_CAPABILITY_CATALOG.md):
+     - Formalized the three coordinated registries: `AiToolManifest` (Read Plane), `ActionRequirementsRegistry` (Pre-Proposal Intake Plane), and `ActionCapabilityRegistry` (Proposal & Execution Plane).
+     - Prefixed execution pipeline with the pre-proposal collection engine.
+  6. [`docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md`](docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md):
+     - Upgraded system architecture to Four Coordinated Planes: Experience Plane, Intelligence Plane, Pre-Proposal Task Orchestration Plane, and Governed Execution Plane.
+  7. [`docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md`](docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md):
+     - Documented additive `ai_workflow_tasks` table schema and indexes.
+  8. [`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`](docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md) & [`AGENTS.md`](AGENTS.md):
+     - Updated `SL-001` and `SL-002` deliverables and added stories `AI-036` and `AI-037` for Sales Order & Quotation Multi-Slot Intake and execution.
+
+- **Next Steps:**
+  1. Continue Phase 2.1 implementation and verification on `feature/ai-unified-input-clarification`:
+     - Refactor `PreparePurchaseOrder` to eliminate early return and return `workflow.clarification.v1`.
+     - Implement `SalesOrderRequirementsProvider` for `sales_order.create.v1`.
+     - Run feature verification tests via `phpunit.ai.xml`.
+  2. Maintain 100% adherence to Untrusted Model, Authoritative Server, Strict Tenancy Law 1, and Zero Autonomous Financial Writes.
+
+---
+
+
 
 ## Web UI `[AI_INTERNAL_ERROR]` Bug Resolved & Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
