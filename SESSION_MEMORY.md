@@ -1,5 +1,30 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Autonomous AI Operating Layer & Action Foundation Architecture Finalized — 2026-11-11 (`refactor/erp-copilot-stabilization`)
+
+- **EGM Bootstrap, Brainstorm & Design Finalization Complete:**
+  - Evaluated documentation sets `docs_v2` (36 docs) vs `docs_v3` (40 docs).
+  - Incorporated four user-approved foundational invariants across v3 specifications:
+    1. **Pre-Company Bootstrap Isolation (Mode A):** Dedicated API `/api/v1/ai/setup/bootstrap/*` guarded by `BootstrapSetupGate` under `BootstrapSetupPrincipal`. Calls `CompanyDirectoryService::createCompany` once in a single transaction to provision company, MAIN branch, first FY, main warehouse, chart of accounts, and industry starter masters.
+    2. **Company-Scoped Configuration (Mode B):** Transitions to standard `CompanyContextResolver` (`AiPrincipal`) with normal ERP permissions and context.
+    3. **Short Database Transaction Lifetime:** The orchestrator sets `$domainOwnsTransaction = true` on `ActionDefinition`. Never holds open transactions across LLM streaming or user review pauses. Revalidates under brief locks at execution time.
+    4. **Cryptographic Approval Binding & Lifecycle Enforcement:** Binds HMAC signatures to canonical payload hashes, action versions, approver IDs, colon-delimited context scopes, and source state hashes. Enforces `DomainLifecyclePolicy` preventing direct updates on submitted/posted records.
+  - Synchronized all 40 specification documents (`01` through `39` + `README.md`) from `docs_v3` into `docs/zoloerp-ai-agent-implementation/docs/ai/` and updated master plans. Zero application code or migrations altered (`git diff --check` clean).
+
+- **7-Lens Goldfish Swarm Document Audit & Remediations:**
+  - Executed full 7-lens review swarm (`egm-synthesizer` subagent) on `design_draft.md`.
+  - Identified and resolved 13 findings (3 Blockers, 6 Majors, 4 Nits):
+    1. *Blocker 1 (Migration Collision / Tenancy Law 4):* Replaced raw `CREATE TABLE` DDL with additive migration `database/migrations/2026_11_11_000001_upgrade_ai_action_proposals_schema.php`.
+    2. *Blocker 2 (Mode A Scoping):* Added `actor_id` and `task_token` to proposals with compound index `idx_proposals_bootstrap (actor_id, action_key, status)`.
+    3. *Blocker 3 (`createCompany` Preview):* Specified `CompanyBootstrapPreviewAdapter` computing simulated defaults via `IndustryCatalog` with zero database writes.
+    4. *Majors & Nits:* Colon-delimited null-safe HMAC concatenation, formal `source_state_hash` contracts, `ActionPreviewAdapterInterface` & `ActionCommandAdapterInterface`, context switch metadata pointing to `/select-company`, updated test assertions for `UsesAiMysql` transaction levels, clarified dual change-request pathways, standardized column names (`payload_json`, `preview_json`, `receipt_json`), and resolved Q-2 with a 25-record cap on batch approvals for low-risk master data.
+  - Finalized technical design document published at `docs/designs/ai_operating_layer_action_foundation.md` and indexed in `docs/designs/SITEMAP.md`.
+
+- **Next Steps:**
+  1. Commit documentation updates on a documentation-only branch or commit.
+  2. Create feature branch `feature/ai-action-foundation` to begin Phase 1 implementation (additive migration `2026_11_11_000001`, `ActionCapabilityRegistry`, `ActionProposalService`, `ActionApprovalService`, `ApprovedActionExecutor`, and Action Review Center UI).
+
+
 ## Session Loading, Full-Width Layout & Verified Summary Builder Stabilization — 2026-11-10 (`refactor/erp-copilot-stabilization`)
 
 - **Session Loading & Message Sending Unblocked (`workspace.blade.php`):**

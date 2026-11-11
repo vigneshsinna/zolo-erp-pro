@@ -1,37 +1,39 @@
-# 21 — Feature flags, rollout, model costs and operating policy
+# 21 — Product Rollout, Quotas, Monitoring and Support Runbook
 
-## Feature policy
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Global `AI_ENABLED=false` and company `ai_feature_settings.enabled=false` by default. Separate flags: `AI_READ_ONLY`, `AI_STREAMING_ENABLED`, `AI_MCP_ENABLED`, `AI_ACTION_PROPOSALS_ENABLED`, `AI_RAG_ENABLED`, `AI_TRACE_ENABLED`. Disabled means both UI and server tools deny; not merely hiding a menu item.
+**Status:** Design specification
 
 ## Rollout cohorts
+Development (synthetic) → isolated staging with controlled provider → internal read-only pilot → action-preview pilot → exactly one permitted PO write capability → sales/purchase bill pilots → module-by-module production enablement. Access controlled by company and exact capability, with emergency server-side disable.
 
-1. **Local dev:** Synthetic data, mocked SDK, no real provider writes.
-2. **Staging:** Opt-in cloud provider with explicit cost budget and synthetic or approved masked company dataset.
-3. **Internal pilot:** One named company, one branch, nominated report readers, read-only tools.
-4. **Controlled customers:** Gradually enable by company and feature capability after privacy and reconciliation sign-off.
-5. **General availability:** Only after monitoring, support, failover, security and cost controls demonstrate stability.
+## Business value metrics
+Time to create PO/invoice compared with manual forms; percentage of complete tasks after one clarification; mismatched supplier/product resolution rate; preview edits per document; duplicate prevention; approval turnaround; successful/failed operations; user satisfaction; cost per verified task; data-entry errors per 100 transactions.
 
-## Commercial and operational metrics
+## Technical metrics
+User prompts, model steps/HTTP attempts and tool calls; provider 429/errors; p50/p95 time; top tools; workflow queue wait and stuck tasks; per-company token/cost; financial mismatch warnings; branch access denies; duplicate idempotency claims. Store redacted counters; maintain immutable business receipts.
 
-- User adoption: active permitted users, repeat usage and helpful answers per session.
-- Accuracy: financial exact-match, stock correctness, source-validity and reconciliation warnings.
-- Reliability: p50/p95 response, tool denial/failure rate, queue delay, provider 429 and timeouts.
-- Cost: spend by company/agent/tool/model, input/output tokens, abandoned work, effective cost per answered business question.
-- Security: denied cross-company requests, prompt-injection blocks, PII redaction failures, unapproved action attempts.
+## Customer controls
+Company admin enables AI read and individual action capabilities; role admin assigns `ai.use` + necessary business permissions; approvers separately authorised. Users can see task scope, incomplete fields, past approvals, expiry, audits and the source ERP records. Scheduled workflows require opt-in, frequency/time zone, target scope, stop conditions and cancellation.
 
-## Cost guardrails
+## Operational failure runbooks
+| Incident | Immediate action | Recovery |
+|---|---|---|
+| Provider 429/outage | Safe error, no synthetic business data; throttle | Retry read with bounds; action receipts remain unchanged |
+| Report mismatch | Disable affected read capability | Compare real ERP report/ledger, correct facade and add golden test |
+| Stuck awaiting approval | Notify task owner or expire per policy | Revalidate fresh business snapshot, don't auto-approve |
+| Duplicate posting suspected | Disable action capability; preserve receipts | Inspect idempotency logs and ERP document IDs; approved reversal only |
+| Cross-tenant data suspected | Global/company AI kill switch; revoke model/MCP creds | Security investigation, trace/audit preservation and notification policy |
+| Worker crash after commit | Don't repeat blind write | Query receipt using idempotency key; reconcile task status |
+| Bad document extraction | Quarantine result | Re-review source, correct fields and replay validation without posting |
 
-Define per-provider and per-company: daily/monthly budget, per-request hard token cap, max history tokens, max tool calls, concurrency and alert thresholds. Do not put unbounded ledger rows in the prompt. Use cheaper approved models for simple intent routing only after accuracy evaluation. Cache source **metadata** carefully; invalidate business data in relation to transactions and permissions (avoid caching cross-company reports).
+## Support readiness
+Dedicated owner/on-call, runbook for common provider errors and role gates, restore procedure, business escalation for invoice/tax errors, business-approved correction/reversal policy, privacy/retention notice and cost alerts. Record realistic VPS process capacity before enabling queues.
 
-## Incident runbook
 
-**Leak suspected:** immediately disable AI and MCP flags, stop AI workers, revoke affected provider/MCP tokens, preserve redacted audit IDs, isolate logs, assess access, follow incident policy and regulatory obligations. **Wrong financial number:** disable affected tool, compare result to authoritative ledger, report correction, add golden fixture and fix service/tool boundary. **Provider outage:** show safe outage; no false zeros, no automatic payment attempts. **Queue runaway:** stop AI queues only; core ERP queues continue.
+---
 
-## Retention and privacy
+## V3 rollout: guided first-company onboarding
+Pilot the Setup Agent with installation administrators on a clean staging installation first. Release company-group and company preview/create under separate flags, then company-scoped setup steps for branches, warehouses, tax/COA, units, products and parties. Do not enable public self-service company creation from general Copilot chat. Require a readiness checklist and explicit admin activation before first business posting. Track onboarding time, unresolved mappings, duplicate setup attempts, first transaction success, setup edits and handoff from bootstrap to company context.
 
-Retention policy must be contract/jurisdiction reviewed. Default to minimal audit metadata; optional conversations only with user/company ownership checks; encrypted proposal payloads; document deletion/revocation cascades to vector stores; customer data export/delete workflows separated from GL records that must be retained for statutory purposes. Do not silently send sensitive customer records to LLM provider.
-
-## Definition of operational readiness
-
-On-call owner assigned; model/provider and feature settings documented; cost alert tested; safe kill switch; provider outage drill; tenant privacy drill; Redis/Horizon worker health alerts; data-subject export/delete path documented; manual approval boundaries understood by support and finance users.
+For later corrections, support should distinguish an **unposted draft edit** from a **posted reversal/credit note**. Business corrections must not be implemented by manually changing persisted transaction status or deleting posted rows.

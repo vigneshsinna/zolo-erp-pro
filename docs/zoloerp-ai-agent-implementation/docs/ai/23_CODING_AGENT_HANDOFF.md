@@ -1,60 +1,38 @@
-# 23 — AI coding agent implementation handoff (Phase 0 + first vertical slice)
+# 23 — Coding-Agent Handoff: Stabilize, Then Implement Action Foundation
 
-> Copy this complete brief into Codex or another coding agent with access to the zoloERP repo. It describes **work to do**, not work already performed. Source of truth is current repository code, not this static plan if the repository has changed.
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
+
+**Status:** Design specification
 
 ## Mission
+Work against `vigneshsinna/zolo-erp-pro`. Read this entire documentation pack, inspect current HEAD and actual domain service contracts, and deliver changes in small independently testable PRs. Do not implement live posting in a Copilot refactor PR. Distinguish inspected sources, implemented changes, passing tests and deferred design.
 
-Implement a **production-safe, read-only zoloERP AI Copilot foundation** on the **current** `main` branch, built primarily on the open-source [Laravel AI SDK](https://github.com/laravel/ai). Integrate existing ERP services through a single authorised tool executor. Deliver a working **customer outstanding** question/answer flow, secure API and basic Blade workspace. Write tests, run them and document evidence. Keep all AI flags disabled by default.
+## Stage 0: Current read-only stabilization
+1. Start from current reviewed `refactor/erp-copilot-stabilization` at `14195d8`, re-fetch HEAD and inspect PR #6.
+2. Preserve green acceptance run 42870009218: all 11 jobs passed, including commercial, operations and aggregate gate. Earlier DesignTokens/ProductAlias failures at `6ded371` are historical; do not re-fix them blindly.
+3. Verify financial/stock report parity, company/branch/FY, model history and authorised source links.
+4. Run bounded NVIDIA staging-provider tool-call and quota contract tests with synthetic data; mocks alone are insufficient.
+5. Run complete CI for subsequent PRs and capture the exact result SHA. Stage 1A Setup Agent is after Action Foundation; do not enable writes in current read-only Copilot.
 
-## Mandatory preflight
+## Stage 1: Separate Action Foundation branch
+Create a new branch from the **approved, updated base** after Stage 0 (suggest `feature/ai-action-foundation`). Do not branch blindly from stale main. Add code-defined `ActionCapabilityRegistry`, versioned command interface, slot/schema resolution, workflow state store, immutable proposals and server approval endpoints behind `AI_ACTIONS_ENABLED=false`. Keep the existing read manifest strictly `read_only`. Do not implement raw SQL, generic route or arbitrary method tools.
 
-1. Read `docs/ai/README.md`, documents 01–09, 18–20 and 22; verify `git status` and current main SHA. Create `feature/ai-agent-foundation`; do not use stale upgrade branches.
-2. Inspect `composer.json`, `composer.lock`, `routes/api.php`, bootstrap routes, existing auth/CSRF, `CompanyContextResolver`, `CompanyWriteGuard`, finance service `ageing`, policies, queue config, company/branch/FY schema, and current CI/deploy workflows.
-3. Confirm PHP >=8.5.12 <8.6 and Laravel 13; run Composer validation/audit/platform checks. **Do not modify production or another running VPS app.**
-4. Record a concise implementation checklist and discovered schema/permission differences. Use real source instead of guessing APIs or route names.
+## Stage 2: First commercial end-to-end Purchase Order (after validated Initial Setup Agent)
+Trace `CommercialApplicationService`, `PurchaseApplicationService`, `PurchaseCommand`, `CommercialDraftService`, `OrderLifecycleService`, `TaxDeterminationService` and purchasing policies. Produce signed mapping of input → domain command → expected ERP receipt. Implement supplier/product/UOM matching, missing-field clarification, price/tax preview, approval and a single idempotent real PO command. Verify order does not invent receipt, ledger or stock side effects. No auto-posting of bills yet.
 
-## Stage A — SDK and safe data model
+## Stage 3: Expand only after real pilot
+Purchase receipt and bill; sales quote/order/invoice; payments/accounting; inventory/production; documents and bulk. Each module requires its domain owner sign-off, permission matrix, golden fixtures and release flags. Prefer parallel read-only specialist agents where helpful; they share capabilities, not Copilot class internals.
 
-- Add `laravel/ai` through Composer, publish config/migrations and use SDK agent/tool generators, after package audit. Keep package versions locked.
-- Implement `AiPrincipal`, `AiPrincipalFactory`, `AiPrincipalAuthorizer`, `AiToolManifest`, `ErpToolExecutor`, `ApprovedModelGateway`, safe `AiAuditRecorder` and quota checker.
-- Add AI-owned migrations for `ai_thread_scopes`, `ai_runs`, `ai_tool_invocations`, `ai_usage_counters` and `ai_feature_settings` with correct actual column types and indexes. Do not clone SDK conversation tables.
-- Make `AI_ENABLED=false` and `AI_READ_ONLY=true` global defaults. API rejects disabled requests.
-- No freeform SQL, shell, file system or web tools. Model keys only server-side.
+## Explicit prohibitions
+No production migrations without operator approval; no forcing Composer platform requirements; no unattended live financial postings; no re-enabling quarantined legacy `ActionProposalService`; no hardcoded GST; no direct `Model::forceCreate` for commercial documents; no changes to core ERP posting semantics solely for AI; no weakening test gates; no pretending a mocked model test validates the actual provider.
 
-## Stage B — authoritative receivables tool
+## Required output from every coding PR
+Change summary and design-to-code mapping, exact SHA, source service contracts, files changed, security/threat review, test matrix and counts/skips, sample task and actual result, idempotency proof where relevant, DB migration and rollback plan, outstanding questions, sign-off owner and link to CI. If a domain workflow isn't known, stop that particular unsafe capability and document the needed decision rather than guessing.
 
-- Adapt existing `FinancialReportService::ageing()` to safely support explicit authenticated actor without using spoofed request auth in jobs; preserve report accuracy, branch/date rules and control reconciliation. Prefer a dedicated actor-explicit read adapter.
-- Implement read tool `receivables.outstanding.v1` with validated `as_of` and `limit`; compute totals on all authorised rows, not top-N alone. Expose source/report links and reconciliation status.
-- Implement `CustomerOutstanding` via Laravel AI SDK's `Tool` interface; pass `AiPrincipal` via constructor, not model input.
-- Implement read-only `ErpCopilot` with only authorised tools, short versioned instructions, redacted tool results and provider timeout/cost limits. Return verified fact cards and safe error states.
 
-## Stage C — API and Blade UI
+---
 
-- Authenticated endpoints and a minimal AI workspace; preserve existing Blade/Bootstrap 4 layout and route conventions. Use CSRF/session or Sanctum properly, not unauthenticated public endpoints.
-- Persist/check conversation owner and selected company/branch/FY every time; invalid foreign thread IDs must be denied.
-- Display deterministic source-linked financial facts; do not trust LLM-written amounts as financial source of truth.
-- Add a feature-flagged navigation item and rate limit. Keep any MCP endpoint **disabled/uninstalled** for the first user-visible MVP unless separately instructed.
+## Stage 1A: First administrative action slice — Initial Setup Agent
+After the read-only Copilot source is verified and the separate Action Foundation exists, create bootstrap authorization for installation/group admins **before company scope**. Use `CompanyDirectoryService::createGroup/createCompany` via one reviewed, idempotent adapter; show exactly which starter resources are created automatically. Switch to normal company scope using the committed company/MAIN/FY IDs; then implement scoped branch/warehouse/UOM/product/party configuration and readiness in separate capabilities. Do **not** call legacy `UnitController::store`/`WarehouseController::store` with a model-built `Request`. Do not add a broad `ai.execute_setup` command. Review `37`–`39` and obtain platform/finance/security sign-off.
 
-## Stage D — Tests, verification and delivery
-
-- Unit tests for input constraints, budgets, prompt redaction and tool registry permissions.
-- Integration tests on disposable MySQL for AR ageing accuracy, company A/B isolation, branch, FY, permission revocation, reconciliation failures and no ERP writes.
-- SDK fake tests for tool selection and provider outage. Browser test for workspace, source link and XSS escaping.
-- Run all existing ERP acceptance suites, PHP 8.5 platform checks and `composer audit`. Do not suppress test failures/risky notices to claim a pass.
-- Document exact commands and outputs in PR, list changed files, database migrations, dependency versions, open issues and safe rollback.
-
-## Do not do
-
-- Do not run migrations on production/development databases other than a dedicated disposable AI test database.
-- Do not rewrite Laravel core, bootstrap, ERP ledger/stock posting or existing release workflow to add AI.
-- Do not introduce arbitrary SQL, autonomous financial writes, external MCP tools, Qdrant or self-hosted LLM services before PH1 passes.
-- Do not expose provider secrets or raw PII in logs, UI or GitHub.
-- Do not use `--ignore-platform-reqs`, force push or merge/deploy without acceptance evidence.
-
-## Stop conditions
-
-If current repository conflicts with this plan, if domain permissions cannot be determined, or if package integration fails, **stop that unsafe step** and report the exact blocker, file and safe alternatives. Do not silently bypass auth, data integrity or package/platform constraints to make tests pass.
-
-## Deliverables
-
-A reviewed feature branch with Composer lock, safe additive migrations, principal/tool gateway, one verified receivables SDK tool/agent, read-only endpoints, Blade UI, security tests, operator setup notes, a real test report and a PR against `main`. Anything not executed must be labelled pending, not passed.
+**Before any future action modifies an existing record**, enforce `38_TRANSACTION_LIFECYCLE_ENFORCEMENT.md`. Generic `Model::update()` of a submitted/posted document, company legal identity or previously used UOM is prohibited. Editing a proposal invalidates prior approval and returns to validation. The Action Engine is still outside the current read-only refactor branch.

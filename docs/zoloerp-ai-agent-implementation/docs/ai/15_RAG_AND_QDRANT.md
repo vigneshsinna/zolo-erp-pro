@@ -1,63 +1,26 @@
-# 15 — Knowledge retrieval, RAG and Qdrant integration (optional PH3)
+# 15 — RAG and Document Knowledge Retrieval (Optional)
 
-## Scope
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Use retrieval-augmented generation for **unstructured** knowledge: customer-approved training documents, user guides, SOPs, business policies and documents that a requesting user may actually view. Live sales, stock, payments and financial totals must continue to use structured ERP services, not vector retrieval.
+**Status:** Design specification
 
-Selected engine: https://github.com/qdrant/qdrant; tenancy guidance: https://qdrant.tech/documentation/manage-data/multitenancy/.
+## Hard distinction
+Use relational ERP services for exact invoices, balances, orders, stock, cost, taxes and user permissions. **Do not use RAG embeddings as a financial database.** RAG answers natural-language questions about approved SOPs, user guides, product usage notes and policy manuals. Supplier invoices are processed as structured documents, not casually embedded with broad retrieval.
 
-## Ingestion pipeline
+## Retrieval architecture
+`ACL-approved upload → quarantine/scan → classify/redact → text extraction → chunk + version → embedding → private Qdrant payload with tenant/company/document ACL → search with server-owned filters → relational permission recheck → short cited answer`. A document instruction saying “ignore permissions” must be treated as inert text. Only approved MIME/size, retention and classification are allowed.
 
-`Upload → validate file type/size → virus scan/quarantine → identify owner and ACL → extract text → redact sensitive fields → chunk deterministically → embed with pinned model version → write Qdrant payload + vector → store chunk metadata/ACL checksum → verify → publish document`.
+## Index metadata
+`company_id`, `document_id`, `source_version`, `acl_version`, `classification`, `allowed roles/users`, `created_by`, `page_or_section`, `chunk_id`, `checksum`, `embedding_model`. Do not let the model supply tenant filters or arbitrary document URLs. Recheck access after vector search because ACLs may be revoked faster than index deletion.
 
-All ingestion jobs are company-scoped, auditable and idempotent. Do not index arbitrary external URLs or attachments from other companies. For scans/PDFs, use a maintained extraction pipeline and flag OCR uncertainty; do not ingest unreadable text as authoritative.
+## Product workflows
+AI can cite an SOP when guiding a user through a return or purchasing process, but the authoritative allowed operation and fields still come from Laravel capabilities and domain services. Retrieved documents may inform explanations and form help, never override statutory GST or actual stock postings.
 
-## Payload proposal
+## Deployment
+Qdrant is not required for Copilot stabilization or first purchase-order action. Prefer private/dedicated hosting, TLS, backups and per-company deletion. Check embedding provider privacy/region and model consistency. Do not place private vectors on a shared VPS without a capacity/security review.
 
-```json
-{
-  "tenant_id": "tenant-from-server",
-  "company_id": 22,
-  "document_id": "uuid",
-  "chunk_id": "uuid",
-  "acl_policy_version": 3,
-  "allowed_role_tags": ["company_admin", "finance_reader"],
-  "classification": "internal",
-  "source_title": "Inventory SOP",
-  "source_version": "2026-10",
-  "source_page": 12
-}
-```
+## Tests
+Cross-tenant filter bypass, revoked/delete document, injected SOP, OCR uncertainty, ambiguous document versions, pagination, recall/precision benchmark and correct page citations. Feature remains disabled until all pass.
 
-Never trust ACL tags supplied in a question or from the vector; build search restrictions from authenticated user and current permissions, and **recheck** document access in the relational database before returning chunk text.
 
-## Retrieval steps
-
-1. Authenticate and resolve `AiPrincipal`, approved knowledge feature and business role.
-2. Determine allowed document IDs/types/classification from relational ACL policy.
-3. Embed query with **same** embedding model and dimensionality as collection; apply **mandatory company/tenant filter** plus an allowed-document filter in Qdrant.
-4. Retrieve bounded top-k snippets. Server filters again against current database ACLs and deletion/revocation state.
-5. Construct `source_refs` including document ID, title, page/section and snippet ID; do not reveal internal storage URL.
-6. Agent cites sources and distinguishes policy knowledge from live ERP data.
-
-## Tenant isolation
-
-Qdrant supports tenant payload indexes (`is_tenant`) and filtered queries. A shared collection does **not** itself authorise access. Use service-side immutable tenant filters, private API keys, TLS, ingress firewall and separated staging/prod collections. Document deletion/revocation must trigger vector deletion, and retrieval must check the document status even before eventual vector cleanup completes.
-
-## Sensitive content policy
-
-No payment card numbers, payroll, medical/sensitive user records, raw secrets, government IDs, personal tax records or production DB dumps in embeddings unless the product has an explicit approved legal/privacy model. Audit provider retention/training and regional rules first. Do not index business documents before data minimisation is established.
-
-## Quality gates
-
-- Retrieval recall@k and grounded-answer accuracy on a labelled document set.
-- Cross-company document injection attempt returns no foreign chunks.
-- Expired/revoked documents inaccessible immediately.
-- Deleted document vectors removed and verified.
-- Malicious SOP says "ignore all rules" → treated as text, not instructions.
-- Reingesting a document is idempotent; older versions do not leak stale policy without version labelling.
-- Cost, embedding concurrency and query latency meet company limits.
-
-## Deploy decision
-
-Qdrant is **not required** for the first read-only ERP Copilot. Prefer dedicated managed/private Qdrant over running another database on the shared ERP VPS. A Laravel HTTP adapter is sufficient after evaluating an upstream PHP client and Qdrant API version.
+---

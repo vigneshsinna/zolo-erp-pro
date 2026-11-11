@@ -1,70 +1,105 @@
-# 03 — Target system architecture and data flows
+# 03 — Current vs Target Architecture and Trust Boundaries
 
-## High-level architecture
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
+
+**Status:** Design specification
+
+## Architecture decision
+**One user-facing AI Command Center; shared capabilities; domain agents optional; authoritative ERP commands.** The read-only Copilot is the first shipped implementation. Future action planning uses a separate, explicit workflow layer and command registry rather than transforming the Copilot's read-only `ErpToolExecutor` into an unrestricted write engine.
+
+The user interface delivers two coordinated experiences:
+1. **AI Workspace (`resources/views/backend/ai/workspace.blade.php`):** Interactive conversational surface for multi-modal intake (text, voice, documents), slot resolution, live editable previews, and iterative change requests.
+2. **Action Review Center (Dedicated Interface):** Operational approval desk displaying the pending proposals queue, multi-item reviews, immutable audit history, and execution receipts.
+
+---
+
+## Phased Implementation Roadmap
+
+The overall platform evolves across distinct, gated phases:
 
 ```mermaid
 flowchart TD
- User[Authenticated zoloERP user] --> UI[Blade AI Workspace + optional SSE]
- UI --> API[AI controllers and rate limits]
- API --> Principal[Server-side AiPrincipal + CompanyContextResolver]
- Principal --> Registry[Tool catalog / permissions / limits]
- Registry --> SDK[Laravel AI SDK / selected model]
- SDK --> Tools[Approved typed AI tools]
- Tools --> Guard[ErpToolExecutor: schema + scope + policies]
- Guard --> Read[Existing read facades]
- Guard --> Proposal[Action proposal service]
- Read --> Domain[Commercial / finance / stock / ops services]
- Proposal --> Approval[Explicit user approval + fresh validation]
- Approval --> Domain
- Domain --> DB[(ERP MySQL)]
- SDK --> Queue[Laravel jobs / optional Horizon]
- API --> Audit[(AI metadata & audit tables)]
- SDK --> Audit
- SDK -. later .-> Langfuse[Langfuse redacted traces]
- Tools -. later .-> Docs[ACL-filtered knowledge / Qdrant]
- Registry -. later .-> MCP[Laravel MCP server]
- MCP --> Guard
+    COPILOT["Existing Read-Only ERP Copilot"] --> ACTION_FOUNDATION["Shared Action Foundation"]
+    ACTION_FOUNDATION --> MODE_A["Mode A: Installation Admin Bootstrap"]
+    MODE_A --> CREATE_COMP["Create Group + Company"]
+    CREATE_COMP --> PROVISION_DEFAULTS["Company, Branch, FY + Industry Defaults"]
+    PROVISION_DEFAULTS --> MODE_B["Mode B: Company-Scoped Setup"]
+    MODE_B --> CONFIGURE_MASTERS["Units, Warehouses, Products, Parties + Tax/Accounts"]
+    CONFIGURE_MASTERS --> READINESS["Setup Readiness Validation"]
+    READINESS --> PO_FLOW["Purchase Order AI Workflow"]
+    PO_FLOW --> BILLS_SALES["Purchase Bills + Sales"]
+    BILLS_SALES --> ERP_MODULES["Inventory + Accounting + Other ERP Modules"]
 ```
 
-## Trust boundaries
+---
 
-| Boundary | Trust decision |
-|---|---|
-| Browser → AI API | Session/Sanctum actor authentication, CSRF for web, throttling, authorised company context |
-| Laravel → model vendor | Redact payload, cap tokens, select approved provider, track usage, treat model output as untrusted |
-| Model → tool invocation | Tool name allowlist, JSON schema, parameter validation, actor permissions, company/branch checks, limits |
-| Tool → ERP domain service | Call **same** authoritative business owner as UI/API, never bypass its posting rules |
-| Proposal → actual write | Separate user action, fresh ACL/context/business validation, immutable proposal and idempotency |
-| MCP → ERP tool | Distinct bearer/OAuth auth plus same ERP tool execution guard; never use a superuser MCP token |
-| Agent job → data | Rehydrate actor and company rights on execution, not job-serialized auth/roles |
-| Document → model | Treat retrieved text as data only; never as instructions to grant access or invoke tools |
+## Governed Intent-Proposal-Approval-Execution Lifecycle
 
-## Read-only question sequence
+Every non-read interaction follows an authoritative, two-phase governed execution lifecycle:
 
-1. User selects company/branch/FY in the existing ERP interface, then asks a question.
-2. API constructs `AiPrincipal` using authenticated user ID and `CompanyContextResolver::resolve()`; it does **not** accept user-supplied scope unverified.
-3. Router classifies read-only request; only tools permitted to that principal are available. Before **each** tool call, `ErpToolExecutor` reauthorises the principal.
-4. Tool uses a domain read facade that returns **bounded, typed, source-linked** results. Tool result carries `as_of`, scope, calculation source, row count and reconciliation status.
-5. SDK formats/explains returned facts, never invents monetary values; response includes links to authorised ERP reports and uncertainty.
-6. Store audit/event identifiers and minimal conversation state with retention; deny cross-user conversation access.
+```mermaid
+flowchart TD
+    INPUT["Image / Voice / Message"] --> NORM["Normalize + Authenticate"]
+    NORM --> PLANNER["AI Intent and Workflow Planner"]
+    PLANNER --> RESOLVE["Resolve Records + Validate with ERP"]
+    RESOLVE --> PROPOSAL["Create Versioned Proposal"]
+    PROPOSAL --> PREVIEW["Editable Preview + Human Review"]
+    PREVIEW --> DECISION{"Human Decision"}
 
-## Proposed write sequence (after PH2 only)
+    DECISION -->|Change Request| EDIT_PROP["Edit Proposal + Increment Version"]
+    EDIT_PROP --> RESOLVE
 
-`request → classify → build draft → validate preview → persist immutable proposal → show review UI → user approves → executor revalidates actor/scope/records/period → existing domain command → idempotent receipt → audit`.
+    DECISION -->|Cancel| CANCEL["Cancel without ERP Write"]
 
-**LLMs never directly create posted sales, purchases, journals, inventory movements, payments or refunds.** The executor must be in PHP, outside model code and outside tool output text.
+    DECISION -->|Approve| BIND["Bind Approval to Exact Payload Hash"]
+    BIND --> REVALIDATE["Fresh Authorization, State + Lifecycle Checks"]
+    REVALIDATE --> STILL_VALID{"Still Valid?"}
 
-## Bounded execution
+    STILL_VALID -->|No| REBUILD["Rebuild Preview + Require New Approval"]
+    REBUILD --> RESOLVE
 
-- Default initial read query: one agent, one model provider, 2–3 read tools and no delegation loops.
-- Max request length and tool output bytes; max model steps; per-user/company token budget and rate limit.
-- Each request has correlation UUID, audited tool inputs after redaction, deterministic error codes and cancellation handling.
-- No unbounded web browsing, code execution, SQL, file deletion, shell or arbitrary internet fetch tools.
+    STILL_VALID -->|Yes| EXECUTE["Idempotent Existing ERP Domain Command"]
+    EXECUTE --> RECEIPT["Committed Receipt + Audit Trail"]
+```
 
-## Architecture deployment choice
+---
 
-Laravel application and MySQL remain on the existing ERP host. Managed LLM API avoids local GPU requirements. Add Redis/Horizon only once isolated queue ops are proven. Langfuse and Qdrant (if needed) should run externally or in a separately provisioned environment; do not overload the ERP's shared VPS.
+## Three Independent Planes
+1. **Experience plane**: Chat, contextual assistant, editable cards, document uploads, pending approval queues, and task status across both the AI Workspace and the Action Review Center.
+2. **Intelligence plane**: Models parse language, choose allowlisted capabilities, extract slots, and generate explanations. Models are strictly forbidden from deciding authorization, executing database writes, or computing ledger balances.
+3. **Execution plane**: Read tools via `AiToolManifest`, and governed write actions via `ActionCapabilityRegistry`. Business writes occur solely through verified domain service execution upon explicit human approval.
 
-## Performance and failure policy
+---
 
-Prefer short synchronous reads in PH1. For long reporting, create a persisted `ai_run` with status and a dedicated queue job. Model provider failures return a **safe, factual** error, not a fabricated answer. A failed action proposal does not modify ERP state. Set request timeout, run timeout, tools-per-run and per-tenant concurrency as configuration.
+## Read Flow (Implemented Pattern)
+`user question → authenticated context → eligible tool names from manifest → SDK tool call → schema validation → live principal refresh + domain permissions → read facade → source-linked ErpToolResult → deterministic fact rendering + bounded narrative → audit`. Preserve exact ERP tool keys; provider aliases are separately declared. Business totals are calculated in PHP/SQL, never guessed by the model.
+
+---
+
+## Future Action Flow (Governed Two-Phase Protocol)
+`instruction → intent → disambiguate master data → check mandatory inputs → draft using domain rules → editable preview → explicit scope-bound approval → re-resolve actor and source versions → idempotent command → actual ERP receipt → refresh related records → final response`.
+
+A task pauses at required inputs, approval, external events, or failed domain validation; each transition is audited.
+
+---
+
+## Critical Boundaries & Non-Negotiable Invariants
+
+1. **Two Distinct Security Modes for Initial Setup:**
+   - **Mode A — Pre-Company Bootstrap:** Operates before a company, branch, or FY exists. Accessible only to verified installation administrators via a dedicated bootstrap API (`/api/v1/ai/setup/bootstrap/*`), completely isolated from tenant chat. Uses `BootstrapSetupPrincipal` (representing a strictly limited installation-admin identity, not a general superuser). Atomically executes `CompanyDirectoryService::createCompany` once to provision company, MAIN branch, first FY, main warehouse, chart of accounts, industry settings, and starter masters.
+   - **Mode B — Company-Scoped Configuration:** Transitions to standard `CompanyContextResolver` and `AiPrincipal`. Subsequent setup operations (units, extra warehouses, tax registrations, products, parties) run under exact company-scoped permissions.
+
+2. **Approval Binding & Authorization:**
+   - SHA-256 alone is not an authorization mechanism. The system computes a canonical SHA-256 hash of the immutable proposal payload and cryptographically binds the approval record to the action version, authenticated approver, company, branch, financial year, and relevant source state hash.
+   - The server enforces permissions independently upon submission; hash match alone never implies authorization.
+
+3. **Short Transaction Lifetime & Preserved Domain Ownership:**
+   - Database transactions must remain strictly short-lived. `DB::transaction()` must never be held open while an LLM generates tokens, gathers missing slots, or awaits human review.
+   - At execution time, the executor re-validates the live state under row locks and delegates to the authoritative ERP service's existing transactional boundary. If the domain service already manages the transaction (e.g., `CompanyDirectoryService::createCompany`), its transactional ownership is preserved without conflicting nested transaction logic.
+
+4. **Lifecycle Enforcement (No Generic Updates):**
+   - AI operations must obey ERP record states (`draft`, `submitted`, `posted`, `paid`, `closed`).
+   - Generic `UPDATE` operations on submitted/posted records are forbidden. The planner routes corrections through formal, ERP-sanctioned amendment, cancellation, debit/credit note, or reversal workflows.
+
+5. **Anti-Patterns Prohibited:**
+   `AI → raw SQL`, `AI → arbitrary Laravel route`, `AI → Sale::forceCreate/Purchase::forceCreate`, `AI → ledger/stock insert`, `agent A → agent B` loops for simple queries, unrestricted tool discovery, unsanitized document instructions, and auto-posting from model "confidence".

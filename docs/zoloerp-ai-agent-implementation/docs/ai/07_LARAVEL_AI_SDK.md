@@ -1,86 +1,44 @@
-# 07 — Laravel AI SDK adapter design
+# 07 — Laravel AI SDK Usage and Copilot Compatibility Contract
 
-## SDK ownership
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Use `laravel/ai` rather than building raw provider HTTP wrappers. Its official Laravel 13 docs define agent contracts, `Promptable`, `HasTools`, `Tool`, `Laravel\Ai\Tools\Request`, JSON schema, streamed prompts, test fakes and optional conversation memory. **All business authorisation belongs to zoloERP.**
+**Status:** Design specification
 
-## Initial `ErpCopilot` responsibilities
+## Current implementation, not a blank SDK tutorial
+`ErpCopilot` and `DeepSeekAgent` use `laravel/ai`; `AiToolManifest::sdkTools()` returns `GenericSdkTool` instances, each bound to an immutable `AiPrincipal`, explicit `AiToolRegistration`, and `ErpToolExecutor`. Do not recreate removed `Tools/SalesSummary.php`-style wrappers. The SDK selects approved provider function aliases; internal ERP keys remain separate versioned identifiers.
 
-- Receives an immutable `AiPrincipal` created by the authenticated controller.
-- Has a short, versioned system instruction: explain **only** data from authorised tool responses; cite ERP source and period; report no-data and reconciliation warnings; do not present drafts as posted transactions.
-- Offers only a small list of permitted read tools after server-side policy checks. A forbidden tool is not registered, and calls are rechecked even when selected.
-- Does not include unrestricted provider built-in web search, code execution, file-system delete or fetch tools.
-- Produces the UI response plus structured evidence metadata and optional next-question suggestions. A user-visible financial number requires a matching returned fact, not generation.
+## SDK responsibilities
+LLM provider invocation; messages/instructions; supported tool interface (`name`, `description`, schema, `handle`); response streaming where deployed; test fakes; optional SDK conversation persistence. **Not** responsible for company authorization, ERP number calculations, business mutations or approval verification.
 
-## PHP integration sketch aligned with Laravel 13 SDK contracts
+## Proposed minimal agent contract
+- Constructor receives authenticated `AiPrincipal` / approved capability set.
+- `instructions()` versions financial-number, source, uncertainty and read-only policies; never trusts prompt instructions as security.
+- `tools()` calls the manifest with that principal; no arbitrary tool creation or broad built-in WebSearch/SQL.
+- Model decides among available tools; tool executor may still deny based on fresh permissions or business scope.
+- Financial narrative only follows deterministic evidence. Display structured fact cards from tool results; no fabricated chart figures.
 
-```php
-<?php
-namespace App\Ai\Agents;
+## Tool-name and argument compatibility
+SDK-facing function names are provider-compatible aliases (`sales_summary`), internal ERP keys are stable (`sales.summary.v1`). Preserve alias/key mapping, default values, max length, nullable rules, enums and exact error envelopes. Validate unmodified SDK request arguments in executor. Strict closed schemas reject unknown ownership fields; the model cannot set actor/company/branch/FY. Capture tool version in audit and golden tests.
 
-use App\Ai\Tools\CustomerOutstanding;
-use App\Ai\Security\AiPrincipal; // application-owned proposal
-use Laravel\Ai\Contracts\Agent;
-use Laravel\Ai\Contracts\HasTools;
-use Laravel\Ai\Promptable;
-use Stringable;
+## Model gateway integration
+Continue using `ApprovedModelGateway` as one policy point: provider allowlist, model selection, per-company usage, token reservation and actual HTTP attempts including retry, timeouts, sanitised errors, concurrency. Preserve separate counts for chat requests, model steps, HTTP attempts and ERP tool executions. Test NVIDIA-compatible tool call JSON with real provider in a bounded staging contract suite; routine CI must use SDK HTTP fakes.
 
-final class ErpCopilot implements Agent, HasTools
-{
-    use Promptable;
+## Streaming and history
+Synchronous read-only chat is the stable baseline. For UI streaming, define explicit events `run.started`, `content.delta`, `tool.started`, `tool.completed`, `run.completed`, `run.failed`, with trusted facts released after server validation. Do not stream raw tool/secret fields. When continuing a thread, confirm owned thread ID + company/branch/FY and recheck capabilities against permission revocations. Model history is not fresh ERP truth.
 
-    public function __construct(private readonly AiPrincipal $principal) {}
+## Specialist agents later
+`SalesIntelligenceAgent` can have a sales-focused prompt and tool subset but must reuse the manifest/executor. It should never have to call `ErpCopilot` internally just to retrieve sales. Future action planners may use the same provider gateway, but require a separate allowlisted action planner boundary and PHP-driven execution path.
 
-    public function instructions(): Stringable|string
-    {
-        return 'Answer only from authorised tool results. Never invent ERP totals. '
-            .'Do not perform or imply a business write. Include reporting date and source links.';
-    }
+## Upgrade tests
+- Provider aliases and advertised schemas unchanged or deliberately versioned.
+- `GenericSdkTool` passes validated args and returns exact `ErpToolResult` shape.
+- Tool permission revoked between SDK selection and actual execution is denied.
+- One user message with multiple model steps/retries accounts usage correctly.
+- Provider failure results in safe error rather than invented zero.
+- SDK conversation and app thread mapping remain stable across current branch.
 
-    public function tools(): iterable
-    {
-        // Tool constructor receives an authenticated principal, not model-selected IDs.
-        return [new CustomerOutstanding($this->principal)];
-    }
-}
-```
 
-**Before copying:** generate an SDK agent with `php artisan make:agent ErpCopilot` and reconcile namespaces, return types and tool conventions with the resolved package version. The `AiPrincipal` and `CustomerOutstanding` classes are **not implemented** in the repo today.
+---
 
-## Model gateway and configuration
-
-Create `app/Ai/Providers/ApprovedModelGateway.php` to mediate model provider and model selection, request options, request limits, masking, failover policy and result audit. It should call the installed SDK, not recreate an SDK. Provider key and model are operator-defined; user chats cannot choose arbitrary models or endpoints.
-
-- Configure one vetted provider and one vetted model for PH1; reject missing credentials early.
-- Keep a provider allowlist; add failover only after model compatibility and privacy equivalence are evaluated.
-- Introduce `max_steps`, model token/output budget, total tool count, wall-clock timeout and per-company concurrency.
-- Disable freeform `tools()` containing `WebSearch`, `FileStorage::all()` or external MCP tools. Use typed internal read tools.
-- Tool results should be JSON with `data`, `scope`, `as_of`, `is_reconciled`, `sources`, `warnings`, `row_count` and a version.
-
-## Conversation persistence
-
-Laravel's `RemembersConversations` trait can persist SDK conversations. For zoloERP, never load a conversation solely by user-supplied SDK ID. Resolve an authorised `ai_thread_scopes` record and check owner/company/branch/FY first. For PH1 either:
-
-1. Use **stateless prompting** and a zoloERP-owned bounded conversation history, or
-2. Use SDK persisted conversations **only** after enforcing the ownership mapping before every `continue(...)` call.
-
-Do not implement both histories independently unless there's a clear source-of-truth mapping. Limit carry-over to recent non-sensitive messages; never treat old tool values as current facts.
-
-## Streaming and background processing
-
-- PH1: start synchronous `prompt()` and render completion; only later add streaming after examining SDK's actual response/event API and PHP-FPM timeout settings.
-- PH2: `queue()` and job run lifecycle may be used if supported; worker must reconstruct actor/scopes from DB, not from an old Laravel session.
-- Cancellation stops model work where supported; it must not undo a posted ERP business action.
-
-## Structured responses
-
-Use JSON schema for report cards and citations when necessary. The server checks every `source_ref` and numeric value against prior tool output before returning it to browser. Never trust a model-suggested report URL or business amount without validating the source.
-
-## Provider/model tests
-
-1. `ErpCopilot::fake()` (check syntax against installed SDK) and asserts read tool used for the intended prompt.
-2. Invalid model tool name → denied and logged.
-3. Tool result no rows → truthful empty-state response.
-4. Tool result with reconciliation failure → warning displayed; no claim of confirmed ledger reconciliation.
-5. Cross-company adversarial input → no unauthorized data/tools.
-6. Provider timeout/429 → bounded retry or safe failure without creating duplicate business work.
+## V3: setup agent is not a privileged Copilot tool
+The LLM may capture and clarify group/company profile data, but creating a company requires a separate server-owned **bootstrap** capability; do not register `company.create` as a regular company-scoped read tool. After creation, the model may help prepare branch/warehouse/product/party setup tasks through the Action Registry with actual context and approvals. The SDK never receives permission to call arbitrary controller endpoints or mutate models.

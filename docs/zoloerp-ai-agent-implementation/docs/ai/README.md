@@ -1,64 +1,83 @@
-# zoloERP Pro — AI Agent Implementation Pack
+# zoloERP — AI Operating Layer: Master Documentation Index
 
-**Revision:** 1.0 | **Prepared:** 2026-11-10 | **Baseline reviewed:** `vigneshsinna/zolo-erp-pro`, `main` @ `1b429a5b51d6d242e97347781938973c3e55015c` | **Status:** architecture and implementation specification, **not installed or executed**.
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-## Objective
+**Status:** Design specification
 
-Add a secure, company-aware AI operating layer to zoloERP. Users should be able to ask natural-language questions about sales, receivables, finance, inventory and industry-specific operations; receive **verifiable, authorised** answers; and eventually prepare transactions that are executed **only** after explicit approval via existing ERP services.
+## Vision and how to use this pack
+This is the **full replacement** for the existing `docs/zoloerp-ai-agent-implementation/docs/ai` folder. The user goal is **one natural-language ERP operating experience** where users can ask business questions, enter data, prepare transactions, review drafts, approve controlled actions and run bounded, auditable workflows. A chat window alone is not the product: it is complemented by editable forms, document upload, source-linked answers, progress tracking and ERP navigation.
 
-**Core integrations:** [Laravel AI SDK](https://github.com/laravel/ai), [Laravel MCP](https://github.com/laravel/mcp), [Laravel Horizon](https://github.com/laravel/horizon). **Optional integrations:** [Langfuse](https://github.com/langfuse/langfuse), [Qdrant](https://github.com/qdrant/qdrant), [Neuron AI](https://github.com/neuron-core/neuron-ai), [Ollama](https://github.com/ollama/ollama). Package integrations are specified, not claimed as implemented.
+**Business rule:** Model output is untrusted. The AI plans and proposes; established Laravel domain services calculate, validate and post. Company, branch, FY and permissions come from the authenticated server-side context. Consequential effects use explicit approval and idempotency. No generic SQL, arbitrary PHP methods, shell execution or unrestricted browser tools.
 
-## How to use this pack
+## Source-of-truth hierarchy
+1. **Current code at a pinned Git SHA** for implemented behavior and actual service signatures.
+2. **ERP business rules, posting controls and reviewed finance/product decisions** for what actions mean.
+3. **This design pack** for proposed future architecture and acceptance criteria.
+4. The installed Laravel SDK's **version-specific** contract; sketches in docs are not drop-in code.
 
-1. Create a **new branch from current `main`**: `feature/ai-agent-foundation`. Never develop against a stale upgrade branch.
-2. Read `01_REPOSITORY_BASELINE.md`, `02_OPEN_SOURCE_STACK.md`, `03_ARCHITECTURE.md`, and `04_SECURITY_AND_TENANCY.md` before any package installation.
-3. Implement **PH0 → PH1** from `20_DELIVERY_BACKLOG.md`. Get the read-only **Receivables Copilot** vertical slice passing before adding more agents.
-4. Use the package installation and version gates in `05_INSTALLATION.md`. Copy ideas from the code recipes in `09_FIRST_VERTICAL_SLICE.md`, but adapt and test them against the **actual installed versions**.
-5. Run the tests in `18_TESTING_AND_EVALUATIONS.md` and release gates in `19_CI_CD_AND_PRODUCTION.md` before merging.
-6. Keep `22_DECISIONS_AND_ASSUMPTIONS.md` current. `23_CODING_AGENT_HANDOFF.md` is a ready task brief for an AI coding agent.
+**State on baseline:** The refactor branch includes a read-only `ErpCopilot`, 14 read handlers, a single `GenericSdkTool`, `AiToolManifest`, `ErpToolExecutor`, scoped chat history, AI telemetry, and business read facades. Proposed action execution is quarantined; no purchase/sales/journal AI action engine is shipped. The latest reviewed GitHub acceptance run [`42870009218`](https://github.com/vigneshsinna/zolo-erp-pro/actions/runs/42870009218) **passes all 11 jobs**, including AI, commercial, operations and the aggregate ERP acceptance gate. This confirms that the latest reviewed code passed those jobs, **not** that an AI Setup Agent, live action posting or a production model-provider rollout exists. See `01_REPOSITORY_BASELINE.md` for the evidence and open deployment gates.
 
-## Non-negotiable product rules
+## Read order and delivery map
+| First read | Then read | Objective |
+|---|---|---|
+| `01`–`04`, `07`–`09`, `18`–`19` | `35`–`36` | Complete and ship read-only Copilot stabilization safely |
+| `25`–`29`, `12`, `06`, `38` | `37`–`39`, then `30`–`33` | Build safe action foundations, initial setup and transactional workflows |
+| `26`, `34`, `13` | `18`, `35` | Deliver useful customer-facing data entry UX and document ingestion |
+| `11`, `14`–`17`, `21` | `20`, `22` | Optional platform integrations only when needed |
 
-- Never allow an LLM, plugin, MCP client or autonomous agent to execute arbitrary SQL, shell commands, migrations or unrestricted database writes.
-- Every read and write must be authorised against actual user membership, company, branch, financial year, capabilities and relevant ERP business permissions. **Never accept a company ID supplied by the model as authority.**
-- Live financial and stock numbers must come from existing deterministic ERP services; do not depend on embeddings or remembered chat content for transaction truth.
-- No financial posting, payment, customer-facing sending, stock adjustment, journal, purchase approval or deletion is performed directly by a model. The model can create proposals; the ERP executes only after human review and a fresh permission/business-state check.
-- Separate the AI queue from transactional ERP workers. Preserve the shared VPS's other applications and maintain PHP 8.3 rollback until the ERP release policy allows retirement.
-- Fail closed when a tool is not authorised, a request is ambiguous, or the authoritative data is unavailable. Make missing data visible rather than inventing figures.
+## Original filenames retained (updated)
+- `01_REPOSITORY_BASELINE.md` — actual source, completed vs pending, CI blockers.
+- `02_OPEN_SOURCE_STACK.md` — package ownership and install gates.
+- `03_ARCHITECTURE.md` — current and target operating-layer architecture.
+- `04_SECURITY_AND_TENANCY.md` — independent authorization, data sensitivity, autonomy limits.
+- `05_INSTALLATION.md` — compatibility/deployment runbook, no blind reinstalls.
+- `06_DATABASE_SCHEMA.md` — canonical AI metadata and future workflow schema.
+- `07_LARAVEL_AI_SDK.md` — SDK integration and tool adaptation.
+- `08_ERP_TOOL_REGISTRY.md` — read tools plus separate action-capability boundary.
+- `09_FIRST_VERTICAL_SLICE.md` — current receivables Copilot baseline/contract test.
+- `10_AGENT_CATALOG.md` — optional specialist agent experiences, shared capabilities.
+- `11_MCP_INTEGRATION.md` — optional external interface, same permission engine.
+- `12_APPROVAL_AND_ACTIONS.md` — controlled proposal/approval/execution design.
+- `13_API_AND_FRONTEND.md` — API, chat, task workspace, preview and safety.
+- `14_HORIZON_AND_QUEUES.md` — bounded jobs, scheduling and recovery.
+- `15_RAG_AND_QDRANT.md` — approved knowledge only, not live accounting truth.
+- `16_LANGFUSE_OBSERVABILITY.md` — costs, audit, evaluation with redaction.
+- `17_OPTIONAL_NEURON_OLLAMA.md` — later workflow/model evaluation.
+- `18_TESTING_AND_EVALUATIONS.md` — verification and adversarial testing matrix.
+- `19_CI_CD_AND_PRODUCTION.md` — merge, release, VPS and rollback gates.
+- `20_DELIVERY_BACKLOG.md` — phase-based stories and dependencies.
+- `21_ROLLOUT_AND_OPERATIONS.md` — rollout, operational limits and incident runbook.
+- `22_DECISIONS_AND_ASSUMPTIONS.md` — ADR log, open business questions.
+- `23_CODING_AGENT_HANDOFF.md` — current agent-ready implementation brief.
+- `24_SOURCE_REFERENCES.md` — exact repo touchpoints and upstream sources.
 
-## Document index
+## New documents for the expanded goal
+- `25_PRODUCT_VISION_AND_AUTONOMY.md` — product outcomes and safe autonomy levels.
+- `26_COMMAND_CENTER_UX.md` — conversational forms, previews, uploads and task continuity.
+- `27_INTENT_AND_RECORD_RESOLUTION.md` — intent, master matching, missing-field clarification.
+- `28_ACTION_CAPABILITY_CATALOG.md` — versioned read/draft/write capability definitions.
+- `29_WORKFLOW_ORCHESTRATION.md` — durable state machine, retries, resume and saga rules.
+- `30_PURCHASE_WORKFLOWS.md` — purchase order → receipt → bill lifecycle.
+- `31_SALES_AND_COLLECTION_WORKFLOWS.md` — quotation → order → invoice → collections.
+- `32_INVENTORY_FINANCE_MANUFACTURING.md` — stock, journals and production safeguards.
+- `33_MASTERS_OTHER_MODULES.md` — master data and other ERP module onboarding.
+- `34_DOCUMENT_AND_BULK_ENTRY.md` — invoice capture, imports and human review.
+- `35_SCENARIO_EVALUATION_CATALOG.md` — verifiable end-to-end product scenarios.
+- `36_REPLACEMENT_MIGRATION_AND_RELEASE_GATES.md` — how to replace docs and evolve code without breaking the current Copilot.
+- `37_GUIDED_INITIAL_SETUP_AGENT.md` — pre-company bootstrap, company/group/industry/branch/FY/setup wizard and activation.
+- `38_TRANSACTION_LIFECYCLE_ENFORCEMENT.md` — hard rules for draft, submitted, approved, posted, cancelled, reversed and amendments.
+- `39_INITIAL_SETUP_CAPABILITY_AND_TEST_MATRIX.md` — exact service map, permission/permission gaps, readiness and end-to-end tests.
 
-| File | Covers |
-|---|---|
-| `01_REPOSITORY_BASELINE.md` | Source-derived facts, gaps and touchpoints |
-| `02_OPEN_SOURCE_STACK.md` | Github repos, licensing, selection and integration ownership |
-| `03_ARCHITECTURE.md` | Components, data flows, trust boundaries |
-| `04_SECURITY_AND_TENANCY.md` | Actor/company scoping, risk tiers, injection controls |
-| `05_INSTALLATION.md` | Composer packages, configuration and environment setup |
-| `06_DATABASE_SCHEMA.md` | MySQL tables, constraints, indexes, data retention |
-| `07_LARAVEL_AI_SDK.md` | Agents, model gateway, prompts, streaming, SDK lifecycle |
-| `08_ERP_TOOL_REGISTRY.md` | Typed tools, permission checks, domain adapters |
-| `09_FIRST_VERTICAL_SLICE.md` | Detailed read-only receivables implementation recipe |
-| `10_AGENT_CATALOG.md` | Domain agent definitions and milestones |
-| `11_MCP_INTEGRATION.md` | Server/client bridge, authentication and testing |
-| `12_APPROVAL_AND_ACTIONS.md` | Human approval and safe business commands |
-| `13_API_AND_FRONTEND.md` | Endpoints, SSE, chat UI and compatibility |
-| `14_HORIZON_AND_QUEUES.md` | Redis, jobs, quotas and workers |
-| `15_RAG_AND_QDRANT.md` | Controlled knowledge ingestion and tenant filters |
-| `16_LANGFUSE_OBSERVABILITY.md` | Tracing, evals, redaction and model-cost analysis |
-| `17_OPTIONAL_NEURON_OLLAMA.md` | Multi-agent and self-hosted inference options |
-| `18_TESTING_AND_EVALUATIONS.md` | Unit, integration, adversarial and acceptance tests |
-| `19_CI_CD_AND_PRODUCTION.md` | CI, staging, VPS deployment and rollback |
-| `20_DELIVERY_BACKLOG.md` | Implementation stories, dependencies and acceptance |
-| `21_ROLLOUT_AND_OPERATIONS.md` | Feature flags, rollout, cost and operations |
-| `22_DECISIONS_AND_ASSUMPTIONS.md` | Open design decisions and validation matrix |
-| `23_CODING_AGENT_HANDOFF.md` | Agent-ready instructions to build Phase 0 and 1 |
-| `24_SOURCE_REFERENCES.md` | Official package documentation and repository links |
+## Mandatory development sequence
+**Do not start live action execution until the read-only Copilot has proven accuracy and provider readiness, beyond green automated CI.** Phase 0 preserves the passing read-only foundation. Phase 1 builds the separate Action Foundation behind disabled flags. The **first administrator-facing vertical slice is an Initial Setup Agent** (group/company, industry, FY, branch, warehouse, units and validated starter masters); purchase-order posting follows when its separate action contract passes. See `37`–`39`. Subsequent phases cover sales, inventory/finance, documents/bulk, and only then higher autonomy. See `20_DELIVERY_BACKLOG.md` for dependency and exit gates.
 
-## Success definition for Phase 1
+## Not claimed
+This pack does **not** include implemented Laravel classes, a merged PR, production keys, live provider validation, production-posted purchase orders, or permission to bypass approvals. It is a detailed implementation specification intended to replace stale original docs while preserving their valuable architectural/security decisions.
 
-A permitted employee opens the zoloERP AI workspace, asks for **customer outstanding amounts**, the assistant invokes a **server-authorised, branch-scoped** receivables service, returns a reconciled or clearly flagged result with source links, and the interaction is logged without leaking customer data to another company. Requests from an unauthorised actor and a user from a different company must be rejected. No write tools are exposed.
 
-## Scope boundaries
+---
 
-This pack gives a complete **implementation blueprint**; it does not claim to contain working Laravel classes, executed migrations, verified provider credentials, deployed AI services or finished UX. The included PHP/SQL examples are design recipes and must be adapted to installed package APIs and tested. Optional components are deliberately gated to keep the MVP supportable.
+## V3: initial setup before first transaction + mandatory edit lifecycle
+The **Initial Setup & Onboarding Agent** is now the first proposed *administrative* action vertical slice, before purchase orders. It uses existing `CompanyDirectoryService` to create an authorized company with MAIN branch, FY, warehouse, chart and industry starter masters, then continues scoped onboarding for products, parties, units and other settings. The present Copilot is still read-only and **does not** expose these writes. See `37_GUIDED_INITIAL_SETUP_AGENT.md` and `39_INITIAL_SETUP_CAPABILITY_AND_TEST_MATRIX.md`.
+
+**All future ERP changes must obey record lifecycle status.** Pre-approval proposal edits create a new validated version and require new human approval. After a record is submitted or posted, direct editing is prohibited unless the existing ERP supports a specific amendment command; otherwise use reviewed cancel/return/reversal/credit/debit/adjustment flows. See `38_TRANSACTION_LIFECYCLE_ENFORCEMENT.md`.

@@ -1,69 +1,51 @@
-# 08 — ERP tool registry and authoritative business adapters
+# 08 — Shared ERP Read Tool Registry and Capability Conventions
 
-## Architecture
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Create an application-owned **`ErpToolExecutor`** invoked by both Laravel AI tools and future MCP tool adapters. Its order must be: identify tool → validate schema → resolve actor/scope → authorise role and feature → verify resource ownership → apply rate/cost/row limits → execute deterministic service → attach evidence → audit. MCP must **never bypass** this executor.
+**Status:** Design specification
 
-## Tool manifest v1 (read-only)
+## Current read-tool design
+One explicit `AiToolManifest` registers `AiToolRegistration(handler, providerName, requiredAny, operationsCapability?, legacyReconciliation?)`. The current manifest restricts registered handlers to `risk() === 'read_only'`, requires `ai.use`, and verifies scalar closed-object schemas. `GenericSdkTool` converts the handler's schema to Laravel AI SDK and dispatches through `ErpToolExecutor`. **Keep this read-only contract intact.**
 
-| Tool key | Model input (validated) | Backend data source | Permission | Evidence |
-|---|---|---|---|---|
-| `receivables.outstanding.v1` | `as_of?: date`, `limit:1..20` | Authorised read facade around AR ageing / open-item control | `ai.use` + customer dues report read | open-item total, control difference, source report URL, actor scope |
-| `sales.summary.v1` | `from`, `to`, `group_by?: day/month` | Sales reporting service with returns and branch scope | sales report read | gross/net definition, count, source links |
-| `sales.top_products.v1` | `from`, `to`, `limit` | Actual sales line/return query | sales report read | qty and currency basis, product IDs |
-| `inventory.availability.v1` | `product_id`, `warehouse_id?` | Refactored authorised stock facade | stock report read | on-hand, reserved, available, ledger state |
-| `accounting.trial_balance.v1` | `from`, `to` | `FinancialReportService::getTrialBalance` via actor-explicit facade | accounting report read | debit, credit, difference, period |
-| `accounting.pnl.v1` | `from`, `to` | `FinancialReportService::getProfitAndLoss` | accounting report read | calculation source, reporting currency |
-| `jobwork.pending.v1` | `as_of`, `limit` | Existing authorised job work service | industry capability + operations read | documents and dates |
+## Inspected read capability families (14 current handlers)
+| Family | Handler(s) | Source principle |
+|---|---|---|
+| AR | CustomerOutstanding, CustomerInvoices, InvoiceAllocations | Open-item/ledger controls and authorised customer records |
+| Sales | SalesSummary | Posted business documents, returns/credits, approved currency semantics |
+| Inventory | InventoryStockSummary | Scoped warehouse, reservations, unit conversion and reconciliation |
+| Payables | PayablesSummary | Supplier open items, branch/FY |
+| Finance & GST | FinancialStatements, GstSummary | Authoritative financial/tax reports; no compliance filing claim |
+| Operations | ManufacturingBoms, JobWorkStatus, OpenOrders | Industry capability and source lifecycle state |
+| Navigation/knowledge | DocumentPreview, CompanyKnowledge, CopilotHelp | Source links and verified settings, not invented policies |
 
-**Never** make a `run_sql`, `call_route`, `execute_php`, `run_artisan`, `fetch_any_url`, `write_file` or generic `invoke_any_service` tool.
+## Shared tool metadata requirements
+Each capability has: internal versioned key; SDK provider alias; description; closed JSON schema; required-all and required-any effective permissions; industry/company feature; risk; data classification; max rows; max bytes; timeout; expected result schema; source refs; audit. Registration fails on duplicates, unrecognized type/format/enum, missing `ai.use`, non-read risk or ownership field in model input.
 
-## Type contract proposal
+## Read executor sequence
+1. Lookup explicit registration and reject unregistered key.
+2. Validate original arguments, required/optional fields, types, bounds and resource ownership.
+3. Refresh `AiPrincipal` against user membership, company/branch/FY, feature and permissions.
+4. Apply domain-specific authorization (sales report vs purchase report vs valuation).
+5. Enforce tool count, time, row and output size budgets.
+6. Call authoritative read facade with explicit context and actor ID.
+7. Build typed result `{tool,status,scope,data,as_of,row_count,source_refs,warnings,reconciled,error_code}`.
+8. Redact audit input, log correlation and return allowed facts to agent/UI.
 
-```php
-interface ErpToolHandler
-{
-    public function key(): string;
-    public function risk(): string; // read, draft, controlled_write
-    public function authorize(AiPrincipal $principal, array $input): void;
-    public function execute(AiPrincipal $principal, array $validatedInput): ErpToolResult;
-}
+## Accuracy conventions
+- Totals computed over **all authorised source rows**, never only top N.
+- Monetary arithmetic exact-decimal; no implicit FX default presented as reconciled.
+- Dates use ERP's real posting/document semantics and selected FY timezone.
+- Stock distinguishes on-hand, reserved, available and stock-ledger divergence; do not add incomparable units.
+- Links created by server to real authorised routes; no external model-suggested URL.
 
-final readonly class ErpToolResult
-{
-    public function __construct(
-        public string $toolKey,
-        public array $scope,
-        public array $data,
-        public array $sourceRefs,
-        public array $warnings,
-        public ?string $asOf,
-        public bool $reconciled,
-    ) {}
-}
-```
+## Future action registry is distinct
+Do **not** allow `risk='controlled_write'` in this existing manifest merely to avoid creating another registry. Introduce `ActionCapabilityRegistry` with reviewed command adapters and independent plan/preview/approve/execute API. Read capabilities can be shared by both planner and Copilot. Action execution is PHP-only after authenticated approval, never a model-facing generic execute tool. See `28_ACTION_CAPABILITY_CATALOG.md`.
 
-These types are **ours to implement**, not SDK-provided. Laravel AI's `Tool` contract is the thin adapter that validates its input and invokes `ErpToolExecutor`. All financial amounts remain strings/decimal-safe from existing `LedgerAmount` logic, not floating point recomputed by the LLM.
+## Migration acceptance
+The old-to-new wrapper migration is already implemented at reviewed SHA; preserve 14 read results, provider aliases, nested reconciliation compatibility where applicable, source links, warnings, deny/error semantics, and actual SDK function-call tests. New capabilities should require substantially less repetitive wiring without reducing domain logic/tests.
 
-## Read tool design rules
 
-- `limit` max 20 for rows shown to model; aggregated totals must be computed against **all authorised rows**, not just displayed top N.
-- Use cursor or limited database queries; avoid loading all company activity into prompts.
-- Validate date within permitted FY; `as_of` uses company timezone, not worker time.
-- Where a service has an explicit read/reconciliation contract, preserve its branch and accounting rules. If its result is unreconciled, include an unambiguous warning.
-- `sourceRefs` must be server-generated URLs to existing ERP report pages with resource IDs and dates, then validated to avoid open redirects.
-- Refuse to resolve a customer, product, warehouse or account belonging to a different company even when the ID is valid.
-- For any data exposed through MCP, call the same executor; do not duplicate database queries in MCP tools.
+---
 
-## Tool catalogue policy
-
-`ai_tools` can be a code manifest initially (safer than user-configured PHP class names); maintain versioned keys, description, schema hash, risk classification, required permissions, enabled industry capabilities, maximum rows, and allowed response keys. Company settings can disable tools but cannot add arbitrary untrusted tool classes.
-
-## Source metadata and number verification
-
-On tool execution, attach `query_time`, `as_of`, `currency`, `company_id`, `branch_id`, `financial_year_id`, `source_type`, `source_record_ids` (bounded), `control_diff` and an optional signed internal report URL. Before rendering, verify model-copied numbers or display the authoritative tool results in deterministic UI cards, with the model restricted to commentary.
-
-## Error taxonomy
-
-- `AI_UNAUTHENTICATED`, `AI_TOOL_FORBIDDEN`, `AI_SCOPE_INVALID`, `AI_FY_OUT_OF_RANGE`, `AI_RESULT_TOO_LARGE`, `AI_RECONCILIATION_FAILED`, `AI_DOMAIN_UNAVAILABLE`, `AI_MODEL_RATE_LIMITED`, `AI_MODEL_TIMEOUT`, `AI_BUDGET_EXCEEDED`.
-- Never include raw SQL, stack traces, internal hostnames or provider secrets in browser-facing errors.
+## V3: two future capability catalogs, no privilege widening
+The existing `AiToolManifest` stays strictly read-only. A separate `SetupCapabilityRegistry` exposes vetted bootstrap actions (`group.create`, `company.create`) only to installation/group admins; a separate company-scoped `ActionCapabilityRegistry` handles draft/approve/execute for branches, warehouses, UOM, products, parties and business transactions. Every action carries a lifecycle transition declaration and points to one reviewed ERP domain service; no generic `model.update`. See `37`–`39`.

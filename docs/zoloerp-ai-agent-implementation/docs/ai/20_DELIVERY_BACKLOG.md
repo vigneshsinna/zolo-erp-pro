@@ -1,77 +1,126 @@
-# 20 — Complete implementation backlog and acceptance criteria
+# 20 — Full Delivery Backlog and Dependency Gates
 
-## Priority legend
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-**P0** MVP foundation (read-only); **P1** broaden authoritative insights; **P2** governed actions/integrations; **P3** optional advanced agent stack. Stories are sized in relative points, not calendar commitments. Each story is done only after code review, tests, documentation and security gates.
+**Status:** Design specification
 
-## PH0 — Foundation
+## Phased Delivery Progression
+Implementation proceeds sequentially through discrete, independently testable phases. No phase may commence before the prior phase satisfies its mandatory exit gate:
 
-| Story | Pts | Dependencies | Acceptance criteria |
-|---|---:|---|---|
-| AI-001 Current-baseline audit | 3 | None | Exact `main` SHA, domain service contracts, PHP/Composer and queue state recorded |
-| AI-002 Install Laravel AI SDK | 5 | AI-001 | Composer lock audit clean; SDK config/migrations reviewed; no ERP regression |
-| AI-003 `AiPrincipal` and context guard | 8 | AI-001 | Server-derived user/company/branch/FY; async revalidation; cross-tenant denials |
-| AI-004 Model gateway + provider config | 5 | AI-002 | Keys server-side; provider/model allowlist; budgets/timeouts; fail-safe errors |
-| AI-005 Tool manifest / `ErpToolExecutor` | 8 | AI-003 | Typed validators, permission checks, audit, limited data, no generic SQL |
-| AI-006 AI schema and ownership | 5 | AI-002, AI-003 | SDK history ownership mapping, run/tool/usage schema and retention tests |
-| AI-007 Logging/privacy policy | 5 | AI-004 | Redacted logs, correlation IDs, no PII or secrets |
-| AI-008 Feature flag / company enablement | 3 | AI-003 | `AI_ENABLED=false` default, emergency kill switch, permission gating |
+```mermaid
+flowchart TD
+    PH0["PH0: Existing Read-Only Copilot"] --> PH1["PH1: Shared Action Foundation"]
+    PH1 --> PH15A["PH1.5 Mode A: Installation Admin Bootstrap"]
+    PH15A --> PH15B["PH1.5 Mode B: Company-Scoped Setup"]
+    PH15B --> PH2["PH2: Purchase Order AI Workflow"]
+    PH2 --> PH3["PH3: Purchase Bills + Sales"]
+    PH3 --> PH4["PH4: Inventory + Accounting + Other Modules"]
+```
 
-## PH1 — Read-only copilot MVP
+---
 
-| Story | Pts | Dependencies | Acceptance criteria |
-|---|---:|---|---|
-| AI-010 Receivables read facade | 8 | AI-003 | Exact open-item/control reconciliation, actor-explicit auth, branch/FY scope |
-| AI-011 Customer outstanding SDK tool | 5 | AI-005, AI-010 | Tool schema limits, source ref, no model-selected ownership fields |
-| AI-012 `ErpCopilot` agent | 5 | AI-004, AI-011 | Only read tool, no invented numbers, safe provider failure |
-| AI-013 Chat endpoints | 8 | AI-006, AI-012 | Auth, CSRF, throttle, thread ownership and run states |
-| AI-014 Blade AI workspace | 8 | AI-013 | Responsive, accessible, source-linked facts, no stored XSS |
-| AI-015 Cross-tenant and adversarial test pack | 8 | AI-010..014 | 0 cross-company leaks and 0 unauthorized tools |
-| AI-016 Golden-set financial accuracy | 5 | AI-010..014 | Figures match deterministic ageing; reconciliation warnings displayed |
-| AI-017 Staging pilot acceptance | 5 | AI-015..016 | Named test company, screenshots, logs, costs, rollback exercised |
+### PH0 — Complete Read-Only Copilot Baseline (Current Branch)
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **CP-001** | Preserve green `DesignTokensTest` and semantic CSS tokens | Current refactor | 4/4 passed; zero inline style violations |
+| **CP-002** | Preserve `ProductAliasTest` commercial lookup behavior | Current refactor | 12/12 passed; zero premature quick-create modals |
+| **CP-003** | Verify financial golden parity across all 14 read facades | Domain services | Reconciliation matches GL and ageing reports 1:1 |
+| **CP-004** | NVIDIA NIM provider telemetry and 35 RPM rate limiter | Approved gateway | Bounded steps, latency tracking, safe failures |
+| **CP-005** | Read contracts, documentation baseline sync, release evidence | CP-001..004 | 11/11 CI jobs passing; documentation sync PR |
 
-## PH1+ — Extend read-only tools
+---
 
-| Story | Pts | Acceptance criteria |
-|---|---:|---|
-| AI-020 Sales summary and top products | 8 | Branch-scope and returns validated; source-linked totals |
-| AI-021 Inventory availability facade | 8 | Refactor existing service for explicit company/warehouse authorization; projection/ledger variance visible |
-| AI-022 Finance reports | 8 | Actor-explicit trial balance/P&L with exact decimals; year scope |
-| AI-023 Report cards and charts | 5 | Values from tools only; no LLM-computed chart data |
-| AI-024 Async jobs + Horizon | 8 | Redis verified, dedicated queues, retries and no ERP starvation |
+### PH1 — Shared Action Foundation (New Branch, Flags Off)
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **AC-001** | Action capability inventory and domain ownership map | CP-005 | Signed capability matrix; explicit risk tiers |
+| **AC-002** | `ActionCapabilityRegistry` and `BusinessCommandAdapter` interface | AC-001 | Code allowlist; zero reflection-driven execution |
+| **AC-003** | Intent schema, entity disambiguation, and slot manager | AC-001 | Ambiguous matches halt for user confirmation |
+| **AC-004** | Versioned proposal schema (`ai_action_proposals`, `ai_action_approvals`, `ai_action_executions`) | AC-002 | Canonical payload hashing, version increments (vN → vN+1) |
+| **AC-005a** | AI Workspace live preview cards and "Change Request" loop | AC-004 | In-place slot editing, real-time re-validation |
+| **AC-005b** | Dedicated Action Review Center (pending queue, history, receipts) | AC-004 | Operational approval desk; multi-item sign-off |
+| **AC-006** | Short-transaction execution adapter & live revalidation gate | AC-002..005 | Re-verifies live state under row locks; preserves domain service transaction ownership |
+| **AC-007** | Idempotency coordinator, audit trail, and emergency killswitch | AC-006 | Zero duplicate executions; global and per-company cutoff |
 
-## PH2 — MCP and controlled proposals
+---
 
-| Story | Pts | Acceptance criteria |
-|---|---:|---|
-| AI-030 Laravel MCP server | 8 | Authenticated scoped read-only tools; exact `ErpToolExecutor` parity |
-| AI-031 External MCP client allowlist | 5 | SSRF restrictions, per-user token scopes, no unrestricted tool discovery |
-| AI-032 Action proposal schema/service | 8 | Immutable typed drafts, risk labels, source snapshot, TTL |
-| AI-033 Approval/rejection UI | 5 | Explicit user review, RBAC, no chat-text approvals |
-| AI-034 Action executor and idempotency | 13 | Fresh domain validation, concurrency-safe, no duplicate posting |
-| AI-035 Langfuse redacted tracing | 5 | Synthetic traces, retention, redaction and opt-in flag |
+### PH1.5 — Guided Initial Setup Agent (First Onboarding Vertical Slice)
 
-## PH3 — Knowledge/document workflows
+#### Mode A: Pre-Company Bootstrap (Installation Administrator)
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **SU-001** | `BootstrapSetupPrincipal` & dedicated bootstrap API (`/api/v1/ai/setup/bootstrap/*`) | AC-001..007 | Pre-company context; non-admin users strictly denied |
+| **SU-002** | Preview and create company group (optional) | SU-001 | Installation-admin approval; unique group code |
+| **SU-003** | Preview and create company via `CompanyDirectoryService::createCompany` | SU-001..002 | Invokes service once; provisions company, MAIN branch, first FY, main warehouse, COA, industry defaults, and starter masters in single transaction |
 
-| Story | Pts | Acceptance criteria |
-|---|---:|---|
-| AI-040 Document upload quarantine + ACL | 8 | Scanner/type/size checks, ownership and secure storage |
-| AI-041 Embedding pipeline and Qdrant | 8 | Tenant filter, document ACL recheck, deletion/revocation |
-| AI-042 Cited knowledge answers | 8 | Source sections and version; no instruction injection |
-| AI-043 Supplier invoice extraction draft | 13 | Field confidence, human edits, validation, no auto-posting |
+#### Mode B: Company-Scoped Configuration & Readiness
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **SU-004** | Transition to `CompanyContextResolver` and verified scoped `AiPrincipal` | SU-003 | Verifies created resources; establishes tenant session |
+| **SU-005** | Configure additional branches, warehouses, units, and tax registrations | SU-004 | Company-scoped adapters; row-level previews and approvals |
+| **SU-006** | Product master import and customer/supplier party creation | SU-005 | Scoped duplicate resolution; zero direct database writes |
+| **SU-007** | Setup readiness validation checklist and administrative activation | SU-003..006 | Admin sign-off; blocks transaction posting until checklist satisfied |
 
-## PH4 — Evaluate advanced orchestration
+---
 
-| Story | Pts | Acceptance criteria |
-|---|---:|---|
-| AI-050 Neuron AI workflow PoC | 5 | Bounded same-tool comparison, checkpoint test and cost metrics |
-| AI-051 Ollama / self-hosted model PoC | 5 | Model license, hardware capacity, privacy and accuracy parity |
-| AI-052 Scheduled briefings | 8 | User opt-in, scoped data, recurrence and delivery caps |
+### PH2 — Commercial Action Vertical Slice: Purchase Order
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **PO-001** | Natural-language supplier, product, UOM, and warehouse resolution | AC-003 | Correct tenant ownership, alias resolution, handles ambiguity |
+| **PO-002** | Deterministic preview calculation via `CommercialApplicationService` | PO-001 | Authoritative pricing and GST; zero LLM monetary arithmetic |
+| **PO-003** | Hash-bound approval and PO creation command | AC-004..006, PO-002 | Exactly one PO created with idempotency key and source links |
+| **PO-004** | Change request loop and Action Review Center status tracking | PO-003 | User can edit line items, re-preview, or cancel without write |
+| **PO-005** | Domain accounting and stock isolation verification | PO-001..004 | Ledger and on-hand stock remain unaffected by order creation |
 
-## Release gates
+---
 
-**Gate F**: Framework packages installed, no regression, 0 serious advisories. **Gate S**: 0 cross-company leaks and read tool denies verified. **Gate A**: exact AR/stock/accounting parity on golden fixtures. **Gate O**: provider timeout/queue/cost and kill switch tested. **Gate P**: restricted staging pilot and production approval. Each phase must clear earlier gates before enabling new risk levels.
+### PH3 — Purchase Receipts & Supplier Bills
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **PB-001** | Goods receipt recording via `OrderLifecycleService::receivePurchase` | PO-005 | Physical stock effect verified; double-entry inventory movement |
+| **PB-002** | Supplier bill draft, duplicate invoice check, and GST posting | PB-001 | AP invoice posted; purchase ledger reconciled; input tax credit booked |
 
-## Required PR structure
+---
 
-One PR per independent domain step where feasible: foundation, principal/tool executor, receivables service, SDK tool/agent, chat/UI, tests/pilot. Separate Redis/Horizon, MCP and write proposals into later PRs. Include changed files, assumptions, migration review, risk summary, test output and security evidence.
+### PH4 — Sales & Collections Workflows
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **SL-001** | Sales quotation and sales order draft/creation | AC-006 | Customer credit check, stock reservation, pricing tiers |
+| **SL-002** | Sales tax invoice issue and payment allocation proposal | SL-001 | AR ledger booked; tax liability recorded; no duplicate COGS |
+| **SL-003** | Payment reminder drafts and controlled outbound sending | SL-002 | Customer consent verified; explicit sign-off per communication |
+
+---
+
+### PH5 — Restricted Inventory, Accounting & Manufacturing Modules
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **IV-001** | Warehouse stock transfers and physical stock adjustments | AC-006 | Dual-warehouse authorization; restricted adjustment approval |
+| **FI-001** | Journal entry proposals and restricted ledger adjustments | AC-006 | Balanced debit/credit; period lock enforcement; dual control |
+| **MF-001** | Production orders and job work outward/inward processing | AC-006 | BOM recipe validation; statutory GST Section 143(3) tracking |
+
+---
+
+### PH6 — Document Intelligence & Bulk Data Entry
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **DC-001** | Invoice/receipt document intake, quarantine, and OCR slot extraction | AC-003 | Untrusted document isolation; human review of extracted values |
+| **BK-001** | Bulk spreadsheet import planner (products, opening balances) | AC-006 | Row-level validation, dry-run simulation, partial failure recovery |
+
+---
+
+### PH7 — Controlled Operational Autonomy & Telemetry
+| ID | Deliverable | Dependencies | Exit Gate |
+|---|---|---|---|
+| **AU-001** | Scheduled low-stock read alerts and draft purchase order preparation | PO-003 | Opt-in scheduler; zero autonomous order submission |
+| **AU-002** | Dedicated Horizon queue worker pool and failure recovery | AC-006 | High-throughput async task execution isolated from web workers |
+| **EV-001** | Distributed tracing and token cost monitoring | AC-006 | Per-tenant token budget enforcement; audit export |
+
+---
+
+## Release Gates (All Mandatory)
+* **G0 (Read-Only Baseline):** 100% green ERP CI + passing read-only Copilot regression suite.
+* **G1 (Action Architecture):** Signed capability registry and domain service mapping.
+* **G2 (Security & Tenancy):** Negative cross-tenant tests pass; cryptographic approval binding verified; zero unreviewed writes.
+* **G3 (Setup & PO Milestone):** Mode A company bootstrap succeeds atomically via `CompanyDirectoryService`; first Purchase Order created via natural language with receipt.
+* **G4 (Accounting Integrity):** Ledger balances and inventory movements reconcile 1:1 with ERP core.
+* **G5 (Production Guardrails):** Global and company killswitches verified; emergency revocation tested.

@@ -1,83 +1,47 @@
-# 13 — Chat API, web UI, streaming and source navigation
+# 13 — Authenticated Chat, Task API and AI Command Center Frontend
 
-## No SPA rewrite for Phase 1
+> **Specification version:** 3.0 · **Reviewed code baseline:** `vigneshsinna/zolo-erp-pro` / `refactor/erp-copilot-stabilization` @ `14195d8b5b195f65ca1283c96794c613de88eded` (2026-11-11). **Target design, not proof of implementation.** Verify the current branch HEAD, installed packages, business-service contracts and CI evidence before executing.
 
-Keep zoloERP's Blade, Bootstrap 4 and existing authenticated layout. Build a progressively enhanced `/ai` page with a small isolated JavaScript module. Avoid introducing another frontend framework until the AI feature is stable.
+**Status:** Design specification
 
-## Proposed authenticated endpoints
+## UX architecture
+Maintain Laravel Blade/Bootstrap integration in existing ERP navigation; no full SPA rewrite required. Build reusable, accessible task cards and modal/drawer components so a user can work from **chat, existing module screens, a document upload or a guided form**. Every task always has a visible company/branch/FY, operation type and approval state.
 
-Route registration should follow the current Laravel 13 app's API/boot pattern; **route names and paths below are new proposals**, not existing routes.
+## Existing baseline API (inspect routes, don't recreate)
+Current `AiChatController` handles threads/chat, tool history and read-only proposal denial. Preserve exact existing routes, session/Sanctum, CSRF, data format, model usage and provider errors. Don't weaken read-only guard to make action demos work.
 
-| Method/path | Purpose | Initial rule |
+## Proposed *future* route families
+| Endpoint concept | Method | Policy |
 |---|---|---|
-| `GET /ai` | Blade AI workspace | `auth`, `ai.use`, selected company context |
-| `POST /api/v1/ai/threads` | Create owned thread | `auth:sanctum` or session auth; company access required |
-| `GET /api/v1/ai/threads` | List own, current-company threads | paginated, no other-user results |
-| `GET /api/v1/ai/threads/{id}` | Fetch owned messages and metadata | ownership + scope recheck, redaction |
-| `POST /api/v1/ai/chat` | Ask question; returns response or run ID | throttled; max prompt length; read-only |
-| `GET /api/v1/ai/runs/{id}` | Poll run state and result | owner and current company scope |
-| `POST /api/v1/ai/runs/{id}/cancel` | Cancel pending/running read run | owned run only; cooperative cancellation |
-| `POST /api/v1/ai/runs/{id}/feedback` | Flag poor answer | actor ownership |
-| `GET /api/v1/ai/settings` | Current permitted agents/models | role-appropriate view |
+| `/api/v1/ai/tasks` | POST | New task for authenticated actor/context, intent allowlist |
+| `/api/v1/ai/tasks/{id}` | GET | Owned+scoped task and current state |
+| `/api/v1/ai/tasks/{id}/clarify` | POST | Validate and save specific missing inputs, bump version |
+| `/api/v1/ai/tasks/{id}/preview` | POST | Run deterministic domain validation, generate sealed proposal |
+| `/api/v1/ai/proposals/{id}/approve` | POST | Strong auth, exact payload hash, explicit confirm, CSRF |
+| `/api/v1/ai/proposals/{id}/reject` | POST | Scoped action and reason |
+| `/api/v1/ai/tasks/{id}/cancel` | POST | Only before irreversible business commit |
+| `/api/v1/ai/tasks/{id}/events` | GET/SSE | Scoped progress; no secret/tool internals |
+| `/api/v1/ai/documents/ingestions` | POST | Reviewed upload ACL, quarantine and size/type limits |
+| `/api/v1/ai/capabilities` | GET | Only enabled capabilities for actor/company; descriptions safe |
 
-Phase 2 separate `POST /api/v1/ai/proposals/{id}/approve|reject`, with stronger auth, CSRF and explicit action confirmation. Do **not** implement those write routes in Phase 1.
+These names are **proposals**, not existing routes. Use a separate future controller/service rather than adding write logic to the current chat controller.
 
-## Example chat payload
+## UI components
+`AI Command Bar` (available inside every ERP module); `Conversation Panel`; `Task Timeline`; `Entity Match Selector`; `Line Item Editor`; `Amount/Tax Summary`; `Warnings & Validation`; `Approval Dialog`; `ERP Receipt`; `Document Review Grid`; `Source Link`. User should be able to edit line items in a form, not retype the entire sentence in chat. Provide keyboard navigation and mobile layout.
 
-```json
-{
-  "thread_id": "server-issued-thread-uuid",
-  "message": "Show my top five customers by outstanding balance",
-  "options": { "as_of": "2026-11-10" }
-}
-```
+## Rendering and safety
+Display financial fact cards from validated server data, not model prose. Markdown is sanitised (forbid arbitrary HTML/images and validate anchors). Only same-origin, authorised ERP links from backend. Handle XSS inside product/customer names, stale sessions and multiple tabs. A model failure after transaction creation must show server receipt from status lookup, not a false "failed to create" or a duplicate retry.
 
-Do not accept arbitrary `company_id`, `branch_id`, permission arrays, tool names or provider credentials from the model or request without independently authorising requested scope. Where existing ERP UI sends context headers, process them only through its trusted `company.context` middleware and membership checks.
+## Events and progress
+`task.created`, `intent.detected`, `needs_input`, `records_matched`, `preview.ready`, `approval.required`, `action.started`, `action.completed`, `action.failed`, `task.cancelled`. Every event has task/version/correlation ID; fetch over scoped route. For long-lived workflows, use polling/private broadcasts rather than keeping PHP-FPM busy indefinitely.
 
-## Example successful response
+## Privacy notice
+Explain model provider and which business fields are sent in minimal form; obtain company-specific opt-in as needed. Do not expose keys, raw tool args, hidden instructions or sensitive audit fields in browser payloads.
 
-```json
-{
-  "run_id": "UUID",
-  "thread_id": "UUID",
-  "status": "completed",
-  "message": "Here are your largest outstanding customers as of 2026-11-10.",
-  "facts": [{ "kind": "currency", "key": "total_outstanding", "value": "842500.00", "currency": "INR" }],
-  "scope": { "company_id": 22, "branch_id": 9, "financial_year_id": 17 },
-  "sources": [{ "title": "Customer ageing", "href": "/report/customer?as_of=2026-11-10" }],
-  "warnings": [],
-  "usage": { "tool_count": 1 }
-}
-```
 
-Example values are synthetic. Source URL generation must match real named routes, with permissions checked before opening the report.
+---
 
-## Error responses
+## V3: dual-mode onboarding workspace and lifecycle correction UX
+Before a company exists, offer an **Admin Initial Setup** experience with a securely authorized bootstrap task (do not call company-scoped chat routes that require a missing context). The setup review shows group/company/industry/FY, the starter resources automatically created by `CompanyDirectoryService`, and any pending company-scoped follow-up masters. After commit, show company ID and MAIN branch/FY/warehouse readiness and explicitly enter the new context. Separate 'Preview company' from 'Create company' and protect double clicks/idempotent retries.
 
-- `401 AI_UNAUTHENTICATED`
-- `403 AI_TOOL_FORBIDDEN` / `AI_SCOPE_INVALID`
-- `404 AI_THREAD_NOT_FOUND` for threads outside user scope
-- `422 AI_INPUT_INVALID` / `AI_FY_OUT_OF_RANGE`
-- `429 AI_QUOTA_EXCEEDED` / rate-limited
-- `502 AI_PROVIDER_UNAVAILABLE` / upstream failure
-- `503 AI_DISABLED` / emergency feature shutoff
-
-A model call that fails must not return “0 outstanding” as a success result. Distinguish lack of data from tool failure.
-
-## UI sections
-
-1. Main navigation entry “AI Workspace” behind feature/permission flags.
-2. Conversation title and history, selected company/branch/FY, provider privacy notice.
-3. Input with char limit, send/stop, loading and error states.
-4. Source-linked answer cards and bounded tables; totals rendered from deterministic `facts`, not copied from generated prose.
-5. Reconciliation warning, as-of date, request ID, share/export only after tenant-safe review.
-6. Feedback control “accurate / inaccurate / missing data” with bounded notes.
-7. Accessible keyboard navigation, focus, semantic table headings and responsive layout.
-
-## Streaming phase
-
-After synchronous MVP: use SDK streaming and a server-supported SSE endpoint (`Content-Type: text/event-stream`), heartbeat and explicit event types (`run.started`, `content.delta`, `tool.started`, `tool.finished`, `run.completed`, `run.failed`). For complex jobs, choose poll or Laravel broadcasting rather than holding PHP-FPM processes. Ensure auth token renewal, disconnect/cancel behaviour and no cross-thread leakage. Never reveal raw tool payloads/hidden instructions to browser.
-
-## Browser acceptance
-
-Ask/receive answer; switch company/branch; stale tab; revoked permission; network disconnect; mobile layout; correct format INR and decimals; clicking source opens authorised report; XSS attempt in product/customer name is escaped; two concurrent tabs do not cross-scope.
+For record-edit requests, show current ERP status prominently. If already submitted/posted, replace a generic Edit button with **Available corrections** derived from the ERP domain (for example: amend, cancel, return, reverse, credit/debit note). A user editing a proposed draft sees `Revision 2 — needs fresh validation and approval`; if currently posted, no editable form should imply a direct overwrite. See `26`, `37`, `38`.
