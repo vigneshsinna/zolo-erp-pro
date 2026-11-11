@@ -928,6 +928,175 @@
                         cardBody.append(footer);
                         card.append(cardBody);
                         bubble.append(card);
+                    } else if (fact.tool === 'workflow.clarification.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card ai-clarification-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        const taskIdShort = data.task_id ? String(data.task_id).substring(0, 8) : 'New';
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-question text-warning mr-1"></i> Details Required for Proposal · Task #' + $('<div>').text(taskIdShort).html() + '</span>'));
+                        cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Collecting Inputs (Rev ' + (data.task_revision || 1) + ')</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+
+                        // Confirmed Fields
+                        if (data.confirmed_fields && data.confirmed_fields.length > 0) {
+                            const confBox = $('<div class="mb-2"></div>');
+                            confBox.append('<div class="small font-weight-bold text-success mb-1"><i class="dripicons-checkmark mr-1"></i>Confirmed Details:</div>');
+                            const confPills = $('<div class="d-flex flex-wrap"></div>');
+                            data.confirmed_fields.forEach(function (cf) {
+                                confPills.append($('<span class="badge mr-1 mb-1 py-1 px-2 ai-confirmed-pill"></span>')
+                                    .html('<strong>' + $('<div>').text(cf.label || cf.field).html() + ':</strong> ' + $('<div>').text(cf.display || cf.value || '').html()));
+                            });
+                            confBox.append(confPills);
+                            cardBody.append(confBox);
+                        }
+
+                        // Pending Checks
+                        if (data.pending_checks && data.pending_checks.length > 0) {
+                            const pendingBox = $('<div class="mb-2 small text-muted"><i class="dripicons-information text-info mr-1"></i><strong>Pending Checks:</strong> ' + $('<div>').text(data.pending_checks.join(' · ')).html() + '</div>');
+                            cardBody.append(pendingBox);
+                        }
+
+                        // Required Inputs (Issues to resolve)
+                        const inputsContainer = $('<div class="ai-clarification-inputs border-top pt-2 mt-2"></div>');
+                        if (data.required_inputs && data.required_inputs.length > 0) {
+                            inputsContainer.append('<div class="small font-weight-bold text-dark mb-2">Please provide or clarify the following:</div>');
+                            data.required_inputs.forEach(function (issue) {
+                                const issueBox = $('<div class="form-group mb-2 ai-clarification-issue" data-field="' + issue.field + '"></div>');
+                                const statusBadgeClass = issue.status === 'ambiguous' ? 'badge-info' : (issue.status === 'invalid' ? 'badge-danger' : 'badge-warning');
+                                issueBox.append('<div class="d-flex justify-content-between align-items-center mb-1">' +
+                                    '<label class="small font-weight-bold mb-0 text-dark">' + $('<div>').text(issue.label || issue.field).html() + '</label>' +
+                                    '<span class="badge ' + statusBadgeClass + ' py-0 px-1 small">' + $('<div>').text(issue.status).html() + '</span>' +
+                                    '</div>');
+                                issueBox.append('<div class="small text-muted mb-1">' + $('<div>').text(issue.reason).html() + '</div>');
+
+                                if (issue.candidates && issue.candidates.length > 0) {
+                                    const candidateGroup = $('<div class="d-flex flex-wrap ai-candidate-group mb-1"></div>');
+                                    issue.candidates.forEach(function (cand) {
+                                        const label = cand.name + (cand.code ? ' (' + cand.code + ')' : '');
+                                        const candBtn = $('<button type="button" class="btn btn-sm btn-outline-primary mr-1 mb-1 ai-candidate-btn"></button>')
+                                            .attr('data-field', issue.field)
+                                            .attr('data-value', cand.id)
+                                            .text(label);
+
+                                        candBtn.on('click', function () {
+                                            if ($(this).hasClass('active')) {
+                                                $(this).removeClass('active btn-primary').addClass('btn-outline-primary');
+                                            } else {
+                                                candidateGroup.find('.ai-candidate-btn').removeClass('active btn-primary').addClass('btn-outline-primary');
+                                                $(this).addClass('active btn-primary').removeClass('btn-outline-primary');
+                                            }
+                                        });
+                                        candidateGroup.append(candBtn);
+                                    });
+                                    issueBox.append(candidateGroup);
+                                } else {
+                                    const textInput = $('<input type="text" class="form-control form-control-sm ai-clarification-input">')
+                                        .attr('data-field', issue.field)
+                                        .attr('placeholder', 'Enter ' + (issue.label || issue.field));
+                                    issueBox.append(textInput);
+                                }
+                                inputsContainer.append(issueBox);
+                            });
+                        }
+                        cardBody.append(inputsContainer);
+
+                        // Actions Footer
+                        if (data.task_id) {
+                            const footer = $('<div class="d-flex justify-content-end align-items-center mt-3 pt-2 border-top"></div>');
+                            const btnSubmit = $('<button type="button" class="btn btn-sm btn-primary mr-2 py-1 px-3 ai-btn-submit-clarification"><i class="dripicons-direction mr-1"></i>Submit Details</button>');
+                            const btnCancel = $('<button type="button" class="btn btn-sm btn-outline-secondary py-1 px-3 ai-btn-cancel-clarification"><i class="dripicons-cross mr-1"></i>Cancel</button>');
+
+                            btnSubmit.on('click', function () {
+                                const corrections = [];
+                                inputsContainer.find('.ai-clarification-issue').each(function () {
+                                    const field = $(this).attr('data-field');
+                                    const activeBtn = $(this).find('.ai-candidate-btn.active');
+                                    if (activeBtn.length > 0) {
+                                        corrections.push({
+                                            field: field,
+                                            value: activeBtn.attr('data-value'),
+                                            confirmation: 'user_selected'
+                                        });
+                                    } else {
+                                        const inputVal = $(this).find('.ai-clarification-input').val();
+                                        if (inputVal && String(inputVal).trim() !== '') {
+                                            corrections.push({
+                                                field: field,
+                                                value: String(inputVal).trim()
+                                            });
+                                        }
+                                    }
+                                });
+
+                                if (corrections.length === 0) {
+                                    alert('Please select or enter details for at least one item.');
+                                    return;
+                                }
+
+                                btnSubmit.prop('disabled', true).text('Updating...');
+                                btnCancel.prop('disabled', true);
+
+                                $.ajax({
+                                    url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/inputs',
+                                    method: 'PATCH',
+                                    headers: headers,
+                                    data: JSON.stringify({
+                                        expected_revision: data.task_revision || 1,
+                                        corrections: corrections
+                                    }),
+                                    success: function (res) {
+                                        if (res.evaluation && res.evaluation.is_ready) {
+                                            btnSubmit.text('Preparing Proposal...');
+                                            $.ajax({
+                                                url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/prepare-proposal',
+                                                method: 'POST',
+                                                headers: headers,
+                                                success: function (prepRes) {
+                                                    footer.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>All details confirmed! Proposal ready. Send message or refresh to review.</span>');
+                                                },
+                                                error: function (prepXhr) {
+                                                    btnSubmit.prop('disabled', false).text('Submit Details');
+                                                    btnCancel.prop('disabled', false);
+                                                    alert('Preparation failed: ' + (prepXhr.responseJSON?.message || 'Error'));
+                                                }
+                                            });
+                                        } else {
+                                            footer.html('<span class="badge badge-info p-2"><i class="dripicons-checkmark mr-1"></i>Updated! Additional details required. Refreshing...</span>');
+                                        }
+                                    },
+                                    error: function (xhr) {
+                                        btnSubmit.prop('disabled', false).text('Submit Details');
+                                        btnCancel.prop('disabled', false);
+                                        alert('Update failed: ' + (xhr.responseJSON?.message || 'Conflict or invalid input'));
+                                    }
+                                });
+                            });
+
+                            btnCancel.on('click', function () {
+                                btnSubmit.prop('disabled', true);
+                                btnCancel.prop('disabled', true).text('Cancelling...');
+                                $.ajax({
+                                    url: '/api/v1/ai/workflow-tasks/' + data.task_id + '/cancel',
+                                    method: 'POST',
+                                    headers: headers,
+                                    success: function () {
+                                        footer.html('<span class="badge badge-secondary p-2"><i class="dripicons-cross mr-1"></i>Task Cancelled</span>');
+                                    },
+                                    error: function (xhr) {
+                                        btnSubmit.prop('disabled', false);
+                                        btnCancel.prop('disabled', false).text('Cancel');
+                                        alert('Cancel failed: ' + (xhr.responseJSON?.message || 'Error'));
+                                    }
+                                });
+                            });
+
+                            footer.append(btnSubmit).append(btnCancel);
+                            cardBody.append(footer);
+                        }
+
+                        card.append(cardBody);
+                        bubble.append(card);
                     }
                 });
 

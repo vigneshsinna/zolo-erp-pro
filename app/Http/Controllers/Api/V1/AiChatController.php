@@ -681,7 +681,7 @@ class AiChatController extends Controller
             if ($tool === 'inventory.stock_summary.v1' && ($data['valuation_visible'] ?? true)) {
                 $required[] = 'purchases-index';
             }
-            if ($tool === 'purchase_order.create.v1') {
+            if ($tool === 'purchase_order.create.v1' || $tool === 'workflow.clarification.v1') {
                 $required[] = 'purchases-add';
             }
         }
@@ -698,6 +698,14 @@ class AiChatController extends Controller
             $payload = $result->successful() ? json_decode($result->text(), true) : null;
             if (($payload['status'] ?? null) === 'needs_input') {
                 $warnings[] = $payload['message'] ?? 'Additional details are required to complete this proposal.';
+                if (!empty($payload['required_inputs']) || !empty($payload['task_id'])) {
+                    $facts[] = [
+                        'tool' => 'workflow.clarification.v1',
+                        'as_of' => now()->toDateString(),
+                        'data' => $payload,
+                        'reconciled' => false,
+                    ];
+                }
                 continue;
             }
 
@@ -752,6 +760,7 @@ class AiChatController extends Controller
                 'documents.preview.v1' => 'Document preview',
                 'knowledge.query.v1' => 'Company policy & terms',
                 'purchase_order.create.v1' => 'Purchase order proposal',
+                'workflow.clarification.v1' => 'Details required for proposal',
                 default => 'Authoritative ERP report',
             };
             foreach ($payload['source_refs'] ?? [] as $href) {

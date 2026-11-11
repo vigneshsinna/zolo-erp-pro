@@ -237,6 +237,15 @@ Route::prefix('v1')->group(function () {
             Route::post('proposals/{id}/change-request', [\App\Http\Controllers\Api\V1\AiChatController::class, 'changeRequest'])->whereUuid('id')->name('api.v1.ai.proposals.change-request');
             Route::post('proposals/{id}/approve', [\App\Http\Controllers\Api\V1\AiChatController::class, 'approveProposal'])->whereUuid('id')->name('api.v1.ai.proposals.approve');
             Route::post('proposals/{id}/reject', [\App\Http\Controllers\Api\V1\AiChatController::class, 'rejectProposal'])->whereUuid('id')->name('api.v1.ai.proposals.reject');
+
+            // Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine
+            Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {
+                Route::post('/', 'store')->name('api.v1.ai.workflow-tasks.store');
+                Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.workflow-tasks.show');
+                Route::patch('{id}/inputs', 'updateInputs')->whereUuid('id')->name('api.v1.ai.workflow-tasks.update-inputs');
+                Route::post('{id}/prepare-proposal', 'prepareProposal')->whereUuid('id')->name('api.v1.ai.workflow-tasks.prepare-proposal');
+                Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('api.v1.ai.workflow-tasks.cancel');
+            });
         });
     });
 });

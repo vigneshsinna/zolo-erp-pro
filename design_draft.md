@@ -1,496 +1,578 @@
-# zoloERP Autonomous AI Operating Layer — Technical Design Document
+# zoloERP AI Operating Layer — Generalized Multi-Slot Input Collection & Clarification Engine (Phase 2.1)
 
 *   **Author:** vigneshsinna
-*   **Status:** Draft (Reviewed & Remediated)
+*   **Status:** Draft (In Progress)
 *   **Date:** 2026-11-11
-*   **Predecessor Document:** `concepts_brief.md`
-*   **Target Codebase:** `vigneshsinna/zolo-erp-pro` (`refactor/erp-copilot-stabilization` @ `14195d8`)
+*   **Predecessor Documents:** `docs/zoloerp_ai_operating_layer_complete_docs_v3/ZOLOERP_PHASE_2_1_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION_ENGINE.md`, `concepts_brief.md`
+*   **Target Codebase:** `vigneshsinna/zolo-erp-pro` (`feature/ai-unified-input-clarification`)
 
 --------------------------------------------------------------------------------
 
 ## Overview
 
-This technical design document specifies the architecture, data models, security boundaries, and execution protocols for the **zoloERP Autonomous AI Operating Layer**. The system transitions zoloERP Pro from its current read-only Copilot baseline (14 read tool families with zero write capabilities) into an enterprise-governed **AI Command Center** capable of multi-modal intake (text, voice, image/documents), entity resolution, governed transaction execution, and administrative setup.
+This technical design document specifies the architecture, data models, state transitions, and user experience for the **Generalized Multi-Slot Input Collection & Clarification Engine (Phase 2.1)** within the zoloERP AI Operating Layer.
 
-The architectural foundation adheres to the principle of **Untrusted Model, Authoritative Server**: Large Language Models act strictly as probabilistic planners, slot-gatherers, and formatters. All ledger calculations, tax computations (GST), state validations, authorization checks, and database commits remain under the exclusive control of established Laravel domain services (`CompanyDirectoryService`, `CommercialApplicationService`, `OrderLifecycleService`).
+While Phase 2 successfully delivered the governed commercial action foundation and operational Purchase Order workflow (`purchase_order.create.v1`), natural-language interactions remained bounded by early-return validation: the system stops at the first missing or ambiguous reference (e.g., supplier), triggering repetitive conversational back-and-forth loops before downstream fields (such as products, quantities, prices, or warehouses) are ever inspected.
 
-Review and approval are delivered across two coordinated interfaces:
-1. **AI Workspace (`workspace.blade.php`):** Interactive conversational surface for multi-modal intake, candidate disambiguation, live previews, and iterative change requests.
-2. **Action Review Center (Dedicated Operational Desk):** Cross-module pending approval queue, multi-item approval, audit trail inspection, and execution receipts.
+Phase 2.1 solves this by introducing a **centralized pre-proposal task orchestration layer** that operates universally across:
+1. **Commercial Sales & Collections:** Sales Orders (`sales_order.create.v1`), Quotations (`quotation.create.v1`), Sales Invoices (`sales_invoice.create.v1`), and Customer Payments (`payment.create.v1`).
+2. **Commercial Purchasing & Inbound:** Purchase Orders (`purchase_order.create.v1`), Goods Receipt Notes (`grn.create.v1`), and Supplier Bills (`purchase_bill.create.v1`).
+3. **Inventory & Manufacturing:** Stock Transfers (`stock_transfer.create.v1`), Stock Adjustments (`stock_adjustment.create.v1`), and Production Orders (`production_order.create.v1`).
+4. **Mode B Master Setup:** Product Master (`setup.product.create.v1`), Customer Master (`setup.customer.create.v1`), Supplier Master (`setup.supplier.create.v1`), Warehouse (`setup.warehouse.create.v1`), and Units of Measure (`setup.unit.create.v1`).
+5. **Multi-Modal Intake Surfaces:** Natural-language chat, transcribed voice notes, and document/bill OCR image extractions.
+
+The architecture strictly upholds the core invariant: **Untrusted Model, Authoritative Server**. The Large Language Model performs probabilistic intent extraction and slot tagging. A deterministic, server-side requirements evaluator (`ActionRequirementsRegistry`, `InputCompletenessEvaluator`) and company-scoped batch resolvers (`BatchRecordResolutionService`) evaluate entity validity, applicability, and completeness. Incomplete requests are retained as durable task drafts (`ai_workflow_tasks`), presenting a single, consolidated **"Details Required"** clarification interface. Only when all blocking issues are resolved is a typed, immutable Action Proposal (`ai_action_proposals`) generated for human review and authoritative execution.
 
 ---
 
 ## The Problem
 
-zoloERP Pro is currently a menu-driven transactional ERP. While the recent Copilot stabilization successfully shipped 14 read-only tool families, business operators still face significant friction in daily operations:
-1. **Administrative Onboarding Overhead:** Creating a new enterprise company, its branches, chart of accounts, starter series, and industry configurations requires navigating numerous separate screens and manual seeders.
-2. **Operational Entry Latency:** Generating commercial transactions (e.g. Purchase Orders) from external communication (supplier quotes, WhatsApp text, email PDFs) requires tedious manual data entry and multi-screen record lookups.
-3. **The Autonomy vs. Compliance Dilemma:** Existing naive AI automation patterns (such as granting LLMs direct SQL access or automated tool execution) threaten financial integrity, violate multi-tenant isolation, risk double-entry accounting errors, and break statutory GST compliance.
-4. **Lifecycle State Violations:** Direct mutations on submitted or posted vouchers corrupt stock ledgers and general ledger reconciliation. A governed mechanism is required to ensure AI-driven changes obey authoritative ERP document lifecycles.
+zoloERP Pro operators interacting via conversational, voice, or document inputs encounter four operational bottlenecks when attempting multi-slot commercial or operational entries:
 
-The solution is an **Action Foundation** combining a two-tier identity framework (Mode A pre-company bootstrap vs. Mode B company-scoped setup), short-lived database transactions, cryptographic HMAC approval binding, and mandatory transaction lifecycle enforcement.
+1. **Stop-at-First-Error Conversational Bottleneck:**
+   Existing action tools (such as `PreparePurchaseOrder`) execute sequential entity lookups and return immediately upon the first failure (`status: needs_input`). For example, in the prompt *"Create a sales order for 50 rolls of Cotton Poplin and 20 rolls of Denim Fabric for Arvind Garments to Main Warehouse"*, if `Arvind Garments` is ambiguous, the tool returns a question regarding the customer without inspecting either fabric line or the warehouse. When the user resolves the customer, the system asks about the fabric lines, creating an inefficient multi-turn interaction.
+
+2. **Multi-Line Evaluation Blindness:**
+   Commercial orders in manufacturing, wholesale, and retail routinely contain 5 to 50 line items. Stopping at line 1 leaves errors on lines 2 through 10 undiscovered until the user fixes line 1. Users require a complete diagnostic report of every line item in a single response.
+
+3. **Absence of Durable Pre-Proposal Task State:**
+   Prior to Phase 2.1, the system only possessed two states: conversational chat messages in `ai_messages` or sealed, reviewable proposals in `ai_action_proposals`. There was no intermediate, durable storage for incomplete drafts. Consequently, partial extractions were lost across page reloads, multi-step corrections, or background task pauses. Attempting to store incomplete inputs in `ai_action_proposals` breaks the cryptographic approval and immutability invariants of the proposal engine.
+
+4. **Risk of Silent Entity Creation vs. Missing Data Deadlock:**
+   When an input references an unknown product, customer, or unit, naive systems either hallucinate new database records (violating ERP data integrity) or halt indefinitely. Operators require grounded disambiguation: selectable choices for existing records, or an explicit, governed pathway to trigger a separate, approved master-setup workflow without losing their active transaction draft.
 
 ---
 
 ## Goals
 
-*   **G-1 (Strict Mode Isolation):** Physically and logically segregate Mode A (Pre-Company Bootstrap under `BootstrapSetupPrincipal` via `/api/v1/ai/setup/bootstrap/*`) from Mode B (Company-Scoped Operations via standard `/api/v1/ai/*` routes), guaranteeing zero leakage or artificial tenancy bypasses (`company_id = 0`).
-*   **G-2 (Single-Step Atomic Company Creation):** Reuse existing `CompanyDirectoryService::createCompany` to provision company, MAIN branch, first FY, main warehouse, chart of accounts, industry settings, and starter masters in a single atomic database transaction.
-*   **G-3 (Short Database Transaction Lifetimes):** Enforce that no database transaction is held open during LLM inference, slot gathering, or user review pauses. At commit time, row locks and state revalidation occur inside a brief, atomic execution window delegating to domain service transaction ownership (`$domainOwnsTransaction = true`).
-*   **G-4 (Cryptographic Approval Binding):** Hash canonical proposal payloads with SHA-256 and bind the approval record using an HMAC signature incorporating payload hash, action key, version, approver identity, company, branch, financial year, and source state hash.
-*   **G-5 (Mandatory Lifecycle Enforcement):** Forbid direct `UPDATE` queries on submitted, posted, or paid ERP transactions. Route all modifications through formal, domain-supported amendment, Debit/Credit Note, or Reversal workflows.
-*   **G-6 (Dual UI Ergonomics):** Provide live interactive previews and in-place "Change Request" editing in the AI Workspace, complemented by a dedicated Action Review Center for pending approvals, history, and receipts.
-*   **G-7 (Autonomy Boundary):** Restrict system autonomy strictly to Levels A2 (draft preparation) and A3 (explicit human approval). Fully unattended financial or inventory posting (A4/A5) is prohibited.
+*   **G-1 (Universal Cross-Module Applicability):** Define a unified requirements and clarification pipeline that serves Sales, Purchasing, Inventory, Accounting, and Master Setup identically, eliminating module-specific ad-hoc validation loops.
+*   **G-2 (Single-Pass Full Evaluation):** Resolve all independently addressable entities (parties, products across all lines, warehouses, accounts, tax profiles) in a single company-scoped batch pass (`BatchRecordResolutionService`).
+*   **G-3 (Consolidated Clarification Response):** Return all currently identifiable missing, invalid, and ambiguous fields in a single, structured payload and render them as a consolidated "Details Required" card in the AI Workspace desk UI.
+*   **G-4 (Durable Task Draft Persistence & Concurrency):** Persist incomplete workflow task state in `ai_workflow_tasks` with append-only auditing in `ai_workflow_task_events` and monotonic optimistic concurrency locking (`expected_revision`), preventing race conditions and lost user edits.
+*   **G-5 (Strict Lifecycle Separation):** Completely decouple mutable task drafts (`ai_workflow_tasks`) from immutable, reviewable action proposals (`ai_action_proposals`). Promotion to a proposal occurs strictly when zero blocking issues remain.
+*   **G-6 (Multi-Modal Provenance Tracking):** Maintain explicit per-field provenance (user text, voice transcript, document OCR extraction, verified ERP default, or explicit user selection) to support targeted disambiguation.
+*   **G-7 (Zero Autonomous Writes & Authoritative Validation):** Preserve strict separation of concerns: input collection performs zero ERP master or financial ledger mutations. Financial previews and execution remain exclusively governed by authoritative domain services (`CommercialPricing`, `CommercialApplicationService`).
 
 ---
 
 ## Non-Goals
 
-*   **NG-1 (No Unattended Financial Posting):** The system will not autonomously post journals, tax returns, or stock adjustments without explicit human review and approval.
-*   **NG-2 (No Direct ORM/SQL Writes):** The AI engine will never execute direct raw SQL, Eloquent `update()` / `delete()`, or `Sale::forceCreate()` / `Purchase::forceCreate()` bypassing domain services.
-*   **NG-3 (No Expansion of Read Manifest):** The existing `AiToolManifest` will remain strictly read-only. Action capabilities will reside exclusively in `ActionCapabilityRegistry` and `SetupCapabilityRegistry`.
-*   **NG-4 (No Multi-Profile Companies):** A company will not be configured with multiple simultaneous industry profiles unless supported by core ERP domain enhancements.
+*   **NG-1 (No Silent Master Creation):** The clarification engine will never automatically insert missing customers, suppliers, products, or warehouses. Missing records must be selected from existing matches or routed through an independent, approved setup action.
+*   **NG-2 (No LLM-Driven Financial Calculations):** The clarification engine will not permit the model to calculate subtotals, tax splits, discount allocations, or grand totals. All financial metrics are computed by domain pricing services once inputs are complete.
+*   **NG-3 (No Client-Controlled Scoping):** The clarification engine will never accept `company_id`, `branch_id`, `financial_year_id`, or `actor_id` from client payloads or LLM extractions. All scoping resolves server-side via `CompanyContextResolver`.
+*   **NG-4 (No Execution Bypass):** A fully resolved task draft does not automatically execute against the ERP. It generates an Action Proposal that requires explicit human review and authorization before domain execution.
 
 ---
 
 ## Open Questions & Decisions
 
-*   **Q-1 (Session Context Switching in SPA/Multi-Tab):** When `createCompany` commits in Mode A, how should multi-tab browser sessions handle the context switch to the new company without forcing a full page reload?
-    - *Decision:* The Mode A completion response returns explicit transition metadata containing `transition_action: "switch_context"`, `context_switch_url: "/select-company"`, and `workspace_url: "/ai"`. The client performs an AJAX POST to `/select-company` with `company_id` to establish the authenticated session context before navigating to `/ai`.
-*   **Q-2 (Batch Approval Gating in Review Center):** For bulk master data proposals (e.g. 50 imported products), what threshold should require individual confirmation modals versus single-click batch approval?
-    - *Decision:* Single-click batch approval is permitted exclusively for low-risk tier (`r1_draft`) master data records up to a maximum limit of 25 items per batch. Any commercial, stock-moving, or financial transactions strictly require individual transaction previews and approvals.
+*   **Q-1: How should line items be addressed across incremental user corrections?**
+    *   *Decision:* Line items must use stable client-issued identifiers (`client_line_id`, e.g., `line-1`, `line-2`, or UUIDs) rather than sequential array indices (`items[0]`). Array indices are fragile when users insert, delete, or re-order lines during clarification. All field issue paths must reference `items[client_line_id].field_name`.
+*   **Q-2: What is the retention and expiration policy for incomplete task drafts?**
+    *   *Decision:* Active workflow tasks in `ai_workflow_tasks` expire after 24 hours of inactivity (`expires_at = now() + 24 hours`). Expired tasks cannot be converted into proposals; the user must refresh or initiate a new task. Completed tasks (`status = 'proposal_created'`) are retained for 30 days for audit and correlation before archiving.
+*   **Q-3: How does the system handle multi-modal extractions with low OCR/voice confidence?**
+    *   *Decision:* Extracted values with model confidence below threshold (or lacking exact database match) are marked as `unverified` or `ambiguous` rather than `resolved`. They are presented to the operator in the "Details Required" card with explicit confirmation radio buttons or candidate pickers before promotion.
 
 ---
 
 ## Critical User Journeys (CUJs)
 
-### CUJ 1: Mode A Initial Company Provisioning & Onboarding
-*   **Given:** An authenticated installation administrator accessing the dedicated bootstrap endpoint (`/api/v1/ai/setup/bootstrap/*`) under `BootstrapSetupPrincipal`.
-*   **When:** The admin instructs: *"Set up ABC Textiles as a textile manufacturing company in Tamil Nadu with FY starting 2026-04-01."*
+### CUJ 1: Multi-Line Commercial Sales Order Input Collection
+*   **Given:** An authenticated sales representative in Company Context (Company 1, Main Branch, FY 2026-2027).
+*   **When:** The user enters: *"Book a sales order for Arvind Garments: 50 rolls of Cotton Poplin at ₹450/roll and 25 rolls of Indigo Denim at ₹850/roll to delivery warehouse WH-SOUTH."*
 *   **Then:**
-    1. The AI Intent Planner extracts slots (`name: "ABC Textiles"`, `industry_code: "textile"`, `state_code: "TN"`, `fy_start: "2026-04-01"`, `fy_end: "2027-03-31"`).
-    2. `CompanyBootstrapPreviewAdapter` calculates simulated defaults (canonical uppercase code via `CompanyDirectoryService::code()`, financial year naming via `yearName()`, default warehouse name, and tax configuration) using `IndustryCatalog` without executing database writes.
-    3. An immutable proposal (`setup.company.create.v1`, version 1, `actor_id`, `task_token`) is generated with a canonical SHA-256 payload hash and presented as an editable preview card.
-    4. The admin clicks "Approve", generating an HMAC approval signature with colon-delimited null-safe context (`payload_hash:setup.company.create.v1:1:actorId:0:0:0:sourceStateHash:timestamp`).
-    5. The executor calls `CompanyDirectoryService::createCompany` once in a single transaction.
-    6. Company, MAIN branch, first FY, main warehouse, COA, and starter masters are atomically provisioned.
-    7. The client receives an authoritative receipt with transition metadata (`context_switch_url: "/select-company"`, `company_id: 12`, `workspace_url: "/ai"`), re-anchoring the session into standard `CompanyContext` (Mode B).
+    1. Intent extractor identifies `sales_order.create.v1` and extracts customer query, 2 line items, and warehouse query.
+    2. `ActionRequirementsRegistry` loads the schema for `sales_order.create.v1`.
+    3. `WorkflowTaskStateService` creates a task draft (`status = 'collecting'`, `revision = 1`).
+    4. `BatchRecordResolutionService` executes company-scoped parallel lookups:
+       - Customer: `Arvind Garments` matches 1 unique active customer record (ID 12).
+       - Warehouse: `WH-SOUTH` matches 1 unique warehouse in the branch (ID 4).
+       - Line 1: `Cotton Poplin` matches 2 active SKUs (`POP-COT-60`, `POP-COT-80`).
+       - Line 2: `Indigo Denim` matches 1 unique active SKU (`DEN-IND-12OZ`, ID 108).
+    5. `InputCompletenessEvaluator` flags Line 1 product as `ambiguous` and detects missing shipping date.
+    6. System outputs one consolidated "Details Required" card displaying:
+       - Confirmed: Customer (Arvind Garments), Warehouse (WH-SOUTH), Line 2 (Indigo Denim, 25 rolls @ ₹850).
+       - Ambiguous: Line 1 product candidates (`POP-COT-60` vs `POP-COT-80`).
+       - Missing: Expected Delivery Date.
+    7. User selects `POP-COT-60` and enters date `2026-11-20`.
+    8. `TaskCorrectionService` applies patch (`expected_revision = 1`), re-evaluates, finds 0 blocking issues, and promotes the task to an Action Proposal (`sales_order.create.v1`) with domain-calculated pricing and tax breakdown.
 
-### CUJ 2: Interactive Change Request on Commercial Proposal
-*   **Given:** An authenticated sales operator in an active company workspace.
-*   **When:** The operator asks the AI to prepare a Purchase Order for 100 units of Fabric X, but then decides to change the quantity to 150 units before approval.
+### CUJ 2: Purchase Order with Ambiguous Supplier and Unregistered Product
+*   **Given:** A purchasing officer preparing a commercial order.
+*   **When:** The user enters: *"Create PO for 100 kgs of Raw Chemical Solvent from Apex Industries at ₹120/kg."*
 *   **Then:**
-    1. The initial proposal (v1) is displayed with calculated taxes and totals.
-    2. The operator submits a change request via either:
-       - **Conversational Intake:** User sends natural language ("change quantity to 150") to `POST /api/v1/ai/chat`. The planner detects active thread proposal and delegates to `ActionProposalService::applyChangeRequest()`.
-       - **Direct Card Edit:** User edits quantity directly on the Fact Card / Review Center and clicks "Update Preview", sending structured JSON to `POST /api/v1/ai/proposals/{id}/change-request`.
-    3. The proposal increments to version 2 (v2), discarding the prior preview hash and revoking previous approvals.
-    4. Records and pricing are re-validated through `CommercialApplicationService`.
-    5. A refreshed preview card is rendered requiring fresh human approval.
+    1. Intent extractor identifies `purchase_order.create.v1`.
+    2. `BatchRecordResolutionService` checks company masters:
+       - Supplier: `Apex Industries` matches two active suppliers in different states (`Apex Industries PB` vs `Apex Industries HR`).
+       - Product: `Raw Chemical Solvent` returns zero matches in the product catalog.
+    3. `InputCompletenessEvaluator` flags Supplier as `ambiguous` and Product as `missing`.
+    4. System returns a single consolidated card:
+       - Supplier: Select between `Apex Industries PB (GSTIN: 03AAAAA1234A1Z5)` or `Apex Industries HR (GSTIN: 06AAAAA1234A1Z5)`.
+       - Product: No catalog match found. Options: "Search catalog with different term" or "Propose Product Master Creation (setup.product.create.v1)".
+    5. The active purchase order task remains safely persisted in `ai_workflow_tasks` while the user clarifies the supplier or triggers the separate setup workflow.
 
-### CUJ 3: Rejected Direct Mutation on Posted Supplier Bill
-*   **Given:** A purchase bill (PB-1025) has already been submitted and posted with inventory and general ledger effects.
-*   **When:** A user instructs the AI: *"Change supplier bill PB-1025 quantity from 50 to 60."*
+### CUJ 3: Multi-Modal Document OCR Bill Ingestion
+*   **Given:** An accounts payable clerk uploads a scanned invoice image from a vendor.
+*   **When:** The system processes the image through OCR extraction.
 *   **Then:**
-    1. The AI planner resolves the bill and queries `DomainLifecyclePolicy`.
-    2. The policy detects `status = 'posted'`, rejecting direct update.
-    3. The AI refuses direct field mutation and generates a proposal for a formal **Purchase Debit Note** with predicted ledger and stock adjustments.
-    4. The proposal is routed to the Action Review Center for finance approval.
+    1. Vision extractor identifies `purchase_bill.create.v1` and populates invoice number, invoice date, supplier name, 4 line items, and tax totals.
+    2. `BatchRecordResolutionService` resolves the supplier and matches 3 of the 4 items to existing master SKUs.
+    3. Item 4 fails resolution due to an abbreviated description on the invoice.
+    4. The clarification engine generates a "Details Required" card highlighting the single unmatched line, showing auto-suggested close matches based on HSN code and vendor purchase history.
+    5. Once the clerk maps the 4th item, authoritative ERP validation verifies invoice totals against tax breakdown rules and creates the formal `purchase_bill.create.v1` proposal.
+
 
 ---
 
 ## Technical Plan (Architecture)
 
-### 1. Architectural Overview & Security Plane Segregation
+### 1. High-Level Architecture & End-to-End Pipeline
 
-The system establishes three independent architectural planes:
-1. **Experience Plane:**
-   - **AI Workspace (`workspace.blade.php`):** Multi-modal conversational interface, slot disambiguation, live fact cards, and in-place proposal editing.
-   - **Action Review Center (`resources/views/backend/ai/action_review_center.blade.php`):** Dedicated operational screen for pending approvals queue, audit trail inspection, and execution receipts.
-2. **Intelligence Plane:**
-   - Intent classification, slot extraction, and schema normalization.
-   - Bound by strict JSON schemas; zero authorization privileges or database write access.
-3. **Execution Plane:**
-   - `AiToolManifest` (14 strictly read-only tool families).
-   - `SetupCapabilityRegistry` (Mode A bootstrap write actions).
-   - `ActionCapabilityRegistry` (Mode B company-scoped operational write actions).
+The Generalized Multi-Slot Input Collection & Clarification Engine operates as a deterministic pre-proposal orchestration pipeline. It sits directly between user input surfaces and the authoritative Action Foundation layer.
 
-```mermaid
-flowchart TD
-    COPILOT["Existing Read-Only ERP Copilot"] --> ACTION_FOUNDATION["Shared Action Foundation (PH1)"]
-    ACTION_FOUNDATION --> MODE_A["Mode A: Installation Admin Bootstrap (PH1.5)"]
-    MODE_A --> CREATE_COMP["Create Group + Company via CompanyDirectoryService"]
-    CREATE_COMP --> PROVISION_DEFAULTS["Atomic: Company, MAIN Branch, FY, Warehouse, COA"]
-    PROVISION_DEFAULTS --> MODE_B["Mode B: Company-Scoped Setup (PH1.5)"]
-    MODE_B --> CONFIGURE_MASTERS["Units, Warehouses, Products, Parties, Tax"]
-    CONFIGURE_MASTERS --> READINESS["Setup Readiness Validation"]
-    READINESS --> PO_FLOW["Purchase Order AI Workflow (PH2)"]
-    PO_FLOW --> BILLS_SALES["Purchase Bills + Sales (PH3 & PH4)"]
-    BILLS_SALES --> ERP_MODULES["Inventory + Accounting + Manufacturing (PH5)"]
+```text
++----------------------------------------------------------------------------------------------------+
+|                                     MULTI-MODAL INTAKE LAYER                                       |
+|  - Natural-Language Chat (Text)                                                                    |
+|  - Transcribed Voice Notes (Audio)                                                                 |
+|  - Document / Invoice / Bill Scans (Vision OCR)                                                    |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                              INTENT EXTRACTION & SLOT DISCOVERY                                    |
+|  - Probabilistic Model maps prompt/document to Action Key (e.g., sales_order.create.v1)            |
+|  - Extracts raw candidate slot values, stable client_line_ids, and input provenance                |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                         CAPABILITY REQUIREMENTS REGISTRY & CONTEXT RESOLUTION                      |
+|  - Resolves authenticated CompanyContext (Company, Main Branch, Active FY) server-side             |
+|  - Loads authoritative ActionFieldRequirement rules from ActionRequirementsRegistry                |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                            WORKFLOW TASK DRAFT PERSISTENCE (ai_workflow_tasks)                     |
+|  - Creates or loads active task draft: UUID, action_key, actor_id, company_id, branch_id, FY_id    |
+|  - Merges incoming slots with persisted state; increments revision (optimistic locking)            |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                              BATCH RECORD RESOLUTION (SINGLE PASS)                                 |
+|  - BatchRecordResolutionService resolves all independent entities concurrently:                    |
+|    * Parties: Customer or Supplier (Exact ID, GSTIN, Company Name, Bounded Candidates)             |
+|    * Warehouses: Active Branch Default or Explicit Name/Code                                       |
+|    * Products: Evaluates ALL line items concurrently (ID, Code/SKU, Alias, Name, Barcode)          |
+|    * Units: Base, Sales, or Purchase Unit mapping per line item                                    |
+|    * Accounts & Tax Profiles: Validates tax registrations and nominal accounts                     |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                           INPUT COMPLETENESS & APPLICABILITY EVALUATOR                             |
+|  - Evaluates each field against ActionFieldRequirement predicates and domain validators            |
+|  - Classifies status: resolved, missing, invalid, ambiguous, unverified, blocked, not_applicable   |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                                   +--------------------------------+
+                                                   |                                |
+                                    Blocking Issues Remain?                         | Zero Issues
+                                                   |                                | (Ready)
+                                          YES      v                                v
++--------------------------------------------------+-----+   +----------------------+--------------------+
+|        CONSOLIDATED CLARIFICATION RESPONSE             |   |       ACTION PROPOSAL PROMOTION            |
+|  - ClarificationResponseBuilder generates single       |   |  - ActionProposalService::create()         |
+|    structured payload                                  |   |  - Authoritative CommercialPricing preview |
+|  - AI Workspace displays "Details Required" Fact Card: |   |  - Live SHA-256 Source State Hash          |
+|    * Confirmed Fields Summary (Read-only)              |   |  - Cryptographic HMAC Approval Seal        |
+|    * Ambiguous Matches (Clickable candidate pickers)   |   +----------------------+--------------------+
+|    * Missing Inputs (Typed controls)                   |                          |
+|    * Invalid Fields (Error explanations)               |                          v
+|    * Pending Dependent Checks (Tax/total calculations) |   +--------------------------------------------+
++--------------------------+-----------------------------+   |        ACTION REVIEW CENTER & APPROVAL     |
+                           |                                 |  - Interactive Desk Review & Sign-Off      |
+                           v                                 +----------------------+---------------------+
++--------------------------------------------------------+                          |
+|             CONSOLIDATED USER CORRECTION               |                          v
+|  - User supplies batch patches in one submission       |   +--------------------------------------------+
+|  - TaskCorrectionService applies patch with            |   |       AUTHORITATIVE ERP DOMAIN EXECUTION   |
+|    expected_revision, cascades dependency invalidation |   |  - Short-transaction row locking           |
+|  - Returns to BATCH RECORD RESOLUTION                  |   |  - Live re-validation against source state |
++--------------------------------------------------------+   |  - CommercialApplicationService execution  |
+                                                             +--------------------------------------------+
 ```
 
 ---
 
-### 2. Governed Two-Phase Execution Lifecycle
+### 2. Core Architectural Components & Interfaces
 
-Every operational action follows an immutable state machine:
-
-```mermaid
-flowchart TD
-    INPUT["Image / Voice / Message"] --> NORM["Normalize + Authenticate"]
-    NORM --> PLANNER["AI Intent and Workflow Planner"]
-    PLANNER --> RESOLVE["Resolve Records + Validate with ERP Domain"]
-    RESOLVE --> PROPOSAL["Create Versioned Proposal (vN)"]
-    PROPOSAL --> PREVIEW["Editable Preview + Human Review"]
-    PREVIEW --> DECISION{"Human Decision"}
-
-    DECISION -->|Change Request| EDIT_PROP["Increment Version (vN+1)"]
-    EDIT_PROP --> RESOLVE
-
-    DECISION -->|Cancel| CANCEL["Cancel (Zero ERP Ledger Mutation)"]
-
-    DECISION -->|Approve| BIND["Cryptographic HMAC Approval Binding"]
-    BIND --> REVALIDATE["Fresh Authorization, State & Lifecycle Recheck"]
-    REVALIDATE --> STILL_VALID{"State Still Valid?"}
-
-    STILL_VALID -->|No: Stale State| REBUILD["Rebuild Preview & Revoke Approval"]
-    REBUILD --> RESOLVE
-
-    STILL_VALID -->|Yes: Valid| EXECUTE["Atomic Domain Command Dispatch"]
-    EXECUTE --> RECEIPT["Committed ERP Receipt + Audit Record"]
-```
-
----
-
-### 3. Component Architecture & Class Responsibilities
-
-#### A. Security & Bootstrap Identity
-*   `App\Ai\Security\BootstrapSetupPrincipal`:
-    - Immutable DTO representing an authenticated installation administrator.
-    - Fields: `int $actorId`, `int $roleId`, `array $allowedCapabilities`, `string $taskToken`, `CarbonImmutable $expiresAt`.
-    - Does **not** require `company_id` or `financial_year_id`.
-*   `App\Http\Middleware\VerifyBootstrapAdminContext`:
-    - Restricts access to `/api/v1/ai/setup/bootstrap/*` endpoints.
-    - Asserts `CompanyDirectoryService::isInstallationAdmin($actor)` or valid group management rights.
-    - Rejects regular tenant tokens with HTTP 403.
-*   **Mode A Proposal Scoping Contract:**
-    - For Mode A proposals (`company_id = NULL`), standard tenant queries are completely bypassed.
-    - Mode A proposals MUST be queried strictly via:
-      `where('actor_id', $bootstrapPrincipal->actorId)->whereNull('company_id')->where('task_token', $taskToken)`
-    - This guarantees strict isolation between concurrent installation administrators and prevents cross-admin leakage.
-
-#### B. Registries, Action Descriptors & Adapter Interfaces
-*   `App\Ai\DTOs\ActionDefinition`:
-    ```php
-    final readonly class ActionDefinition
-    {
-        public function __construct(
-            public string $key,
-            public string $businessModule,
-            public string $riskTier,
-            public array $requiredPermissions,
-            public string $inputSchemaClass,
-            public string $previewAdapterClass,
-            public string $commandAdapterClass,
-            public bool $domainOwnsTransaction = true,
-            public bool $requiresApproval = true,
-            public bool $requiresFreshSnapshot = true,
-            public bool $enabledByDefault = false,
-        ) {}
-    }
-    ```
-*   `App\Ai\Contracts\ActionPreviewAdapterInterface`:
-    ```php
-    namespace App\Ai\Contracts;
-
-    use App\Ai\DTOs\ActionDefinition;
-    use App\Ai\DTOs\ActionPreviewResult;
-    use App\Ai\Security\BootstrapSetupPrincipal;
-    use App\Services\Platform\CompanyContext;
-
-    interface ActionPreviewAdapterInterface
-    {
-        public function preview(ActionDefinition $definition, array $slots, CompanyContext|BootstrapSetupPrincipal $context): ActionPreviewResult;
-    }
-    ```
-*   `App\Ai\Contracts\ActionCommandAdapterInterface`:
-    ```php
-    namespace App\Ai\Contracts;
-
-    use App\Ai\DTOs\ActionDefinition;
-    use App\Ai\DTOs\ActionExecutionReceipt;
-    use App\Ai\Security\BootstrapSetupPrincipal;
-    use App\Services\Platform\CompanyContext;
-
-    interface ActionCommandAdapterInterface
-    {
-        public function execute(ActionDefinition $definition, array $payload, CompanyContext|BootstrapSetupPrincipal $context, int $actorId): ActionExecutionReceipt;
-    }
-    ```
-*   `App\Ai\Adapters\CompanyBootstrapPreviewAdapter`:
-    - Implements `ActionPreviewAdapterInterface` for `setup.company.create.v1`.
-    - Computes simulated company code via `CompanyDirectoryService::code()`, financial year naming via `yearName()`, default warehouse name, and starter chart structure directly using `IndustryCatalog` without executing `CompanyDirectoryService::createCompany()`, ensuring zero database mutations occur during preview generation.
-*   `App\Ai\Registries\SetupCapabilityRegistry`:
-    - Code allowlist for Mode A (`setup.group.create.v1`, `setup.company.create.v1`).
-*   `App\Ai\Registries\ActionCapabilityRegistry`:
-    - Code allowlist for Mode B (`setup.branch.create.v1`, `purchase_order.create.v1`, etc.).
-
-#### C. Proposal & Approval Engine
-*   `App\Ai\Services\ActionProposalService`:
-    - Handles slot parsing, calls the preview adapter, computes the canonical SHA-256 payload hash, and manages the proposal state.
-    - Supports atomic version increments: when a user submits a change request (via chat or card edit), increments `version` (`vN -> vN+1`), invalidates any prior approval, and stores the updated payload.
-*   `App\Ai\Services\ActionApprovalService`:
-    - Authenticates the approver and independently verifies Spatie permissions.
-    - Computes a cryptographically secure HMAC approval signature using colon-delimited null-safe context parameters:
-      ```php
-      $contextScope = (string) ($companyId ?? '0') . ':' . (string) ($branchId ?? '0') . ':' . (string) ($fyId ?? '0');
-      $approvalSignature = hash_hmac(
-          'sha256',
-          $payloadHash . ':' . $actionKey . ':' . $version . ':' . $approverId . ':' . $contextScope . ':' . $sourceStateHash . ':' . $timestamp,
-          config('app.key')
-      );
-      ```
-*   **`source_state_hash` Computation Contract:**
-    - For new record creations (Mode A company creation, Phase 2 Purchase Order creation):
-      `source_state_hash = hash('sha256', 'NEW_RECORD')`.
-    - For existing record modifications (amending draft vouchers, Debit Notes, Reversals):
-      `source_state_hash = hash('sha256', $record->getTable() . ':' . $record->id . ':' . $record->updated_at->timestamp . ':' . $record->status)`.
-    - During execution revalidation, `ApprovedActionExecutor` re-computes this hash from the database row and strictly aborts with `STATE_STALE_INVALIDATED` if the hash has changed.
-
-#### D. Short-Transaction Execution Adapter
-*   `App\Ai\Services\ApprovedActionExecutor`:
-    - Verifies the HMAC approval signature.
-    - Re-validates the live ERP state, checks optimistic row locks (`lockForUpdate()`), and checks fiscal year status.
-    - If `$definition->domainOwnsTransaction === true`, delegates directly to the domain service without an outer `DB::transaction()`.
-    - Records the committed receipt and returns the resulting ERP record ID.
-
-#### E. Transaction Lifecycle Guard
-*   `App\Ai\Policies\DomainLifecyclePolicy`:
-    - Evaluates target record status (`status`, `sale_status`, `is_posted`).
-    - If `status === 'draft'`, permits draft amendment command.
-    - If `status in ['submitted', 'posted', 'paid']`, rejects direct update; routes request to generate a Debit/Credit Note or Reversal proposal.
-
----
-
-### 4. Database Schema (Additive Migrations)
-
-In strict accordance with **Tenancy Law 4 (Additive Migrations Only)**, the system will not modify historical migrations. The existing tables created by `2026_11_10_000005_create_ai_action_proposals_tables.php` will be updated via a dedicated additive migration:
-
-**Migration File:** `database/migrations/2026_11_11_000001_upgrade_ai_action_proposals_schema.php`
+#### 2.1 Action Requirements Registry & Provider Contract
+The registry stores code-reviewed requirements schemas authored in PHP, eliminating LLM hallucination of required fields.
 
 ```php
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+namespace App\Ai\Contracts;
 
-return new class extends Migration
+interface ActionRequirementsProviderInterface
 {
-    public function up(): void
+    public function actionKey(): string;
+
+    /**
+     * @return list<ActionFieldRequirement>
+     */
+    public function requirements(WorkflowTaskContext $context): array;
+
+    /**
+     * Deterministic, authoritative domain validation without database mutation.
+     *
+     * @param array<string, mixed> $resolvedInputs
+     * @return array<string, string> Field errors keyed by stable field path.
+     */
+    public function validate(WorkflowTaskContext $context, array $resolvedInputs): array;
+}
+```
+
+The `ActionRequirementsRegistry` manages providers across all ERP domains:
+*   **Purchasing:** `PurchaseOrderRequirementsProvider` (`purchase_order.create.v1`), `PurchaseBillRequirementsProvider` (`purchase_bill.create.v1`).
+*   **Sales & Commercial:** `SalesOrderRequirementsProvider` (`sales_order.create.v1`), `QuotationRequirementsProvider` (`quotation.create.v1`), `SalesInvoiceRequirementsProvider` (`sales_invoice.create.v1`).
+*   **Inventory:** `StockTransferRequirementsProvider` (`stock_transfer.create.v1`), `StockAdjustmentRequirementsProvider` (`stock_adjustment.create.v1`).
+*   **Master Setup (Mode B):** `ProductSetupRequirementsProvider` (`setup.product.create.v1`), `CustomerSetupRequirementsProvider` (`setup.customer.create.v1`), `SupplierSetupRequirementsProvider` (`setup.supplier.create.v1`), `WarehouseSetupRequirementsProvider` (`setup.warehouse.create.v1`), `UnitSetupRequirementsProvider` (`setup.unit.create.v1`).
+
+#### 2.2 Action Field Requirement DTO
+Each field definition encapsulates:
+*   `fieldPath`: Stable identifier (e.g., `customer_id`, `warehouse_id`, `items[line-id].product_id`, `items[line-id].qty`).
+*   `dataType`: `string`, `integer`, `decimal`, `date`, `boolean`, `entity_id`, `list`.
+*   `requiredWhen`: Deterministic closure evaluated against current task context and previously confirmed values.
+*   `allowedSources`: `['user', 'document_ocr', 'erp_default', 'user_selection']`.
+*   `resolutionPolicy`: `unique_exact`, `bounded_fuzzy_candidates`, `explicit_confirmation_required`.
+*   `dependencies`: Array of prerequisite field paths (e.g., `items[line-id].unit_id` depends on `items[line-id].product_id`).
+*   `uiControl`: `text`, `number`, `date_picker`, `entity_picker`, `radio_group`.
+*   `sensitivity`: Masking rules for audit logs.
+
+#### 2.3 Single-Pass Batch Record Resolution Service
+`BatchRecordResolutionService` executes all entity lookups concurrently within the actor's authorized `CompanyContext`:
+*   **Parties (Customers & Suppliers):** Matches exact ID, normalized GSTIN/VAT, exact business name, and scoped fuzzy search. Ambiguous matches return at most 5 candidates with grounded metadata (ID, Legal Name, GSTIN, State).
+*   **Products across ALL Lines:** Evaluates every line item concurrently using `ProductAliasService` and `Product::query()`. Matches exact SKU/Code, barcode, exact name, or returns candidate SKUs. Never terminates on line 1 failure.
+*   **Warehouses:** Resolves explicit warehouse name/code or falls back to active branch primary warehouse.
+*   **Units of Measure:** Matches explicit UOM or resolves against product's authorized sale/purchase units.
+
+#### 2.4 Input Completeness Evaluator
+The `InputCompletenessEvaluator` processes the requirements matrix, resolved entities, and domain validations. Every field receives one of eight statuses:
+1.  `resolved`: Validated, unique entity confirmed.
+2.  `missing`: Field is applicable but no value is supplied.
+3.  `invalid`: Value fails format, range, or domain logic.
+4.  `ambiguous`: Multiple valid database candidates exist; requires user disambiguation.
+5.  `unverified`: Value extracted with low model confidence or unverified OCR match.
+6.  `blocked_by_dependency`: Cannot evaluate until a prerequisite field is known.
+7.  `not_applicable`: Field's `requiredWhen` predicate returned false.
+8.  `derived`: Populated automatically by ERP business logic (e.g., branch tax registration).
+
+A task is strictly marked `ready_for_proposal` if and only if:
+`count(blocking_issues) === 0 && domain_validation_errors === []`.
+
+#### 2.5 Workflow Task State Persistence (`ai_workflow_tasks`)
+Durable storage separates mutable draft workflows from immutable action proposals:
+
+```sql
+-- AI Workflow Tasks Table
+CREATE TABLE ai_workflow_tasks (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    action_key VARCHAR(100) NOT NULL,
+    mode VARCHAR(20) NOT NULL DEFAULT 'company',
+    actor_id BIGINT UNSIGNED NOT NULL,
+    thread_id VARCHAR(120) NULL,
+    company_id BIGINT UNSIGNED NULL,
+    branch_id BIGINT UNSIGNED NULL,
+    financial_year_id BIGINT UNSIGNED NULL,
+    bootstrap_task_id VARCHAR(120) NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'collecting',
+    revision INT UNSIGNED NOT NULL DEFAULT 1,
+    slots_json JSON NOT NULL,
+    resolution_json JSON NULL,
+    issues_json JSON NULL,
+    provenance_json JSON NULL,
+    linked_proposal_id CHAR(36) NULL,
+    expires_at TIMESTAMP NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    INDEX idx_wf_tasks_company_actor (company_id, actor_id, status),
+    INDEX idx_wf_tasks_actor_status (actor_id, status),
+    INDEX idx_wf_tasks_thread (thread_id),
+    INDEX idx_wf_tasks_proposal (linked_proposal_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- AI Workflow Task Events (Append-Only Audit)
+CREATE TABLE ai_workflow_task_events (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    task_id CHAR(36) NOT NULL,
+    actor_id BIGINT UNSIGNED NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    revision INT UNSIGNED NOT NULL,
+    patch_json JSON NULL,
+    metadata_json JSON NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_wf_task_events_task (task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+#### 2.6 Optimistic Concurrency & Task Correction Service
+To prevent race conditions during collaborative or multi-turn sessions:
+*   Every patch submission must supply `expected_revision`.
+*   `TaskCorrectionService::applyPatch()` executes an atomic conditional update:
+    `UPDATE ai_workflow_tasks SET revision = revision + 1, ... WHERE id = :id AND revision = :expected_revision`.
+*   If stale, the server aborts with HTTP `409 Conflict`, returning the latest task revision and current state.
+*   **Dependency Invalidation:** When a user updates a root field, dependent slots are automatically invalidated:
+    *   Changing Customer/Supplier → Invalidate tax determinations, credit checks, pricing tiers, and currency.
+    *   Changing Product → Invalidate line UOM, tax rate, discount, and unit cost.
+    *   Changing Warehouse → Invalidate branch stock checks and delivery logistics.
+
+---
+
+### 3. REST API Contract
+
+All company-scoped endpoints are gated by `auth:sanctum`, `company.context`, and `ai.use` permissions.
+
+| Method | Endpoint | Description & Access Control |
+|---|---|---|
+| `POST` | `/api/v1/ai/workflow-tasks` | Initiates a new task from extracted intent or explicit action key. |
+| `GET` | `/api/v1/ai/workflow-tasks/{id}` | Returns current task state, verified fields, candidates, and blocking issues. Scoped strictly to task owner. |
+| `PATCH` | `/api/v1/ai/workflow-tasks/{id}/inputs` | Submits batch corrections with `expected_revision`. Re-evaluates all fields and returns updated status. |
+| `POST` | `/api/v1/ai/workflow-tasks/{id}/validate` | Triggers authoritative re-validation without executing or mutating ERP state. |
+| `POST` | `/api/v1/ai/workflow-tasks/{id}/prepare-proposal` | Promotes a `ready` task into an immutable `ai_action_proposals` record with authoritative preview. |
+| `POST` | `/api/v1/ai/workflow-tasks/{id}/cancel` | Cancels active task. Performs zero ERP writes. |
+
+#### Structured Clarification Payload (HTTP 200 / `needs_input`)
+```json
+{
+  "status": "needs_input",
+  "task_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "revision": 2,
+  "action_key": "sales_order.create.v1",
+  "confirmed_fields": [
+    {"field": "customer_id", "label": "Customer", "display": "Arvind Garments (ID: 12)", "source": "exact_match"},
+    {"field": "warehouse_id", "label": "Warehouse", "display": "Main Warehouse", "source": "branch_default"},
+    {"field": "items[line-2].product_id", "label": "Line 2 Product", "display": "Indigo Denim 12oz (DEN-IND-12OZ)", "source": "exact_sku"},
+    {"field": "items[line-2].qty", "label": "Line 2 Quantity", "display": "25 rolls", "source": "user"}
+  ],
+  "required_inputs": [
     {
-        Schema::table('ai_action_proposals', function (Blueprint $table) {
-            // Make tenancy columns nullable for Mode A Pre-Company Bootstrap
-            $table->unsignedBigInteger('company_id')->nullable()->change();
-            $table->unsignedBigInteger('branch_id')->nullable()->change();
-            $table->unsignedBigInteger('financial_year_id')->nullable()->change();
-
-            // Mode A Scoping & Integrity
-            $table->unsignedBigInteger('actor_id')->after('id');
-            $table->char('task_token', 64)->nullable()->after('actor_id');
-            $table->string('action_key', 64)->after('financial_year_id');
-            $table->unsignedInteger('version')->default(1)->after('action_key');
-            $table->string('payload_hash', 64)->after('payload_json');
-            $table->string('source_state_hash', 64)->nullable()->after('payload_hash');
-
-            // Compound index for Mode A Bootstrap Queries
-            $table->index(['actor_id', 'action_key', 'status'], 'idx_proposals_bootstrap');
-            $table->index(['payload_hash'], 'idx_proposals_hash');
-        });
-
-        Schema::table('ai_action_approvals', function (Blueprint $table) {
-            $table->unsignedInteger('version')->default(1)->after('proposal_id');
-            $table->string('approval_signature', 64)->after('approver_user_id');
-            $table->index(['proposal_id', 'version'], 'idx_approvals_proposal_ver');
-        });
-
-        Schema::table('ai_action_executions', function (Blueprint $table) {
-            $table->unsignedInteger('version')->default(1)->after('proposal_id');
-            $table->string('domain_service', 128)->after('executed_by_user_id');
-            $table->string('domain_method', 64)->after('domain_service');
-            $table->string('erp_resource_type', 64)->after('domain_method');
-            $table->unsignedBigInteger('erp_resource_id')->after('erp_resource_type');
-            $table->unsignedInteger('duration_ms')->after('receipt_json');
-            $table->index(['erp_resource_type', 'erp_resource_id'], 'idx_executions_resource');
-        });
-    }
-
-    public function down(): void
+      "field": "items[line-1].product_id",
+      "label": "Line 1 Product",
+      "status": "ambiguous",
+      "reason": "Multiple products match 'Cotton Poplin'",
+      "control": "entity_picker",
+      "candidates": [
+        {"id": 101, "code": "POP-COT-60", "label": "Cotton Poplin 60s Count", "attributes": {"unit": "roll", "stock": 140}},
+        {"id": 102, "code": "POP-COT-80", "label": "Cotton Poplin 80s High Density", "attributes": {"unit": "roll", "stock": 85}}
+      ]
+    },
     {
-        // Safe additive rollback
+      "field": "delivery_date",
+      "label": "Expected Delivery Date",
+      "status": "missing",
+      "reason": "Delivery date is required for sales orders",
+      "control": "date_picker",
+      "candidates": []
     }
-};
+  ],
+  "pending_checks": [
+    "Authoritative GST calculation (awaiting line 1 HSN/tax category)",
+    "Customer credit limit verification"
+  ],
+  "can_prepare_proposal": false
+}
 ```
 
 ---
 
-### 5. API Contracts & Endpoint Specifications
+### 4. AI Workspace UI: "Details Required" Fact Card
 
-#### Mode A Bootstrap Routes (`routes/api.php`)
-*   `POST /api/v1/ai/setup/bootstrap/tasks`: Initiates a setup task; returns `task_id` and token.
-*   `POST /api/v1/ai/setup/bootstrap/tasks/{id}/preview`: Normalizes slots; calls `CompanyBootstrapPreviewAdapter` to calculate simulated defaults without database writes; returns calculated preview.
-*   `POST /api/v1/ai/setup/bootstrap/tasks/{id}/approve`: Validates HMAC signature; invokes `CompanyDirectoryService::createCompany` atomically. Returns:
-    ```json
-    {
-        "status": "completed",
-        "company_id": 12,
-        "company_code": "ABCTX",
-        "main_branch_id": 15,
-        "first_fy_id": 8,
-        "main_warehouse_id": 14,
-        "coa_seeded": true,
-        "transition_action": "switch_context",
-        "context_switch_url": "/select-company",
-        "workspace_url": "/ai"
-    }
-    ```
+Rather than dumping unstructured chat questions, the AI Workspace renders a responsive, high-density card:
 
-#### Mode B Company-Scoped Routes
-*   `POST /api/v1/ai/chat`: Multi-modal chat endpoint. If a user message requests a revision on an active proposal, the intent planner detects it and routes to `ActionProposalService::applyChangeRequest()`.
-*   `POST /api/v1/ai/proposals/{id}/change-request`: Direct endpoint for in-place Fact Card or Review Center slot adjustments; increments proposal version (`vN -> vN+1`) and returns updated preview.
-*   `POST /api/v1/ai/proposals/{id}/approve`: Signs proposal version; triggers immediate execution or queues for background worker.
-*   `POST /api/v1/ai/proposals/{id}/reject`: Cancels proposal without database writes (`Cancel (Zero ERP Ledger Mutation)`).
-*   `GET /api/v1/ai/review-center/pending`: Returns pending proposal queue filtered by user's permitted modules.
-*   `GET /api/v1/ai/review-center/history`: Returns immutable audit history and receipts.
+1.  **Header**: Action title (e.g., *"Sales Order Draft — Arvind Garments"*), progress indicator (*"4 of 6 required inputs ready"*), and task revision tag.
+2.  **Confirmed Details (Collapsible Section)**: Read-only summary of verified fields with green status tags and provenance badges (*"Exact Match"*, *"Branch Default"*).
+3.  **Actionable Clarifications (Main Section)**:
+    *   **Ambiguous Match Items**: Compact radio/pill selectors showing Code, Name, Stock, and UOM.
+    *   **Missing Fields**: Native HTML inputs (`<input type="date">`, `<input type="number">`).
+    *   **Invalid Fields**: Highlighted input container with inline validation message and acceptable constraints.
+4.  **Pending Dependent Validations**: Informational banner explaining domain calculations that will execute once references resolve.
+5.  **Control Buttons**:
+    *   `[ Submit All Details ]` — Dispatches a single `PATCH` call with all selections.
+    *   `[ Edit Confirmed Fields ]` — Re-opens confirmed inputs for modification.
+    *   `[ Cancel Task ]` — Discards draft with zero ledger consequences.
+
 
 ---
 
 ## Alternatives Considered
 
-### Alternative 1: Wildcard Tenant Middleware (`company_id = 0` or Nullable Scope)
-*   **Description:** Modifying existing tenant middleware to treat `company_id = 0` or `null` as a special bypass flag, allowing Mode A pre-company setup to pass through standard `/api/v1/ai/chat` endpoints.
-*   **Pros:** Requires no new bootstrap routes or controller classes; reuses existing chat pipelines directly.
-*   **Cons:** Directly violates Tenancy Law 1 ("Zero Unscoped Reads or Writes"). If any controller method fails to verify that the actor is an installation admin, a regular tenant user could craft requests that read or mutate cross-company data.
-*   **Reason for Rejection:** Rejected by author. Tenancy boundaries must be physically isolated. Mode A must use dedicated bootstrap endpoints (`/api/v1/ai/setup/bootstrap/*`) guarded by an explicit `InstallationAdminGate` and `BootstrapSetupPrincipal`.
+### Alternative A: Conversational Multi-Turn LLM Loop (Early-Return / Stop-at-First-Error)
 
-### Alternative 2: Direct Model Tool-Calling for Financial & Inventory Writes
-*   **Description:** Registering action execution tools directly in `AiToolManifest` and allowing the LLM to call `createPurchaseOrder()` or `createCompany()` autonomously during tool loops.
-*   **Pros:** Simpler developer experience; agent appears faster and more autonomous.
-*   **Cons:** Probabilistic models are prone to hallucinations, duplicate invocations, and parameter guessing. Lacks cryptographic proof of user intent, violates statutory double-entry accounting auditability, and bypasses segregation of duties.
-*   **Reason for Rejection:** Rejected by author. Large language models are untrusted planners. Financial and inventory mutations require a strict two-phase protocol: (1) preview calculation via domain services, followed by (2) explicit human approval bound to an immutable HMAC payload hash.
+*   **Mechanism**: The LLM queries entity resolution tools sequentially. Upon encountering the first missing or ambiguous record, the tool returns `needs_input` immediately. The LLM then asks the user for that specific record in chat, receives the response, and continues to the next field in subsequent turns.
+*   **Pros**:
+    *   Simple tool implementation with no complex server-side requirements evaluator.
+    *   Does not require pre-proposal state persistence or batch resolution logic.
+*   **Cons**:
+    *   Unacceptable user latency: a 5-item order with an ambiguous customer and two missing products requires 4 to 6 conversational turns to resolve.
+    *   Hides downstream validation failures (e.g., line 4 product missing, warehouse stock unavailable, delivery date in closed fiscal period) until earlier lines are addressed.
+    *   Substantially higher LLM token consumption due to repeated chat context replays.
+*   **Reason for Rejection**:
+    *   *Rejected by author*: Unacceptable user latency and repetitive turn friction. Enterprise commercial orders in manufacturing, wholesale, and retail require a single, consolidated diagnostic pass showing all missing, invalid, and ambiguous fields at once.
 
-### Alternative 3: Long-Lived Database Transactions Spanning Inference & Human Review
-*   **Description:** Opening a database transaction (`DB::beginTransaction()`) at the start of intent planning or preview generation, locking affected inventory rows, and committing only after the human reviews and clicks "Approve".
-*   **Pros:** Guarantees that inventory stock levels or prices cannot diverge between preview calculation and execution.
-*   **Cons:** Human reviews take minutes or hours. Holding database connections and table row locks open across network requests exhausts MySQL connection pools, blocks other users from transacting, and causes system-wide deadlocks.
-*   **Reason for Rejection:** Rejected by author. Database transactions must remain strictly short-lived. The orchestrator never holds an open transaction across model inference or human review pauses. Live state re-validation occurs under brief locks at execution time, delegating transaction boundaries directly to domain services (`$domainOwnsTransaction = true`).
+### Alternative B: Ephemeral In-Memory Task State (Session / Redis Cache Only)
 
-### Alternative 4: Universal `is_posted` Boolean Check on All Records
-*   **Description:** Checking a single boolean column `is_posted` across all ERP models to decide whether a record can be edited by the AI.
-*   **Pros:** Highly uniform, simple database condition across all tables.
-*   **Cons:** zoloERP Pro uses heterogeneous lifecycle models across modules (`status`, `sale_status`, `payment_status`, allocation linkages). In commercial sales, an order may be unbilled but partially dispatched; in job work, materials may be issued with GST Section 143(3) liabilities without an `is_posted` flag.
-*   **Reason for Rejection:** Rejected by author. Requires a domain-aware `DomainLifecyclePolicy` that evaluates module-specific business rules and transitions.
+*   **Mechanism**: Store incomplete task drafts strictly in Redis or PHP session storage without creating persistent database tables (`ai_workflow_tasks`).
+*   **Pros**:
+    *   Zero new database migrations.
+    *   Low read/write latency and automatic key expiration via Redis TTL.
+*   **Cons**:
+    *   Volatile: drafts are lost on Redis eviction, server restart, session expiration, or multi-tab browser context switches.
+    *   Cannot support asynchronous multi-modal pipelines (such as background OCR invoice processing or webhook document ingestion).
+    *   Lacks enterprise auditability: no durable trace of how extracted values were transformed or corrected prior to proposal creation.
+*   **Reason for Rejection**:
+    *   *Rejected by author*: Ephemeral storage lacks durability and enterprise auditability. Asynchronous document ingestion and collaborative multi-user workflows require durable, database-backed task state with optimistic concurrency locking and append-only event auditing.
 
-### Alternative 5: Implementing Commercial Transactions (Purchase Orders) Before Guided Setup
-*   **Description:** Building Phase 2 (Purchase Order AI workflow) first in the active development company before building the Initial Setup Agent.
-*   **Pros:** Immediate demonstration of transactional AI on existing seed data.
-*   **Cons:** Commercial transactions require valid company groups, branches, warehouses, units of measure, chart of accounts, tax registrations, and starter series. Developing commercial actions without a verified setup engine produces brittle, mock-dependent implementations that fail in fresh tenant onboarding.
-*   **Reason for Rejection:** Rejected by author. Following the roadmap, the Guided Initial Setup Agent (PH1.5) provides the prerequisite tenant foundation and Mode A bootstrap boundary needed for commercial workflows (PH2).
+### Alternative C: Storing Incomplete Drafts in `ai_action_proposals` with Status `draft`
 
----
+*   **Mechanism**: Reuse the existing `ai_action_proposals` table by adding a `draft` or `collecting` status flag for incomplete user inputs.
+*   **Pros**:
+    *   Reuses existing tables without introducing `ai_workflow_tasks`.
+*   **Cons**:
+    *   Violates the core security invariant of `ai_action_proposals`, which requires that every proposal represents an immutable, sealed, cryptographically hashed entity with an exact payload hash, source-state hash, and authoritative preview.
+    *   Storing mutable, partially validated drafts in the proposals table corrupts hash validation, complicates review queues, and creates the risk of premature approval of incomplete records.
+*   **Reason for Rejection**:
+    *   *Rejected by author*: Violates the immutability and cryptographic sealing invariants of the Action Foundation. Proposals must remain strictly immutable and fully validated. Mutable task drafts must reside in a dedicated pre-proposal table (`ai_workflow_tasks`).
 
-## Phasing & Milestones
+### Alternative D: Client-Driven Validation via Frontend Forms Only
 
-The roadmap enforces strict gate dependency: no subsequent phase may be merged before the predecessor phase satisfies its automated CI and verification exit gate:
+*   **Mechanism**: The AI model extracts raw JSON and redirects the user to standard ERP web entry forms, leaving validation entirely to client-side JavaScript.
+*   **Pros**:
+    *   Reuses existing frontend form scripts.
+*   **Cons**:
+    *   Inapplicable for headless channels (voice notes, mobile REST APIs, background document ingestion).
+    *   Fails the "Untrusted Model, Authoritative Server" architectural boundary: client code cannot authoritatively govern statutory GST determinations, customer credit limit enforcement, or cross-branch inventory locks.
+*   **Reason for Rejection**:
+    *   *Rejected by author*: Violates the Untrusted Model, Authoritative Server boundary. Multi-modal AI input requires headless, server-side deterministic evaluation that functions identically across web chat, mobile APIs, voice, and document pipelines.
 
-```mermaid
-flowchart LR
-    PH0["PH0: Copilot Refactor Freeze"] --> PH1["PH1: Shared Action Foundation"]
-    PH1 --> PH15["PH1.5: Guided Setup Agent"]
-    PH15 --> PH2["PH2: Purchase Orders"]
-    PH2 --> PH3["PH3: Bills & Sales"]
-    PH3 --> PH4["PH4: Other ERP Modules"]
-    PH4 --> PH5["PH5: Document & Bulk Entry"]
-```
-
-### Phase 1: Shared Action Foundation (Branch: `feature/ai-action-foundation`)
-*   **Scope:** Common registries, versioned proposal schema, cryptographic HMAC approval binding, short-transaction execution adapter, and Action Review Center desk.
-*   **Deliverables:**
-    - Additive database migration `2026_11_11_000001_upgrade_ai_action_proposals_schema.php`.
-    - `ActionCapabilityRegistry` and `ActionDefinition` with `$domainOwnsTransaction = true`.
-    - `ActionPreviewAdapterInterface` and `ActionCommandAdapterInterface`.
-    - `ActionProposalService` (canonical SHA-256 payload hashing, version increments).
-    - `ActionApprovalService` (server HMAC signature binding with colon-delimited context).
-    - `ApprovedActionExecutor` (row locks, revalidation, receipt persistence).
-    - Action Review Center Blade view (`resources/views/backend/ai/action_review_center.blade.php`).
-*   **Exit Gate:** Passing test suite on disposable MySQL proving zero open transactions during pauses, HMAC signature tamper detection, and idempotent duplicate approval handling.
-
-### Phase 1.5: Guided Initial Setup Agent (Branch: `feature/ai-guided-setup-agent`)
-*   **Scope:** Mode A pre-company bootstrap and Mode B company-scoped master configuration.
-*   **Deliverables:**
-    - Mode A dedicated endpoints (`/api/v1/ai/setup/bootstrap/*`) guarded by `VerifyBootstrapAdminContext`.
-    - `BootstrapSetupPrincipal` security DTO with actor-token scoping.
-    - `CompanyBootstrapPreviewAdapter` computing simulated defaults using `IndustryCatalog`.
-    - Command adapter calling `CompanyDirectoryService::createCompany` once in a single transaction.
-    - Context transition handler returning structured switch token (`context_switch_url: "/select-company"`).
-    - Mode B master adapters (branches, warehouses, UOM, products, parties).
-*   **Exit Gate:** End-to-end test provisioning a fresh legal company from natural language, verifying all 11 starter entities, transitioning context, and creating products without cross-tenant contamination.
-
-### Phase 2: Commercial Action Vertical Slice: Purchase Order (Branch: `feature/ai-purchase-orders`)
-*   **Scope:** Natural-language item/supplier disambiguation, pricing preview via `CommercialApplicationService`, approved PO creation.
-*   **Deliverables:**
-    - `PurchaseOrderCapabilityAdapter` and JSON schemas.
-    - Live fact card in AI Workspace with "Change Request" line-item editing.
-    - Routing to Action Review Center for manager sign-off.
-*   **Exit Gate:** 100% test coverage asserting that PO creation affects neither inventory stock levels nor general ledger balances.
-
-### Phase 3 through Phase 7: Subsequent Operational Workflows
-*   **Phase 3:** Goods Receipts (`OrderLifecycleService::receivePurchase`) and Supplier Bills (`PurchasePostingService`).
-*   **Phase 4:** Sales Quotations, Sales Orders, and Tax Invoices with payment allocations.
-*   **Phase 5:** Inventory stock transfers, journal adjustments (restricted A3), and manufacturing production plans.
-*   **Phase 6:** OCR/document extraction, spreadsheet bulk import dry-runs.
-*   **Phase 7:** Opt-in low-stock alerts, Redis Horizon queue workers, distributed tracing.
 
 ---
 
-## Verification & Testing Plan
+## Detailed Implementation Plan
 
-### 1. Disposable Testing Environment Guarantee
-All AI feature tests **MUST** adhere to Tenancy Law 6:
-- Tests must never run against active development database (`zoloerp` on port 3307) or production.
-- Tests enforce `ERP_TEST_MYSQL=1` and use `UsesDisposableMysql` against ephemeral schemas (`zolo_test_*`).
+The implementation is structured into five sequential development slices. Each file change is accompanied by its explicit rationale and architectural scope.
 
-### 2. Concrete Acceptance Test Classes & Assertions
+### Slice 1: Database Schema & Core Contracts
 
-| Test Class | Core Verification Scenarios | Assertion Criteria |
-|---|---|---|
-| `tests/Feature/Ai/ActionFoundation/HmacApprovalBindingTest.php` | 1. Canonical payload hashing.<br>2. HMAC signature verification with colon-delimited context.<br>3. Tamper detection on payload/user/company. | Any altered field invalidates signature with `APPROVAL_SIGNATURE_MISMATCH` (HTTP 422). |
-| `tests/Feature/Ai/ActionFoundation/ShortTransactionLifetimeTest.php` | 1. Zero DB transactions during slot extraction.<br>2. Zero DB transactions during preview wait.<br>3. Execution uses single brief domain transaction. | Query listener asserts `DB::transactionLevel() === $baseFixtureLevel` (1 under `UsesAiMysql`) during all non-commit phases. |
-| `tests/Feature/Ai/ActionFoundation/IdempotencyAndReplayTest.php` | 1. Duplicate approval submissions.<br>2. Network timeout retries.<br>3. Concurrent approvals on same proposal. | Second request returns identical receipt with HTTP 200; exactly one domain record created. |
-| `tests/Feature/Ai/Setup/BootstrapCompanyCreationTest.php` | 1. Mode A endpoint isolation.<br>2. Atomic `createCompany` invocation.<br>3. Non-admin access denial.<br>4. Re-anchoring session to Mode B. | Provisions company, MAIN branch, first FY, main warehouse, and COA in 1 transaction; non-admins get 403. |
-| `tests/Feature/Ai/Lifecycle/TransactionLifecycleEnforcementTest.php` | 1. Draft bill editing permitted.<br>2. Posted bill direct update rejected.<br>3. Automatic Debit Note proposal generation.<br>4. Closed FY blocks execution. | Modifying posted records throws `LIFECYCLE_MUTATION_FORBIDDEN`; routes to formal correction flow. |
-| `tests/Feature/Ai/Security/CrossTenantProposalIsolationTest.php` | 1. Cross-company proposal queries.<br>2. Foreign company approval attempts.<br>3. Stale tenant token execution. | Tenancy Law 1 strictly enforced; foreign proposals return 404/403 with audit alarm. |
+1.  **`database/migrations/2026_11_11_000002_create_ai_workflow_tasks_tables.php`**
+    *   *Rationale*: Creates additive tables `ai_workflow_tasks` and `ai_workflow_task_events`. Establishes durable storage for mutable draft workflows with foreign index keys for `company_id`, `actor_id`, `thread_id`, and `linked_proposal_id`. Enforces Tenancy Law 4 (additive only, zero mutation of historical migrations).
+2.  **`app/Ai/Contracts/ActionRequirementsProviderInterface.php`**
+    *   *Rationale*: Defines the interface for capability requirements providers with `actionKey()`, `requirements(WorkflowTaskContext $context)`, and `validate(WorkflowTaskContext $context, array $resolvedInputs)`.
+3.  **`app/Ai/DTOs/ActionFieldRequirement.php`**
+    *   *Rationale*: Readonly PHP 8.5 DTO specifying field path, data type, required-when predicate, allowed sources, resolution policy, dependencies, domain validation, UI control, and sensitivity.
+4.  **`app/Ai/DTOs/WorkflowTaskContext.php`**
+    *   *Rationale*: Encapsulates tenant scope (`CompanyContext`), actor ID, thread ID, task ID, current revision, and operational mode (`company` vs `bootstrap`).
+5.  **`app/Ai/DTOs/FieldIssue.php`**
+    *   *Rationale*: Encapsulates individual field diagnostic issues: field path, status (`missing`, `invalid`, `ambiguous`, `unverified`, `blocked_by_dependency`), user-facing label, human-readable reason, accepted format/range, and selectable candidate records.
+6.  **`app/Ai/DTOs/EvaluationResult.php`**
+    *   *Rationale*: Aggregates resolved values, all detected field issues, pending dependent checks, and the boolean `isReadyForProposal` flag.
+7.  **`app/Ai/DTOs/BatchResolutionResult.php`**
+    *   *Rationale*: Holds the resolved entity IDs, candidate match collections, and resolution statuses across parties, products, warehouses, units, and accounts.
 
 ---
 
-## Rollout, Telemetry & Operational Runbook
+### Slice 2: Requirements Registry & Domain Providers
 
-### 1. Feature Flagging Architecture
-Action capabilities are governed by a multi-tier feature flag hierarchy stored in `ai_feature_settings`:
-*   `global_actions_enabled`: Master switch controlling all write endpoints.
-*   `company_actions_enabled`: Per-company opt-in toggle.
-*   `company_setup_enabled`: Controls Mode A bootstrap and Mode B initial setup capabilities.
-*   `capability_overrides`: Per-capability JSON array (e.g., `["purchase_order.create.v1": true, "purchase_bill.post.v1": false]`).
+8.  **`app/Ai/Registries/ActionRequirementsRegistry.php`**
+    *   *Rationale*: Central registry managing domain providers. Discovers requirements schemas by action key and prevents arbitrary client-submitted schemas.
+9.  **`app/Ai/Requirements/PurchaseOrderRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `purchase_order.create.v1`: validates supplier, warehouse, order date, and per-line product, quantity, unit cost, and tax rates.
+10. **`app/Ai/Requirements/SalesOrderRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `sales_order.create.v1`: validates customer, delivery warehouse, shipping date, and per-line product, quantity, unit price, and discounts.
+11. **`app/Ai/Requirements/QuotationRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `quotation.create.v1`: validates customer lead, validity date, payment terms, and line items.
+12. **`app/Ai/Requirements/PurchaseBillRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `purchase_bill.create.v1`: validates supplier, vendor invoice number, invoice date, line items, and tax breakdown.
+13. **`app/Ai/Requirements/ProductSetupRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `setup.product.create.v1`: validates product code, name, category, unit, purchase unit, sales unit, and HSN/tax category.
+14. **`app/Ai/Requirements/CustomerSetupRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `setup.customer.create.v1`: validates customer name, group, tax registration (GSTIN), and billing address.
+15. **`app/Ai/Requirements/SupplierSetupRequirementsProvider.php`**
+    *   *Rationale*: Implements requirements definition for `setup.supplier.create.v1`: validates supplier name, tax registration (GSTIN), and state code.
 
-### 2. Emergency Cutoff & Killswitch Runbook
-If anomalous behavior, quota spike, or unauthorized access is detected:
-1. **Instant Web Killswitch:**
-   - Execute: `php artisan ai:killswitch --company=all --action=disable`
-   - Immediately terminates all non-read AI routes with HTTP 503 (`AI_ACTIONS_TEMPORARILY_DISABLED`).
-2. **Worker Queue Draining:**
-   - Execute: `php artisan horizon:pause` / `php artisan queue:clear --queue=ai-actions`
-   - Halts all background execution workers without affecting core ERP operational queues.
-3. **Audit Trail Inspection:**
-   - Query `ai_action_proposals` and `ai_action_approvals` by `run_id` or `approver_user_id` to inspect affected records.
+---
 
-### 3. Redacted Observability & Telemetry
-- All proposal payloads, approvals, and execution logs redact sensitive PII (passwords, bank account numbers, secret keys, full PAN numbers) before writing to disk or dispatching telemetry.
-- Telemetry records run duration, model input/output token counts, and domain command execution time without exposing business data.
+### Slice 3: Batch Resolution & Evaluation Engine
+
+16. **`app/Ai/Services/BatchRecordResolutionService.php`**
+    *   *Rationale*: Implements single-pass parallel lookups across authorized company entities. Resolves parties (customers/suppliers), all line-item products concurrently, warehouses, units of measure, and nominal accounts. Limits ambiguous candidate lists to a maximum of 5 records with grounded metadata.
+17. **`app/Ai/Services/InputCompletenessEvaluator.php`**
+    *   *Rationale*: Evaluates all field requirements against resolved values in a single full pass. Collects all missing, invalid, and ambiguous fields into an `EvaluationResult` without returning early on the first failure.
+18. **`app/Ai/Services/WorkflowTaskStateService.php`**
+    *   *Rationale*: Handles `ai_workflow_tasks` table CRUD, monotonic revision increments (`revision = revision + 1`), append-only event logging in `ai_workflow_task_events`, 24-hour inactivity expiration, and task-to-proposal linking.
+19. **`app/Ai/Services/TaskCorrectionService.php`**
+    *   *Rationale*: Merges consolidated user patches into active task slots using stable `client_line_id`. Enforces optimistic concurrency (`expected_revision`), returning HTTP 409 Conflict on revision mismatch. Triggers cascading dependency invalidation when upstream reference fields are modified.
+20. **`app/Ai/Services/ClarificationResponseBuilder.php`**
+    *   *Rationale*: Constructs the structured JSON clarification response and Fact Card metadata containing confirmed fields, required inputs, selectable candidate pickers, and pending dependent checks.
+
+---
+
+### Slice 4: Tool Refactoring, API Endpoints & UI Components
+
+21. **`app/Ai/Tools/PreparePurchaseOrder.php`**
+    *   *Rationale*: Refactors the existing tool to delegate to `WorkflowTaskStateService`, `BatchRecordResolutionService`, and `InputCompletenessEvaluator`. Replaces the sequential early-exit return with a consolidated `needs_input` diagnostic card.
+22. **`app/Ai/Tools/PrepareSalesOrder.php`**
+    *   *Rationale*: New AI SDK Tool enabling natural-language sales order creation. Extracts customer, delivery warehouse, and multiple product lines, initiating an `ai_workflow_tasks` draft under `sales_order.create.v1`.
+23. **`app/Http/Controllers/Api/V1/AiWorkflowTaskController.php`**
+    *   *Rationale*: REST API controller exposing `/api/v1/ai/workflow-tasks/*` endpoints: task initiation, state retrieval, batch patch submission (`expected_revision`), validation probe, proposal promotion, and task cancellation. Enforces Sanctum auth, `company.context`, and ownership.
+24. **`app/Http/Controllers/Api/V1/AiChatController.php`**
+    *   *Rationale*: Updates chat response packaging to associate conversational turns with active `task_id` when an action tool returns `needs_input`.
+25. **`app/Providers/AiServiceProvider.php`**
+    *   *Rationale*: Registers `ActionRequirementsRegistry` as a singleton in the Laravel container, binds all domain requirements providers, and registers the workflow task services.
+26. **`routes/api.php`**
+    *   *Rationale*: Defines versioned routes under `/api/v1/ai/workflow-tasks` protected by Sanctum and `company.context` middleware.
+27. **`resources/views/backend/ai/workspace.blade.php`**
+    *   *Rationale*: Implements the "Details Required" Fact Card component rendering confirmed summaries, candidate selection radio pickers, native input controls, and single-click "Submit All Details" AJAX action.
+28. **`public/js/ai-task-card.js`**
+    *   *Rationale*: Client-side script managing interactive candidate selection, single-pass patch compilation, optimistic revision tracking, and 409 conflict handling.
+
+---
+
+### Slice 5: Automated Verification Test Suites
+
+29. **`tests/Feature/Ai/TaskEngine/WorkflowTaskStateTest.php`**
+    *   *Rationale*: Verifies task creation, optimistic revision locking (HTTP 409 on stale revision), 24-hour expiration, and append-only event trail recording in `ai_workflow_task_events`.
+30. **`tests/Feature/Ai/TaskEngine/BatchRecordResolutionTest.php`**
+    *   *Rationale*: Verifies single-pass parallel resolution for customers, suppliers, multi-line products, UOMs, and warehouses. Proves candidate lists are bounded to 5 items and cross-company records are rejected.
+31. **`tests/Feature/Ai/TaskEngine/InputCompletenessEvaluatorTest.php`**
+    *   *Rationale*: Verifies that the evaluator checks all fields concurrently, reports multiple line-item errors in a single pass, and gates proposal promotion strictly until zero blocking issues remain.
+32. **`tests/Feature/Ai/Commercial/MultiSlotSalesOrderWorkflowTest.php`**
+    *   *Rationale*: End-to-end integration test verifying sales order natural-language intake, multi-line disambiguation, single-pass correction submission, proposal promotion, and authoritative execution.
+33. **`tests/Feature/Ai/Commercial/MultiSlotPurchaseOrderWorkflowTest.php`**
+    *   *Rationale*: End-to-end integration test verifying purchase order intake, ambiguous supplier and product candidate selection, and promotion to `purchase_order.create.v1`.
+
+---
+
+### Slice 6: Repository Master Architecture Documentation Updates
+
+34. **`AGENTS.md`**
+    *   *Rationale*: Updates root master index: splices Phase 2.1 into Phased AI Roadmap diagram (`PH2 -> PH2.1 -> PH3`) and adds stories `AI-025` through `AI-029` to the delivery catalog.
+35. **`SESSION_MEMORY.md`**
+    *   *Rationale*: Records Phase 2 completion (109/109 tests green) and establishes Phase 2.1 on `feature/ai-unified-input-clarification` as the active operational development track.
+36. **`docs/zoloerp-ai-agent-implementation/docs/ai/03_ARCHITECTURE.md`**
+    *   *Rationale*: Updates architecture blueprint to document the Pre-Proposal Task Orchestration Layer between the Model/Chat Gateway and the Action Foundation.
+37. **`docs/zoloerp-ai-agent-implementation/docs/ai/06_DATABASE_SCHEMA.md`**
+    *   *Rationale*: Adds DDL and indexing specifications for `ai_workflow_tasks` and `ai_workflow_task_events`.
+38. **`docs/zoloerp-ai-agent-implementation/docs/ai/20_DELIVERY_BACKLOG.md`**
+    *   *Rationale*: Inserts Phase 2.1 section with deliverables `UC-001` through `UC-007` and updated dependency gates.
+39. **`docs/zoloerp-ai-agent-implementation/docs/ai/27_INTENT_AND_RECORD_RESOLUTION.md`**
+    *   *Rationale*: Expands record resolution documentation to specify `BatchRecordResolutionService` multi-line lookups and candidate bounding.
+40. **`docs/zoloerp-ai-agent-implementation/docs/ai/29_WORKFLOW_ORCHESTRATION.md`**
+    *   *Rationale*: Documents task state machine (`collecting` -> `validating` -> `ready` -> `proposal_created`) and human change request loop-back paths.
+41. **`docs/zoloerp-ai-agent-implementation/docs/ai/30_PURCHASE_WORKFLOWS.md`**
+    *   *Rationale*: Updates purchase order workflow from early-return stop to consolidated batch clarification.
+42. **`docs/zoloerp-ai-agent-implementation/docs/ai/31_SALES_AND_COLLECTION_WORKFLOWS.md`**
+    *   *Rationale*: Updates sales order and quotation workflows to incorporate the multi-slot input collection engine.
+43. **`docs/zoloerp-ai-agent-implementation/docs/ai/41_UNIFIED_INPUT_COLLECTION_AND_CLARIFICATION.md`**
+    *   *Rationale*: Permanent specification document incorporating the complete Phase 2.1 architecture and contract suite into the repository documentation library.

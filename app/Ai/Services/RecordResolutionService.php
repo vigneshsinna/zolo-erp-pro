@@ -204,6 +204,8 @@ class RecordResolutionService
             if ($warehouse) {
                 return ['status' => 'exact', 'warehouse' => $warehouse];
             }
+
+            return ['status' => 'none', 'warehouse' => null];
         }
 
         // Default to branch warehouse

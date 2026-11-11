@@ -397,6 +397,7 @@ class OperationalAndActionProposalsTest extends TestCase
 
     public function test_proposals_remain_quarantined_with_write_flags_enabled(): void
     {
+        config(['ai_actions.foundation_enabled' => false, 'ai_actions.execution_enabled' => false]);
         $id = (string) Str::uuid();
         DB::table('ai_action_proposals')->insert([
             'id' => $id,

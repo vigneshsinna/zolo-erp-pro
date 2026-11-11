@@ -1,5 +1,62 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Architectural Deliverables Completed & Verified (100% Invariant Compliance):**
+  1. **Additive Database Migrations (`2026_11_11_000002_create_ai_workflow_tasks_tables.php`):**
+     - Introduced `ai_workflow_tasks`: durable pre-proposal slot storage (`task_id` UUID, `mode`, `company_id`, `branch_id`, `financial_year_id`, `actor_id`, `action_key`, `status`, `revision`, `slots_json`, `resolution_json`, `issues_json`, `linked_proposal_id`, `expires_at`).
+     - Introduced `ai_workflow_task_events`: audit log of task lifecycle mutations (`task_id`, `actor_id`, `event_type`, `before_state_json`, `after_state_json`, `delta_json`, `revision`).
+     - Implemented optimistic concurrency locking via integer `revision` increments (`expected_revision`), preventing race conditions.
+  2. **Core Contracts & DTOs:**
+     - Created `App\Ai\DTOs\WorkflowTaskContext`: unified actor, tenancy, and task identity DTO.
+     - Created `App\Ai\DTOs\ActionFieldRequirement`: declarative requirements metadata (dataType, entityType, inputControl, isList, resolutionPolicy, defaultPolicy, dependencies, requiredWhen).
+     - Created `App\Ai\DTOs\FieldIssue`: typed slot issue (status: missing/ambiguous/invalid/blocked_by_dependency, control, candidates list, clientLineId).
+     - Created `App\Ai\DTOs\BatchResolutionResult`: consolidated resolution state with resolved entities, disambiguation candidates, and unresolved markers.
+     - Created `App\Ai\DTOs\EvaluationResult`: completeness status, blocking issues array, confirmed fields array, pending downstream checks, and validated slots.
+     - Created `App\Ai\Contracts\ActionRequirementsProviderInterface`: standard contract implemented by capability providers.
+  3. **Declarative Requirements & Provider Registry:**
+     - Implemented `App\Ai\Requirements\PurchaseOrderRequirementsProvider`: defines field requirements, default policies, item list schemas, and domain validation for `purchase_order.create.v1`.
+     - Implemented `App\Ai\Registries\ActionRequirementsRegistry`: extensible registry mapping action keys to requirements providers.
+  4. **Full-Pass Batch Record Resolution & Completeness Evaluator:**
+     - Implemented `App\Ai\Services\BatchRecordResolutionService`: resolves supplier, warehouse, and all line products/UOMs concurrently in a single pass without stopping on first error. Bounded to 5 candidates per ambiguous query.
+     - Implemented `App\Ai\Services\InputCompletenessEvaluator`: systematically evaluates scalar and list requirements, assigns client line IDs (`line-0`, `line-1`), identifies missing/ambiguous fields, detects dependency gaps (e.g., downstream GST check pending supplier resolution), and confirms verified fields.
+  5. **Task State Persistence & Conflict-Safe Patching:**
+     - Implemented `App\Ai\Services\WorkflowTaskStateService`: manages task creation, state transitions (`collecting` -> `validating` -> `ready` -> `proposal_created`), atomic revision incrementing, and event auditing.
+     - Implemented `App\Ai\Services\TaskCorrectionService`: applies client line ID patches (`items[line-id]`), manages dependency invalidation (e.g. changing supplier invalidates tax determination), and updates task state.
+  6. **Consolidated Clarification Response:**
+     - Implemented `App\Ai\Services\ClarificationResponseBuilder`: constructs unified single-pass clarification JSON containing `confirmed_fields`, `required_inputs` with candidate options, `pending_checks`, `next_action: submit_all_corrections`, and backwards-compatible `missing_field` / `candidates` mappings.
+  7. **AI SDK Tool Refactoring (`PreparePurchaseOrder`):**
+     - Upgraded `App\Ai\Tools\PreparePurchaseOrder`: eliminates premature early returns. Executes full-pass batch resolution and returns consolidated clarification when blocking issues exist, or creates a sealed `ActionProposal` once 100% complete. Retains Zero Autonomous Financial Writes.
+  8. **Dedicated REST API Controller (`AiWorkflowTaskController`):**
+     - Mounted 5 routes under `/api/v1/ai/workflow-tasks`:
+       - `POST /`: Store / initiate collection task.
+       - `GET /{id}`: Inspect task state and current completeness evaluation.
+       - `PATCH /{id}/inputs`: Apply consolidated corrections with `expected_revision` optimistic lock.
+       - `POST /{id}/prepare-proposal`: Convert complete task into governed Action Proposal.
+       - `POST /{id}/cancel`: Cancel task without ERP mutations.
+  9. **Interactive Desk UI Clarification Fact Card & Styles:**
+     - Updated `resources/views/backend/ai/workspace.blade.php`: renders `workflow.clarification.v1` fact cards featuring confirmed detail pills, pending check alerts, interactive candidate selector buttons (`.ai-candidate-btn`), slot inputs, and AJAX "Submit Details" / "Cancel" actions.
+     - Updated `public/css/pages/ai-workspace.css`: styles `.ai-clarification-card`, `.ai-confirmed-pill`, `.ai-candidate-btn`, and input fields.
+     - Updated `AiChatController::evidence()`: surfaces clarification fact cards on `needs_input` statuses.
+  10. **Automated Feature Verification Suite (100% Green Across All 116 Tests):**
+     - Created `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` covering scenarios IC-01 to IC-25:
+       - Single-pass resolution without early exit (`test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification`).
+       - Retaining confirmed entities on partial missing inputs (`test_missing_supplier_retains_confirmed_product_and_warehouse`).
+       - Auto-resolving unambiguous SKU and default warehouse (`test_unique_product_code_and_warehouse_default_auto_resolve_without_questions`).
+       - Optimistic concurrency locking & revision conflict detection (`test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict`).
+       - Proposal preparation gated strictly until 100% complete with zero ERP writes (`test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes`).
+       - Safe task cancellation (`test_task_cancel_terminates_without_erp_writes`).
+       - Cross-tenant security isolation (`test_cross_tenant_isolation_prevents_accessing_other_company_tasks`).
+     - Entire AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **116/116 passed (763 assertions, 0 errors, 0 failures)**.
+     - Hygiene: `composer validate --strict` (valid), view/route/config caches cleared cleanly.
+
+- **Next Steps:**
+  - Proceed to Phase 2.1 Sales Workflows: Multi-Slot Sales Order (`sales_order.create.v1`) and Quotation (`quotation.create.v1`) input collection.
+  - Implement Goods Receipt Notes (`grn.create.v1`) and Purchase Bill AI workflow (`purchase_bill.create.v1`).
+
+---
+
+
 ## Critical Code Review Findings (4 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
 
 - **Remediated Findings & Technical Security Hardening (100% Complete & Verified):**
@@ -35,6 +92,63 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Architectural Deliverables Completed & Verified (100% Invariant Compliance):**
+  1. **Additive Database Migrations (`2026_11_11_000002_create_ai_workflow_tasks_tables.php`):**
+     - Introduced `ai_workflow_tasks`: durable pre-proposal slot storage (`task_id` UUID, `mode`, `company_id`, `branch_id`, `financial_year_id`, `actor_id`, `action_key`, `status`, `revision`, `slots_json`, `resolution_json`, `issues_json`, `linked_proposal_id`, `expires_at`).
+     - Introduced `ai_workflow_task_events`: audit log of task lifecycle mutations (`task_id`, `actor_id`, `event_type`, `before_state_json`, `after_state_json`, `delta_json`, `revision`).
+     - Implemented optimistic concurrency locking via integer `revision` increments (`expected_revision`), preventing race conditions.
+  2. **Core Contracts & DTOs:**
+     - Created `App\Ai\DTOs\WorkflowTaskContext`: unified actor, tenancy, and task identity DTO.
+     - Created `App\Ai\DTOs\ActionFieldRequirement`: declarative requirements metadata (dataType, entityType, inputControl, isList, resolutionPolicy, defaultPolicy, dependencies, requiredWhen).
+     - Created `App\Ai\DTOs\FieldIssue`: typed slot issue (status: missing/ambiguous/invalid/blocked_by_dependency, control, candidates list, clientLineId).
+     - Created `App\Ai\DTOs\BatchResolutionResult`: consolidated resolution state with resolved entities, disambiguation candidates, and unresolved markers.
+     - Created `App\Ai\DTOs\EvaluationResult`: completeness status, blocking issues array, confirmed fields array, pending downstream checks, and validated slots.
+     - Created `App\Ai\Contracts\ActionRequirementsProviderInterface`: standard contract implemented by capability providers.
+  3. **Declarative Requirements & Provider Registry:**
+     - Implemented `App\Ai\Requirements\PurchaseOrderRequirementsProvider`: defines field requirements, default policies, item list schemas, and domain validation for `purchase_order.create.v1`.
+     - Implemented `App\Ai\Registries\ActionRequirementsRegistry`: extensible registry mapping action keys to requirements providers.
+  4. **Full-Pass Batch Record Resolution & Completeness Evaluator:**
+     - Implemented `App\Ai\Services\BatchRecordResolutionService`: resolves supplier, warehouse, and all line products/UOMs concurrently in a single pass without stopping on first error. Bounded to 5 candidates per ambiguous query.
+     - Implemented `App\Ai\Services\InputCompletenessEvaluator`: systematically evaluates scalar and list requirements, assigns client line IDs (`line-0`, `line-1`), identifies missing/ambiguous fields, detects dependency gaps (e.g., downstream GST check pending supplier resolution), and confirms verified fields.
+  5. **Task State Persistence & Conflict-Safe Patching:**
+     - Implemented `App\Ai\Services\WorkflowTaskStateService`: manages task creation, state transitions (`collecting` -> `validating` -> `ready` -> `proposal_created`), atomic revision incrementing, and event auditing.
+     - Implemented `App\Ai\Services\TaskCorrectionService`: applies client line ID patches (`items[line-id]`), manages dependency invalidation (e.g. changing supplier invalidates tax determination), and updates task state.
+  6. **Consolidated Clarification Response:**
+     - Implemented `App\Ai\Services\ClarificationResponseBuilder`: constructs unified single-pass clarification JSON containing `confirmed_fields`, `required_inputs` with candidate options, `pending_checks`, `next_action: submit_all_corrections`, and backwards-compatible `missing_field` / `candidates` mappings.
+  7. **AI SDK Tool Refactoring (`PreparePurchaseOrder`):**
+     - Upgraded `App\Ai\Tools\PreparePurchaseOrder`: eliminates premature early returns. Executes full-pass batch resolution and returns consolidated clarification when blocking issues exist, or creates a sealed `ActionProposal` once 100% complete. Retains Zero Autonomous Financial Writes.
+  8. **Dedicated REST API Controller (`AiWorkflowTaskController`):**
+     - Mounted 5 routes under `/api/v1/ai/workflow-tasks`:
+       - `POST /`: Store / initiate collection task.
+       - `GET /{id}`: Inspect task state and current completeness evaluation.
+       - `PATCH /{id}/inputs`: Apply consolidated corrections with `expected_revision` optimistic lock.
+       - `POST /{id}/prepare-proposal`: Convert complete task into governed Action Proposal.
+       - `POST /{id}/cancel`: Cancel task without ERP mutations.
+  9. **Interactive Desk UI Clarification Fact Card & Styles:**
+     - Updated `resources/views/backend/ai/workspace.blade.php`: renders `workflow.clarification.v1` fact cards featuring confirmed detail pills, pending check alerts, interactive candidate selector buttons (`.ai-candidate-btn`), slot inputs, and AJAX "Submit Details" / "Cancel" actions.
+     - Updated `public/css/pages/ai-workspace.css`: styles `.ai-clarification-card`, `.ai-confirmed-pill`, `.ai-candidate-btn`, and input fields.
+     - Updated `AiChatController::evidence()`: surfaces clarification fact cards on `needs_input` statuses.
+  10. **Automated Feature Verification Suite (100% Green Across All 116 Tests):**
+     - Created `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` covering scenarios IC-01 to IC-25:
+       - Single-pass resolution without early exit (`test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification`).
+       - Retaining confirmed entities on partial missing inputs (`test_missing_supplier_retains_confirmed_product_and_warehouse`).
+       - Auto-resolving unambiguous SKU and default warehouse (`test_unique_product_code_and_warehouse_default_auto_resolve_without_questions`).
+       - Optimistic concurrency locking & revision conflict detection (`test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict`).
+       - Proposal preparation gated strictly until 100% complete with zero ERP writes (`test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes`).
+       - Safe task cancellation (`test_task_cancel_terminates_without_erp_writes`).
+       - Cross-tenant security isolation (`test_cross_tenant_isolation_prevents_accessing_other_company_tasks`).
+     - Entire AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **116/116 passed (763 assertions, 0 errors, 0 failures)**.
+     - Hygiene: `composer validate --strict` (valid), view/route/config caches cleared cleanly.
+
+- **Next Steps:**
+  - Proceed to Phase 2.1 Sales Workflows: Multi-Slot Sales Order (`sales_order.create.v1`) and Quotation (`quotation.create.v1`) input collection.
+  - Implement Goods Receipt Notes (`grn.create.v1`) and Purchase Bill AI workflow (`purchase_bill.create.v1`).
+
+---
+
 
 ## Critical Code Review Findings (8 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
 
@@ -81,6 +195,63 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Architectural Deliverables Completed & Verified (100% Invariant Compliance):**
+  1. **Additive Database Migrations (`2026_11_11_000002_create_ai_workflow_tasks_tables.php`):**
+     - Introduced `ai_workflow_tasks`: durable pre-proposal slot storage (`task_id` UUID, `mode`, `company_id`, `branch_id`, `financial_year_id`, `actor_id`, `action_key`, `status`, `revision`, `slots_json`, `resolution_json`, `issues_json`, `linked_proposal_id`, `expires_at`).
+     - Introduced `ai_workflow_task_events`: audit log of task lifecycle mutations (`task_id`, `actor_id`, `event_type`, `before_state_json`, `after_state_json`, `delta_json`, `revision`).
+     - Implemented optimistic concurrency locking via integer `revision` increments (`expected_revision`), preventing race conditions.
+  2. **Core Contracts & DTOs:**
+     - Created `App\Ai\DTOs\WorkflowTaskContext`: unified actor, tenancy, and task identity DTO.
+     - Created `App\Ai\DTOs\ActionFieldRequirement`: declarative requirements metadata (dataType, entityType, inputControl, isList, resolutionPolicy, defaultPolicy, dependencies, requiredWhen).
+     - Created `App\Ai\DTOs\FieldIssue`: typed slot issue (status: missing/ambiguous/invalid/blocked_by_dependency, control, candidates list, clientLineId).
+     - Created `App\Ai\DTOs\BatchResolutionResult`: consolidated resolution state with resolved entities, disambiguation candidates, and unresolved markers.
+     - Created `App\Ai\DTOs\EvaluationResult`: completeness status, blocking issues array, confirmed fields array, pending downstream checks, and validated slots.
+     - Created `App\Ai\Contracts\ActionRequirementsProviderInterface`: standard contract implemented by capability providers.
+  3. **Declarative Requirements & Provider Registry:**
+     - Implemented `App\Ai\Requirements\PurchaseOrderRequirementsProvider`: defines field requirements, default policies, item list schemas, and domain validation for `purchase_order.create.v1`.
+     - Implemented `App\Ai\Registries\ActionRequirementsRegistry`: extensible registry mapping action keys to requirements providers.
+  4. **Full-Pass Batch Record Resolution & Completeness Evaluator:**
+     - Implemented `App\Ai\Services\BatchRecordResolutionService`: resolves supplier, warehouse, and all line products/UOMs concurrently in a single pass without stopping on first error. Bounded to 5 candidates per ambiguous query.
+     - Implemented `App\Ai\Services\InputCompletenessEvaluator`: systematically evaluates scalar and list requirements, assigns client line IDs (`line-0`, `line-1`), identifies missing/ambiguous fields, detects dependency gaps (e.g., downstream GST check pending supplier resolution), and confirms verified fields.
+  5. **Task State Persistence & Conflict-Safe Patching:**
+     - Implemented `App\Ai\Services\WorkflowTaskStateService`: manages task creation, state transitions (`collecting` -> `validating` -> `ready` -> `proposal_created`), atomic revision incrementing, and event auditing.
+     - Implemented `App\Ai\Services\TaskCorrectionService`: applies client line ID patches (`items[line-id]`), manages dependency invalidation (e.g. changing supplier invalidates tax determination), and updates task state.
+  6. **Consolidated Clarification Response:**
+     - Implemented `App\Ai\Services\ClarificationResponseBuilder`: constructs unified single-pass clarification JSON containing `confirmed_fields`, `required_inputs` with candidate options, `pending_checks`, `next_action: submit_all_corrections`, and backwards-compatible `missing_field` / `candidates` mappings.
+  7. **AI SDK Tool Refactoring (`PreparePurchaseOrder`):**
+     - Upgraded `App\Ai\Tools\PreparePurchaseOrder`: eliminates premature early returns. Executes full-pass batch resolution and returns consolidated clarification when blocking issues exist, or creates a sealed `ActionProposal` once 100% complete. Retains Zero Autonomous Financial Writes.
+  8. **Dedicated REST API Controller (`AiWorkflowTaskController`):**
+     - Mounted 5 routes under `/api/v1/ai/workflow-tasks`:
+       - `POST /`: Store / initiate collection task.
+       - `GET /{id}`: Inspect task state and current completeness evaluation.
+       - `PATCH /{id}/inputs`: Apply consolidated corrections with `expected_revision` optimistic lock.
+       - `POST /{id}/prepare-proposal`: Convert complete task into governed Action Proposal.
+       - `POST /{id}/cancel`: Cancel task without ERP mutations.
+  9. **Interactive Desk UI Clarification Fact Card & Styles:**
+     - Updated `resources/views/backend/ai/workspace.blade.php`: renders `workflow.clarification.v1` fact cards featuring confirmed detail pills, pending check alerts, interactive candidate selector buttons (`.ai-candidate-btn`), slot inputs, and AJAX "Submit Details" / "Cancel" actions.
+     - Updated `public/css/pages/ai-workspace.css`: styles `.ai-clarification-card`, `.ai-confirmed-pill`, `.ai-candidate-btn`, and input fields.
+     - Updated `AiChatController::evidence()`: surfaces clarification fact cards on `needs_input` statuses.
+  10. **Automated Feature Verification Suite (100% Green Across All 116 Tests):**
+     - Created `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` covering scenarios IC-01 to IC-25:
+       - Single-pass resolution without early exit (`test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification`).
+       - Retaining confirmed entities on partial missing inputs (`test_missing_supplier_retains_confirmed_product_and_warehouse`).
+       - Auto-resolving unambiguous SKU and default warehouse (`test_unique_product_code_and_warehouse_default_auto_resolve_without_questions`).
+       - Optimistic concurrency locking & revision conflict detection (`test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict`).
+       - Proposal preparation gated strictly until 100% complete with zero ERP writes (`test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes`).
+       - Safe task cancellation (`test_task_cancel_terminates_without_erp_writes`).
+       - Cross-tenant security isolation (`test_cross_tenant_isolation_prevents_accessing_other_company_tasks`).
+     - Entire AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **116/116 passed (763 assertions, 0 errors, 0 failures)**.
+     - Hygiene: `composer validate --strict` (valid), view/route/config caches cleared cleanly.
+
+- **Next Steps:**
+  - Proceed to Phase 2.1 Sales Workflows: Multi-Slot Sales Order (`sales_order.create.v1`) and Quotation (`quotation.create.v1`) input collection.
+  - Implement Goods Receipt Notes (`grn.create.v1`) and Purchase Bill AI workflow (`purchase_bill.create.v1`).
+
+---
+
+
 ## Critical Code Review Findings (4 Findings) Fully Remediated & Hardened — 2026-11-11 (`feature/ai-purchase-orders`)
 
 - **Remediated Findings & Technical Security Hardening (100% Complete & Verified):**
@@ -116,6 +287,63 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine Complete — 2026-11-11 (`feature/ai-unified-input-clarification`)
+
+- **Architectural Deliverables Completed & Verified (100% Invariant Compliance):**
+  1. **Additive Database Migrations (`2026_11_11_000002_create_ai_workflow_tasks_tables.php`):**
+     - Introduced `ai_workflow_tasks`: durable pre-proposal slot storage (`task_id` UUID, `mode`, `company_id`, `branch_id`, `financial_year_id`, `actor_id`, `action_key`, `status`, `revision`, `slots_json`, `resolution_json`, `issues_json`, `linked_proposal_id`, `expires_at`).
+     - Introduced `ai_workflow_task_events`: audit log of task lifecycle mutations (`task_id`, `actor_id`, `event_type`, `before_state_json`, `after_state_json`, `delta_json`, `revision`).
+     - Implemented optimistic concurrency locking via integer `revision` increments (`expected_revision`), preventing race conditions.
+  2. **Core Contracts & DTOs:**
+     - Created `App\Ai\DTOs\WorkflowTaskContext`: unified actor, tenancy, and task identity DTO.
+     - Created `App\Ai\DTOs\ActionFieldRequirement`: declarative requirements metadata (dataType, entityType, inputControl, isList, resolutionPolicy, defaultPolicy, dependencies, requiredWhen).
+     - Created `App\Ai\DTOs\FieldIssue`: typed slot issue (status: missing/ambiguous/invalid/blocked_by_dependency, control, candidates list, clientLineId).
+     - Created `App\Ai\DTOs\BatchResolutionResult`: consolidated resolution state with resolved entities, disambiguation candidates, and unresolved markers.
+     - Created `App\Ai\DTOs\EvaluationResult`: completeness status, blocking issues array, confirmed fields array, pending downstream checks, and validated slots.
+     - Created `App\Ai\Contracts\ActionRequirementsProviderInterface`: standard contract implemented by capability providers.
+  3. **Declarative Requirements & Provider Registry:**
+     - Implemented `App\Ai\Requirements\PurchaseOrderRequirementsProvider`: defines field requirements, default policies, item list schemas, and domain validation for `purchase_order.create.v1`.
+     - Implemented `App\Ai\Registries\ActionRequirementsRegistry`: extensible registry mapping action keys to requirements providers.
+  4. **Full-Pass Batch Record Resolution & Completeness Evaluator:**
+     - Implemented `App\Ai\Services\BatchRecordResolutionService`: resolves supplier, warehouse, and all line products/UOMs concurrently in a single pass without stopping on first error. Bounded to 5 candidates per ambiguous query.
+     - Implemented `App\Ai\Services\InputCompletenessEvaluator`: systematically evaluates scalar and list requirements, assigns client line IDs (`line-0`, `line-1`), identifies missing/ambiguous fields, detects dependency gaps (e.g., downstream GST check pending supplier resolution), and confirms verified fields.
+  5. **Task State Persistence & Conflict-Safe Patching:**
+     - Implemented `App\Ai\Services\WorkflowTaskStateService`: manages task creation, state transitions (`collecting` -> `validating` -> `ready` -> `proposal_created`), atomic revision incrementing, and event auditing.
+     - Implemented `App\Ai\Services\TaskCorrectionService`: applies client line ID patches (`items[line-id]`), manages dependency invalidation (e.g. changing supplier invalidates tax determination), and updates task state.
+  6. **Consolidated Clarification Response:**
+     - Implemented `App\Ai\Services\ClarificationResponseBuilder`: constructs unified single-pass clarification JSON containing `confirmed_fields`, `required_inputs` with candidate options, `pending_checks`, `next_action: submit_all_corrections`, and backwards-compatible `missing_field` / `candidates` mappings.
+  7. **AI SDK Tool Refactoring (`PreparePurchaseOrder`):**
+     - Upgraded `App\Ai\Tools\PreparePurchaseOrder`: eliminates premature early returns. Executes full-pass batch resolution and returns consolidated clarification when blocking issues exist, or creates a sealed `ActionProposal` once 100% complete. Retains Zero Autonomous Financial Writes.
+  8. **Dedicated REST API Controller (`AiWorkflowTaskController`):**
+     - Mounted 5 routes under `/api/v1/ai/workflow-tasks`:
+       - `POST /`: Store / initiate collection task.
+       - `GET /{id}`: Inspect task state and current completeness evaluation.
+       - `PATCH /{id}/inputs`: Apply consolidated corrections with `expected_revision` optimistic lock.
+       - `POST /{id}/prepare-proposal`: Convert complete task into governed Action Proposal.
+       - `POST /{id}/cancel`: Cancel task without ERP mutations.
+  9. **Interactive Desk UI Clarification Fact Card & Styles:**
+     - Updated `resources/views/backend/ai/workspace.blade.php`: renders `workflow.clarification.v1` fact cards featuring confirmed detail pills, pending check alerts, interactive candidate selector buttons (`.ai-candidate-btn`), slot inputs, and AJAX "Submit Details" / "Cancel" actions.
+     - Updated `public/css/pages/ai-workspace.css`: styles `.ai-clarification-card`, `.ai-confirmed-pill`, `.ai-candidate-btn`, and input fields.
+     - Updated `AiChatController::evidence()`: surfaces clarification fact cards on `needs_input` statuses.
+  10. **Automated Feature Verification Suite (100% Green Across All 116 Tests):**
+     - Created `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` covering scenarios IC-01 to IC-25:
+       - Single-pass resolution without early exit (`test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification`).
+       - Retaining confirmed entities on partial missing inputs (`test_missing_supplier_retains_confirmed_product_and_warehouse`).
+       - Auto-resolving unambiguous SKU and default warehouse (`test_unique_product_code_and_warehouse_default_auto_resolve_without_questions`).
+       - Optimistic concurrency locking & revision conflict detection (`test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict`).
+       - Proposal preparation gated strictly until 100% complete with zero ERP writes (`test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes`).
+       - Safe task cancellation (`test_task_cancel_terminates_without_erp_writes`).
+       - Cross-tenant security isolation (`test_cross_tenant_isolation_prevents_accessing_other_company_tasks`).
+     - Entire AI Test Suite (`phpunit.ai.xml` on disposable MySQL `zolo_test_ai_release`): **116/116 passed (763 assertions, 0 errors, 0 failures)**.
+     - Hygiene: `composer validate --strict` (valid), view/route/config caches cleared cleanly.
+
+- **Next Steps:**
+  - Proceed to Phase 2.1 Sales Workflows: Multi-Slot Sales Order (`sales_order.create.v1`) and Quotation (`quotation.create.v1`) input collection.
+  - Implement Goods Receipt Notes (`grn.create.v1`) and Purchase Bill AI workflow (`purchase_bill.create.v1`).
+
+---
+
 
 ## Production Hardening, Mode B Setup Suite & Implementation Gaps Complete — 2026-11-11 (`feature/ai-purchase-orders`)
 

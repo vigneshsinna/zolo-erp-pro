@@ -313,4 +313,27 @@
     color: #6c757d;
 }
 
+/* Clarification & Interactive Input Collection Cards */
+.ai-clarification-card {
+    border-left: 3px solid #ffc107 !important;
+}
+.ai-confirmed-pill {
+    background-color: #f1f8f5;
+    border-color: #c3e6cb !important;
+    color: #155724;
+    font-size: 0.8rem;
+}
+.ai-candidate-btn {
+    font-size: 0.8rem;
+    transition: all 0.15s ease-in-out;
+}
+.ai-candidate-btn.active {
+    background-color: #007bff;
+    color: #ffffff;
+    border-color: #007bff;
+}
+.ai-clarification-inputs .form-control-sm {
+    font-size: 0.82rem;
+}
+
 
