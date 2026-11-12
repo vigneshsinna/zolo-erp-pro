@@ -413,7 +413,7 @@ class DependentMasterOrchestrator
             throw new AuthorizationException('Workflow task not accessible or does not exist.');
         }
 
-        if (now()->greaterThanOrEqualTo($task->expires_at)) {
+        if (! $task->expires_at || \Illuminate\Support\Carbon::parse($task->expires_at, 'UTC')->isPast()) {
             throw ValidationException::withMessages(['task' => 'Workflow task has expired.']);
         }
 
