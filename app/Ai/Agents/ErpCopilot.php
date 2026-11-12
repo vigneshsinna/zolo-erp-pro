@@ -28,7 +28,8 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
         protected readonly array $history = [],
         protected readonly ?Closure $budgetStep = null,
         protected readonly array $activeEntities = [],
-    ) {}
+    ) {
+    }
 
     /**
      * Get the instructions that the agent should follow.
@@ -143,8 +144,12 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
     public function tools(): iterable
     {
         $tools = app(AiToolManifest::class)->sdkTools($this->principal);
-        if (config('ai_actions.foundation_enabled', false) && array_intersect($this->principal->permittedToolNames,
-            array_keys(app(\App\Ai\Registries\ActionRequirementsRegistry::class)->all())) !== []) {
+        if (
+            config('ai_actions.foundation_enabled', false) && array_intersect(
+                $this->principal->permittedToolNames,
+                array_keys(app(\App\Ai\Registries\ActionRequirementsRegistry::class)->all())
+            ) !== []
+        ) {
             $tools[] = new \App\Ai\Tools\PrepareAction($this->principal);
         }
 

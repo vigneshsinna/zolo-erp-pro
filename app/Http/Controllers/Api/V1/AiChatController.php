@@ -592,18 +592,22 @@ class AiChatController extends Controller
 
     public function stream(Request $request): \Symfony\Component\HttpFoundation\Response
     {
-        $request->validate(['message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
-            'thread_id' => 'nullable|uuid']);
-        if ($denial = $this->accessDenial($this->principal($request))) return $denial;
+        $request->validate([
+            'message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
+            'thread_id' => 'nullable|uuid'
+        ]);
+        if ($denial = $this->accessDenial($this->principal($request)))
+            return $denial;
         return response()->stream(function () use ($request): void {
             $emit = static function (string $event, array $data): void {
-                echo 'event: '.$event."\n".'data: '.json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)."\n\n";
-                if (ob_get_level() > 0) @ob_flush();
+                echo 'event: ' . $event . "\n" . 'data: ' . json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n\n";
+                if (ob_get_level() > 0)
+                    @ob_flush();
                 flush();
             };
             $emit('start', ['status' => 'running']);
             try {
-                $result = $this->runChat($request, static fn (string $delta) => $emit('delta', ['text' => $delta]));
+                $result = $this->runChat($request, static fn(string $delta) => $emit('delta', ['text' => $delta]));
                 $emit($result->isSuccessful() ? 'complete' : 'error', $result->getData(true));
             } catch (\Throwable) {
                 $emit('error', ['error_code' => 'AI_STREAM_FAILED', 'error_message' => 'The response stream ended. Reload the conversation before retrying.']);
@@ -716,11 +720,14 @@ class AiChatController extends Controller
             } else {
                 $response = null;
                 $stream = $copilot->stream($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
-                $stream->then(function (\Laravel\Ai\Responses\StreamedAgentResponse $completed) use (&$response): void { $response = $completed; });
+                $stream->then(function (\Laravel\Ai\Responses\StreamedAgentResponse $completed) use (&$response): void {
+                    $response = $completed; });
                 foreach ($stream as $event) {
-                    if ($event instanceof \Laravel\Ai\Streaming\Events\TextDelta) $onDelta($event->delta);
+                    if ($event instanceof \Laravel\Ai\Streaming\Events\TextDelta)
+                        $onDelta($event->delta);
                 }
-                if (!$response instanceof AgentResponse) throw new \RuntimeException('The model stream did not complete.');
+                if (!$response instanceof AgentResponse)
+                    throw new \RuntimeException('The model stream did not complete.');
             }
 
             Log::info('ERP Copilot response diagnostics', [

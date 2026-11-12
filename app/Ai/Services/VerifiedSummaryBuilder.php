@@ -59,7 +59,7 @@ class VerifiedSummaryBuilder
 
         $result = implode("\n\n---\n\n", $sections);
 
-        if (! empty($warnings)) {
+        if (!empty($warnings)) {
             $uniqueWarnings = array_values(array_unique($warnings));
             $result .= "\n\n> **Notice:** " . implode(' ', $uniqueWarnings);
         }
@@ -96,7 +96,7 @@ class VerifiedSummaryBuilder
         $lines[] = "- **Total Outstanding:** {$currency}{$total}";
         $lines[] = "- **Customers with Dues:** {$count}";
 
-        if ($count === 1 && ! empty($top)) {
+        if ($count === 1 && !empty($top)) {
             $cust = $top[0];
             $name = $cust['customer_name'] ?? $cust['name'] ?? 'Customer';
             $invCount = (int) ($cust['invoice_count'] ?? 1);
@@ -106,7 +106,7 @@ class VerifiedSummaryBuilder
                 ? "The oldest invoice is {$maxOverdue} days overdue."
                 : "No invoices are currently overdue.";
             $lines[] = "The entire outstanding balance belongs to {$name}, across {$invWord}. {$overdueSentence}";
-        } elseif ($count > 1 && ! empty($top)) {
+        } elseif ($count > 1 && !empty($top)) {
             $cust = $top[0];
             $name = $cust['customer_name'] ?? $cust['name'] ?? 'Top Customer';
             $bal = number_format((float) ($cust['outstanding_amount'] ?? $cust['open_balance'] ?? 0), 2);
@@ -149,7 +149,7 @@ class VerifiedSummaryBuilder
         $lines[] = "- **Overdue Amount:** {$currency}{$overdue}\n- **Not Yet Due:** {$currency}{$notYetDue}";
 
         $invoices = $data['invoices'] ?? [];
-        if (! empty($invoices)) {
+        if (!empty($invoices)) {
             $invLines = [];
             foreach (array_slice($invoices, 0, 5) as $inv) {
                 $num = $inv['invoice_number'] ?? '-';
@@ -214,7 +214,7 @@ class VerifiedSummaryBuilder
         }
 
         $units = $data['units_summary'] ?? [];
-        if (! empty($units)) {
+        if (!empty($units)) {
             $uLines = [];
             foreach (array_slice($units, 0, 4) as $u) {
                 $code = $u['unit'] ?? 'Units';
@@ -247,7 +247,7 @@ class VerifiedSummaryBuilder
         $lines[] = "- **Completed Sales Count:** {$salesCount}\n- **Gross Sales:** {$currency}{$gross}\n- **Net Sales:** {$currency}{$net}\n- **Total Tax:** {$currency}{$tax}\n- **Outstanding Balance:** {$currency}{$dues}";
 
         $top = $data['top_products'] ?? [];
-        if (! empty($top)) {
+        if (!empty($top)) {
             $p = $top[0];
             $pName = $p['name'] ?? $p['code'] ?? 'Top Product';
             $pQty = number_format((float) ($p['total_qty'] ?? 0), 2);
@@ -271,7 +271,7 @@ class VerifiedSummaryBuilder
         $lines[] = "**As of {$dateFormatted}**";
         $lines[] = "- **Total Accounts Payable:** {$currency}{$total}\n- **Suppliers with Dues:** {$count}";
 
-        if ($count > 0 && ! empty($top)) {
+        if ($count > 0 && !empty($top)) {
             $sup = $top[0];
             $name = $sup['name'] ?? 'Supplier';
             $bal = number_format((float) ($sup['open_balance'] ?? 0), 2);
@@ -359,7 +359,7 @@ class VerifiedSummaryBuilder
         $lines[] = "### Manufacturing Bill of Materials (BOM)";
         $lines[] = "Found **{$count} active BOM recipe(s)**.";
 
-        if (! empty($boms)) {
+        if (!empty($boms)) {
             $b = $boms[0];
             $fg = $b['output_product']['name'] ?? 'Finished Good';
             $qty = $b['output_product']['output_qty'] ?? 1;
@@ -415,7 +415,7 @@ class VerifiedSummaryBuilder
         $lines = [];
         $lines[] = "### Company Knowledge Profile";
         $lines[] = "**Company:** {$companyName} ({$branchCount} active branch(es)).";
-        if (! empty($kw['return_policy']['approval_window_days'])) {
+        if (!empty($kw['return_policy']['approval_window_days'])) {
             $lines[] = "Sales return window: {$kw['return_policy']['approval_window_days']} days.";
         }
 

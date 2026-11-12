@@ -185,7 +185,7 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 
 // Session-authenticated endpoints used by the workspace.
 Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group(function () {
-    require __DIR__.'/ai-documents.php';
+    require __DIR__ . '/ai-documents.php';
     Route::controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
         Route::post('chat/stream', 'stream')->name('chat.stream');
         Route::get('settings', 'settings')->name('settings');
