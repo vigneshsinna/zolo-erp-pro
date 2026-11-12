@@ -741,29 +741,48 @@ class AiChatController extends Controller
                 return $this->error('MEDIA_NOT_FOUND', 'One or more attached media assets are unavailable in this workspace.', 404);
             }
 
-            $builder = app(NormalizedInputBuilder::class);
+            $extractionsByAssetId = [];
             foreach ($assets as $asset) {
                 if ($asset->isExpired()) {
                     return $this->error('MEDIA_EXPIRED', 'Attached media asset has expired.', 410);
                 }
                 $latest = $asset->latestExtraction;
-                if ($latest !== null) {
-                    $normalized = $builder->build(
-                        principal: $principal,
-                        asset: $asset,
-                        extracted: (array) $latest->extracted_json,
-                        extractionId: $latest->id,
-                        extractionRevision: (int) $latest->revision,
-                        modelKey: (string) $latest->model_key,
-                        companionText: $validated['message'],
-                    );
-                    $normalizedMediaContext[] = [
-                        'media_id' => $asset->id,
-                        'source_kind' => $asset->source_kind,
-                        'confirmation_status' => $latest->confirmation_status,
-                        'normalized_input' => $normalized->toArray(),
-                    ];
+                if ($latest === null || ! $latest->isConfirmed()) {
+                    return $this->error('EXTRACTION_CONFIRMATION_REQUIRED', 'Attached media extraction must be reviewed and confirmed before use in chat context.', 422);
                 }
+                $extractionsByAssetId[$asset->id] = $latest;
+            }
+
+            $builder = app(NormalizedInputBuilder::class);
+            foreach ($assets as $asset) {
+                $latest = $extractionsByAssetId[$asset->id];
+                $companionExtracted = null;
+                foreach ($assets as $otherAsset) {
+                    if ($otherAsset->id !== $asset->id) {
+                        $otherLatest = $extractionsByAssetId[$otherAsset->id] ?? null;
+                        if ($otherLatest !== null) {
+                            $companionExtracted = (array) $otherLatest->extracted_json;
+                            break;
+                        }
+                    }
+                }
+
+                $normalized = $builder->build(
+                    principal: $principal,
+                    asset: $asset,
+                    extracted: (array) $latest->extracted_json,
+                    extractionId: $latest->id,
+                    extractionRevision: (int) $latest->revision,
+                    modelKey: (string) $latest->model_key,
+                    companionText: $validated['message'],
+                    companionExtracted: $companionExtracted,
+                );
+                $normalizedMediaContext[] = [
+                    'media_id' => $asset->id,
+                    'source_kind' => $asset->source_kind,
+                    'confirmation_status' => $latest->confirmation_status,
+                    'normalized_input' => $normalized->toArray(),
+                ];
             }
         }
 

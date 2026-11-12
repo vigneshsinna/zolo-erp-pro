@@ -307,6 +307,162 @@ final class NormalizedInputWorkflowTest extends TestCase
         @unlink($jpg);
     }
 
+    public function test_unconfirmed_media_attached_to_chat_is_rejected_with_422(): void
+    {
+        Http::fake([
+            'integrate.api.nvidia.com/*' => Http::response([
+                'choices' => [['message' => ['content' => json_encode([
+                    'document_type' => 'purchase_order',
+                    'supplier_name' => 'Anver Mills',
+                    'invoice_number' => 'PO-404',
+                    'lines' => [
+                        ['description' => 'Blue Fabric Frame', 'quantity' => 5, 'unit_price' => 150, 'line_total' => 750],
+                    ],
+                ])], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 100, 'completion_tokens' => 40],
+            ], 200),
+        ]);
+
+        $jpg = $this->makeTempJpeg();
+        $sess = ['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId];
+
+        $up = $this->actingAs($this->admin)->withSession($sess)
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpg, 'unconfirmed_invoice.jpg', 'image/jpeg', null, true),
+                'extract_now' => true,
+            ])->assertStatus(201);
+        $mediaId = $up->json('media.id');
+
+        // Unconfirmed extraction must be rejected by /api/v1/ai/chat
+        $this->actingAs($this->admin)->withSession($sess)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'Create a PO from this attached invoice',
+                'media_ids' => [$mediaId],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'EXTRACTION_CONFIRMATION_REQUIRED');
+
+        @unlink($jpg);
+    }
+
+    public function test_cross_modal_handoff_detects_conflicts_between_document_and_voice(): void
+    {
+        $callCount = 0;
+        Http::fake([
+            'integrate.api.nvidia.com/*' => function () use (&$callCount) {
+                $callCount++;
+                if ($callCount === 1) {
+                    // Document extraction (Invoice for Anver Mills)
+                    return Http::response([
+                        'choices' => [['message' => ['content' => json_encode([
+                            'document_type' => 'purchase_order',
+                            'supplier_name' => 'Anver Mills',
+                            'invoice_number' => 'INV-DOC-1',
+                            'lines' => [
+                                ['description' => 'Blue Fabric Frame', 'quantity' => 10, 'unit_price' => 150, 'line_total' => 1500],
+                            ],
+                        ])], 'finish_reason' => 'stop']],
+                        'usage' => ['prompt_tokens' => 150, 'completion_tokens' => 50],
+                    ], 200);
+                }
+
+                // Audio extraction (Voice note mentioning Apex Textiles)
+                return Http::response([
+                    'choices' => [['message' => ['content' => json_encode([
+                        'transcript_text' => 'Order 10 frames from Apex Textiles',
+                        'detected_language' => 'en',
+                        'intent_guess' => 'purchase_order.create.v1',
+                        'party_name' => 'Apex Textiles',
+                        'confidence' => 0.9,
+                        'items' => [
+                            ['product_name' => 'Blue Fabric Frame', 'quantity' => 10, 'unit_price' => 150],
+                        ],
+                    ])], 'finish_reason' => 'stop']],
+                    'usage' => ['prompt_tokens' => 120, 'completion_tokens' => 45],
+                ], 200);
+            },
+        ]);
+
+        $jpg = $this->makeTempJpeg();
+        $wav = $this->makeTempWav();
+        $sess = ['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId];
+
+        // 1. Upload & confirm invoice image
+        $upImg = $this->actingAs($this->admin)->withSession($sess)
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpg, 'anver_bill.jpg', 'image/jpeg', null, true),
+                'extract_now' => true,
+            ])->assertStatus(201);
+        $imgId = $upImg->json('media.id');
+        $this->actingAs($this->admin)->withSession($sess)
+            ->postJson("/api/v1/ai/media/{$imgId}/confirm", ['expected_revision' => 1])
+            ->assertStatus(200);
+
+        // 2. Upload voice note
+        $upWav = $this->actingAs($this->admin)->withSession($sess)
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($wav, 'apex_voice.wav', 'audio/wav', null, true),
+                'extract_now' => true,
+            ])->assertStatus(201);
+        $wavId = $upWav->json('media.id');
+
+        // Unconfirmed companion media is rejected
+        $this->actingAs($this->admin)->withSession($sess)
+            ->postJson("/api/v1/ai/media/{$imgId}/handoff", [
+                'companion_media_id' => $wavId,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'EXTRACTION_CONFIRMATION_REQUIRED');
+
+        // Confirm voice note
+        $this->actingAs($this->admin)->withSession($sess)
+            ->postJson("/api/v1/ai/media/{$wavId}/confirm", ['expected_revision' => 1])
+            ->assertStatus(200);
+
+        // 3. Cross-modal handoff detects party name mismatch (Anver Mills vs Apex Textiles)
+        $conflictRes = $this->actingAs($this->admin)->withSession($sess)
+            ->postJson("/api/v1/ai/media/{$imgId}/handoff", [
+                'companion_media_id' => $wavId,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'NORMALIZED_INPUT_CONFLICT');
+
+        $this->assertStringContainsString('Cross-modal mismatch on party name', $conflictRes->json('error_message'));
+
+        @unlink($jpg);
+        @unlink($wav);
+    }
+
+    private function makeTempWav(): string
+    {
+        $sampleRate = 8000;
+        $totalSamples = 8000;
+        $pcm = '';
+        for ($i = 0; $i < $totalSamples; $i++) {
+            $sample = (int) round(10000 * sin(2 * M_PI * 440 * ($i / $sampleRate)));
+            $pcm .= pack('s', $sample);
+        }
+
+        $dataSize = strlen($pcm);
+        $header = 'RIFF'
+            . pack('V', 36 + $dataSize)
+            . 'WAVEfmt '
+            . pack('V', 16)
+            . pack('v', 1)
+            . pack('v', 1)
+            . pack('V', $sampleRate)
+            . pack('V', $sampleRate * 2)
+            . pack('v', 2)
+            . pack('v', 16)
+            . 'data'
+            . pack('V', $dataSize);
+
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_wf_wav_' . uniqid() . '.wav';
+        file_put_contents($path, $header . $pcm);
+
+        return $path;
+    }
+
     private function makeTempJpeg(): string
     {
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_wf_' . uniqid() . '.jpg';

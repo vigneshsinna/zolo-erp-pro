@@ -95,6 +95,7 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
                     'industry_settings',
                     'starter_masters',
                     'starter_series',
+                    'ai_feature_settings',
                 ],
             ],
         );
@@ -235,6 +236,7 @@ final class CompanyBootstrapCommandAdapter implements ActionCommandAdapterInterf
                     'industry_settings',
                     'starter_masters',
                     'starter_series',
+                    'ai_feature_settings',
                 ],
             ],
         );

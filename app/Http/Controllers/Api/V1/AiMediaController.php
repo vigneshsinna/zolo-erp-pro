@@ -331,7 +331,21 @@ class AiMediaController extends Controller
                 'companion_text' => ['nullable', 'string', 'max:2000'],
                 'action_key' => ['nullable', 'string', 'max:80'],
                 'thread_id' => ['nullable', 'uuid'],
+                'companion_media_id' => ['nullable', 'uuid'],
             ]);
+
+            $companionAsset = null;
+            $companionExtraction = null;
+            if (! empty($validated['companion_media_id'])) {
+                $companionAsset = $this->loadOwnedAsset($principal, (string) $validated['companion_media_id']);
+                $companionExtraction = $companionAsset->latestExtraction;
+                if ($companionExtraction === null || ! $companionExtraction->isConfirmed()) {
+                    throw MultimodalException::extractionFailed(
+                        'EXTRACTION_CONFIRMATION_REQUIRED',
+                        'Companion media extraction must be confirmed before cross-modal handoff.'
+                    );
+                }
+            }
 
             $result = $this->workflowBridge->handoff(
                 principal: $principal,
@@ -340,6 +354,8 @@ class AiMediaController extends Controller
                 companionText: $validated['companion_text'] ?? null,
                 overrideActionKey: $validated['action_key'] ?? null,
                 threadId: $validated['thread_id'] ?? null,
+                companionAsset: $companionAsset,
+                companionExtraction: $companionExtraction,
             );
 
             return response()->json($result);

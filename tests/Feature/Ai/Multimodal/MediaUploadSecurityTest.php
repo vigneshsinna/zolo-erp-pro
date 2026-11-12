@@ -207,6 +207,24 @@ final class MediaUploadSecurityTest extends TestCase
         @unlink($jpg);
     }
 
+    public function test_pdf_with_embedded_javascript_or_actions_is_rejected_at_validation(): void
+    {
+        Http::fake();
+        $maliciousPdfPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_mal_' . uniqid() . '.pdf';
+        file_put_contents($maliciousPdfPath, "%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1);) >> >> endobj\n%%EOF");
+
+        $file = new UploadedFile($maliciousPdfPath, 'malicious.pdf', 'application/pdf', null, true);
+
+        $this->actingAs($this->adminA)
+            ->withSession(['company_id' => $this->companyA->id, 'branch_id' => $this->branchA, 'financial_year_id' => $this->fyA])
+            ->postJson('/api/v1/ai/media', ['file' => $file])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'INVALID_MAGIC_BYTES');
+
+        Http::assertNothingSent();
+        @unlink($maliciousPdfPath);
+    }
+
     public function test_private_storage_exif_stripping_preview_headers_and_cross_company_isolation(): void
     {
         $fakeNvidia = function () {
@@ -340,6 +358,49 @@ final class MediaUploadSecurityTest extends TestCase
         @unlink($jpg1);
         @unlink($jpgReplay);
         @unlink($jpg2);
+    }
+
+    public function test_active_upload_reservation_spans_creation_and_blocks_concurrent_overflow(): void
+    {
+        app(AiFeatureGate::class)->setCompanyMultimodal($this->companyA->id, true, 2);
+        Http::fake();
+
+        $principal = new \App\Ai\DTOs\AiPrincipal(
+            actorId: $this->adminA->id,
+            companyId: $this->companyA->id,
+            branchId: $this->branchA,
+            financialYearId: $this->fyA,
+            permittedToolNames: ['ai.use'],
+            requestId: 'test-req-1',
+            isActive: true,
+        );
+
+        $gateway = app(\App\Ai\Gateway\ApprovedModelGateway::class);
+        $date = now('UTC')->toDateString();
+
+        // 1. Reserve slot 1
+        $res1 = $gateway->reserveMediaUpload($principal, $date);
+
+        // 2. Reserve slot 2 (hits daily limit = 2)
+        $res2 = $gateway->reserveMediaUpload($principal, $date);
+
+        // 3. Attempting slot 3 while 2 are reserved is blocked with DAILY_MEDIA_LIMIT_EXCEEDED
+        try {
+            $gateway->reserveMediaUpload($principal, $date);
+            $this->fail('Expected daily media limit exceeded while reservations are active.');
+        } catch (\App\Ai\Multimodal\Exceptions\MultimodalException $e) {
+            $this->assertSame('DAILY_MEDIA_LIMIT_EXCEEDED', $e->errorCode);
+            $this->assertSame(429, $e->httpStatus);
+        }
+
+        // Releasing reservation 2 frees the slot
+        $res2->release();
+
+        $res3 = $gateway->reserveMediaUpload($principal, $date);
+        $this->assertInstanceOf(\App\Ai\Gateway\MediaUploadReservation::class, $res3);
+
+        $res1->release();
+        $res3->release();
     }
 
     private function makeTempJpeg(?string $injectExifPayload = null): string

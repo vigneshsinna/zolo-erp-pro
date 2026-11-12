@@ -115,8 +115,8 @@ final class AudioTranscriptionTest extends TestCase
             'integrate.api.nvidia.com/*' => function ($req) {
                 $body = $req->data();
                 $this->assertArrayNotHasKey('tools', $body);
-                $this->assertSame('input_audio', $body['messages'][1]['content'][1]['type']);
-                $this->assertSame('wav', $body['messages'][1]['content'][1]['input_audio']['format']);
+                $this->assertSame('audio_url', $body['messages'][1]['content'][1]['type']);
+                $this->assertStringStartsWith('data:audio/wav;base64,', $body['messages'][1]['content'][1]['audio_url']['url']);
 
                 return Http::response([
                     'choices' => [['message' => ['content' => json_encode([

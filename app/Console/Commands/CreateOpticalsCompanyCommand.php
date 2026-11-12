@@ -76,18 +76,9 @@ class CreateOpticalsCompanyCommand extends Command
         // Seed opticals masters (Units, Brands, Categories, Sale Types, Products)
         (new OpticalsMasterSeeder)->seedCompany($company);
 
-        // Ensure AI Copilot is enabled for this company
+        // Ensure AI Copilot is provisioned for this company according to installation policy
         if (\Illuminate\Support\Facades\Schema::hasTable('ai_feature_settings')) {
-            DB::table('ai_feature_settings')->updateOrInsert(
-                ['company_id' => $company->id],
-                [
-                    'enabled' => true,
-                    'read_only' => true,
-                    'daily_token_limit' => 100000,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
+            app(\App\Ai\Services\AiFeatureGate::class)->provisionCompanyDefaults($company->id, $user->id);
         }
 
         $this->info("Lens Manufacturer company [{$company->trade_name}] is ready!");

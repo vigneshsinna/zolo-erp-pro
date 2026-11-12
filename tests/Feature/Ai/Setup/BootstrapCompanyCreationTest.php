@@ -251,6 +251,13 @@ final class BootstrapCompanyCreationTest extends TestCase
         $auditExists = DB::table('company_setup_audits')->where('company_id', $companyId)->where('action', 'company_created')->exists();
         $this->assertTrue($auditExists);
 
+        // AI Feature Settings provisioned with execution disabled (read-only by default)
+        $aiSetting = DB::table('ai_feature_settings')->where('company_id', $companyId)->first();
+        $this->assertNotNull($aiSetting);
+        $this->assertTrue((bool) $aiSetting->enabled);
+        $this->assertTrue((bool) $aiSetting->read_only); // execution disabled until explicitly configured
+        $this->assertContains('ai_feature_settings', $approveResponse->json('receipt.details.provisioned_resources'));
+
         // Idempotent retry returns identical receipt without creating duplicate company
         $companiesCount = Company::count();
         $retryResponse = $this->withHeader('X-Setup-Task-Token', $taskToken)
@@ -742,6 +749,41 @@ final class BootstrapCompanyCreationTest extends TestCase
             ]);
         $approve->assertStatus(200);
         $this->assertSame('completed', $approve->json('status'));
+    }
+
+    public function test_company_provisioning_respects_installation_disabled_policy(): void
+    {
+        config()->set('erp_ai.enabled', false);
+
+        $this->actingAs($this->adminUser, 'sanctum');
+
+        $initResponse = $this->postJson('/api/v1/ai/setup/bootstrap/tasks');
+        $taskId = $initResponse->json('task_id');
+        $taskToken = $initResponse->json('task_token');
+
+        $uniqueLegal = 'Disabled AI Company ' . uniqid();
+        $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/preview", [
+                'legal_name' => $uniqueLegal,
+                'trade_name' => 'Disabled AI Co',
+                'industry' => 'textile',
+                'state_code' => '33',
+                'fy_start' => '2026-04-01',
+                'fy_end' => '2027-03-31',
+            ]);
+
+        $approveResponse = $this->withHeader('X-Setup-Task-Token', $taskToken)
+            ->postJson("/api/v1/ai/setup/bootstrap/tasks/{$taskId}/approve", [
+                'expected_version' => 1,
+            ]);
+
+        $approveResponse->assertStatus(200);
+        $companyId = (int) $approveResponse->json('company_id');
+
+        $aiSetting = DB::table('ai_feature_settings')->where('company_id', $companyId)->first();
+        $this->assertNotNull($aiSetting);
+        $this->assertFalse((bool) $aiSetting->enabled);
+        $this->assertTrue((bool) $aiSetting->read_only);
     }
 }
 

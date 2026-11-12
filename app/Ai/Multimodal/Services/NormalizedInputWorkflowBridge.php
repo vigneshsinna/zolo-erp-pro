@@ -47,8 +47,13 @@ final class NormalizedInputWorkflowBridge
         ?string $companionText = null,
         ?string $overrideActionKey = null,
         ?string $threadId = null,
+        ?AiMediaAsset $companionAsset = null,
+        ?AiMediaExtraction $companionExtraction = null,
     ): array {
         if (! $this->policy->canAccessPrincipal($principal, $asset)) {
+            throw MultimodalException::crossTenantForbidden();
+        }
+        if ($companionAsset !== null && ! $this->policy->canAccessPrincipal($principal, $companionAsset)) {
             throw MultimodalException::crossTenantForbidden();
         }
         if ($asset->isPurged()) {
@@ -63,6 +68,16 @@ final class NormalizedInputWorkflowBridge
                 'Review and confirm extracted fields before staging an ERP workflow proposal.'
             );
         }
+        if ($companionExtraction !== null && ! $companionExtraction->isConfirmed()) {
+            throw MultimodalException::extractionFailed(
+                'EXTRACTION_CONFIRMATION_REQUIRED',
+                'Companion media extraction must be confirmed before cross-modal handoff.'
+            );
+        }
+
+        $companionExtracted = $companionExtraction !== null
+            ? (array) $companionExtraction->extracted_json
+            : null;
 
         $normalized = $this->normalizedBuilder->build(
             principal: $principal,
@@ -72,6 +87,7 @@ final class NormalizedInputWorkflowBridge
             extractionRevision: (int) $extraction->revision,
             modelKey: (string) $extraction->model_key,
             companionText: $companionText,
+            companionExtracted: $companionExtracted,
             overrideIntentKey: $overrideActionKey,
         );
 

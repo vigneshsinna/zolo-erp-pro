@@ -211,6 +211,14 @@ class CompanyDirectoryService
                     'idempotency_key' => $input['idempotency_key'] ?? null], JSON_THROW_ON_ERROR),
                 'created_at' => now()]);
 
+            if (Schema::hasTable('ai_feature_settings')) {
+                app(\App\Ai\Services\AiFeatureGate::class)->provisionCompanyDefaults($company->id, $actor);
+            }
+
+            if (Schema::hasTable('ai_feature_settings')) {
+                app(\App\Ai\Services\AiFeatureGate::class)->provisionCompanyDefaults($company->id, $actor);
+            }
+
             return $company;
         });
     }

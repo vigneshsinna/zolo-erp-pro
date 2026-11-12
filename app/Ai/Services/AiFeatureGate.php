@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ai\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -143,6 +144,52 @@ class AiFeatureGate
                 'updated_at' => now(),
             ], $extra)
         );
+    }
+
+    /**
+     * Provision AI feature settings for a newly created company using the installation policy.
+     *
+     * If the installation has AI enabled, initializes the company with AI enabled,
+     * restricted to authorized roles, with execution disabled (read_only = true)
+     * until explicitly configured by an administrator.
+     *
+     * @return array<string, mixed>
+     */
+    public function provisionCompanyDefaults(int $companyId, ?int $actorId = null): array
+    {
+        if (!function_exists('app') || !app()->bound('db') || !Schema::hasTable('ai_feature_settings')) {
+            return [];
+        }
+
+        $inherit = (bool) config('erp_ai.provisioning_policy.inherit_installation_enabled', true);
+        $isInstallationAiEnabled = (bool) config('erp_ai.enabled', false);
+        $enabled = $inherit && $isInstallationAiEnabled;
+
+        $isInstallationMultimodalEnabled = $enabled && (bool) config('ai_multimodal.enabled', false);
+        $readOnly = (bool) config('erp_ai.provisioning_policy.default_read_only', true);
+        $allowedAgents = (array) config('erp_ai.provisioning_policy.default_agents', ['erp_copilot']);
+
+        $settings = [
+            'enabled' => $enabled,
+            'read_only' => $readOnly,
+            'multimodal_enabled' => $isInstallationMultimodalEnabled,
+            'provider_key' => (string) config('erp_ai.provider', 'nvidia'),
+            'allowed_agent_keys' => json_encode($allowedAgents, JSON_THROW_ON_ERROR),
+            'daily_token_limit' => max(1000, (int) config('erp_ai.daily_company_tokens', 100000)),
+            'daily_media_upload_limit' => max(1, (int) config('ai_multimodal.daily_company_uploads', 100)),
+            'monthly_budget_minor' => 0,
+            'retention_days' => 30,
+            'updated_by' => $actorId,
+            'updated_at' => now(),
+            'created_at' => now(),
+        ];
+
+        DB::table('ai_feature_settings')->updateOrInsert(
+            ['company_id' => $companyId],
+            $settings
+        );
+
+        return $settings;
     }
 }
 

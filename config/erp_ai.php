@@ -65,6 +65,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | New Company Provisioning Policy
+    |--------------------------------------------------------------------------
+    |
+    | Governs how AI features are provisioned for newly created companies
+    | (e.g. via Guided Initial Setup or CompanyDirectoryService).
+    | If the installation has AI enabled, initializes the company with AI enabled,
+    | restricted to authorized roles, with execution disabled (read_only = true)
+    | until explicitly configured by an administrator.
+    |
+    */
+
+    'provisioning_policy' => [
+        'inherit_installation_enabled' => (bool) env('AI_PROVISION_NEW_COMPANIES_ENABLED', true),
+        'default_read_only' => (bool) env('AI_PROVISION_DEFAULT_READ_ONLY', true),
+        'default_agents' => ['erp_copilot'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Observability & Tracing
     |--------------------------------------------------------------------------
     |

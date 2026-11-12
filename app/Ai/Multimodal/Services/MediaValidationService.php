@@ -304,8 +304,8 @@ final class MediaValidationService
             throw MultimodalException::encryptedPdf();
         }
 
-        if (preg_match('/\/(?:JavaScript|JS|Launch|OpenAction)\b/', $head . $contents)) {
-            // Strip risk by noting suspicious actions; Fail closed on encrypted PDFs or polyglot PDFs with PHP tags.
+        if (preg_match('/\/(?:JavaScript|JS|Launch|OpenAction|RichMedia)\b/', $head . $contents)) {
+            throw MultimodalException::invalidMagicBytes('Active scripts, launch actions, or embedded JavaScript are forbidden in uploaded PDFs.');
         }
     }
 }

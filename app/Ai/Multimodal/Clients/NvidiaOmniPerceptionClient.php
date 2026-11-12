@@ -85,10 +85,9 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
         $content = [
             ['type' => 'text', 'text' => $userPrompt],
             [
-                'type' => 'input_audio',
-                'input_audio' => [
-                    'data' => $base64Audio,
-                    'format' => 'wav',
+                'type' => 'audio_url',
+                'audio_url' => [
+                    'url' => 'data:audio/wav;base64,' . $base64Audio,
                 ],
             ],
         ];

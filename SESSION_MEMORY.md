@@ -1,3 +1,94 @@
+## Architectural Improvement: Governed AI Provisioning for Newly Created Companies — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Deliverables Completed:**
+  1. **Policy-Driven AI Provisioning (`config/erp_ai.php`):**
+     - Introduced `erp_ai.provisioning_policy` defining the default AI posture when a new company is provisioned:
+       - `inherit_installation_enabled`: Follows installation `erp_ai.enabled` switch (`AI_PROVISION_NEW_COMPANIES_ENABLED`, defaults `true`).
+       - `default_read_only`: Strictly enforces `read_only = true` by default (`AI_PROVISION_DEFAULT_READ_ONLY`, defaults `true`), keeping action execution (financial and inventory mutations) disabled until explicitly reviewed and enabled by an administrator.
+       - `default_agents`: Authorizes only `['erp_copilot']` by default.
+  2. **Authoritative Provisioning Service (`AiFeatureGate::provisionCompanyDefaults`):**
+     - Added `App\Ai\Services\AiFeatureGate::provisionCompanyDefaults(int $companyId, ?int $actorId = null): array`.
+     - Automatically calculates company settings based on the installation policy and provisions `ai_feature_settings` atomically:
+       - `enabled`: Follows installation policy.
+       - `read_only`: `true` (execution disabled until configured).
+       - `multimodal_enabled`: Follows `ai_multimodal.enabled`.
+       - `provider_key`: Configured AI provider (`nvidia`).
+       - `daily_token_limit` & `daily_media_upload_limit`: Configured installation quotas.
+       - `updated_by`: `$actorId`.
+  3. **Guided Initial Setup & Company Provisioning Integration:**
+     - `app/Services/Platform/CompanyDirectoryService.php`: Integrated `provisionCompanyDefaults()` directly into `createCompany()`, ensuring all company creation paths (UI, API, Guided Setup) initialize AI settings.
+     - `app/Ai/Adapters/CompanyBootstrapCommandAdapter.php`: Added `'ai_feature_settings'` to `provisioned_resources` in the execution receipt.
+     - `app/Ai/Adapters/CompanyBootstrapPreviewAdapter.php`: Added `ai_operating_layer` simulation to `simulated_starter_resources` in the preview data.
+     - `app/Console/Commands/CreateOpticalsCompanyCommand.php`: Standardized to delegate to `provisionCompanyDefaults()`.
+  4. **Verification & Regression Testing:**
+     - `tests/Feature/Ai/Setup/BootstrapCompanyCreationTest.php`:
+       - Verified `ai_feature_settings` provisioning in `test_installation_admin_creates_company_atomically` (`enabled = true`, `read_only = true`, and `'ai_feature_settings'` in receipt).
+       - Added `test_company_provisioning_respects_installation_disabled_policy` confirming that when installation AI is disabled, newly provisioned companies receive `enabled = false`.
+       - Suite passed: **14/14 tests passed (96 assertions)**.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions)**.
+
+---
+
+## Copilot Enablement for Company & Omni Model Setup in `.env` — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Deliverables Completed:**
+  1. **Root Cause Analysis for "Disabled" Badge in AI Workspace:**
+     - Identified that the UI (`zolo-erp-pro.test/ai`) was active under company `lenz private limited` (Company ID: 80).
+     - zoloERP adheres to strict multi-tenant fail-closed governance (Law 1 & Law 2): `AiFeatureGate::isEnabledForCompany($companyId)` requires an explicit `enabled = true` record in the `ai_feature_settings` table.
+     - Company 80 was created via `CompanyDirectoryService::createCompany()` without an `ai_feature_settings` record, causing `isEnabledForCompany(80)` to return `false` (displaying "Disabled" badge and locking the chat composer).
+  2. **Company AI Governance & Database Fix:**
+     - Inserted and enabled `ai_feature_settings` for Company 80 (`lenz private limited`) with `enabled = 1`, `read_only = 0`, `multimodal_enabled = 1`, `provider_key = 'nvidia'`, `daily_token_limit = 500000`, `daily_media_upload_limit = 100`.
+     - Enabled `multimodal_enabled = 1` for all active companies in `ai_feature_settings` so image/PDF/voice inputs are accessible.
+     - Updated `app/Services/Platform/CompanyDirectoryService.php` to automatically initialize `ai_feature_settings` upon new company creation.
+  3. **Omni Perception Model Setup in `.env`:**
+     - Configured the NVIDIA Nemotron 3 Nano Omni reasoning model in `.env`:
+       ```dotenv
+       AI_MULTIMODAL_ENABLED=true
+       AI_MULTIMODAL_PROVIDER=nvidia
+       AI_MULTIMODAL_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+       AI_MULTIMODAL_DAILY_COMPANY_UPLOADS=100
+       AI_MULTIMODAL_MAX_EXTRACTION_TOKENS=4096
+       AI_MULTIMODAL_TIMEOUT_SECONDS=75
+       ```
+     - Updated `.env.example` to document these multimodal keys.
+     - Cleared config, view, and application caches via `php artisan config:clear; php artisan view:clear; php artisan cache:clear`.
+  4. **Verification:**
+     - Verified `AiWorkspaceController` view bindings: `isAiEnabled = true`, `isMultimodalEnabled = true`, `isReadOnly = false`, Copilot model `nvidia/nemotron-3.5-lightning-30b-a3b`, perception Omni model `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions)**.
+
+---
+
+## Multimodal Hardening & Provider Alignment Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Deliverables Completed (Goldfish Review: /egm-resolve):**
+  1. **P0 — NVIDIA Omni Audio Payload Contract Mismatch:**
+     - `app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`: Corrected audio perception payload format from `{ "type": "input_audio", ... }` to documented NVIDIA Nemotron Omni data URL contract `{ "type": "audio_url", "audio_url": { "url": "data:audio/wav;base64,..." } }`.
+     - `tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php`: Aligned unit test payload assertions to verify `audio_url` and data URL formatting.
+     - `tests/Feature/Ai/Multimodal/AudioTranscriptionTest.php`: Updated mock expectations and feature assertions to verify `audio_url`.
+  2. **P1 — PDF Security Checks Fail-Closed:**
+     - `app/Ai/Multimodal/Services/MediaValidationService.php`: Fail-closed inspection on active PDF markers (`/JavaScript`, `/JS`, `/Launch`, `/OpenAction`, `/RichMedia`) by throwing `MultimodalException::invalidMagicBytes()`, blocking scripted PDFs before preprocessing or private disk storage.
+     - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php`: Added test `test_pdf_with_embedded_javascript_or_actions_is_rejected_at_validation` verifying 422 `INVALID_MAGIC_BYTES` rejection.
+  3. **P1 — Unconfirmed Extraction Gated from Chat Context:**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Enforced user review and confirmation requirement (`$latest->isConfirmed()`) before attaching multimodal extractions to `/api/v1/ai/chat` or `/api/v1/ai/chat/stream`. Unconfirmed attachments reject with 422 `EXTRACTION_CONFIRMATION_REQUIRED`.
+     - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php`: Added test `test_unconfirmed_media_attached_to_chat_is_rejected_with_422`.
+  4. **P1 — Mixed Image-and-Audio Cross-Modal Conflict Checking:**
+     - `app/Http/Controllers/Api/V1/AiMediaController.php`: Added optional `companion_media_id` parameter to `handoff`, validating ownership and confirmed extraction.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Extended `handoff()` to accept companion asset and extraction, forwarding `companionExtracted` to `NormalizedInputBuilder::build()`.
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Cross-references multiple attached media extractions in chat context, enabling cross-modal mismatch detection.
+     - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php`: Added test `test_cross_modal_handoff_detects_conflicts_between_document_and_voice` confirming 422 `NORMALIZED_INPUT_CONFLICT` on party mismatch between document and voice note.
+  5. **P2 — Atomic Upload Quota Reservation Spanning Creation:**
+     - `app/Ai/Gateway/MediaUploadReservation.php`: Dedicated reservation handle providing atomic commit/release semantics with automatic safety TTL cleanup.
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: Added `reserveMediaUpload(AiPrincipal, string $date)` with atomic `Cache::lock` and active reservation tracking.
+     - `app/Ai/Multimodal/Services/MediaIngestionService.php`: Reserves upload quota slot upfront, commits on successful `AiMediaAsset::create()`, and releases on failure.
+     - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php`: Added test `test_active_upload_reservation_spans_creation_and_blocks_concurrent_overflow`.
+- **Verification Results:**
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+  - Full AI test suite (`php vendor/bin/phpunit -c phpunit.ai.xml` with `ERP_TEST_MYSQL=1` against `zolo_test_ai_release`): **222/222 tests passed (1,393 assertions, 0 errors, 0 failures)**.
+  - `composer validate --strict`: Valid.
+  - [goldfish_review_report.md](goldfish_review_report.md): Status updated to `resolved`.
+
+---
+
 ## Phases 4 through 7 (Reports 10–13) Implemented & Verified — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Deliverables Completed:**
@@ -29,6 +120,97 @@
   - Complete AI suite `php vendor/bin/phpunit -c phpunit.ai.xml` with `ERP_TEST_MYSQL=1`: **218/218 tests passed (1,375 assertions, 0 errors, 0 failures)**.
   - `composer validate --strict` passed cleanly.
   - Cache rebuild: `php artisan optimize:clear; php artisan view:cache` executed with zero warnings.
+
+---
+
+## Architectural Improvement: Governed AI Provisioning for Newly Created Companies — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Deliverables Completed:**
+  1. **Policy-Driven AI Provisioning (`config/erp_ai.php`):**
+     - Introduced `erp_ai.provisioning_policy` defining the default AI posture when a new company is provisioned:
+       - `inherit_installation_enabled`: Follows installation `erp_ai.enabled` switch (`AI_PROVISION_NEW_COMPANIES_ENABLED`, defaults `true`).
+       - `default_read_only`: Strictly enforces `read_only = true` by default (`AI_PROVISION_DEFAULT_READ_ONLY`, defaults `true`), keeping action execution (financial and inventory mutations) disabled until explicitly reviewed and enabled by an administrator.
+       - `default_agents`: Authorizes only `['erp_copilot']` by default.
+  2. **Authoritative Provisioning Service (`AiFeatureGate::provisionCompanyDefaults`):**
+     - Added `App\Ai\Services\AiFeatureGate::provisionCompanyDefaults(int $companyId, ?int $actorId = null): array`.
+     - Automatically calculates company settings based on the installation policy and provisions `ai_feature_settings` atomically:
+       - `enabled`: Follows installation policy.
+       - `read_only`: `true` (execution disabled until configured).
+       - `multimodal_enabled`: Follows `ai_multimodal.enabled`.
+       - `provider_key`: Configured AI provider (`nvidia`).
+       - `daily_token_limit` & `daily_media_upload_limit`: Configured installation quotas.
+       - `updated_by`: `$actorId`.
+  3. **Guided Initial Setup & Company Provisioning Integration:**
+     - `app/Services/Platform/CompanyDirectoryService.php`: Integrated `provisionCompanyDefaults()` directly into `createCompany()`, ensuring all company creation paths (UI, API, Guided Setup) initialize AI settings.
+     - `app/Ai/Adapters/CompanyBootstrapCommandAdapter.php`: Added `'ai_feature_settings'` to `provisioned_resources` in the execution receipt.
+     - `app/Ai/Adapters/CompanyBootstrapPreviewAdapter.php`: Added `ai_operating_layer` simulation to `simulated_starter_resources` in the preview data.
+     - `app/Console/Commands/CreateOpticalsCompanyCommand.php`: Standardized to delegate to `provisionCompanyDefaults()`.
+  4. **Verification & Regression Testing:**
+     - `tests/Feature/Ai/Setup/BootstrapCompanyCreationTest.php`:
+       - Verified `ai_feature_settings` provisioning in `test_installation_admin_creates_company_atomically` (`enabled = true`, `read_only = true`, and `'ai_feature_settings'` in receipt).
+       - Added `test_company_provisioning_respects_installation_disabled_policy` confirming that when installation AI is disabled, newly provisioned companies receive `enabled = false`.
+       - Suite passed: **14/14 tests passed (96 assertions)**.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions)**.
+
+---
+
+## Copilot Enablement for Company & Omni Model Setup in `.env` — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Deliverables Completed:**
+  1. **Root Cause Analysis for "Disabled" Badge in AI Workspace:**
+     - Identified that the UI (`zolo-erp-pro.test/ai`) was active under company `lenz private limited` (Company ID: 80).
+     - zoloERP adheres to strict multi-tenant fail-closed governance (Law 1 & Law 2): `AiFeatureGate::isEnabledForCompany($companyId)` requires an explicit `enabled = true` record in the `ai_feature_settings` table.
+     - Company 80 was created via `CompanyDirectoryService::createCompany()` without an `ai_feature_settings` record, causing `isEnabledForCompany(80)` to return `false` (displaying "Disabled" badge and locking the chat composer).
+  2. **Company AI Governance & Database Fix:**
+     - Inserted and enabled `ai_feature_settings` for Company 80 (`lenz private limited`) with `enabled = 1`, `read_only = 0`, `multimodal_enabled = 1`, `provider_key = 'nvidia'`, `daily_token_limit = 500000`, `daily_media_upload_limit = 100`.
+     - Enabled `multimodal_enabled = 1` for all active companies in `ai_feature_settings` so image/PDF/voice inputs are accessible.
+     - Updated `app/Services/Platform/CompanyDirectoryService.php` to automatically initialize `ai_feature_settings` upon new company creation.
+  3. **Omni Perception Model Setup in `.env`:**
+     - Configured the NVIDIA Nemotron 3 Nano Omni reasoning model in `.env`:
+       ```dotenv
+       AI_MULTIMODAL_ENABLED=true
+       AI_MULTIMODAL_PROVIDER=nvidia
+       AI_MULTIMODAL_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+       AI_MULTIMODAL_DAILY_COMPANY_UPLOADS=100
+       AI_MULTIMODAL_MAX_EXTRACTION_TOKENS=4096
+       AI_MULTIMODAL_TIMEOUT_SECONDS=75
+       ```
+     - Updated `.env.example` to document these multimodal keys.
+     - Cleared config, view, and application caches via `php artisan config:clear; php artisan view:clear; php artisan cache:clear`.
+  4. **Verification:**
+     - Verified `AiWorkspaceController` view bindings: `isAiEnabled = true`, `isMultimodalEnabled = true`, `isReadOnly = false`, Copilot model `nvidia/nemotron-3.5-lightning-30b-a3b`, perception Omni model `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions)**.
+
+---
+
+## Multimodal Hardening & Provider Alignment Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Deliverables Completed (Goldfish Review: /egm-resolve):**
+  1. **P0 — NVIDIA Omni Audio Payload Contract Mismatch:**
+     - `app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`: Corrected audio perception payload format from `{ "type": "input_audio", ... }` to documented NVIDIA Nemotron Omni data URL contract `{ "type": "audio_url", "audio_url": { "url": "data:audio/wav;base64,..." } }`.
+     - `tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php`: Aligned unit test payload assertions to verify `audio_url` and data URL formatting.
+     - `tests/Feature/Ai/Multimodal/AudioTranscriptionTest.php`: Updated mock expectations and feature assertions to verify `audio_url`.
+  2. **P1 — PDF Security Checks Fail-Closed:**
+     - `app/Ai/Multimodal/Services/MediaValidationService.php`: Fail-closed inspection on active PDF markers (`/JavaScript`, `/JS`, `/Launch`, `/OpenAction`, `/RichMedia`) by throwing `MultimodalException::invalidMagicBytes()`, blocking scripted PDFs before preprocessing or private disk storage.
+     - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php`: Added test `test_pdf_with_embedded_javascript_or_actions_is_rejected_at_validation` verifying 422 `INVALID_MAGIC_BYTES` rejection.
+  3. **P1 — Unconfirmed Extraction Gated from Chat Context:**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Enforced user review and confirmation requirement (`$latest->isConfirmed()`) before attaching multimodal extractions to `/api/v1/ai/chat` or `/api/v1/ai/chat/stream`. Unconfirmed attachments reject with 422 `EXTRACTION_CONFIRMATION_REQUIRED`.
+     - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php`: Added test `test_unconfirmed_media_attached_to_chat_is_rejected_with_422`.
+  4. **P1 — Mixed Image-and-Audio Cross-Modal Conflict Checking:**
+     - `app/Http/Controllers/Api/V1/AiMediaController.php`: Added optional `companion_media_id` parameter to `handoff`, validating ownership and confirmed extraction.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Extended `handoff()` to accept companion asset and extraction, forwarding `companionExtracted` to `NormalizedInputBuilder::build()`.
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Cross-references multiple attached media extractions in chat context, enabling cross-modal mismatch detection.
+     - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php`: Added test `test_cross_modal_handoff_detects_conflicts_between_document_and_voice` confirming 422 `NORMALIZED_INPUT_CONFLICT` on party mismatch between document and voice note.
+  5. **P2 — Atomic Upload Quota Reservation Spanning Creation:**
+     - `app/Ai/Gateway/MediaUploadReservation.php`: Dedicated reservation handle providing atomic commit/release semantics with automatic safety TTL cleanup.
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: Added `reserveMediaUpload(AiPrincipal, string $date)` with atomic `Cache::lock` and active reservation tracking.
+     - `app/Ai/Multimodal/Services/MediaIngestionService.php`: Reserves upload quota slot upfront, commits on successful `AiMediaAsset::create()`, and releases on failure.
+     - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php`: Added test `test_active_upload_reservation_spans_creation_and_blocks_concurrent_overflow`.
+- **Verification Results:**
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+  - Full AI test suite (`php vendor/bin/phpunit -c phpunit.ai.xml` with `ERP_TEST_MYSQL=1` against `zolo_test_ai_release`): **222/222 tests passed (1,393 assertions, 0 errors, 0 failures)**.
+  - `composer validate --strict`: Valid.
+  - [goldfish_review_report.md](goldfish_review_report.md): Status updated to `resolved`.
 
 ---
 
@@ -4317,171 +4499,5 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - **Color Coded Background for Same Party in Bill-Wise Table:**
   - Bills belonging to the same party share a coordinated pastel background tint and 3.5px solid left border indicator:
     - `party-tint-0`: Lavender (`#faf5ff`, border `#c084fc`)
-    - `party-tint-1`: Sky (`#f0f9ff`, border `#38bdf8`)
-    - `party-tint-2`: Mint (`#ecfdf5`, border `#34d399`)
-    - `party-tint-3`: Amber (`#fffbeb`, border `#fbbf24`)
-    - `party-tint-4`: Rose (`#fff1f2`, border `#fb7185`)
-- **Party Grouped FIFO Pending Bills Breakdown & Real-Time Partial Simulation:**
-  - In Party Grouped mode, selecting a party row or clicking `⚡ Clear All` loads all pending bills in date-wise order (oldest first) into `#fifo-breakdown-panel` at the bottom of the Fast Settlement Drawer.
-  - **Dynamic Clearance Simulation:**
-    - As the user types any paying amount (e.g. paying â‚¹30,000 against â‚¹60,900 due) or clicks `Full` / `50%`, the simulation dynamically calculates allocations in real time on every keystroke (`input`, `keyup`, `change`).
-    - Individual bill cards display:
-      - `âœ“ Cleared` (Green card: allocated full bill due, balance â‚¹0.00).
-      - `⚡ Partial` (Amber card: allocated partial amount, remaining balance displayed in red).
-      - `â³ Due/Unpaid` (Neutral card: â‚¹0.00 allocated, full bill due).
-    - Header chips summarize live counts (e.g. `1 Cleared`, `1 Partial`, `2 Due`).
-  - **Partial FIFO Execution (`batchSettle`):**
-    - `DueManagementController::batchSettle` clears oldest bills first sequentially until payment pool is exhausted, records double-entry journal entries through `PaymentService::addPayment`, and returns updated party due and open bill counts.
-    - Frontend updates the table row in-place and clears completed rows.
-- **Template Hygiene & Fixes:**
-  - Removed duplicate Blade closing tags and stray orphaned "Print Voucher" link from the bottom footer.
-- **Verification & Test Coverage:**
-  - `tests/Feature/CentralizedDueManagementTest.php` passing 9/9 tests (48 assertions), including FIFO partial allocation and session view mode persistence.
-  - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
-
-## Active Session & Follow-up — 2026-11-06: Due Management UI Polish — Theme Colored Top Tabs, Inline Toolbar & Button-Text Alignment (branch ui)
-
-- **Theme Colored Top Navigation Tabs (`/transactions/dues`):**
-  - Updated `.due-hub-nav` from a muted grey box to distinct, theme-coded interactive pill buttons:
-    - **Customer Dues (Receivables):** Theme Purple (`#7e22ce`), active linear-gradient with soft purple icon, inactive tinted `#fdf4ff` with `#f0abfc` border.
-    - **Supplier Dues (Payables):** Theme Sky/Blue (`#0284c7`), active linear-gradient with soft blue icon, inactive tinted `#f0f9ff` with `#7dd3fc` border.
-    - **Other Dues (Expenses & Services):** Theme Emerald (`#059669`), active linear-gradient with soft emerald icon, inactive tinted `#ecfdf5` with `#6ee7b7` border.
-    - **Outstanding Dues Report Link:** High-contrast Indigo theme action button (`.btn-report-link`) with document icon, 36px height matching the tabs.
-    - Dark mode variants configured for all tabs and actions.
-- **Unified Inline Toolbar (Search + Filters on One Line):**
-  - Replaced the previous multi-row wrapping layout with a sleek single-line flex toolbar (`.due-toolbar-form`):
-    - Search input (`.due-search-input`) flex-grows to occupy available space, with `padding-left: 34px` ensuring zero overlap between the magnifying glass and placeholder text.
-    - Party filter (`.due-party-filter-wrap`) and Due status filter (`.due-status-filter-wrap`) sit directly inline on the same row with fixed compact widths (190px and 140px).
-    - View mode toggle (`.due-toggle-wrap` for Bill-wise vs. Party Grouped) anchors to the far right (`margin-left: auto`).
-    - Responsive wrapping enabled on mobile/tablet (`max-width: 991px`).
-- **Button and Text Alignment Across Hub:**
-  - Table action buttons (`.btn-trigger-settle` and `.btn-party-settle-all`) modernized with centered flexbox (`display: inline-flex; align-items: center; justify-content: center; gap: 5px`), replacing raw emojis with crisp `<i class="fa fa-bolt"></i>` icons.
-  - Right-side Fast Settlement Drawer form elements normalized:
-    - Preset pills (`Full`, `50%`) centered with `height: 22px`, `font-size: 10.5px`, and proper line-height.
-    - Date and Method aligned side-by-side using `.form-row` with consistent 32px height.
-    - Submit button (`#btn-submit-settlement`) centered with `gap: 7px` between check icon and text.
-- **Verification & Test Coverage:**
-  - `tests/Feature/CentralizedDueManagementTest.php` passing 7/7 tests (31 assertions).
-  - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
-
-## Active Session & Follow-up — 2026-11-05: Centralized Due Management Hub & Clean Audit Outstanding Dues Report (branch ui)
-
-- **Centralized Due Management System (`DueManagementController` & `/transactions/dues`):**
-  - **Unified Hub Navigation & Multi-Tab Architecture:**
-    - Combines Customer Dues (Receivables), Supplier Dues (Payables), and Other Dues (Expenses & Services) in a single unified command center.
-    - URL: `/transactions/dues` (`route('dues.index')`), with backwards-compatible redirect `/dues`.
-    - Tab navigation (`sales`, `purchases`, `expenses`) with fast keyboard shortcuts (`Alt+1`, `Alt+2`, `Alt+3`).
-  - **Dual Operational Modes (Bill-wise vs Party-wise):**
-    - **Bill-wise Table:** Multi-bill batch selection checkboxes, overdue indicators, days left/overdue chips, clickable references, and quick row selection to load into the Fast Settlement Panel.
-    - **Party-wise Grouped Table:** Aggregates outstanding amounts per party, shows open bill count, total billed, total paid, and net due with a 1-click `⚡ Clear All` button that loads all unpaid bills into a batch settlement.
-  - **Fast Settlement Panel (Right-side 35% Drawer):**
-    - Immediate due amount auto-fill, `Full` and `50%` quick amount presets.
-    - Method-driven settlement account filtering (Cash vs Bank leaf accounts) via `SettlementAccountService`.
-    - Collapsible fields for early settlement discount and TDS deduction.
-    - Instant submission via AJAX (`POST /transactions/dues/settle`) with `Ctrl+Enter` shortcut, toast notifications, dynamic table row balance updates, and 1-click printable receipt/voucher link.
-  - **Batch Settlement Engine (`POST /transactions/dues/batch-settle`):**
-    - Multi-bill payment across selected invoices for a single party with FIFO (oldest bill first) allocation.
-    - Transactional integrity using `PaymentService::addPayment`, preserving all double-entry journal postings and voucher series.
-  - **Strictly Audit Outstanding Dues Report (`/outstanding-due-report`):**
-    - Per user directive, removed all inline action buttons (`Collect`, `Pay`, `⚡ Settle`, `<th>Action</th>`) from the Outstanding Dues Report in the Reporting section.
-    - Preserved high-fidelity printable A4 layout with letterhead, filters, and executive KPIs.
-    - Added an Audit & Reconciliation notification banner directing operational clearance to the Centralized Due Management Hub.
-  - **Sidebar Menu Integration:**
-    - Added `<li id="dues-management-menu">` under `Transactions`, placed between `Selling` and `Operations`.
-  - **Verification & Test Coverage:**
-    - Feature test suite `tests/Feature/DueManagementTest.php` passing 6/6 tests (23 assertions):
-      - Customer Dues tab loading
-      - Supplier Dues tab loading
-      - Other Dues tab loading
-      - Single-bill settlement via AJAX
-      - Multi-bill FIFO batch settlement
-      - Outstanding Dues report verification (zero action buttons, audit-only)
-    - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
-
-## Active Session & Follow-up — 2026-11-05: Voucher Search Row Re-placement, Column Dividers, Outstanding Dues Report & Mandatory Company GST Type (branch ui)
-
-- **Voucher Search Row & Crisp Column Separation (`/sales` and `/purchases`):**
-  - Relocated `#lims_productcodeSearch` and barcode scan prompt out of `<tbody>` where it previously occupied table rows and caused column misalignment.
-  - Structured as a dedicated, sleek `.table-search-strip` (`id="table-search-row"`) placed directly above `<div class="table-responsive">` in both `resources/views/backend/sale/index.blade.php` and `resources/views/backend/purchase/index.blade.php`.
-  - Preserved all keyboard shortcuts (`Alt+I` focus, `Enter` to insert, autocomplete listeners) and container queries.
-  - Added thin vertical column dividers (`border-right: 1px solid #e2e8f0` in light mode, `#334155` in dark mode) for `.desk-grid-table th, .desk-grid-table td` with `:last-child { border-right: none }` and empty placeholder row exemption.
-  - Table headers and rows now align 100% uniformly with crisp vertical boundaries.
-
-- **Fully Featured Outstanding Payments (Dues) Report:**
-  - Registered route `Route::match(['get', 'post'], 'outstanding-due-report', 'outstandingDuesReport')->name('report.outstandingDues')` in `routes/web.php` with alias `outstanding-dues`.
-  - Updated legacy routes `report.customerDueByDate` and `report.supplierDueByDate` to accept `GET|POST|HEAD`, eliminating HTTP 405 Method Not Allowed exceptions when navigating from menus or bookmarks.
-  - Added sidebar link `<li id="outstanding-due-report-menu"><a href="{{ route('report.outstandingDues') }}"><i class="dripicons-wallet mr-1"></i> Outstanding Dues</a></li>` in `resources/views/backend/layout/sidebar.blade.php` under `Reporting`.
-  - Implemented `ReportController::outstandingDuesReport` with company-level scoping (`CompanyContext`, `company_id`) preventing cross-company data leakage:
-    - Supports dual mode toggle: Receivables (Customers) vs Payables (Suppliers).
-    - Filters: Start/End dates, specific Party (Customer/Supplier with live search), Warehouse/Godown, Due Status (`all_dues`, `unpaid`, `partial`, `overdue`, `all`), and instant search query.
-    - Executive KPI Cards: Total Outstanding Due, Overdue Amount, Settled/Paid Amount, Total Billed, and Open Voucher Count.
-    - Rich interactive Data Table: `#`, Date, Reference No (clickable), Party details with phone, Warehouse, Due Date with live Overdue/Days Left Badge, Billed, Returned, Paid, Due Amount (emphasized), Status Badge, and direct `Collect` / `Pay` button linking to `/selling/payments` or `/buying/payments`.
-    - Print support with professional letterhead (Company legal name, trade name, GSTIN, address, audit period).
-
-- **Mandatory GST Type in Company Creation:**
-  - In `resources/views/backend/company/select.blade.php`: added mandatory red asterisk `*` to `GST type` label, added HTML5 `required` attribute to `<select name="registration_type" required>`, and added disabled placeholder option `<option value="" disabled>— Select GST type —</option>`. Updated edit modal `#dlg-company-edit` correspondingly.
-  - In `app/Http/Controllers/CompanySelectorController.php`: added backend validation in `storeCompany` and `updateCompany`: `'registration_type' => 'required|in:regular,composition,unregistered'`.
-  - In `app/Services/Platform/CompanyDirectoryService.php`: validated and supported safe fallback for programmatic callers.
-
-- **Targeted Test Suite & Verification:**
-  - Created `tests/Feature/OutstandingDuesAndGstTypeTest.php` covering GET/POST requests for receivables and payables, legacy GET handling, and mandatory GST type validation.
-  - Verified 36 tests pass (217 assertions) across `CompanyGroupDirectoryTest`, `CompanyProfileTest`, `DocumentEntryWebTest`, and `OutstandingDuesAndGstTypeTest`.
-
-
-
-## Active Session & Follow-up — 2026-11-05: Modular Addon Architecture (OpticalLab, Warranty, Subscription) & Upstream Sync (branch ui)
-
-- **Git & Repository Sync:**
-  - Pulled latest changes from `origin/ui` (commit `9bc7b86` — "Unify Accounting UI and add guided Money Transfer") merging clean with 'ort' strategy. Branch `ui` is fully synced with remotes.
-- **Migration Status Check:**
-  - Verified `php artisan migrate:status --pending`: returned `INFO No pending migrations.` All database migrations are completely up to date.
-- **Procedural Transaction Generation for Animazon Web Studios (Company #2):**
-  - Executed procedural generation of live commercial records across all 12 catalog products using `PurchaseApplicationService`, `SaleApplicationService`, and `PaymentService`.
-  - Created 12 authentic purchase bills (`PUR-00001` - `PUR-00012`) with supplier allocations, LR tracking, and 70% bank settlement payments.
-  - Created 12 wholesale sales invoices (`MJ-00002` - `MJ-00013`) across multiple customers (`KGF Gold Mining`, `Trendline Garments`, `Coimbatore Retail Textiles`, `Kaveri Garments`) with transport bales, LR details, and 80% collection receipts.
-  - All 12 products verified in `Inventory > Stock` (`/inventory-reports/stock-by-lot`): all display active Inward, Outward, Closing, and Owned Now balances with double-entry accounting integrity.
-- **Company Inventory Capability Alignment:**
-  - Diagnosed user discrepancy where collaborator UI showed `inventory-reports/stock-by-lot` (zoloERP Textiles / Textile profile) while local UI showed `operations/stock` (Animazon Web Studios / General Trading profile).
-  - Root cause: `inventory.lot_report` capability is preset per profile. Enabled `inventory.lot_report` on Company 2 (Animazon Web Studios). Verified `Inventory > Stock` now opens `/inventory-reports/stock-by-lot` matching the collaborator's UI.
-- **LenzBreeze Verification:**
-  - Verified `D:\PROJECTS\WEBSITES\lenzbreeze`. The agent executed only read-only inspection commands; no file in `lenzbreeze` was modified.
-  - Investigated the displayed glitch on `lenzbreeze.test/admin/sales`: in `resources/views/salepro/backend/sale/index.blade.php`, an unclosed tag/script block leaked JavaScript text directly into HTML.
-- **Modular Addons Specification Created:**
-  - Created `documents/MODULE_ADDONS_SPECIFICATION.md` and corresponding UI Artifact specifying three plug-and-play Addons for Zolo-ERP-Pro:
-    1. **Addon 1: Lens & Optical Manufacturing Company Profile (`Modules/OpticalLab`)** — Optical Rx prescription parameters (SPH, CYL, AXIS, ADD, BASE, PD, Height), physical lens attributes (DIA: 65/70/75mm, Index: 1.50 to 1.74, coatings), order extras (fitting, tinting, edging), thermal lab receipts with technician routing QR codes, return rejection verification, and consolidated optician billing statements (`customer_bills`, `customer_bill_monthlies`).
-    2. **Addon 2: Universal Warranty & Serial Verification Engine (`Modules/Warranty`)** — Cross-industry warranty lifecycle covering Category-level defaults and Product-level overrides. Defines 8 universal configuration dimensions (Duration, Activation trigger, Identity tracking, Coverage scope, Registration flow, Transferability, Meter/cycle limits, Extended warranties). Features 4 warranty card generation formats (Responsive Digital Card with status badge, Official A4 Certificate, Thermal box slip, PVC plastic card), dynamic QR code generation, and an 8-stage RMA claim workflow.
-    3. **Addon 3: Recurring Subscription & Membership Management (`Modules/Subscription`)** — Designed for Gyms, Spas, Salons, Wellness Clubs, Co-working, and AMC maintenance contracts. Manages flexible plans (Recurring period vs Session credit packs, Peak/Off-peak), member profiles with digital QR passes, front-desk/turnstile attendance kiosk with session credit deduction, membership freeze/pause with auto-extension, and automated accrual accounting (Deferred Subscription Revenue liability recognized monthly into Earned Income under Ind AS 115 / IFRS 15).
-- **Status:** Specification complete; repository synced; ready for implementation upon user direction.
-- **Herd Autoload Misdirection & 503 Resolution:**
-  - Diagnosed user report: `zolo-erp-pro.test/dashboard` showing HTTP 503 `Database temporarily unavailable`.
-  - Root cause: In `vendor/composer/autoload_psr4.php`, `$baseDir` was previously hardcoded pointing to `D:\PROJECTS\WEBSITES\DK Enterprises`. As a result, Herd executed classes from `DK Enterprises` instead of `zolo-erp-pro`. Specifically, `DK Enterprises/app/Http/Controllers/HomeController.php` attempted to query `water_tanker_trips.excess_km` (a column only existing in the DK Enterprises project), throwing a `QueryException` caught by `Handler.php`.
-  - Fix: Executed `composer dump-autoload` and `php artisan package:discover --ansi`. Verified that `vendor/composer/autoload_psr4.php` now correctly points to `zolo-erp-pro`. Tested `/dashboard` request directly: returns HTTP 200 OK.
-
-## Journal Entry Modal Expansion & Voucher Save Feedback — 2026-11-05 (branch ui)
-
-- User reported being unable to save a voucher in Express Voucher Entry, and that the Add Journal Entry modal on the Journal Entries page was too small and difficult to read.
-- Diagnosis of screenshot 1 (Express Voucher Entry): Row 1 had no account selected and Debit at â‚¹0.00; Row 2 had BOB with Credit at â‚¹15,000. Total debit was â‚¹0.00 and Total credit was â‚¹15,000.00 (`Difference: â‚¹15,000.00 [Unbalanced]`). The Save button is strictly disabled for unbalanced vouchers. In addition, for a positive bank opening balance, Bank (Asset) must be Debited (`Dr`), and an Equity account (`3040 Opening Balance Adjustment` or `3010 Owner's Capital`) Credited (`Cr`).
-- Enhanced Express Voucher Entry (`resources/views/backend/accounting/voucher_entry.blade.php`): Added an inline status hint (`#saveHintText`) next to the Save button showing dynamic guidance ("Awaiting amounts", "Unbalanced (Diff: â‚¹...)", or "Balanced — ready to save"), updated the button tooltip with the exact difference when unbalanced, and made `autoBalanceNextRow` bi-directional so typing an amount into Row 2 automatically suggests the counter-balance onto Row 1 if empty.
-- Expanded New Journal Entry Voucher modal (`resources/views/backend/accounting/journal_entries.blade.php`): Upgraded `#createVoucherModal` and `#viewEntryModal` from `modal-lg` (800px) to `modal-xl` with responsive max-width up to 1080px. Re-allocated table columns to 36% Account, 28% Line Memo, 16% Debit, 16% Credit, and 4% Action with min-widths. Increased input heights to 34px with comfortable 10px padding and monospace font for numbers so values are never clipped. Aligned initial balance badge to neutral "Awaiting amounts" and disabled the submit button until a non-zero balanced entry is entered.
-- Validation: 26 JavaScript unit tests passed with 0 errors. Blade syntax linting passed. Git whitespace check clean. Existing uncommitted working tree preserved on branch `ui`.
-
-## Accounting control and link audit — 2026-11-05 (branch ui)
-
-- Fixed the inactive party dropdown in the user's Contra screenshot. Advanced transfers hide the party column and guided fields. Voucher Hub uses native dynamic selectors. Receivable lines show customers, payable lines show suppliers, and posting requires a party on those lines. Verified receipt allocation and supplier payment payloads in browser fixtures.
-- Collections opens Voucher Hub in Receipt mode for operators with posting access. Journal detail and printable voucher links use the same company, branch and financial year scope as their lists, including legacy entries admitted by those lists. Journal pagination keeps filters. Failed journal detail requests display an error. Transfer links and reversal buttons respect the permissions and branch requirements of their destinations.
-- The audit rendered 19 entry points and followed their Accounting links in Laravel, checked form routes and HTTP methods, and checked browser navigation through all 18 command bar links. Browser also exercised the transfer and voucher controls, allocations, account add/edit/default/statement links, report filters and print buttons, journal dialogs and Express Voucher shortcuts at desktop and mobile widths. The final browser run passed. In the broader PHP run 64 tests passed and two MySQL-only checks skipped. The final targeted rerun passed 20 tests and 474 assertions.
-- Proof: scratch/accounting-transfer-advanced.png and scratch/accounting-receipt-party.png. Browser submissions were intercepted and PHP tests used isolated fixtures. Work remains uncommitted on ui.
-
-## Express Voucher Entry UI follow-up — 2026-11-05 (branch ui)
-
-- Replaced the legacy Voucher Entry wrapper and collapsed table layout with the shared Accounting command bar, cards, table, form controls, and light and dark theme tokens. Both starting rows render, and the line table scrolls horizontally within its card on narrow screens. The empty balance summary reads â€œAwaiting amounts.â€ Added working Ctrl+Enter and Ctrl+F9 shortcuts to match the keyboard help.
-- Restricted the selector and next-number preview to journal series, matching the existing posting service. This prevents a Receipt series from appearing as the Journal voucher number. The form continues to submit to the same journal posting endpoint.
-- Validation: 20 Accounting feature tests passed (474 assertions), plus 12 document keyboard tests. A focused Chrome fixture verified the layout from 320 to 1440 pixels, dark mode, keyboard shortcuts, all three inline dialogs, dynamic rows, automatic balancing, and an intercepted Save. The full Accounting browser fixture also passed across 18 screens at desktop and mobile widths. Screenshots are in `scratch/voucher-entry-1440.png`, `scratch/voucher-entry-390.png`, and `scratch/accounting-voucher-entry-dark.png`. No live records were posted.
-
-## Completed Accounting UI upgrade — 2026-11-05 (branch ui)
-
-- User approved complete Money Transfer UI improvement and a review/improvement of all Accounting options using the global UI. Preserve existing posting contracts, financial records and permission boundaries.
-- Shared Accounting command bar groups transactions, reports and setup. It respects company roles and menu switches. Accounting uses the global navy/plum tokens, shared summary cards, one vertical scroll area, and horizontal table scrolling where needed.
-- Money Transfer has a current posted Contra register with date filters, source/destination, reversal status and voucher details. Older register remains accessible and read-only in shared mode. New transfer shows From, To, Amount, date, narration and live impact preview; advanced debit/credit lines remain available. It sends the existing two-line voucher contract without changing posting rules. Voucher modes show only relevant party/allocation controls, validate cash direction and retain keyboard shortcuts.
-- COA gained category filtering, labeled actions and setup shortcuts. Automatic posting mappings now explain roles/default banks, filter compatible accounts 
+    - `party-tint-1`:
 ... [truncated for diff preview]

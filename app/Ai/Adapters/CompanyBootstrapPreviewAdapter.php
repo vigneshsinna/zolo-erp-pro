@@ -106,6 +106,12 @@ final class CompanyBootstrapPreviewAdapter implements ActionPreviewAdapterInterf
                     'gst_slabs_configured' => !empty($slots['gstin']) || (($slots['registration_type'] ?? '') === 'unregistered'),
                     'registration_type' => $slots['registration_type'] ?? 'regular',
                 ],
+                'ai_operating_layer' => [
+                    'enabled' => (bool) config('erp_ai.enabled', false) && (bool) config('erp_ai.provisioning_policy.inherit_installation_enabled', true),
+                    'read_only' => (bool) config('erp_ai.provisioning_policy.default_read_only', true),
+                    'execution_enabled' => false,
+                    'access' => 'authorized_users_only',
+                ],
             ],
             'transition_context' => [
                 'next_step' => 'Approve to create company atomically via CompanyDirectoryService',

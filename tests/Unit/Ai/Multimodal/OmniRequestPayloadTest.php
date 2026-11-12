@@ -121,14 +121,14 @@ final class OmniRequestPayloadTest extends TestCase
             systemPrompt: 'Transcribe WAV cleanly.',
             userContent: [
                 ['type' => 'text', 'text' => 'Audio voice instruction'],
-                ['type' => 'input_audio', 'input_audio' => ['data' => 'UklGRg==', 'format' => 'wav']],
+                ['type' => 'audio_url', 'audio_url' => ['url' => 'data:audio/wav;base64,UklGRg==']],
             ],
         );
 
         $this->assertArrayNotHasKey('tools', $audioPayload);
         $this->assertArrayNotHasKey('tool_choice', $audioPayload);
-        $this->assertSame('input_audio', $audioPayload['messages'][1]['content'][1]['type']);
-        $this->assertSame('wav', $audioPayload['messages'][1]['content'][1]['input_audio']['format']);
+        $this->assertSame('audio_url', $audioPayload['messages'][1]['content'][1]['type']);
+        $this->assertSame('data:audio/wav;base64,UklGRg==', $audioPayload['messages'][1]['content'][1]['audio_url']['url']);
     }
 }
 

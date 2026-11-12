@@ -128,16 +128,28 @@ class ApprovedModelGateway
     }
 
     /**
-     * Enforce company multimodal enablement and daily company media upload quota.
+     * Atomically reserve a daily company media upload slot spanning creation.
      */
-    public function admitMediaUpload(AiPrincipal $principal, string $date): void
+    public function reserveMediaUpload(AiPrincipal $principal, string $date): MediaUploadReservation
     {
         if (! (bool) config('ai_multimodal.enabled', false)) {
             throw MultimodalException::featureDisabled();
         }
 
-        $limit = DB::transaction(function () use ($principal, $date): array {
-            $setting = $this->lockCompany($principal);
+        $reserveKey = "ai:media_reserved:{$principal->companyId}:{$date}";
+        $lockKey = "ai:media_lock:{$principal->companyId}:{$date}";
+
+        $lock = Cache::lock($lockKey, 10);
+        $acquired = $lock->block(5);
+        if (! $acquired) {
+            throw MultimodalException::dailyLimitExceeded(100);
+        }
+
+        try {
+            $setting = DB::table('ai_feature_settings')->where('company_id', $principal->companyId)->first();
+            if (! (bool) ($setting->enabled ?? false) || ! $this->featureGate->isEnabledForCompany($principal->companyId)) {
+                throw new ServiceUnavailableHttpException(message: 'AI capabilities are disabled for this company.');
+            }
             if (! (bool) ($setting->multimodal_enabled ?? false)) {
                 throw MultimodalException::featureDisabled();
             }
@@ -152,12 +164,45 @@ class ApprovedModelGateway
                 ->whereDate('created_at', $date)
                 ->count();
 
-            return ['count' => $todayCount, 'limit' => $dailyLimit];
-        }, 3);
+            $reservedCount = (int) Cache::get($reserveKey, 0);
 
-        if ($limit['count'] >= $limit['limit']) {
-            throw MultimodalException::dailyLimitExceeded($limit['limit']);
+            if (($todayCount + $reservedCount) >= $dailyLimit) {
+                throw MultimodalException::dailyLimitExceeded($dailyLimit);
+            }
+
+            Cache::put($reserveKey, $reservedCount + 1, now()->addMinutes(2));
+        } finally {
+            $lock->release();
         }
+
+        return new MediaUploadReservation(
+            companyId: $principal->companyId,
+            date: $date,
+            onRelease: function () use ($reserveKey, $lockKey): void {
+                $releaseLock = Cache::lock($lockKey, 10);
+                if ($releaseLock->block(5)) {
+                    try {
+                        $curr = (int) Cache::get($reserveKey, 0);
+                        if ($curr > 1) {
+                            Cache::put($reserveKey, $curr - 1, now()->addMinutes(2));
+                        } else {
+                            Cache::forget($reserveKey);
+                        }
+                    } finally {
+                        $releaseLock->release();
+                    }
+                }
+            }
+        );
+    }
+
+    /**
+     * Enforce company multimodal enablement and daily company media upload quota.
+     */
+    public function admitMediaUpload(AiPrincipal $principal, string $date): void
+    {
+        $reservation = $this->reserveMediaUpload($principal, $date);
+        $reservation->release();
     }
 
     /**

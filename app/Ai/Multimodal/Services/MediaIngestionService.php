@@ -26,7 +26,8 @@ final class MediaIngestionService
         protected ApprovedModelGateway $gateway,
         protected MediaValidationService $validator,
         protected MediaPreprocessingService $preprocessor,
-    ) {}
+    ) {
+    }
 
     public function ingest(
         AiPrincipal $principal,
@@ -37,11 +38,11 @@ final class MediaIngestionService
         ?string $threadId = null,
         ?string $workflowTaskId = null,
     ): AiMediaAsset {
-        if (! $principal->isActive) {
+        if (!$principal->isActive) {
             throw MultimodalException::permissionDenied();
         }
 
-        if (! $this->featureGate->isMultimodalEnabledForCompany($principal->companyId)) {
+        if (!$this->featureGate->isMultimodalEnabledForCompany($principal->companyId)) {
             throw MultimodalException::featureDisabled();
         }
 
@@ -56,29 +57,29 @@ final class MediaIngestionService
                 ->where('idempotency_key', $cleanKey)
                 ->first();
 
-            if ($existing !== null && ! $existing->isPurged() && ! $existing->isExpired()) {
+            if ($existing !== null && !$existing->isPurged() && !$existing->isExpired()) {
                 return $existing;
             }
         }
 
-        $this->gateway->admitMediaUpload($principal, now('UTC')->toDateString());
-
-        $validated = $this->validator->validateUploadedFile($file, $declaredMime, $originalName);
-        $sourcePath = $file instanceof UploadedFile ? $file->getRealPath() : $file->getRealPath();
-        $preprocessed = $this->preprocessor->preprocess((string) $sourcePath, $validated);
-
-        $mediaId = (string) Str::uuid();
-        $diskName = (string) config('ai_multimodal.storage_disk', 'ai_private');
-        $disk = Storage::disk($diskName);
-        $prefix = sprintf(
-            'company_%d/%s/%s/%s',
-            $principal->companyId,
-            now('UTC')->format('Y'),
-            now('UTC')->format('m'),
-            $mediaId
-        );
+        $reservation = $this->gateway->reserveMediaUpload($principal, now('UTC')->toDateString());
 
         try {
+            $validated = $this->validator->validateUploadedFile($file, $declaredMime, $originalName);
+            $sourcePath = $file instanceof UploadedFile ? $file->getRealPath() : $file->getRealPath();
+            $preprocessed = $this->preprocessor->preprocess((string) $sourcePath, $validated);
+
+            $mediaId = (string) Str::uuid();
+            $diskName = (string) config('ai_multimodal.storage_disk', 'ai_private');
+            $disk = Storage::disk($diskName);
+            $prefix = sprintf(
+                'company_%d/%s/%s/%s',
+                $principal->companyId,
+                now('UTC')->format('Y'),
+                now('UTC')->format('m'),
+                $mediaId
+            );
+
             $canonicalExt = $this->extensionForMime($preprocessed['canonical_mime']);
             $primaryKey = $prefix . '/canonical.' . $canonicalExt;
             $stream = fopen($preprocessed['canonical_path'], 'rb');
@@ -117,7 +118,7 @@ final class MediaIngestionService
 
             $retentionHours = max(1, (int) config('ai_multimodal.retention_hours', 24));
 
-            return AiMediaAsset::query()->create([
+            $asset = AiMediaAsset::query()->create([
                 'id' => $mediaId,
                 'company_id' => $principal->companyId,
                 'branch_id' => $principal->branchId,
@@ -140,15 +141,24 @@ final class MediaIngestionService
                 'state' => 'uploaded',
                 'expires_at' => now('UTC')->addHours($retentionHours),
             ]);
+
+            $reservation->commit();
+
+            return $asset;
         } catch (Throwable $e) {
+            $reservation->release();
             try {
-                $disk->deleteDirectory($prefix);
+                if (isset($disk, $prefix)) {
+                    $disk->deleteDirectory($prefix);
+                }
             } catch (Throwable) {
                 // Best-effort cleanup
             }
             throw $e;
         } finally {
-            $this->preprocessor->cleanupStagingDir($preprocessed['staging_dir']);
+            if (isset($preprocessed['staging_dir'])) {
+                $this->preprocessor->cleanupStagingDir($preprocessed['staging_dir']);
+            }
         }
     }
 
