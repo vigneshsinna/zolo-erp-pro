@@ -54,7 +54,8 @@ final class NormalizedInputBuilder
         $isActionable = false;
 
         if ($intentKey !== null && $intentKey !== 'query_readonly') {
-            if (! $this->capabilityRegistry->has($intentKey)) {
+            $disallowedDirectHandoff = in_array($intentKey, ['purchase_bill.create.v1', 'sales_invoice.create.v1'], true);
+            if ($disallowedDirectHandoff || ! $this->capabilityRegistry->has($intentKey)) {
                 $capabilityReason = $this->unimplementedCapabilityMessage($intentKey);
                 $warnings[] = $capabilityReason;
             } elseif ($conflicts === []) {
