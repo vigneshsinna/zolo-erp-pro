@@ -41,6 +41,7 @@ class UploadAiMediaRequest extends FormRequest
             'thread_id' => ['nullable', 'uuid'],
             'workflow_task_id' => ['nullable', 'uuid'],
             'idempotency_key' => ['nullable', 'string', 'max:120'],
+            'companion_text' => ['nullable', 'string', 'max:2000'],
             'extract_now' => ['nullable', 'boolean'],
             'async' => ['nullable', 'boolean'],
         ];

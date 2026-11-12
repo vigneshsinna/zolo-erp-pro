@@ -34,6 +34,7 @@ final class ExtractMediaJob implements ShouldQueue
         public readonly int $financialYearId,
         public readonly string $mediaId,
         public readonly ?string $idempotencyKey = null,
+        public readonly ?string $companionText = null,
     ) {}
 
     public function handle(
@@ -61,7 +62,12 @@ final class ExtractMediaJob implements ShouldQueue
             financialYearId: $this->financialYearId,
         );
 
-        $extractor->extract($principal, $asset, $this->idempotencyKey);
+        $extractor->extract(
+            principal: $principal,
+            asset: $asset,
+            idempotencyKey: $this->idempotencyKey,
+            companionText: $this->companionText,
+        );
     }
 }
 

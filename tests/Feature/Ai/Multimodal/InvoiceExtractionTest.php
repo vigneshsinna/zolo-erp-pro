@@ -300,6 +300,93 @@ final class InvoiceExtractionTest extends TestCase
         @unlink($page3);
     }
 
+    public function test_incoming_supplier_invoice_normalizes_to_purchase_bill_and_companion_text_is_saved(): void
+    {
+        Http::fake([
+            'https://integrate.api.nvidia.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl-test-norm',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+                'choices' => [['index' => 0, 'message' => ['role' => 'assistant', 'content' => json_encode([
+                    'document_type' => 'sales_invoice', // Model initially guessed sales_invoice
+                    'supplier_name' => 'ABC Traders',
+                    'buyer_name' => $this->company->legal_name, // Matches active company!
+                    'invoice_number' => 'DEMO-INV-1045',
+                    'invoice_date' => '2026-11-12',
+                    'subtotal' => 8000.00,
+                    'tax_amount' => 1440.00,
+                    'total_amount' => 9440.00,
+                    'lines' => [
+                        ['description' => 'Cotton Shirt Blue', 'quantity' => 10, 'unit_price' => 500, 'line_total' => 5000],
+                        ['description' => 'Cotton Shirt White', 'quantity' => 5, 'unit_price' => 600, 'line_total' => 3000],
+                    ],
+                ])], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 120, 'completion_tokens' => 80],
+            ], 200),
+        ]);
+
+        $jpeg = $this->makeTempJpeg();
+
+        $res = $this->actingAs($this->admin)
+            ->withSession(['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpeg, 'supplier_invoice.jpg', 'image/jpeg', null, true),
+                'extract_now' => true,
+                'companion_text' => 'Read this bill and prepare a Purchase Order',
+            ])
+            ->assertStatus(201);
+
+        $extracted = $res->json('extraction.extracted');
+        // Authoritative normalization must classify as purchase_bill because active company is buyer!
+        $this->assertSame('purchase_bill', $extracted['document_type']);
+        $this->assertSame('ABC Traders', $extracted['supplier_name']);
+        $this->assertCount(2, $extracted['lines']);
+        $this->assertTrue($extracted['arithmetic_check']['is_consistent']);
+        $this->assertStringContainsString('normalized to purchase_bill because active company', implode(' | ', $extracted['warnings']));
+
+        @unlink($jpeg);
+    }
+
+    public function test_company_mismatch_warning_emitted_when_buyer_does_not_match_active_company(): void
+    {
+        Http::fake([
+            'https://integrate.api.nvidia.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl-test-mismatch',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+                'choices' => [['index' => 0, 'message' => ['role' => 'assistant', 'content' => json_encode([
+                    'document_type' => 'purchase_bill',
+                    'supplier_name' => 'ABC Traders',
+                    'buyer_name' => 'Lenz Private Limited', // Differs from active company $this->company->legal_name
+                    'invoice_number' => 'DEMO-INV-1045',
+                    'subtotal' => 8000.00,
+                    'tax_amount' => 1440.00,
+                    'total_amount' => 9440.00,
+                    'lines' => [],
+                ])], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 120, 'completion_tokens' => 80],
+            ], 200),
+        ]);
+
+        $jpeg = $this->makeTempJpeg();
+
+        $res = $this->actingAs($this->admin)
+            ->withSession(['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpeg, 'supplier_invoice.jpg', 'image/jpeg', null, true),
+                'extract_now' => true,
+            ])
+            ->assertStatus(201);
+
+        $extracted = $res->json('extraction.extracted');
+        $this->assertTrue($extracted['erp_checks']['company_mismatch']);
+        $this->assertStringContainsString('Company Mismatch: Document is billed to [Lenz Private Limited]', implode(' | ', $extracted['warnings']));
+
+        @unlink($jpeg);
+    }
+
     private function makeTempJpeg(): string
     {
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_inv_' . uniqid() . '.jpg';

@@ -1,3 +1,105 @@
+## Multimodal Document Classification, Model Attribution & Staged Attachment Workflow — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Issues Addressed:**
+  1. **Incorrect Document Classification (`sales_invoice` -> `purchase_bill`):**
+     - External supplier invoices (e.g. from `ABC Traders` billed to buyer `Lenz Private Limited`) were previously classified as `sales_invoice` because perception models default to generic "invoice" without role awareness.
+     - **Fix Delivered:**
+       - Enhanced `InvoiceExtractionV1::systemPrompt(?string $activeCompanyName, ?string $activeCompanyGstin)` to inject the active company context and clear rules: incoming bills where active company is recipient/buyer, or documents titled "Supplier Invoice" / "Vendor Bill", must be classified as `purchase_bill`.
+       - Updated `InvoiceExtractionV1::validateAndNormalize()` to authoritatively normalize `document_type` to `purchase_bill` when `buyer_name` or `buyer_gstin` matches the active company (or document title has "supplier invoice").
+       - Updated `MediaExtractionService::extractVisualDocument()` to resolve active company legal name, trade name, and GSTIN and pass them into the prompt.
+       - Replaced text input with a native dropdown in the UI review card so users can easily select or verify `Purchase Bill (Supplier Invoice)`, `Purchase Order`, `Sales Invoice`, etc.
+  2. **Company Mismatch Detection & Governance:**
+     - When testing under `zoloERP Textiles` (Company 14) while uploading a bill addressed to `Lenz Private Limited` (Company 80), the ERP must warn against posting cross-company transactions.
+     - **Fix Delivered:**
+       - Added proactive company mismatch warning in `InvoiceExtractionV1::runCompanyScopedVerificationWarnings()` and `erp_checks.company_mismatch`: flags *"Company Mismatch: Document is billed to [Buyer Name], but your active company workspace is [Active Company]. Switch company before confirming to avoid recording transactions under the wrong entity."*
+  3. **UI Improvement A: Display Actual Model Attribution on Every Extraction Card:**
+     - Updated `public/js/ai-media-input.js::renderExtractionCard()`:
+       - Displays both the actual recorded perception model (`Perception: NVIDIA Nemotron 3 Nano Omni` from `extraction.model_key`) and the active ERP Copilot reasoning model (`ERP Copilot: Nemotron 3.5 Lightning`).
+       - Formatted clean display names using `formatModelDisplayName()`.
+  4. **UI Improvement B: Staged Attachment Workflow (Decouple Attach from Immediate Extraction):**
+     - In `public/js/ai-media-input.js`, attaching a file or finishing a voice recording no longer executes immediate upload/extraction.
+     - Files/audio blobs are now held in `stagedAttachment` and rendered as a compact preview chip in `#ai-media-attached-bar` (with image thumbnail or mic icon, filename, file size, and remove button).
+     - Focus shifts to the composer, allowing the user to enter their instruction (e.g., *"Read this bill and prepare a Purchase Order"*).
+     - On clicking Send (or pressing Enter), `submitStagedAttachment()` sends the file along with `companion_text`, shows a real-time progress card, renders the extraction card, pre-fills the companion input, and has Copilot append a contextual interpretation message with next steps.
+     - Confirmed extractions can then be staged into draft proposals (`Stage ERP Proposal`) or attached to ongoing chat context.
+  5. **Verification & Regression Testing:**
+     - Added unit tests in `ExtractionSchemaTest.php` for company role prompt injection and `supplier_invoice` normalization.
+     - Added feature tests in `InvoiceExtractionTest.php` verifying incoming supplier invoice normalization and company mismatch warning emission.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions, 0 failures, 0 errors)**.
+
+---
+
+## Multimodal Image Upload Bug Fix: Immediate Extraction & False-Positive Markup Filter — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Error Triggered Before Message Typed:**
+     - In `public/js/ai-media-input.js`, attaching a file immediately invokes `uploadMediaFile()` via `POST /ai/media` (`extract_now = 1`) to extract invoice/document fields for real-time card review before chat submission.
+     - On upload failure (HTTP 422), the client error handler automatically appends `[INVALID_MAGIC_BYTES] ...` directly into the chat stream, making it appear as if Copilot replied to a prompt that was never sent.
+  2. **`INVALID_MAGIC_BYTES` False-Positive Rejection:**
+     - `app/Ai/Multimodal/Services/MediaValidationService.php::rejectDangerousSignatures()` performed an un-scoped `str_contains($lower, $prefix)` for `'<html'` and `'<svg'` across the entire 4,096-byte header of every uploaded file.
+     - While vector SVG files (`.svg`) and HTML documents must be blocked (as NVIDIA Omni reasoning requires raster PNG/JPEG or PDF inputs), legitimate PNG and JPEG files generated by Canva, Figma, Photoshop, Illustrator, or browser screenshots frequently embed XMP RDF XML metadata containing `xmlns:svg`, `xmlns:xhtml`, or HTML tags in text chunks.
+     - This caused valid PNG/JPEG images to be falsely blocked as active markup.
+- **Fix & Hardening Delivered:**
+  - `MediaValidationService.php`:
+    - Refactored `rejectDangerousSignatures()` to separate executable polyglots (`<?php`, `<?=`, `<script` forbidden anywhere in headers) from markup document signatures (`<svg`, `<?xml`, `<!doctype`, `<html`, `%!ps-` blocked when masquerading at file start).
+    - Binary PNG (`\x89PNG\r\n\x1a\n`) and JPEG (`\xff\xd8\xff`) images with harmless XMP metadata or screenshot text now pass cleanly into `MediaIngestionService`, where GD re-encoding strips metadata upon private disk storage.
+    - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
+- **Verification Results:**
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
+## Multimodal Document Classification, Model Attribution & Staged Attachment Workflow — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Issues Addressed:**
+  1. **Incorrect Document Classification (`sales_invoice` -> `purchase_bill`):**
+     - External supplier invoices (e.g. from `ABC Traders` billed to buyer `Lenz Private Limited`) were previously classified as `sales_invoice` because perception models default to generic "invoice" without role awareness.
+     - **Fix Delivered:**
+       - Enhanced `InvoiceExtractionV1::systemPrompt(?string $activeCompanyName, ?string $activeCompanyGstin)` to inject the active company context and clear rules: incoming bills where active company is recipient/buyer, or documents titled "Supplier Invoice" / "Vendor Bill", must be classified as `purchase_bill`.
+       - Updated `InvoiceExtractionV1::validateAndNormalize()` to authoritatively normalize `document_type` to `purchase_bill` when `buyer_name` or `buyer_gstin` matches the active company (or document title has "supplier invoice").
+       - Updated `MediaExtractionService::extractVisualDocument()` to resolve active company legal name, trade name, and GSTIN and pass them into the prompt.
+       - Replaced text input with a native dropdown in the UI review card so users can easily select or verify `Purchase Bill (Supplier Invoice)`, `Purchase Order`, `Sales Invoice`, etc.
+  2. **Company Mismatch Detection & Governance:**
+     - When testing under `zoloERP Textiles` (Company 14) while uploading a bill addressed to `Lenz Private Limited` (Company 80), the ERP must warn against posting cross-company transactions.
+     - **Fix Delivered:**
+       - Added proactive company mismatch warning in `InvoiceExtractionV1::runCompanyScopedVerificationWarnings()` and `erp_checks.company_mismatch`: flags *"Company Mismatch: Document is billed to [Buyer Name], but your active company workspace is [Active Company]. Switch company before confirming to avoid recording transactions under the wrong entity."*
+  3. **UI Improvement A: Display Actual Model Attribution on Every Extraction Card:**
+     - Updated `public/js/ai-media-input.js::renderExtractionCard()`:
+       - Displays both the actual recorded perception model (`Perception: NVIDIA Nemotron 3 Nano Omni` from `extraction.model_key`) and the active ERP Copilot reasoning model (`ERP Copilot: Nemotron 3.5 Lightning`).
+       - Formatted clean display names using `formatModelDisplayName()`.
+  4. **UI Improvement B: Staged Attachment Workflow (Decouple Attach from Immediate Extraction):**
+     - In `public/js/ai-media-input.js`, attaching a file or finishing a voice recording no longer executes immediate upload/extraction.
+     - Files/audio blobs are now held in `stagedAttachment` and rendered as a compact preview chip in `#ai-media-attached-bar` (with image thumbnail or mic icon, filename, file size, and remove button).
+     - Focus shifts to the composer, allowing the user to enter their instruction (e.g., *"Read this bill and prepare a Purchase Order"*).
+     - On clicking Send (or pressing Enter), `submitStagedAttachment()` sends the file along with `companion_text`, shows a real-time progress card, renders the extraction card, pre-fills the companion input, and has Copilot append a contextual interpretation message with next steps.
+     - Confirmed extractions can then be staged into draft proposals (`Stage ERP Proposal`) or attached to ongoing chat context.
+  5. **Verification & Regression Testing:**
+     - Added unit tests in `ExtractionSchemaTest.php` for company role prompt injection and `supplier_invoice` normalization.
+     - Added feature tests in `InvoiceExtractionTest.php` verifying incoming supplier invoice normalization and company mismatch warning emission.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions, 0 failures, 0 errors)**.
+
+---
+
+## Multimodal Image Upload Bug Fix: Immediate Extraction & False-Positive Markup Filter — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Error Triggered Before Message Typed:**
+     - In `public/js/ai-media-input.js`, attaching a file immediately invokes `uploadMediaFile()` via `POST /ai/media` (`extract_now = 1`) to extract invoice/document fields for real-time card review before chat submission.
+     - On upload failure (HTTP 422), the client error handler automatically appends `[INVALID_MAGIC_BYTES] ...` directly into the chat stream, making it appear as if Copilot replied to a prompt that was never sent.
+  2. **`INVALID_MAGIC_BYTES` False-Positive Rejection:**
+     - `app/Ai/Multimodal/Services/MediaValidationService.php::rejectDangerousSignatures()` performed an un-scoped `str_contains($lower, $prefix)` for `'<html'` and `'<svg'` across the entire 4,096-byte header of every uploaded file.
+     - While vector SVG files (`.svg`) and HTML documents must be blocked (as NVIDIA Omni reasoning requires raster PNG/JPEG or PDF inputs), legitimate PNG and JPEG files generated by Canva, Figma, Photoshop, Illustrator, or browser screenshots frequently embed XMP RDF XML metadata containing `xmlns:svg`, `xmlns:xhtml`, or HTML tags in text chunks.
+     - This caused valid PNG/JPEG images to be falsely blocked as active markup.
+- **Fix & Hardening Delivered:**
+  - `MediaValidationService.php`:
+    - Refactored `rejectDangerousSignatures()` to separate executable polyglots (`<?php`, `<?=`, `<script` forbidden anywhere in headers) from markup document signatures (`<svg`, `<?xml`, `<!doctype`, `<html`, `%!ps-` blocked when masquerading at file start).
+    - Binary PNG (`\x89PNG\r\n\x1a\n`) and JPEG (`\xff\xd8\xff`) images with harmless XMP metadata or screenshot text now pass cleanly into `MediaIngestionService`, where GD re-encoding strips metadata upon private disk storage.
+    - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
+- **Verification Results:**
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
 ## Architectural Improvement: Governed AI Provisioning for Newly Created Companies — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Deliverables Completed:**
@@ -120,6 +222,108 @@
   - Complete AI suite `php vendor/bin/phpunit -c phpunit.ai.xml` with `ERP_TEST_MYSQL=1`: **218/218 tests passed (1,375 assertions, 0 errors, 0 failures)**.
   - `composer validate --strict` passed cleanly.
   - Cache rebuild: `php artisan optimize:clear; php artisan view:cache` executed with zero warnings.
+
+---
+
+## Multimodal Document Classification, Model Attribution & Staged Attachment Workflow — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Issues Addressed:**
+  1. **Incorrect Document Classification (`sales_invoice` -> `purchase_bill`):**
+     - External supplier invoices (e.g. from `ABC Traders` billed to buyer `Lenz Private Limited`) were previously classified as `sales_invoice` because perception models default to generic "invoice" without role awareness.
+     - **Fix Delivered:**
+       - Enhanced `InvoiceExtractionV1::systemPrompt(?string $activeCompanyName, ?string $activeCompanyGstin)` to inject the active company context and clear rules: incoming bills where active company is recipient/buyer, or documents titled "Supplier Invoice" / "Vendor Bill", must be classified as `purchase_bill`.
+       - Updated `InvoiceExtractionV1::validateAndNormalize()` to authoritatively normalize `document_type` to `purchase_bill` when `buyer_name` or `buyer_gstin` matches the active company (or document title has "supplier invoice").
+       - Updated `MediaExtractionService::extractVisualDocument()` to resolve active company legal name, trade name, and GSTIN and pass them into the prompt.
+       - Replaced text input with a native dropdown in the UI review card so users can easily select or verify `Purchase Bill (Supplier Invoice)`, `Purchase Order`, `Sales Invoice`, etc.
+  2. **Company Mismatch Detection & Governance:**
+     - When testing under `zoloERP Textiles` (Company 14) while uploading a bill addressed to `Lenz Private Limited` (Company 80), the ERP must warn against posting cross-company transactions.
+     - **Fix Delivered:**
+       - Added proactive company mismatch warning in `InvoiceExtractionV1::runCompanyScopedVerificationWarnings()` and `erp_checks.company_mismatch`: flags *"Company Mismatch: Document is billed to [Buyer Name], but your active company workspace is [Active Company]. Switch company before confirming to avoid recording transactions under the wrong entity."*
+  3. **UI Improvement A: Display Actual Model Attribution on Every Extraction Card:**
+     - Updated `public/js/ai-media-input.js::renderExtractionCard()`:
+       - Displays both the actual recorded perception model (`Perception: NVIDIA Nemotron 3 Nano Omni` from `extraction.model_key`) and the active ERP Copilot reasoning model (`ERP Copilot: Nemotron 3.5 Lightning`).
+       - Formatted clean display names using `formatModelDisplayName()`.
+  4. **UI Improvement B: Staged Attachment Workflow (Decouple Attach from Immediate Extraction):**
+     - In `public/js/ai-media-input.js`, attaching a file or finishing a voice recording no longer executes immediate upload/extraction.
+     - Files/audio blobs are now held in `stagedAttachment` and rendered as a compact preview chip in `#ai-media-attached-bar` (with image thumbnail or mic icon, filename, file size, and remove button).
+     - Focus shifts to the composer, allowing the user to enter their instruction (e.g., *"Read this bill and prepare a Purchase Order"*).
+     - On clicking Send (or pressing Enter), `submitStagedAttachment()` sends the file along with `companion_text`, shows a real-time progress card, renders the extraction card, pre-fills the companion input, and has Copilot append a contextual interpretation message with next steps.
+     - Confirmed extractions can then be staged into draft proposals (`Stage ERP Proposal`) or attached to ongoing chat context.
+  5. **Verification & Regression Testing:**
+     - Added unit tests in `ExtractionSchemaTest.php` for company role prompt injection and `supplier_invoice` normalization.
+     - Added feature tests in `InvoiceExtractionTest.php` verifying incoming supplier invoice normalization and company mismatch warning emission.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions, 0 failures, 0 errors)**.
+
+---
+
+## Multimodal Image Upload Bug Fix: Immediate Extraction & False-Positive Markup Filter — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Error Triggered Before Message Typed:**
+     - In `public/js/ai-media-input.js`, attaching a file immediately invokes `uploadMediaFile()` via `POST /ai/media` (`extract_now = 1`) to extract invoice/document fields for real-time card review before chat submission.
+     - On upload failure (HTTP 422), the client error handler automatically appends `[INVALID_MAGIC_BYTES] ...` directly into the chat stream, making it appear as if Copilot replied to a prompt that was never sent.
+  2. **`INVALID_MAGIC_BYTES` False-Positive Rejection:**
+     - `app/Ai/Multimodal/Services/MediaValidationService.php::rejectDangerousSignatures()` performed an un-scoped `str_contains($lower, $prefix)` for `'<html'` and `'<svg'` across the entire 4,096-byte header of every uploaded file.
+     - While vector SVG files (`.svg`) and HTML documents must be blocked (as NVIDIA Omni reasoning requires raster PNG/JPEG or PDF inputs), legitimate PNG and JPEG files generated by Canva, Figma, Photoshop, Illustrator, or browser screenshots frequently embed XMP RDF XML metadata containing `xmlns:svg`, `xmlns:xhtml`, or HTML tags in text chunks.
+     - This caused valid PNG/JPEG images to be falsely blocked as active markup.
+- **Fix & Hardening Delivered:**
+  - `MediaValidationService.php`:
+    - Refactored `rejectDangerousSignatures()` to separate executable polyglots (`<?php`, `<?=`, `<script` forbidden anywhere in headers) from markup document signatures (`<svg`, `<?xml`, `<!doctype`, `<html`, `%!ps-` blocked when masquerading at file start).
+    - Binary PNG (`\x89PNG\r\n\x1a\n`) and JPEG (`\xff\xd8\xff`) images with harmless XMP metadata or screenshot text now pass cleanly into `MediaIngestionService`, where GD re-encoding strips metadata upon private disk storage.
+    - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
+- **Verification Results:**
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
+## Multimodal Document Classification, Model Attribution & Staged Attachment Workflow — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Issues Addressed:**
+  1. **Incorrect Document Classification (`sales_invoice` -> `purchase_bill`):**
+     - External supplier invoices (e.g. from `ABC Traders` billed to buyer `Lenz Private Limited`) were previously classified as `sales_invoice` because perception models default to generic "invoice" without role awareness.
+     - **Fix Delivered:**
+       - Enhanced `InvoiceExtractionV1::systemPrompt(?string $activeCompanyName, ?string $activeCompanyGstin)` to inject the active company context and clear rules: incoming bills where active company is recipient/buyer, or documents titled "Supplier Invoice" / "Vendor Bill", must be classified as `purchase_bill`.
+       - Updated `InvoiceExtractionV1::validateAndNormalize()` to authoritatively normalize `document_type` to `purchase_bill` when `buyer_name` or `buyer_gstin` matches the active company (or document title has "supplier invoice").
+       - Updated `MediaExtractionService::extractVisualDocument()` to resolve active company legal name, trade name, and GSTIN and pass them into the prompt.
+       - Replaced text input with a native dropdown in the UI review card so users can easily select or verify `Purchase Bill (Supplier Invoice)`, `Purchase Order`, `Sales Invoice`, etc.
+  2. **Company Mismatch Detection & Governance:**
+     - When testing under `zoloERP Textiles` (Company 14) while uploading a bill addressed to `Lenz Private Limited` (Company 80), the ERP must warn against posting cross-company transactions.
+     - **Fix Delivered:**
+       - Added proactive company mismatch warning in `InvoiceExtractionV1::runCompanyScopedVerificationWarnings()` and `erp_checks.company_mismatch`: flags *"Company Mismatch: Document is billed to [Buyer Name], but your active company workspace is [Active Company]. Switch company before confirming to avoid recording transactions under the wrong entity."*
+  3. **UI Improvement A: Display Actual Model Attribution on Every Extraction Card:**
+     - Updated `public/js/ai-media-input.js::renderExtractionCard()`:
+       - Displays both the actual recorded perception model (`Perception: NVIDIA Nemotron 3 Nano Omni` from `extraction.model_key`) and the active ERP Copilot reasoning model (`ERP Copilot: Nemotron 3.5 Lightning`).
+       - Formatted clean display names using `formatModelDisplayName()`.
+  4. **UI Improvement B: Staged Attachment Workflow (Decouple Attach from Immediate Extraction):**
+     - In `public/js/ai-media-input.js`, attaching a file or finishing a voice recording no longer executes immediate upload/extraction.
+     - Files/audio blobs are now held in `stagedAttachment` and rendered as a compact preview chip in `#ai-media-attached-bar` (with image thumbnail or mic icon, filename, file size, and remove button).
+     - Focus shifts to the composer, allowing the user to enter their instruction (e.g., *"Read this bill and prepare a Purchase Order"*).
+     - On clicking Send (or pressing Enter), `submitStagedAttachment()` sends the file along with `companion_text`, shows a real-time progress card, renders the extraction card, pre-fills the companion input, and has Copilot append a contextual interpretation message with next steps.
+     - Confirmed extractions can then be staged into draft proposals (`Stage ERP Proposal`) or attached to ongoing chat context.
+  5. **Verification & Regression Testing:**
+     - Added unit tests in `ExtractionSchemaTest.php` for company role prompt injection and `supplier_invoice` normalization.
+     - Added feature tests in `InvoiceExtractionTest.php` verifying incoming supplier invoice normalization and company mismatch warning emission.
+     - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions, 0 failures, 0 errors)**.
+
+---
+
+## Multimodal Image Upload Bug Fix: Immediate Extraction & False-Positive Markup Filter — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Error Triggered Before Message Typed:**
+     - In `public/js/ai-media-input.js`, attaching a file immediately invokes `uploadMediaFile()` via `POST /ai/media` (`extract_now = 1`) to extract invoice/document fields for real-time card review before chat submission.
+     - On upload failure (HTTP 422), the client error handler automatically appends `[INVALID_MAGIC_BYTES] ...` directly into the chat stream, making it appear as if Copilot replied to a prompt that was never sent.
+  2. **`INVALID_MAGIC_BYTES` False-Positive Rejection:**
+     - `app/Ai/Multimodal/Services/MediaValidationService.php::rejectDangerousSignatures()` performed an un-scoped `str_contains($lower, $prefix)` for `'<html'` and `'<svg'` across the entire 4,096-byte header of every uploaded file.
+     - While vector SVG files (`.svg`) and HTML documents must be blocked (as NVIDIA Omni reasoning requires raster PNG/JPEG or PDF inputs), legitimate PNG and JPEG files generated by Canva, Figma, Photoshop, Illustrator, or browser screenshots frequently embed XMP RDF XML metadata containing `xmlns:svg`, `xmlns:xhtml`, or HTML tags in text chunks.
+     - This caused valid PNG/JPEG images to be falsely blocked as active markup.
+- **Fix & Hardening Delivered:**
+  - `MediaValidationService.php`:
+    - Refactored `rejectDangerousSignatures()` to separate executable polyglots (`<?php`, `<?=`, `<script` forbidden anywhere in headers) from markup document signatures (`<svg`, `<?xml`, `<!doctype`, `<html`, `%!ps-` blocked when masquerading at file start).
+    - Binary PNG (`\x89PNG\r\n\x1a\n`) and JPEG (`\xff\xd8\xff`) images with harmless XMP metadata or screenshot text now pass cleanly into `MediaIngestionService`, where GD re-encoding strips metadata upon private disk storage.
+    - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
+- **Verification Results:**
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
 
 ---
 
@@ -4460,44 +4664,5 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 
 - **Theme Color Harmonization across all Buttons & UI Elements:**
   - Standardized all interactive buttons, tabs, toggles, and drawers to strictly follow the zoloERP brand theme variables (`var(--z-primary, #7d287e)`, `var(--z-primary-hover, #631f64)`, `var(--z-primary-soft, #fdf4ff)`, `var(--z-primary-border, #f0abfc)`):
-    - **Top Hub Navigation Tabs (`tab-sales`, `tab-purchases`, `tab-expenses`):** Replaced divergent arbitrary colors with unified theme styling — active tabs use high-contrast gradient (`linear-gradient(135deg, var(--z-primary) 0%, var(--z-primary-hover) 100%)`) with white text and icons; inactive tabs use soft theme background (`#fdf4ff`) with theme border (`#f0abfc`) and theme text (`#7d287e`).
-    - **Outstanding Dues Report Action Link (`.btn-report-link`):** Replaced hardcoded indigo with theme styling.
-    - **View Mode Toggle Buttons (`due-btn-billwise` and `due-btn-partywise`):** Harmonized both toggle buttons to theme colors — active state uses theme gradient and white text; inactive uses soft theme background with theme border.
-    - **Drawer & Table Actions:** Settle buttons, Clear All button, submit button, and preset pills (`Full`, `50%`) all share unified theme branding.
-    - Dark mode variants updated uniformly (`#2e1065`, `#e9d5ff`, `#7e22ce`).
-- **Payment & Receipt Module Unification with Due Management:**
-  - Evaluated the legacy Selling `selling.payments` and Buying `buying.payments` workflows: verified they perform the exact same operational clearing of outstanding bills into cash/bank accounts with discounts/TDS, which is already natively handled with superior FIFO batching and party aggregation by Due Management.
-  - **Sidebar Menu Redirection:**
-    - Selling Menu: `Payments & Receipts` (`#sale-payment-menu`) updated to link to `route('dues.index', ['tab' => 'sales'])`.
-    - Buying Menu: `Payments & Vouchers` (`#purchase-payment-menu`) updated to link to `route('dues.index', ['tab' => 'purchases'])`.
-    - Transactions Menu: Renamed `#dues-management-menu` to **"Payments & Due Management"**.
-    - Legacy route endpoints (`selling.payments`, `buying.payments`, `bill-payments.show`) preserved to prevent any breakage of existing accounting tests or API consumers.
-- **Historical Payments & Receipts Register (Bottom Full-Width Card):**
-  - Added historical settlement audit trail at the bottom of the Due Management Command Center:
-    - `DueManagementController::index` queries recent settlement payments (`Payment::visibleIn($context)`) for the active tab (Sales customer receipts, Purchase supplier payment vouchers, or Operational expenses).
-    - Rendered in `.due-history-card` with table `#due-historical-payments-table`: Date & Time, Payment/Voucher Reference (`payment_reference`), Linked Bill/Invoice (`reference_no`), Party details with phone, Payment Method & Account (`paying_method` Â· `account->name`), Reference/Note, Amount Settled (`â‚¹`), and 1-click `View / Print Voucher` button linking to `route('bill-payments.show', $hp->id)`.
-- **Verification & Test Coverage:**
-  - `tests/Feature/CentralizedDueManagementTest.php` passing 10/10 tests (52 assertions).
-  - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
-  - `tests/Feature/BillStockPaymentWorkflowTest.php` passing 9/9 tests (114 assertions).
-
-## Active Session & Follow-up — 2026-11-06: Due Management UI Polish — View Mode Persistence, Party Pastel Backgrounds, FIFO Partial Clearance & Real-time Bill Breakdown (branch ui)
-
-- **View Mode Persistence (Bill-wise vs Party Grouped):**
-  - Whichever view mode button is clicked last becomes the default on subsequent visits.
-  - Implemented dual-layer persistence:
-    - Server-side in `DueManagementController::index`: `session(['dues_view_mode' => $viewMode])`.
-    - Client-side in `resources/views/backend/dues/index.blade.php`: `localStorage.setItem('zolo_dues_view_mode', mode)` on toggle click; auto-redirects when visiting without `?view=` parameter.
-- **Color Coded Toggle Buttons with Clean Spacing:**
-  - Separated previously tight buttons into `.due-toggle-wrap` with a clean 8px gap:
-    - **Bill-wise:** Theme Sky/Blue (`.due-btn-billwise`), active linear-gradient `#0284c7` to `#0369a1` with white text; inactive soft `#f0f9ff` with `#bae6fd` border.
-    - **Party Grouped:** Theme Purple/Violet (`.due-btn-partywise`), active linear-gradient `#7e22ce` to `#6b21a8` with white text; inactive soft `#fdf4ff` with `#f0abfc` border.
-- **Search Icon Overlap Fix:**
-  - Resolved salePro `.form-control` padding collision by structuring the search bar as a `.due-search-box` flex container:
-    - `.due-search-icon-prefix` as a non-collapsing inline-flex sibling (`flex-shrink: 0; margin-right: 8px;`).
-    - `.due-search-input-field` borderless input that never overlaps the magnifying glass icon regardless of viewport width or zoom.
-- **Color Coded Background for Same Party in Bill-Wise Table:**
-  - Bills belonging to the same party share a coordinated pastel background tint and 3.5px solid left border indicator:
-    - `party-tint-0`: Lavender (`#faf5ff`, border `#c084fc`)
-    - `party-tint-1`:
+    - **Top Hub Navigation Tabs (`tab-sales`, `tab-purchases`, `tab-expenses`):** Replaced divergent arbitrary colors with unified theme styling — active tabs use high-contrast gradient (`linear-gradient(135deg, var(--z-primary) 0%, var(--z-primary-h
 ... [truncated for diff preview]

@@ -233,6 +233,38 @@ final class ExtractionSchemaTest extends TestCase
         }
     }
 
+    public function test_invoice_schema_system_prompt_includes_active_company_context_and_classification_rules(): void
+    {
+        $promptWithContext = InvoiceExtractionV1::systemPrompt('Lenz Private Limited', '33ABCDE1234F1Z5');
+        $this->assertStringContainsString('The active ERP company receiving or recording this document is: "Lenz Private Limited"', $promptWithContext);
+        $this->assertStringContainsString('33ABCDE1234F1Z5', $promptWithContext);
+        $this->assertStringContainsString('classify it as "purchase_bill"', $promptWithContext);
+        $this->assertStringContainsString('classify it as "sales_invoice"', $promptWithContext);
+
+        $promptWithoutContext = InvoiceExtractionV1::systemPrompt();
+        $this->assertStringNotContainsString('ACTIVE ERP COMPANY CONTEXT', $promptWithoutContext);
+        $this->assertStringContainsString('Incoming commercial invoice or bill from an external supplier/vendor', $promptWithoutContext);
+    }
+
+    public function test_invoice_schema_normalizes_supplier_invoice_type_to_purchase_bill(): void
+    {
+        $schema = new InvoiceExtractionV1();
+        $normalized = $schema->validateAndNormalize(companyId: 1, raw: [
+            'document_type' => 'supplier_invoice',
+            'supplier_name' => 'ABC Traders',
+            'buyer_name' => 'Lenz Private Limited',
+            'invoice_number' => 'DEMO-INV-1045',
+            'subtotal' => '8000.00',
+            'tax_amount' => '1440.00',
+            'total_amount' => '9440.00',
+        ]);
+
+        $this->assertSame('purchase_bill', $normalized['document_type']);
+        $this->assertSame('ABC Traders', $normalized['supplier_name']);
+        $this->assertSame('Lenz Private Limited', $normalized['buyer_name']);
+        $this->assertTrue($normalized['arithmetic_check']['is_consistent']);
+    }
+
     private function buildWavHeader(int $dataSize, int $sampleRate): string
     {
         return 'RIFF'

@@ -1,6 +1,7 @@
 /**
  * zoloERP Phase 2.3 — Multimodal AI Input, Voice Recorder & Extraction Review Card
  * Strictly uses session-authenticated private endpoints and never stores media in localStorage.
+ * Supports staged attachments (separate attachment from extraction) and displays recorded perception model.
  */
 (function ($) {
     'use strict';
@@ -19,7 +20,10 @@
     let recordTimerInterval = null;
     let recordSeconds = 0;
 
-    // Media IDs attached to the next chat turn once confirmed
+    // Staged attachment waiting for user prompt & send click
+    let stagedAttachment = null;
+
+    // Media IDs attached to chat turns once confirmed
     const attachedMedia = new Map();
 
     function getWs() {
@@ -28,6 +32,39 @@
 
     function escapeText(value) {
         return $('<div>').text(value == null ? '' : String(value)).html();
+    }
+
+    function formatFileSize(bytes) {
+        if (!bytes || bytes <= 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatModelDisplayName(modelKey, provider) {
+        if (!modelKey) {
+            return provider ? (String(provider).toUpperCase() + ' Perception') : 'NVIDIA Nemotron 3 Nano Omni';
+        }
+        const cleanKey = String(modelKey).toLowerCase();
+        if (cleanKey.includes('nemotron-3-nano-omni') || cleanKey.includes('nano-omni')) {
+            return 'NVIDIA Nemotron 3 Nano Omni';
+        }
+        if (cleanKey.includes('nemotron-3.5-lightning') || cleanKey.includes('lightning')) {
+            return 'Nemotron 3.5 Lightning';
+        }
+        if (cleanKey.includes('gemini-2.0-flash')) {
+            return 'Google Gemini 2.0 Flash';
+        }
+        if (cleanKey.includes('gemini-1.5-pro')) {
+            return 'Google Gemini 1.5 Pro';
+        }
+        if (cleanKey.includes('whisper')) {
+            return 'OpenAI Whisper';
+        }
+        const parts = modelKey.split('/');
+        const base = parts[parts.length - 1];
+        return base.replace(/[-_]/g, ' ').replace(/\b\w/g, function (l) { return l.toUpperCase(); });
     }
 
     function baseHeaders(isJson) {
@@ -110,12 +147,43 @@
     function renderAttachedChips() {
         const bar = $('#ai-media-attached-bar');
         bar.empty();
-        if (attachedMedia.size === 0) {
+
+        if (!stagedAttachment && attachedMedia.size === 0) {
             bar.addClass('d-none');
             return;
         }
         bar.removeClass('d-none');
 
+        // 1) Render staged attachment (selected, ready to send with instruction)
+        if (stagedAttachment) {
+            const chip = $('<div class="d-inline-flex align-items-center bg-white border border-primary rounded p-1 px-2 mr-2 mb-1 shadow-sm ai-staged-chip"></div>');
+
+            if (stagedAttachment.previewUrl && !stagedAttachment.isAudio) {
+                const thumb = $('<img class="rounded mr-2" style="width:28px; height:28px; object-fit:cover;" alt="preview">')
+                    .attr('src', stagedAttachment.previewUrl);
+                chip.append(thumb);
+            } else {
+                const icon = $('<i class="mr-2 text-primary font-weight-bold"></i>')
+                    .addClass(stagedAttachment.isAudio ? 'dripicons-microphone' : 'dripicons-document');
+                chip.append(icon);
+            }
+
+            const info = $('<div class="d-flex flex-column mr-2" style="line-height:1.2;"></div>');
+            info.append($('<span class="font-weight-bold small text-dark"></span>').text(stagedAttachment.fileName));
+            info.append($('<span class="text-muted" style="font-size:11px;"></span>').text(
+                (stagedAttachment.isAudio ? 'Voice instruction · ' : 'Attachment · ') + formatFileSize(stagedAttachment.fileSize) + ' (ready to send)'
+            ));
+            chip.append(info);
+
+            const removeBtn = $('<button type="button" class="btn btn-sm btn-link text-danger p-0 ml-1" title="Remove attachment" aria-label="Remove attachment">&times;</button>');
+            removeBtn.on('click', function () {
+                clearStagedAttachment();
+            });
+            chip.append(removeBtn);
+            bar.append(chip);
+        }
+
+        // 2) Render confirmed attached media (context for subsequent chat turns)
         attachedMedia.forEach(function (entry, id) {
             const chip = $('<span class="badge badge-pill ai-media-chip mr-2 mb-1 d-inline-flex align-items-center py-1 px-2"></span>');
             chip.append($('<i class="mr-1"></i>').addClass(entry.sourceKind === 'audio' ? 'dripicons-microphone' : 'dripicons-document'));
@@ -131,6 +199,41 @@
         });
     }
 
+    function stageFile(file, fileName) {
+        if (!file) return;
+        clearStagedAttachment();
+        const isAudio = (file.type && file.type.startsWith('audio/')) || /\.(wav|webm|mp3|ogg|flac|m4a)$/i.test(fileName || file.name || '');
+        const isImage = (file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|webp)$/i.test(fileName || file.name || '');
+        let previewUrl = null;
+        if (isImage || isAudio) {
+            try {
+                previewUrl = URL.createObjectURL(file);
+            } catch (_) {}
+        }
+        stagedAttachment = {
+            file: file,
+            fileName: fileName || file.name || 'document',
+            fileSize: file.size || 0,
+            mimeType: file.type || (isAudio ? 'audio/wav' : 'application/octet-stream'),
+            isAudio: isAudio,
+            previewUrl: previewUrl,
+        };
+        renderAttachedChips();
+        $('#chat-input').focus();
+    }
+
+    function clearStagedAttachment() {
+        if (stagedAttachment) {
+            if (stagedAttachment.previewUrl) {
+                try {
+                    URL.revokeObjectURL(stagedAttachment.previewUrl);
+                } catch (_) {}
+            }
+            stagedAttachment = null;
+        }
+        renderAttachedChips();
+    }
+
     function attachMediaForChat(media, extraction) {
         const label = media.file_name || (media.source_kind === 'audio' ? 'Voice Note' : 'Document');
         attachedMedia.set(media.id, {
@@ -142,24 +245,41 @@
         renderAttachedChips();
     }
 
-    function uploadMediaFile(fileOrBlob, fileName, idempotencyKey) {
-        const fd = new FormData();
-        fd.append('file', fileOrBlob, fileName || fileOrBlob.name || 'upload.bin');
-        fd.append('extract_now', '1');
-        if (idempotencyKey) {
-            fd.append('idempotency_key', idempotencyKey);
+    function submitStagedAttachment(companionText, threadId, callback) {
+        if (!stagedAttachment) {
+            if (callback) callback(new Error('No staged attachment.'));
+            return;
         }
+        const targetStaged = stagedAttachment;
+        stagedAttachment = null;
+        renderAttachedChips();
+
         const ws = getWs();
-        if (ws && ws.getCurrentThreadId && ws.getCurrentThreadId()) {
-            fd.append('thread_id', ws.getCurrentThreadId());
+        const promptText = companionText || (targetStaged.isAudio ? 'Analyze this voice instruction' : 'Extract and analyze ' + targetStaged.fileName);
+
+        if (ws && ws.appendMessage) {
+            const badgeHtml = '<div class="mt-1 small text-muted"><i class="' + (targetStaged.isAudio ? 'dripicons-microphone' : 'dripicons-document') + ' mr-1"></i>Attached: <strong>' + escapeText(targetStaged.fileName) + '</strong> (' + formatFileSize(targetStaged.fileSize) + ')</div>';
+            ws.appendMessage('user', promptText + '\n' + badgeHtml);
         }
 
         const placeholderId = 'ai-media-loading-' + Date.now();
+        const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
         const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
-            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Validating, sanitizing, and extracting fields with NVIDIA Omni...</div>');
+            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Validating, sanitizing, and extracting fields with ' + escapeText(perceptionName) + '...</div>');
         $('.ai-welcome-box').remove();
         $('#chat-messages').append(loadingCard);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+
+        const fd = new FormData();
+        fd.append('file', targetStaged.file, targetStaged.fileName);
+        fd.append('extract_now', '1');
+        if (companionText) {
+            fd.append('companion_text', companionText);
+        }
+        const effectiveThreadId = threadId || (ws && ws.getCurrentThreadId && ws.getCurrentThreadId());
+        if (effectiveThreadId) {
+            fd.append('thread_id', effectiveThreadId);
+        }
 
         $.ajax({
             url: mediaUrl('/'),
@@ -170,26 +290,51 @@
             contentType: false,
             success: function (res) {
                 $('#' + placeholderId).remove();
+                if (targetStaged.previewUrl) {
+                    try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
+                }
                 if (res && res.media && res.extraction) {
-                    renderExtractionCard(res.media, res.extraction);
+                    renderExtractionCard(res.media, res.extraction, companionText);
+
+                    // Contextual assistant message summarizing the perception extraction
+                    const ext = res.extraction.extracted || {};
+                    const partyName = ext.supplier_name || ext.buyer_name || 'party';
+                    const totalAmt = ext.total_amount ? ('₹' + ext.total_amount) : '';
+                    const docLabel = (ext.document_type || 'document').replace('_', ' ');
+                    const modelBadge = formatModelDisplayName(res.extraction.model_key, res.extraction.model_provider);
+
+                    let summaryMsg = 'I have extracted the ' + docLabel + ' from **' + escapeText(partyName) + '**';
+                    if (totalAmt) {
+                        summaryMsg += ' totaling **' + escapeText(totalAmt) + '**';
+                    }
+                    summaryMsg += ' using **' + escapeText(modelBadge) + '**.\n\nPlease review the extracted fields and line items above. Click **Confirm Extraction** to verify the data, then proceed to **Stage ERP Proposal**.';
+
+                    if (ws && ws.appendMessage) {
+                        ws.appendMessage('assistant', summaryMsg);
+                    }
                 }
                 if (ws && ws.loadTelemetry) {
                     ws.loadTelemetry();
                 }
+                if (callback) callback(null, res);
             },
             error: function (xhr) {
                 $('#' + placeholderId).remove();
+                if (targetStaged.previewUrl) {
+                    try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
+                }
                 const err = xhr.responseJSON || {};
                 const code = err.error_code || ('HTTP_' + xhr.status);
                 const msg = err.error_message || err.message || 'Media upload or extraction failed.';
                 if (ws && ws.appendMessage) {
                     ws.appendMessage('assistant', '[' + code + '] ' + msg);
                 }
+                if (callback) callback(err);
             }
         });
     }
 
-    function renderExtractionCard(media, extraction) {
+    function renderExtractionCard(media, extraction, companionText) {
         const ws = getWs();
         const container = $('<div class="d-flex mb-3 justify-content-start"></div>');
         const bubble = $('<div class="chat-bubble chat-assistant shadow-sm w-100 ai-media-review-bubble"></div>');
@@ -200,11 +345,19 @@
         let currentRevision = Number(extraction.revision || 1);
         let confirmationStatus = extraction.confirmation_status || 'needs_review';
 
-        const header = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center flex-wrap"></div>');
+        const perceptionModelKey = extraction.model_key || media.model_key || cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
+        const perceptionProvider = extraction.model_provider || 'nvidia';
+        const perceptionDisplayName = formatModelDisplayName(perceptionModelKey, perceptionProvider);
+
+        const copilotModelKey = cfg.copilotModel || 'Nemotron 3.5 Lightning';
+        const copilotDisplayName = formatModelDisplayName(copilotModelKey, 'nvidia');
+
+        const header = $('<div class="card-header bg-light py-2 px-3"></div>');
+        const topRow = $('<div class="d-flex justify-content-between align-items-center flex-wrap"></div>');
         const titleSpan = $('<span class="font-weight-bold text-dark small"></span>')
             .append($('<i></i>').addClass(isAudio ? 'dripicons-microphone text-primary mr-1' : 'dripicons-document text-primary mr-1'))
             .append(document.createTextNode((isAudio ? 'Voice Transcript Review · ' : 'Document Extraction Review · ') + (media.file_name || 'Media')));
-        header.append(titleSpan);
+        topRow.append(titleSpan);
 
         const badgeWrap = $('<div class="d-flex align-items-center"></div>');
         const revBadge = $('<span class="badge badge-secondary mr-2 ai-rev-badge"></span>').text('Rev ' + currentRevision);
@@ -212,13 +365,30 @@
             .addClass(confirmationStatus === 'confirmed' ? 'badge-success' : 'badge-warning')
             .text(confirmationStatus === 'confirmed' ? 'User Confirmed (Draft Data)' : 'Needs Review · Unverified AI Claim');
         badgeWrap.append(revBadge).append(statusBadge);
-        header.append(badgeWrap);
+        topRow.append(badgeWrap);
+        header.append(topRow);
+
+        // Actual models attribution (UI Requirement A)
+        const modelRow = $('<div class="ai-model-attribution small text-muted mt-1 d-flex flex-wrap align-items-center"></div>');
+        modelRow.append(
+            $('<span class="mr-3"></span>')
+                .append('<i class="dripicons-view-thumb mr-1 text-info" aria-hidden="true"></i>')
+                .append('<strong>Perception:</strong> ')
+                .append($('<span></span>').text(perceptionDisplayName))
+        );
+        modelRow.append(
+            $('<span></span>')
+                .append('<i class="dripicons-cpu mr-1 text-primary" aria-hidden="true"></i>')
+                .append('<strong>ERP Copilot:</strong> ')
+                .append($('<span></span>').text(copilotDisplayName))
+        );
+        header.append(modelRow);
         card.append(header);
 
         const body = $('<div class="card-body p-3 bg-white"></div>');
-        body.append('<div class="alert alert-info py-1 px-2 mb-3 small"><strong>Trust Notice:</strong> Extracted fields come from perception OCR/STT (<code>is_verified_by_erp = false</code>). Verify against the preview before confirming or staging an ERP order.</div>');
+        body.append('<div class="alert alert-info py-1 px-2 mb-3 small"><strong>Trust Notice:</strong> Extracted figures come from perception OCR/STT (<code>is_verified_by_erp = false</code>). Verify against the preview before confirming or staging an ERP order.</div>');
 
-        // Warnings section
+        // Warnings section (including company mismatch & duplicate checks)
         const warnContainer = $('<div class="ai-media-warnings mb-2"></div>');
         renderWarnings(warnContainer, data.warnings || []);
         body.append(warnContainer);
@@ -263,10 +433,12 @@
         row.append(formCol);
         body.append(row);
 
-        // Companion instruction input (e.g., "create purchase order for Main Warehouse")
+        // Companion instruction input (pre-filled if instruction was entered)
         const companionGroup = $('<div class="form-group mt-3 mb-2"></div>');
-        companionGroup.append('<label class="small font-weight-bold text-muted mb-1">Optional Instruction / Warehouse Note (optional)</label>');
-        const companionInput = $('<input type="text" class="form-control form-control-sm ai-media-companion-input" placeholder="e.g., Create purchase order for Main Warehouse">');
+        companionGroup.append('<label class="small font-weight-bold text-muted mb-1">Optional Instruction / Warehouse Note</label>');
+        const initialCompanion = companionText || (data.companion_text || '');
+        const companionInput = $('<input type="text" class="form-control form-control-sm ai-media-companion-input" placeholder="e.g., Read this bill and prepare a Purchase Order">')
+            .val(initialCompanion);
         companionGroup.append(companionInput);
         body.append(companionGroup);
 
@@ -496,10 +668,31 @@
         fields.forEach(function (f) {
             const grp = $('<div class="form-group mb-2"></div>').addClass(f.col);
             grp.append($('<label class="small text-muted mb-0"></label>').text(f.label));
-            const input = $('<input type="text" class="form-control form-control-sm ai-ext-scalar">')
-                .attr('data-field', f.key)
-                .val(data[f.key] == null ? '' : String(data[f.key]));
-            grp.append(input);
+
+            if (f.key === 'document_type') {
+                const sel = $('<select class="form-control form-control-sm ai-ext-scalar" data-field="document_type"></select>');
+                const docTypes = [
+                    { val: 'purchase_bill', label: 'Purchase Bill (Supplier Invoice)' },
+                    { val: 'purchase_order', label: 'Purchase Order' },
+                    { val: 'sales_invoice', label: 'Sales Invoice (Customer Bill)' },
+                    { val: 'sales_order', label: 'Sales Order' },
+                    { val: 'quotation', label: 'Quotation / Estimate' },
+                    { val: 'unknown', label: 'Unknown / Other' },
+                ];
+                docTypes.forEach(function (dt) {
+                    const opt = $('<option></option>').attr('value', dt.val).text(dt.label);
+                    if (data[f.key] === dt.val) {
+                        opt.prop('selected', true);
+                    }
+                    sel.append(opt);
+                });
+                grp.append(sel);
+            } else {
+                const input = $('<input type="text" class="form-control form-control-sm ai-ext-scalar">')
+                    .attr('data-field', f.key)
+                    .val(data[f.key] == null ? '' : String(data[f.key]));
+                grp.append(input);
+            }
             grid.append(grp);
         });
         formCol.append(grid);
@@ -609,7 +802,7 @@
         return patch;
     }
 
-    // Bind File Picker
+    // Bind File Picker (stages file instead of immediate extraction)
     $('#btn-ai-attach-media').on('click', function () {
         $('#ai-media-file-input').trigger('click');
     });
@@ -618,10 +811,10 @@
         const file = this.files && this.files[0];
         if (!file) return;
         this.value = '';
-        uploadMediaFile(file, file.name);
+        stageFile(file, file.name);
     });
 
-    // Drag & drop support onto composer footer
+    // Drag & drop support onto composer footer (stages file)
     $('#chat-form').on('dragover', function (e) {
         e.preventDefault();
         $(this).addClass('ai-drop-active');
@@ -630,11 +823,11 @@
         $(this).removeClass('ai-drop-active');
         if (e.type === 'drop' && e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files.length > 0) {
             const f = e.originalEvent.dataTransfer.files[0];
-            uploadMediaFile(f, f.name);
+            stageFile(f, f.name);
         }
     });
 
-    // Voice Recording Lifecycle (explicit consent, no background/auto-upload)
+    // Voice Recording Lifecycle (explicit consent, stages audio on stop/attach)
     $('#btn-ai-record-audio').on('click', async function () {
         const tray = $('#ai-voice-recorder-tray');
         tray.removeClass('d-none');
@@ -675,7 +868,7 @@
                     recordedUrl = URL.createObjectURL(recordedBlob);
                     $('#ai-voice-replay').attr('src', recordedUrl).removeClass('d-none');
                     $('#btn-ai-voice-upload').removeClass('d-none');
-                    showRecorderStatus('Recording stopped. Listen back or click "Transcribe & Review" when ready.', false);
+                    showRecorderStatus('Recording stopped. Listen back or click "Attach Voice Note" to stage with your instruction.', false);
                 } else {
                     showRecorderStatus('No audio captured. Please try again.', true);
                 }
@@ -684,7 +877,7 @@
             mediaRecorder.start(250);
             $('#btn-ai-record-audio').prop('disabled', true).addClass('active');
             $('#btn-ai-voice-stop').removeClass('d-none');
-            showRecorderStatus('Recording active. Audio stays on your device until you click "Transcribe & Review".', false);
+            showRecorderStatus('Recording active. Audio stays on your device until you attach and send it.', false);
 
             const maxSec = Number(cfg.maxAudioSeconds || 120);
             recordSeconds = 0;
@@ -716,12 +909,26 @@
         resetRecorderState(true);
     });
 
+    // Stage the recorded voice note with user instruction
     $('#btn-ai-voice-upload').on('click', function () {
         if (!recordedBlob) return;
         const blob = recordedBlob;
         const ext = recordedMime.includes('ogg') ? 'ogg' : 'webm';
+        const name = 'voice_note_' + Date.now() + '.' + ext;
+        const previewUrl = recordedUrl;
+        recordedUrl = null; // Transferred to stagedAttachment
         resetRecorderState(true);
-        uploadMediaFile(blob, 'voice_note_' + Date.now() + '.' + ext);
+        clearStagedAttachment();
+        stagedAttachment = {
+            file: blob,
+            fileName: name,
+            fileSize: blob.size,
+            mimeType: recordedMime,
+            isAudio: true,
+            previewUrl: previewUrl,
+        };
+        renderAttachedChips();
+        $('#chat-input').focus();
     });
 
     window.zoloAiMedia = {
@@ -732,7 +939,12 @@
             attachedMedia.clear();
             renderAttachedChips();
         },
+        hasStagedAttachment: function () {
+            return stagedAttachment !== null;
+        },
+        clearStagedAttachment: clearStagedAttachment,
+        stageFile: stageFile,
+        submitStagedAttachment: submitStagedAttachment,
         renderExtractionCard: renderExtractionCard,
     };
 })(jQuery);
-

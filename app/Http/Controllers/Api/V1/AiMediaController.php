@@ -73,6 +73,7 @@ class AiMediaController extends Controller
             $extraction = null;
             $async = filter_var($request->input('async', false), FILTER_VALIDATE_BOOLEAN);
             $extractNow = filter_var($request->input('extract_now', true), FILTER_VALIDATE_BOOLEAN);
+            $companionText = $request->input('companion_text');
 
             if ($async) {
                 ExtractMediaJob::dispatch(
@@ -82,9 +83,15 @@ class AiMediaController extends Controller
                     $principal->financialYearId,
                     $asset->id,
                     $idempotencyKey,
+                    $companionText,
                 );
             } elseif ($extractNow) {
-                $extraction = $this->extractionService->extract($principal, $asset->fresh(), $idempotencyKey);
+                $extraction = $this->extractionService->extract(
+                    principal: $principal,
+                    asset: $asset->fresh(),
+                    idempotencyKey: $idempotencyKey,
+                    companionText: $companionText,
+                );
             } else {
                 $extraction = $asset->latestExtraction;
             }

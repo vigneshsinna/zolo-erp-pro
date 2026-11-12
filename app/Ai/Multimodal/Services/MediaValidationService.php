@@ -71,7 +71,7 @@ final class MediaValidationService
         }
 
         if ($detectedMime === null || ! $this->isAllowedCanonicalMime($detectedMime)) {
-            throw MultimodalException::invalidMagicBytes('File signature is missing or not an allowed PNG, JPEG, PDF, WAV, WebM, MP3, FLAC, or OGG format.');
+            throw MultimodalException::invalidMagicBytes('File signature is missing or not an allowed PNG, JPEG, PDF, WAV, WebM, MP3, FLAC, or OGG format. Note: Vector SVG is not supported; please upload a raster PNG or JPEG image.');
         }
 
         if ($normalizedDeclared !== null
@@ -156,15 +156,25 @@ final class MediaValidationService
 
     private function rejectDangerousSignatures(string $head): void
     {
-        $lower = strtolower(ltrim($head));
-        foreach (['<svg', '<?php', '<!doctype html', '<html', '<script', '%!ps-'] as $prefix) {
-            if (str_contains($lower, $prefix)) {
-                throw MultimodalException::invalidMagicBytes('Active markup, vector SVG, or script content is forbidden in AI uploads.');
-            }
-        }
+        $trimmed = ltrim($head);
+        $lower = strtolower($trimmed);
 
         if (str_starts_with($head, 'MZ') || str_starts_with($head, "\x7fELF") || str_starts_with($head, "PK\x03\x04")) {
             throw MultimodalException::invalidMagicBytes('Executable or archive binaries are forbidden.');
+        }
+
+        // Active server-side script or client script execution polyglot defense
+        foreach (['<?php', '<?=', '<script'] as $tag) {
+            if (str_contains($lower, $tag)) {
+                throw MultimodalException::invalidMagicBytes('Active script content is forbidden in AI uploads.');
+            }
+        }
+
+        // Active markup, vector SVG, or HTML documents masquerading as image/audio media
+        foreach (['<svg', '<?xml', '<!doctype', '<html', '%!ps-'] as $prefix) {
+            if (str_starts_with($lower, $prefix)) {
+                throw MultimodalException::invalidMagicBytes('Active markup, vector SVG, or script content is forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document.');
+            }
         }
     }
 

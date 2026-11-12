@@ -112,6 +112,23 @@ final class MediaExtractionService
         $modelProvider = (string) config('ai_multimodal.provider', 'nvidia');
         $modelKey = (string) config('ai_multimodal.model', '');
 
+        $activeCompanyName = null;
+        $activeCompanyGstin = null;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('companies')) {
+                $comp = \Illuminate\Support\Facades\DB::table('companies')->where('id', $principal->companyId)->first(['legal_name', 'trade_name']);
+                $activeCompanyName = $comp?->trade_name ?: $comp?->legal_name;
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('tax_registrations')) {
+                $activeCompanyGstin = \Illuminate\Support\Facades\DB::table('tax_registrations')
+                    ->where('company_id', $principal->companyId)
+                    ->whereNotNull('gstin')
+                    ->value('gstin');
+            }
+        } catch (\Throwable) {
+            // Unbound in isolated unit tests
+        }
+
         foreach ($derivatives as $index => $deriv) {
             $pageNum = (int) ($deriv['page'] ?? ($index + 1));
             $key = (string) ($deriv['key'] ?? '');
@@ -133,7 +150,7 @@ final class MediaExtractionService
                     principal: $principal,
                     mediaId: $asset->id,
                     images: [['mime' => $mime, 'base64' => base64_encode($binary), 'page' => $pageNum]],
-                    systemPrompt: InvoiceExtractionV1::systemPrompt(),
+                    systemPrompt: InvoiceExtractionV1::systemPrompt($activeCompanyName, $activeCompanyGstin),
                     userPrompt: InvoiceExtractionV1::userPrompt($pageNum, $totalPages),
                 );
 
