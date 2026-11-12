@@ -234,8 +234,12 @@ class PackingSlipController extends Controller
     {
         $packing_slip = PackingSlip::with('sale.customer', 'sale.warehouse')->findOrFail($id);
         $sale = $packing_slip->sale;
-        $packing_slip_product_data = PackingSlipProduct::where('packing_slip_id', $id)->get();
-        return view('backend.packing_slip.invoice', compact('sale', 'packing_slip_product_data'));
+        $general_setting = cache()->get('general_setting') ?? \App\Models\GeneralSetting::latest()->first();
+        $packing_slip_product_data = \App\Models\Product_Sale::where('sale_id', $sale->id)->get();
+        if ($packing_slip_product_data->isEmpty()) {
+            $packing_slip_product_data = PackingSlipProduct::where('packing_slip_id', $id)->get();
+        }
+        return view('backend.packing_slip.invoice', compact('sale', 'packing_slip_product_data', 'general_setting'));
     }
 
     public function delete($id)

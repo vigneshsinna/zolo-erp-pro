@@ -27,7 +27,7 @@ class Purchase extends Model
     }
 
     protected $fillable =[
-        "reference_no", "supplier_invoice_no", "supplier_invoice_date", "user_id", "warehouse_id", "supplier_id", "currency_id", "exchange_rate", "item", "total_qty", "total_discount", "total_tax", "total_cost", "order_tax_rate", "order_tax", "order_discount", "shipping_cost", "grand_total","paid_amount", "status", "payment_status", "document", "note", "purchase_type", "purchase_type_id", "agent_id", "update_item_cost", "update_item_hsn", "is_reverse_charge", "created_at", "deleted_by",
+        "reference_no", "supplier_invoice_no", "lot_number", "supplier_invoice_date", "user_id", "warehouse_id", "supplier_id", "currency_id", "exchange_rate", "item", "total_qty", "total_discount", "total_tax", "total_cost", "order_tax_rate", "order_tax", "order_discount", "shipping_cost", "grand_total","paid_amount", "status", "payment_status", "document", "note", "purchase_type", "purchase_type_id", "agent_id", "update_item_cost", "update_item_hsn", "is_reverse_charge", "created_at", "deleted_by",
     ];
 
     public function purchaseType()

@@ -325,20 +325,23 @@ class PurchaseController extends Controller
                 if (!$lims_product_data) continue;
                 $price = $lims_product_data->price;
                 //dealing with product batch: only its identity here, the stock movement posts the quantity
-                if(isset($batch_no[$i])) {
+                $effectiveBatch = !empty($batch_no[$i]) ? $batch_no[$i] : (!empty($data['lot_number']) ? $data['lot_number'] : null);
+                if($effectiveBatch) {
                     $product_batch_data = ProductBatch::where([
                                             ['product_id', $lims_product_data->id],
-                                            ['batch_no', $batch_no[$i]]
+                                            ['batch_no', $effectiveBatch]
                                         ])->first();
                     if($product_batch_data) {
-                        $product_batch_data->expired_date = $expired_date[$i];
-                        $product_batch_data->save();
+                        if (!empty($expired_date[$i])) {
+                            $product_batch_data->expired_date = $expired_date[$i];
+                            $product_batch_data->save();
+                        }
                     }
                     else {
                         $product_batch_data = ProductBatch::create([
                                                 'product_id' => $lims_product_data->id,
-                                                'batch_no' => $batch_no[$i],
-                                                'expired_date' => $expired_date[$i],
+                                                'batch_no' => $effectiveBatch,
+                                                'expired_date' => $expired_date[$i] ?? null,
                                                 'qty' => 0
                                             ]);
                     }
@@ -1313,20 +1316,23 @@ class PurchaseController extends Controller
                 if (!$lims_product_data) continue;
                 $price = null;
                 //dealing with product batch: only its identity here, the stock movement posts the quantity
-                if($batch_no[$key]) {
+                $effectiveBatch = !empty($batch_no[$key]) ? $batch_no[$key] : (!empty($data['lot_number']) ? $data['lot_number'] : null);
+                if($effectiveBatch) {
                     $product_batch_data = ProductBatch::where([
                                             ['product_id', $lims_product_data->id],
-                                            ['batch_no', $batch_no[$key]]
+                                            ['batch_no', $effectiveBatch]
                                         ])->first();
                     if($product_batch_data) {
-                        $product_batch_data->expired_date = $expired_date[$key];
-                        $product_batch_data->save();
+                        if (!empty($expired_date[$key])) {
+                            $product_batch_data->expired_date = $expired_date[$key];
+                            $product_batch_data->save();
+                        }
                     }
                     else {
                         $product_batch_data = ProductBatch::create([
                                                 'product_id' => $lims_product_data->id,
-                                                'batch_no' => $batch_no[$key],
-                                                'expired_date' => $expired_date[$key],
+                                                'batch_no' => $effectiveBatch,
+                                                'expired_date' => $expired_date[$key] ?? null,
                                                 'qty' => 0
                                             ]);
                     }
@@ -1944,20 +1950,23 @@ class PurchaseController extends Controller
                 $lims_purchase_unit_data = Unit::where('unit_name', $purchase_unit[$key])->first();
                 $lims_product_data = Product::find($pro_id);
                 //dealing with product batch: only its identity here, the stock movement posts the quantity
-                if($batch_no[$key]) {
+                $effectiveBatch = !empty($batch_no[$key]) ? $batch_no[$key] : (!empty($data['lot_number']) ? $data['lot_number'] : null);
+                if($effectiveBatch) {
                     $product_batch_data = ProductBatch::where([
                                             ['product_id', $lims_product_data->id],
-                                            ['batch_no', $batch_no[$key]]
+                                            ['batch_no', $effectiveBatch]
                                         ])->first();
                     if($product_batch_data) {
-                        $product_batch_data->expired_date = $expired_date[$key];
-                        $product_batch_data->save();
+                        if (!empty($expired_date[$key])) {
+                            $product_batch_data->expired_date = $expired_date[$key];
+                            $product_batch_data->save();
+                        }
                     }
                     else {
                         $product_batch_data = ProductBatch::create([
                                                 'product_id' => $lims_product_data->id,
-                                                'batch_no' => $batch_no[$key],
-                                                'expired_date' => $expired_date[$key],
+                                                'batch_no' => $effectiveBatch,
+                                                'expired_date' => $expired_date[$key] ?? null,
                                                 'qty' => 0
                                             ]);
                     }

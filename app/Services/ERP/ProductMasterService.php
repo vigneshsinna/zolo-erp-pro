@@ -28,7 +28,7 @@ class ProductMasterService
         }
     }
 
-    public function validateCreation(array $attributes, array $metadata, CompanyContext $context): array
+    public function validateCreation(array $attributes, array $metadata, CompanyContext $context, ?int $ignoreProductId = null): array
     {
         Validator::make($attributes, ['name' => 'required|string|max:255', 'code' => ['required', 'string', 'max:255', 'not_regex:/[<>]/'],
             'type' => 'required|in:standard,service,digital,combo', 'cost' => 'nullable|numeric|min:0', 'price' => 'nullable|numeric|min:0',
@@ -36,7 +36,8 @@ class ProductMasterService
             'sale_unit_id' => 'nullable|integer|min:0', 'purchase_unit_id' => 'nullable|integer|min:0'])->validate();
         $attributes['code'] = trim($attributes['code']);
         if ($attributes['code'] === '' || trim($attributes['name']) === '') throw ValidationException::withMessages(['code' => 'Name and code must not be blank.']);
-        if (Product::forCompany($context)->whereRaw('LOWER(code) = ?', [mb_strtolower($attributes['code'])])->where('is_active', true)->exists()) {
+        if (Product::forCompany($context)->whereRaw('LOWER(code) = ?', [mb_strtolower($attributes['code'])])->where('is_active', true)
+            ->when($ignoreProductId, fn ($q) => $q->where('id', '!=', $ignoreProductId))->exists()) {
             throw ValidationException::withMessages(['code' => 'An active item already uses this code in this company.']);
         }
         $this->validateMetadata($metadata + $attributes, $context);
@@ -89,6 +90,20 @@ class ProductMasterService
             $product->forceFill(['company_id' => $context->companyId, 'qty' => 0, 'is_active' => true])->save();
             $this->applyMetadata($product, $metadata, $context);
             return $product;
+        });
+    }
+
+    /** Update an existing product's master attributes and GST/stock metadata inside company lock. */
+    public function update(Product $product, array $attributes, array $metadata, CompanyContext $context): Product
+    {
+        return DB::transaction(function () use ($product, $attributes, $metadata, $context) {
+            Company::whereKey($context->companyId)->lockForUpdate()->firstOrFail();
+            $locked = Product::forCompany($context)->whereKey($product->id)->lockForUpdate()->firstOrFail();
+            $attributes = $this->validateCreation($attributes, $metadata, $context, $locked->id);
+            $attributes['name'] = preg_replace('/[\n\r]/', '<br>', htmlspecialchars(trim($attributes['name']), ENT_QUOTES));
+            $locked->fill($attributes)->save();
+            $this->applyMetadata($locked, $metadata, $context);
+            return $locked->fresh();
         });
     }
 }

@@ -146,6 +146,7 @@ class PurchaseService
             if (\Illuminate\Support\Facades\Schema::hasColumn('purchases', 'supplier_invoice_no')) {
                 $purFill = array_merge($purFill, [
                     'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,
+                    'lot_number' => $data['lot_number'] ?? null,
                     'supplier_invoice_date' => $data['supplier_invoice_date'] ?? null,
                     'purchase_type_id' => $data['purchase_type_id'] ?? null,
                     'agent_id' => $data['agent_id'] ?? null,
@@ -166,11 +167,25 @@ class PurchaseService
                 $qty = (float) $item['qty'];
                 $unitCost = (float) $item['net_unit_cost'];
 
+                $batchId = $item['product_batch_id'] ?? null;
+                $batchNo = $item['batch']['batch_no'] ?? ($item['batch_no'] ?? ($data['lot_number'] ?? null));
+                if (!$batchId && !empty($batchNo)) {
+                    $batch = \App\Models\ProductBatch::firstOrCreate([
+                        'company_id' => $context->companyId,
+                        'product_id' => $productId,
+                        'batch_no' => $batchNo,
+                    ], [
+                        'expired_date' => $item['batch']['expired_date'] ?? ($item['expired_date'] ?? null),
+                        'qty' => 0,
+                    ]);
+                    $batchId = $batch->id;
+                }
+
                 (new ProductPurchase)->forceFill([
                     'company_id' => $context->companyId,
                     'purchase_id' => $purchase->id,
                     'product_id' => $productId,
-                    'product_batch_id' => $item['product_batch_id'] ?? null,
+                    'product_batch_id' => $batchId,
                     'variant_id' => $item['variant_id'] ?? null,
                     'imei_number' => $item['imei_number'] ?? null,
                     'qty' => $qty,

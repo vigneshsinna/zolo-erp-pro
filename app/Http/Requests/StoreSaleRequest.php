@@ -39,6 +39,13 @@ class StoreSaleRequest extends FormRequest
             $subtotal = [];
             $imei_number = [];
             $product_batch_id = [];
+            $sph = [];
+            $cyl = [];
+            $axis = [];
+            $base = [];
+            $addition = [];
+            $lr = [];
+            $dia = [];
 
             foreach ($products as $product) {
                 $product_id[] = $product['product_id'] ?? $product['id'] ?? null;
@@ -62,6 +69,13 @@ class StoreSaleRequest extends FormRequest
                 $subtotal[] = $product['subtotal'] ?? (($product['qty'] ?? 1) * ($product['net_unit_price'] ?? $product['price'] ?? 0));
                 $imei_number[] = $product['imei_number'] ?? '';
                 $product_batch_id[] = $product['product_batch_id'] ?? null;
+                $sph[] = $product['sph'] ?? null;
+                $cyl[] = $product['cyl'] ?? null;
+                $axis[] = $product['axis'] ?? null;
+                $base[] = $product['base'] ?? null;
+                $addition[] = $product['addition'] ?? null;
+                $lr[] = $product['lr'] ?? null;
+                $dia[] = $product['dia'] ?? null;
             }
 
             $this->merge([
@@ -82,6 +96,13 @@ class StoreSaleRequest extends FormRequest
                 'subtotal' => $subtotal,
                 'imei_number' => $imei_number,
                 'product_batch_id' => $product_batch_id,
+                'sph' => $sph,
+                'cyl' => $cyl,
+                'axis' => $axis,
+                'base' => $base,
+                'addition' => $addition,
+                'lr' => $lr,
+                'dia' => $dia,
                 'paid_amount' => $this->input('paid_amount', 0),
                 'pos' => $this->input('pos', 0),
                 'coupon_active' => $this->input('coupon_active', 0),
@@ -101,6 +122,13 @@ class StoreSaleRequest extends FormRequest
             'sale_status'    => 'required',
             'payment_status' => 'required',
             'document'       => 'nullable|file|mimes:jpg,jpeg,png,gif,pdf,csv,docx,xlsx,txt',
+            'end_user_name'     => 'nullable|string|max:191',
+            'end_user_phone'    => 'nullable|string|max:50',
+            'end_user_email'    => 'nullable|email|max:191',
+            'end_user_address'  => 'nullable|string|max:255',
+            'fitting_charge'    => 'nullable|numeric|min:0',
+            'tinting_cost'      => 'nullable|numeric|min:0',
+            'customer_order_no' => 'nullable|string|max:191',
         ];
     }
 

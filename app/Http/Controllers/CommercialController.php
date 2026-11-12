@@ -472,7 +472,7 @@ class CommercialController extends Controller
         return response()->json(['data' => $record], 201);
     }
 
-    public function quickStoreProduct(Request $request)
+    private function validateQuickProduct(Request $request, CompanyContext $context): array
     {
         $validated = $request->validate([
             'product_usage' => Product::USAGE_RULE,
@@ -527,14 +527,23 @@ class CommercialController extends Controller
             'imei_number' => 'nullable|array',
             'variant_option' => 'nullable|array',
             'variant_value' => 'nullable|array',
+            'product_type_id' => 'nullable|integer',
+            'base' => 'nullable|string|max:50',
+            'addition' => 'nullable|string|max:50',
+            'lr' => 'nullable|string|max:20',
+            'dia' => 'nullable|string|max:20',
+            'is_optical' => 'nullable|boolean',
         ]);
 
-        $context = $request->attributes->get(CompanyContext::class) ?? abort(409, 'Choose a company first.');
-        app(CommercialPermission::class)->assert('products-add', $context, $request->user()->id);
         if (!empty($validated['tax_category_id']) && !DB::table('tax_categories')->where('company_id', $context->companyId)->where('id', $validated['tax_category_id'])->exists()) {
             throw \Illuminate\Validation\ValidationException::withMessages(['tax_category_id' => 'Select a GST rate of this company.']);
         }
-        return DB::transaction(function () use ($request, $validated, $context) {
+
+        return $validated;
+    }
+
+    private function resolveQuickProductAttributes(array $validated, CompanyContext $context): array
+    {
         $name = trim($validated['name']);
         $code = !empty($validated['code']) ? trim($validated['code']) : ('ITM-' . mt_rand(100000, 999999));
         $cost = isset($validated['cost']) ? (float)$validated['cost'] : 0;
@@ -558,23 +567,14 @@ class CommercialController extends Controller
         $saleUnitId = !empty($validated['sale_unit_id']) ? $validated['sale_unit_id'] : $unitId;
         $purchaseUnitId = !empty($validated['purchase_unit_id']) ? $validated['purchase_unit_id'] : $unitId;
 
-        $categoryId = null;
-        if (!empty($validated['category_id'])) {
-            $categoryId = $validated['category_id'];
-        } else {
-            $cat = \App\Models\Category::where('is_active', true)->first();
-            $categoryId = $cat ? $cat->id : 1;
-        }
+        $categoryId = !empty($validated['category_id'])
+            ? $validated['category_id']
+            : (\App\Models\Category::where('is_active', true)->first()?->id ?? 1);
 
-        $tax = null;
-        if (!empty($validated['tax_id'])) {
-            $tax = \App\Models\Tax::find($validated['tax_id']);
-        }
+        $tax = !empty($validated['tax_id']) ? \App\Models\Tax::find($validated['tax_id']) : null;
         $taxRate = $tax ? (float)$tax->rate : 0;
 
-        $resolvedHsn = app(\App\Services\Tax\GstSetupService::class)->productCode($validated['hsn_code'] ?? null,
-            $categoryId ? (int) $categoryId : null, $type, $request->attributes->get(CompanyContext::class));
-        $product = app(\App\Services\ERP\ProductMasterService::class)->create([
+        $attributes = [
             'name' => $name,
             'code' => $code,
             'type' => $type,
@@ -603,21 +603,30 @@ class CommercialController extends Controller
             'is_imei' => !empty($validated['is_imei']) ? 1 : 0,
             'featured' => !empty($validated['featured']) ? 1 : 0,
             'is_embeded' => !empty($validated['is_embeded']) ? 1 : 0,
+            'product_type_id' => !empty($validated['product_type_id']) ? $validated['product_type_id'] : null,
+            'base' => $validated['base'] ?? null,
+            'addition' => $validated['addition'] ?? null,
+            'lr' => $validated['lr'] ?? null,
+            'dia' => $validated['dia'] ?? null,
             'product_details' => $validated['product_details'] ?? null,
-            'qty' => 0,
-            'is_active' => 1,
-        ] + array_intersect_key($validated, ['product_usage' => true]), $validated, $context);
+        ] + array_intersect_key($validated, ['product_usage' => true]);
 
-        // Extended promotional pricing
+        return [$attributes, $unit, $taxRate];
+    }
+
+    private function persistQuickProductExtensions(Product $product, array $validated, CompanyContext $context): void
+    {
         if (!empty($validated['promotion'])) {
             $product->promotion = 1;
             $product->promotion_price = $validated['promotion_price'] ?? null;
             $product->starting_date = !empty($validated['starting_date']) ? date('Y-m-d', strtotime($validated['starting_date'])) : null;
             $product->last_date = !empty($validated['last_date']) ? date('Y-m-d', strtotime($validated['last_date'])) : null;
             $product->save();
+        } elseif (array_key_exists('promotion', $validated)) {
+            $product->promotion = 0;
+            $product->save();
         }
 
-        // Extended differential warehouse pricing
         if (!empty($validated['is_diffPrice']) && !empty($validated['diff_price']) && !empty($validated['warehouse_id'])) {
             $product->is_diffPrice = 1;
             $product->save();
@@ -633,9 +642,11 @@ class CommercialController extends Controller
                     ]);
                 }
             }
+        } elseif (array_key_exists('is_diffPrice', $validated)) {
+            $product->is_diffPrice = 0;
+            $product->save();
         }
 
-        // Extended batch and expiry date
         if (!empty($validated['is_batch']) && !empty($validated['batch_no']) && !empty($validated['batch_warehouse_id'])) {
             foreach ($validated['batch_warehouse_id'] as $key => $warehouseId) {
                 $batchNo = trim($validated['batch_no'][$key] ?? '');
@@ -665,7 +676,6 @@ class CommercialController extends Controller
             }
         }
 
-        // Extended IMEI / Serial numbers
         if (!empty($validated['is_imei']) && !empty($validated['imei_number']) && !empty($validated['imei_warehouse_id'])) {
             foreach ($validated['imei_warehouse_id'] as $key => $warehouseId) {
                 $imei = trim($validated['imei_number'][$key] ?? '');
@@ -682,7 +692,6 @@ class CommercialController extends Controller
             }
         }
 
-        // Extended initial stock
         if (!empty($validated['is_initial_stock']) && !empty($validated['stock']) && !empty($validated['stock_warehouse_id'])) {
             foreach ($validated['stock_warehouse_id'] as $key => $warehouseId) {
                 $initialStock = (float)($validated['stock'][$key] ?? 0);
@@ -699,7 +708,6 @@ class CommercialController extends Controller
             }
         }
 
-        // Extended variants
         if (!empty($validated['is_variant'])) {
             $product->is_variant = 1;
             if (!empty($validated['variant_option']) && !empty($validated['variant_value'])) {
@@ -707,27 +715,158 @@ class CommercialController extends Controller
                 $product->variant_value = json_encode(array_values(array_filter($validated['variant_value'])));
             }
             $product->save();
+        } elseif (array_key_exists('is_variant', $validated)) {
+            $product->is_variant = 0;
+            $product->save();
+        }
+    }
+
+    private function formatQuickProductPayload(Product $product, $unit, float $taxRate): array
+    {
+        if ($rate = app(\App\Services\Tax\GstSetupService::class)->rateFor($product)) {
+            $taxRate = (float)$rate['rate'];
+        }
+        $decodedName = str_ireplace(['<br>', '<br/>', '<br />'], "\n", html_entity_decode((string)$product->name, ENT_QUOTES));
+        return [
+            'id' => $product->id,
+            'name' => $decodedName,
+            'type' => $product->type,
+            'code' => $product->code,
+            'price' => (float)$product->price,
+            'cost' => (float)$product->cost,
+            'tax_rate' => $taxRate,
+            'tax_id' => $product->tax_id,
+            'tax_category_id' => $product->tax_category_id,
+            'hsn_code' => $product->hsn_code,
+            'unit_id' => $product->unit_id,
+            'unit' => $unit ? ($unit->unit_code ?? $unit->unit_name) : 'Unit',
+            'unit_name' => $unit ? $unit->unit_name : 'Unit',
+            'value' => $product->code . '|' . $decodedName,
+            'label' => $product->code . ' - ' . $decodedName,
+        ];
+    }
+
+    public function quickStoreProduct(Request $request)
+    {
+        $context = $request->attributes->get(CompanyContext::class) ?? abort(409, 'Choose a company first.');
+        app(CommercialPermission::class)->assert('products-add', $context, $request->user()->id);
+        $validated = $this->validateQuickProduct($request, $context);
+
+        return DB::transaction(function () use ($validated, $context) {
+            [$attributes, $unit, $taxRate] = $this->resolveQuickProductAttributes($validated, $context);
+            $product = app(\App\Services\ERP\ProductMasterService::class)->create(
+                $attributes + ['qty' => 0, 'is_active' => 1],
+                $validated,
+                $context
+            );
+            $this->persistQuickProductExtensions($product, $validated, $context);
+
+            return response()->json([
+                'success' => true,
+                'product' => $this->formatQuickProductPayload($product->fresh(), $unit, $taxRate),
+                'message' => 'Product created successfully',
+            ]);
+        });
+    }
+
+    public function quickEditProduct(Request $request, int $id)
+    {
+        $context = $request->attributes->get(CompanyContext::class) ?? abort(409, 'Choose a company first.');
+        app(CommercialPermission::class)->assert('products-edit', $context, $request->user()->id);
+
+        $product = Product::forCompany($context)->findOrFail($id);
+        $decodedName = str_ireplace(['<br>', '<br/>', '<br />'], "\n", html_entity_decode((string)$product->name, ENT_QUOTES));
+        $unit = $product->unit_id ? \App\Models\Unit::find($product->unit_id) : null;
+        $taxRate = $product->tax_id ? (float)(\App\Models\Tax::find($product->tax_id)?->rate ?? 0) : 0.0;
+        if ($gst = app(\App\Services\Tax\GstSetupService::class)->rateFor($product)) {
+            $taxRate = (float)$gst['rate'];
         }
 
-        if ($rate = app(\App\Services\Tax\GstSetupService::class)->rateFor($product)) $taxRate = $rate['rate'];
+        $diffPrices = \App\Models\Product_Warehouse::where('product_id', $product->id)
+            ->where('company_id', $context->companyId)
+            ->pluck('price', 'warehouse_id');
+
+        $imeis = \App\Models\Product_Warehouse::where('product_id', $product->id)
+            ->where('company_id', $context->companyId)
+            ->whereNotNull('imei_number')
+            ->pluck('imei_number', 'warehouse_id');
+
+        $variantOption = $product->variant_option ? json_decode($product->variant_option, true) : [];
+        $variantValue = $product->variant_value ? json_decode($product->variant_value, true) : [];
 
         return response()->json([
             'success' => true,
             'product' => [
                 'id' => $product->id,
-                'name' => $product->name,
-                'type' => $product->type,
+                'name' => $decodedName,
                 'code' => $product->code,
-                'price' => (float)$product->price,
+                'type' => $product->type ?: 'standard',
+                'barcode_symbology' => $product->barcode_symbology ?: 'C128',
+                'brand_id' => $product->brand_id,
+                'category_id' => $product->category_id,
+                'unit_id' => $product->unit_id,
+                'sale_unit_id' => $product->sale_unit_id,
+                'purchase_unit_id' => $product->purchase_unit_id,
+                'product_usage' => $product->product_usage ?: 'composite',
                 'cost' => (float)$product->cost,
+                'price' => (float)$product->price,
+                'profit_margin_type' => $product->profit_margin_type ?: 'percentage',
+                'profit_margin' => (float)($product->profit_margin ?? 0),
+                'wholesale_price' => $product->wholesale_price !== null ? (float)$product->wholesale_price : null,
+                'daily_sale_objective' => $product->daily_sale_objective !== null ? (float)$product->daily_sale_objective : null,
+                'alert_quantity' => $product->alert_quantity !== null ? (float)$product->alert_quantity : null,
+                'tax_id' => $product->tax_id,
+                'tax_category_id' => $product->tax_category_id,
+                'hsn_code' => $product->hsn_code,
                 'tax_rate' => $taxRate,
-                'unit_id' => $unitId,
+                'tax_method' => $product->tax_method ?: 1,
+                'negative_stock_policy' => $product->negative_stock_policy ?? '',
+                'warranty' => $product->warranty,
+                'warranty_type' => $product->warranty_type ?: 'months',
+                'guarantee' => $product->guarantee,
+                'guarantee_type' => $product->guarantee_type ?: 'months',
+                'product_details' => $product->product_details,
+                'is_batch' => (bool)$product->is_batch,
+                'is_imei' => (bool)$product->is_imei,
+                'featured' => (bool)$product->featured,
+                'is_embeded' => (bool)$product->is_embeded,
+                'is_diffPrice' => (bool)$product->is_diffPrice,
+                'is_variant' => (bool)$product->is_variant,
+                'promotion' => (bool)$product->promotion,
+                'promotion_price' => $product->promotion_price !== null ? (float)$product->promotion_price : null,
+                'starting_date' => $product->starting_date ? substr((string)$product->starting_date, 0, 10) : null,
+                'last_date' => $product->last_date ? substr((string)$product->last_date, 0, 10) : null,
+                'diff_prices' => $diffPrices,
+                'imeis' => $imeis,
+                'variant_option' => is_array($variantOption) ? $variantOption : [],
+                'variant_value' => is_array($variantValue) ? $variantValue : [],
                 'unit' => $unit ? ($unit->unit_code ?? $unit->unit_name) : 'Unit',
-                'value' => $product->code . '|' . $product->name,
-                'label' => $product->code . ' - ' . $product->name,
             ],
-            'message' => 'Product created successfully',
         ]);
+    }
+
+    public function quickUpdateProduct(Request $request, int $id)
+    {
+        $context = $request->attributes->get(CompanyContext::class) ?? abort(409, 'Choose a company first.');
+        app(CommercialPermission::class)->assert('products-edit', $context, $request->user()->id);
+        $product = Product::forCompany($context)->findOrFail($id);
+        $validated = $this->validateQuickProduct($request, $context);
+
+        return DB::transaction(function () use ($product, $validated, $context) {
+            [$attributes, $unit, $taxRate] = $this->resolveQuickProductAttributes($validated, $context);
+            $updated = app(\App\Services\ERP\ProductMasterService::class)->update(
+                $product,
+                $attributes,
+                $validated,
+                $context
+            );
+            $this->persistQuickProductExtensions($updated, $validated, $context);
+
+            return response()->json([
+                'success' => true,
+                'product' => $this->formatQuickProductPayload($updated->fresh(), $unit, $taxRate),
+                'message' => 'Product updated successfully',
+            ]);
         });
     }
 

@@ -12,16 +12,19 @@
  */
 (() => {
     'use strict';
-    const configNode = document.getElementById('command-center-form-data');
-    const $ = window.jQuery;
-    if (!configNode || !$ || !window.ZoloDocumentDrafts) return;
-    const config = JSON.parse(configNode.textContent);
-    const form = document.getElementById(config.kind + '-entry-form');
-    const grid = window.commandCenterGrid;
-    if (!form || !grid) return;
-    const purchase = config.kind === 'purchase';
-    const shared = !!config.shared;
-    const partySelector = purchase ? '#supplier_id' : '#customer_id';
+
+    function initWorkspace() {
+        if (window.zoloDocumentWorkspace) return true;
+        const configNode = document.getElementById('command-center-form-data');
+        const $ = window.jQuery;
+        if (!configNode || !$ || !window.ZoloDocumentDrafts) return false;
+        const config = JSON.parse(configNode.textContent);
+        const form = document.getElementById(config.kind + '-entry-form');
+        const grid = window.commandCenterGrid;
+        if (!form || !grid) return false;
+        const purchase = config.kind === 'purchase';
+        const shared = !!config.shared;
+        const partySelector = purchase ? '#supplier_id' : '#customer_id';
 
     /* ---------------------------------------------------------------- snapshot */
     // Controls that never belong to a document: tokens, per-attempt keys and the draft pointer.
@@ -269,19 +272,32 @@
 
     /* -------------------------------------------------------------- page wiring */
     // The normal "Save as" button becomes an explicit Save draft; nothing is posted.
-    if (shared) {
-        $('#btn-form-save-as').text('Save draft').off('click').on('click', async () => {
-            const ok = await workspace.saveDraft();
-            if (ok) workspace.status('Draft saved.');
-        });
-        // The page's own New / Discard buttons go through the draft tabs, so clearing the form never overwrites a draft.
-        $('#btn-side-new, #btn-top-new, #btn-fullwidth-new').off('click').on('click', event => { event.preventDefault(); workspace.newDocument({}); });
-        $('#btn-form-discard').off('click').on('click', event => { event.preventDefault(); workspace.discardActive(); });
-        // Opening a saved bill must not silently replace unsaved work.
-        for (const name of ['loadPurchaseToForm', 'loadSaleToForm']) {
-            const original = window[name];
-            if (typeof original !== 'function') continue;
-            window[name] = async function (id) { if (await workspace.leaveActive()) { workspace.detachNow(); return original.call(this, id); } };
+        if (shared) {
+            $('#btn-form-save-as').text('Save draft').off('click').on('click', async () => {
+                const ok = await workspace.saveDraft();
+                if (ok) workspace.status('Draft saved.');
+            });
+            // The page's own New / Discard buttons go through the draft tabs, so clearing the form never overwrites a draft.
+            $('#btn-side-new, #btn-top-new, #btn-fullwidth-new').off('click').on('click', event => { event.preventDefault(); workspace.newDocument({}); });
+            $('#btn-form-discard').off('click').on('click', event => { event.preventDefault(); workspace.discardActive(); });
+            // Opening a saved bill must not silently replace unsaved work.
+            for (const name of ['loadPurchaseToForm', 'loadSaleToForm']) {
+                const original = window[name];
+                if (typeof original !== 'function') continue;
+                window[name] = async function (id) { if (await workspace.leaveActive()) { workspace.detachNow(); return original.call(this, id); } };
+            }
+        }
+        return true;
+    }
+
+    if (!initWorkspace()) {
+        const $ = window.jQuery;
+        if ($) {
+            $(function () {
+                if (!initWorkspace()) {
+                    setTimeout(initWorkspace, 50);
+                }
+            });
         }
     }
 })();

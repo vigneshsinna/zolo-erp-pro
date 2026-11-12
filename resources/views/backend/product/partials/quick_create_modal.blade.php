@@ -7,6 +7,16 @@
     $general_setting = $general_setting ?? \App\Models\GeneralSetting::latest()->first();
     $custom_fields = $custom_fields ?? collect();
     $quickGstRates = \App\Services\Tax\GstSetupService::usesGst() ? app(\App\Services\Tax\GstSetupService::class)->currentRates() : null;
+    try {
+        $context = app(\App\Services\Platform\CompanyContextResolver::class)->forActor();
+        $companyId = $context?->companyId;
+    } catch (\Throwable) {
+        $companyId = session('company_id');
+    }
+    $companyId = $companyId ?: session('company_id');
+    $profileRow = $companyId ? \Illuminate\Support\Facades\DB::table('company_industry_settings')->where('company_id', $companyId)->first() : null;
+    $isOpticalProfile = ($profileRow && $profileRow->profile_key === 'opticals');
+    $quickProductTypes = $isOpticalProfile ? \App\Models\ProductType::forCompany($companyId)->where('is_active', true)->orderBy('name')->get() : collect();
 @endphp
 
 <div id="quick-create-item-modal" tabindex="-1" role="dialog" aria-hidden="true" class="modal fade text-left compact-add-product-modal">
@@ -14,18 +24,20 @@
         <div class="modal-content">
             <div class="modal-header d-flex align-items-center justify-content-between">
                 <div>
-                    <h5 class="modal-title font-weight-bold u-fs-15px u-c-text u-d-flex u-items-center u-gap-8px u-m-0">
+                    <h5 id="quick-modal-title" class="modal-title font-weight-bold u-fs-15px u-c-text u-d-flex u-items-center u-gap-8px u-m-0">
                         <i class="fa fa-plus-circle u-c-primary u-fs-18px"></i> {{ __('db.add_product') }} (Catalog Master)
                     </h5>
-                    <span class="u-fs-11_5px u-c-text-muted">{{ __('db.The field labels marked with * are required input fields') }}. Once created, the item is immediately selected and added to the voucher.</span>
+                    <span id="quick-modal-subtitle" class="u-fs-11_5px u-c-text-muted">{{ __('db.The field labels marked with * are required input fields') }}. Once created, the item is immediately selected and added to the voucher.</span>
                 </div>
                 <button type="button" class="close u-fs-22px u-ol-none" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <form id="quick-create-item-form" enctype="multipart/form-data" @isset($billUsage) data-product-usage="{{ $billUsage }}" @endisset>
+            <form id="quick-create-item-form" enctype="multipart/form-data" data-quick-edit-base="{{ url('/products') }}" @isset($billUsage) data-product-usage="{{ $billUsage }}" @endisset>
                 @csrf
+                <input type="hidden" id="quick-edit-product-id" name="edit_product_id" value="">
                 <div class="modal-body p-2">
+                    <div id="quick-modal-error-banner" class="alert alert-danger py-2 px-3 mb-2 d-none u-fs-12px" role="alert"></div>
                     <div class="zolo-product-grid">
 
                         <!-- BOX 1: Primary Identity & Categorization (Blue) -->
@@ -34,30 +46,47 @@
                                 @if(isset($billUsage))
                                     @include('backend.product.partials.usage-options')
                                 @endif
-                                <div class="col-6">
-                                    <div class="form-group">
-                                        <label>{{__('db.Product Type')}} *</label>
-                                        <select name="type" required class="form-control selectpicker" id="quick-item-type">
-                                            <option value="standard" selected>Standard</option>
-                                            <option value="combo">Combo</option>
-                                            <option value="digital">Digital</option>
-                                            <option value="service">Service</option>
-                                        </select>
+                                @if($isOpticalProfile)
+                                    <input type="hidden" name="type" id="quick-item-type" value="standard">
+                                    <div class="col-12">
+                                        <div class="form-group">
+                                            <label>{{__('db.Barcode Symbology')}} *</label>
+                                            <select name="barcode_symbology" required class="form-control selectpicker" id="quick-item-symbology">
+                                                <option value="C128" selected>Code 128</option>
+                                                <option value="C39">Code 39</option>
+                                                <option value="UPCA">UPC-A</option>
+                                                <option value="UPCE">UPC-E</option>
+                                                <option value="EAN8">EAN-8</option>
+                                                <option value="EAN13">EAN-13</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="form-group">
-                                        <label>{{__('db.Barcode Symbology')}} *</label>
-                                        <select name="barcode_symbology" required class="form-control selectpicker" id="quick-item-symbology">
-                                            <option value="C128" selected>Code 128</option>
-                                            <option value="C39">Code 39</option>
-                                            <option value="UPCA">UPC-A</option>
-                                            <option value="UPCE">UPC-E</option>
-                                            <option value="EAN8">EAN-8</option>
-                                            <option value="EAN13">EAN-13</option>
-                                        </select>
+                                @else
+                                    <div class="col-6">
+                                        <div class="form-group">
+                                            <label>{{__('db.Product Type')}} *</label>
+                                            <select name="type" required class="form-control selectpicker" id="quick-item-type">
+                                                <option value="standard" selected>Standard</option>
+                                                <option value="combo">Combo</option>
+                                                <option value="digital">Digital</option>
+                                                <option value="service">Service</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
+                                    <div class="col-6">
+                                        <div class="form-group">
+                                            <label>{{__('db.Barcode Symbology')}} *</label>
+                                            <select name="barcode_symbology" required class="form-control selectpicker" id="quick-item-symbology">
+                                                <option value="C128" selected>Code 128</option>
+                                                <option value="C39">Code 39</option>
+                                                <option value="UPCA">UPC-A</option>
+                                                <option value="UPCE">UPC-E</option>
+                                                <option value="EAN8">EAN-8</option>
+                                                <option value="EAN13">EAN-13</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                @endif
                                 <div class="col-12">
                                     <div class="form-group">
                                         <label>{{__('db.Product Name')}} *</label>
@@ -77,7 +106,7 @@
                                         <span class="validation-msg text-danger small" id="quick-code-error"></span>
                                     </div>
                                 </div>
-                                <div class="col-6">
+                                <div class="{{ $isOpticalProfile ? 'col-md-4 col-12' : 'col-6' }}" id="quick-brand-col">
                                     <div class="form-group">
                                         <label>{{__('db.Brand')}}</label>
                                         <div class="input-group">
@@ -92,7 +121,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-6">
+                                <div class="{{ $isOpticalProfile ? 'col-md-4 col-12' : 'col-6' }}" id="quick-category-col">
                                     <div class="form-group">
                                         <label>{{__('db.category')}} *</label>
                                         <div class="input-group">
@@ -108,6 +137,23 @@
                                         <span class="validation-msg text-danger small"></span>
                                     </div>
                                 </div>
+                                <div class="col-md-4 col-12" id="quick-product-type-col" style="{{ $isOpticalProfile ? '' : 'display:none;' }}">
+                                    <div class="form-group">
+                                        <label>Type *</label>
+                                        <div class="input-group">
+                                            <select name="product_type_id" id="quick-item-product-type" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="Select Type...">
+                                                @foreach($quickProductTypes as $pt)
+                                                    <option value="{{ $pt->id }}">{{ $pt->name }}</option>
+                                                @endforeach
+                                            </select>
+                                            <div class="input-group-append">
+                                                <button type="button" class="btn btn-default btn-sm product-type-modal-btn" data-toggle="modal" data-target="#product-type-modal" title="Add Type"><i class="dripicons-plus"></i></button>
+                                            </div>
+                                        </div>
+                                        <span class="validation-msg text-danger small"></span>
+                                    </div>
+                                </div>
+
                                 <div id="quick-unit-container" class="col-12">
                                     <div class="row">
                                         <div class="col-12 form-group">
@@ -307,11 +353,13 @@
                                 <span>{{__('db.Initial Stock')}}</span>
                             </label>
 
+                            @if(!$isOpticalProfile)
                             <label class="zolo-toggle-pill" data-role="purple" for="quick_is_variant" title="{{ __('db.This product has variant') }}">
                                 <input name="is_variant" type="checkbox" id="quick_is_variant" value="1">
                                 <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                 <span>{{__('db.This product has variant')}}</span>
                             </label>
+                            @endif
 
                             <label data-usage-side="sale" class="zolo-toggle-pill" data-role="emerald" for="quick_is_diffPrice" title="{{ __('db.Different price by warehouse') }}">
                                 <input name="is_diffPrice" type="checkbox" id="quick_is_diffPrice" value="1">
@@ -319,6 +367,7 @@
                                 <span>{{__('db.Different price by warehouse')}}</span>
                             </label>
 
+                            @if(!$isOpticalProfile)
                             <label class="zolo-toggle-pill" data-role="amber" for="quick_is_batch" title="{{ __('db.Batch & expiry date') }}">
                                 <input name="is_batch" type="checkbox" id="quick_is_batch" value="1">
                                 <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
@@ -336,6 +385,7 @@
                                 <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                 <span>{{__('db.Promotional Price')}}</span>
                             </label>
+                            @endif
 
                             <label data-usage-side="sale" class="zolo-toggle-pill" data-role="purple" for="quick_chk_featured" title="{{ __('db.Featured') }}">
                                 <input type="checkbox" name="featured" id="quick_chk_featured" value="1">
@@ -343,10 +393,18 @@
                                 <span>{{__('db.Featured')}}</span>
                             </label>
 
+                            @if(!$isOpticalProfile)
                             <label class="zolo-toggle-pill" data-role="emerald" for="quick_chk_embeded" title="{{ __('db.Embedded Barcode') }}">
                                 <input type="checkbox" name="is_embeded" id="quick_chk_embeded" value="1">
                                 <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                 <span>{{__('db.Embedded Barcode')}}</span>
+                            </label>
+                            @endif
+
+                            <label id="quick-optical-option" class="zolo-toggle-pill {{ $isOpticalProfile ? 'is-active' : '' }}" data-role="purple" for="quick-is-optical" title="Optical Lens Specifications">
+                                <input name="is_optical" type="checkbox" id="quick-is-optical" value="1" {{ $isOpticalProfile ? 'checked' : '' }}>
+                                <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                <span>Optical / Lens Rx</span>
                             </label>
 
                             <label class="zolo-toggle-pill is-active" data-role="purple" for="quick_is_online" title="{{ __('db.Sell Online') }}">
@@ -360,6 +418,48 @@
                                 <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                 <span>{{__('db.In Stock')}}</span>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- Optical Lens Specifications Card (Controlled by Optical / Lens Rx toggle) -->
+                    <div class="zolo-product-grid mt-2" id="quick-optical-container" style="{{ $isOpticalProfile ? '' : 'display:none;' }}">
+                        <div id="quick-optical-section" class="w-100">
+                            <x-ui.section-box variant="purple" title="Optical Lens Specifications" icon="view-thumb">
+                                <div class="row">
+                                    <div class="col-3">
+                                        <div class="form-group mb-2">
+                                            <label class="small mb-1 font-weight-bold">Base Curve</label>
+                                            <input type="text" name="base" class="form-control form-control-sm" id="quick-item-base" placeholder="e.g. 2.00, 4.00">
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="form-group mb-2">
+                                            <label class="small mb-1 font-weight-bold">Addition (ADD)</label>
+                                            <input type="text" name="addition" class="form-control form-control-sm" id="quick-item-addition" placeholder="e.g. +0.75, +1.50">
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="form-group mb-2">
+                                            <label class="small mb-1 font-weight-bold">Eye (L / R / Pair)</label>
+                                            <select name="lr" class="form-control form-control-sm selectpicker" id="quick-item-lr" title="Select Eye...">
+                                                <option value="L">Left (L)</option>
+                                                <option value="R">Right (R)</option>
+                                                <option value="Pair">Pair</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="form-group mb-2">
+                                            <label class="small mb-1 font-weight-bold">Diameter (DIA mm)</label>
+                                            <input type="text" name="dia" class="form-control form-control-sm" id="quick-item-dia" placeholder="e.g. 65, 70, 75">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 mt-2 pt-2 border-top d-flex align-items-center justify-content-between small text-muted">
+                                        <span><i class="dripicons-view-thumb mr-1 text-primary"></i> Lens Type: <strong id="quick-optical-type-label" class="text-primary font-weight-bold">None selected</strong></span>
+                                        <span class="text-secondary small">Optical Lens Design</span>
+                                    </div>
+                                </div>
+                            </x-ui.section-box>
                         </div>
                     </div>
 
@@ -524,3 +624,32 @@
         </div>
     </div>
 </div>
+
+<script>
+$(document).ready(function() {
+    $('#quick-is-optical').on('change', function () {
+        var isChecked = $(this).is(':checked');
+        if (isChecked) {
+            $('#quick-optical-container').show(200);
+            $('#quick-product-type-col').show(200);
+            $('#quick-brand-col').removeClass('col-6').addClass('col-md-4 col-12');
+            $('#quick-category-col').removeClass('col-6').addClass('col-md-4 col-12');
+            $('#quick-optical-option').addClass('is-active');
+        } else {
+            $('#quick-optical-container').hide(200);
+            $('#quick-product-type-col').hide(200);
+            $('#quick-brand-col').removeClass('col-md-4 col-12').addClass('col-6');
+            $('#quick-category-col').removeClass('col-md-4 col-12').addClass('col-6');
+            $('#quick-optical-option').removeClass('is-active');
+        }
+    });
+
+    $('#quick-item-product-type').on('change', function() {
+        var txt = $(this).find('option:selected').text();
+        $('#quick-optical-type-label').text(txt && $(this).val() ? txt : 'None selected');
+    });
+    if ($('#quick-item-product-type').val()) {
+        $('#quick-optical-type-label').text($('#quick-item-product-type option:selected').text());
+    }
+});
+</script>

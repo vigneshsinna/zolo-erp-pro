@@ -92,7 +92,7 @@ class DocumentEntryWebTest extends TestCase
             $supplierId = $supplier->id;
         }
 
-        if (!DB::table('purchases')->whereNull('deleted_at')->where('status', '!=', 4)->exists()) {
+        if (!DB::table('purchases')->where('company_id', 1)->whereNull('deleted_at')->where('status', '!=', 4)->exists()) {
             $purchaseId = DB::table('purchases')->insertGetId([
                 'reference_no' => 'pr-test-' . uniqid(),
                 'user_id' => User::first()?->id ?? 1,

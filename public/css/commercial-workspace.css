@@ -1666,7 +1666,8 @@ body.commercial-screen-lock.topbar-hidden .reveal-topbar-strip {
 }
 
 .desk-bill-list-panel .side-filter-group select,
-.desk-bill-list-panel .side-filter-group .form-control {
+.desk-bill-list-panel .side-filter-group select.form-control,
+.desk-bill-list-panel .side-filter-group select.custom-select-native {
     height: 24px !important;
     font-size: 11px !important;
     padding: 1px 5px !important;
@@ -1675,6 +1676,29 @@ body.commercial-screen-lock.topbar-hidden .reveal-topbar-strip {
     background: #ffffff !important;
     color: #0f172a !important;
     flex: 1;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.desk-bill-list-panel .side-filter-group .bootstrap-select.form-control {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    height: auto !important;
+    flex: 1;
+}
+
+.desk-bill-list-panel .side-filter-group .bootstrap-select > .btn.dropdown-toggle {
+    height: 24px !important;
+    font-size: 11px !important;
+    padding: 1px 6px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    line-height: 20px !important;
 }
 
 .side-bill-card.active-editing {
@@ -4233,7 +4257,7 @@ body.dark-mode #quick-create-party-modal .compact-field-block .form-control:focu
 
 @media (min-width: 992px) {
     .doc-primary-fields .fields-compact-row.doc-row-a {
-        grid-template-columns: minmax(100px, .8fr) minmax(112px, .9fr) minmax(128px, 136px) minmax(128px, 136px) minmax(180px, 1.5fr) minmax(220px, 2.4fr);
+        grid-template-columns: minmax(95px, .8fr) minmax(110px, .9fr) minmax(105px, .9fr) minmax(120px, 130px) minmax(120px, 130px) minmax(170px, 1.4fr) minmax(200px, 2.2fr);
     }
 
     .doc-primary-fields .fields-compact-row.doc-row-b {
@@ -4814,4 +4838,80 @@ body.dark-mode .comm-register-card .dataTables_wrapper .form-control {
     font-size: 10.5px;
     font-weight: 600;
     color: var(--z-warning);
+}
+
+/* Inline hover "Edit" action on product cells in Purchase/Sale/GRN/DC grids */
+.row-item-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.row-item-input-wrap .row-item-name {
+    width: 100%;
+    transition: padding-right 140ms ease;
+}
+
+.row-item-input-wrap .btn-quick-edit-product {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%) scale(0.95);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+    display: none;
+    align-items: center;
+    gap: 3px;
+    height: 21px;
+    padding: 0 7px;
+    border: 1px solid var(--z-primary);
+    border-radius: 4px;
+    background: var(--z-surface-1, #fff);
+    color: var(--z-primary);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+    transition: opacity 140ms ease, transform 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.row-item-input-wrap.has-product .btn-quick-edit-product,
+tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]) .row-item-input-wrap .btn-quick-edit-product {
+    display: inline-flex;
+}
+
+tr:hover .row-item-input-wrap.has-product .btn-quick-edit-product,
+tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]):hover .row-item-input-wrap .btn-quick-edit-product,
+.row-item-input-wrap.has-product:hover .btn-quick-edit-product,
+.row-item-input-wrap.has-product:focus-within .btn-quick-edit-product,
+tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]) .row-item-input-wrap:focus-within .btn-quick-edit-product {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(-50%) scale(1);
+}
+
+tr:hover .row-item-input-wrap.has-product .row-item-name,
+tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]):hover .row-item-input-wrap .row-item-name,
+.row-item-input-wrap.has-product:hover .row-item-name {
+    padding-right: 52px;
+}
+
+.row-item-input-wrap .btn-quick-edit-product:hover {
+    background: var(--z-primary);
+    color: var(--z-primary-contrast, #fff);
+}
+
+@media (hover: none) {
+    .row-item-input-wrap.has-product .btn-quick-edit-product,
+    tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]) .row-item-input-wrap .btn-quick-edit-product {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(-50%) scale(1);
+    }
+    .row-item-input-wrap.has-product .row-item-name {
+        padding-right: 52px;
+    }
 }

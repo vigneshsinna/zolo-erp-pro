@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\Platform\CapabilityCatalog;
 use App\Services\Platform\CapabilityService;
 use App\Services\Platform\CompanyContext;
 use App\Services\Platform\LegacyModuleAdapter;
@@ -43,6 +44,7 @@ class CapabilityEngineTest extends CompanyContextTestCase
             ['textile', ['sales.wholesale', 'printing.dot_matrix']],
             ['timber', ['inventory.dimension_tracking']],
             ['solar', ['operations.projects', 'inventory.serial_tracking', 'operations.installation']],
+            ['opticals', ['inventory.multi_uom', 'inventory.batch_expiry', 'inventory.serial_tracking', 'sales.wholesale', 'service.warranty_amc', 'communications.whatsapp']],
         ];
     }
 
@@ -59,9 +61,9 @@ class CapabilityEngineTest extends CompanyContextTestCase
         if ($profile === 'textile') {
             $this->assertSame(['lines' => 68, 'columns' => 80], $this->service->config('printing.dot_matrix', null, $this->context));
         }
-        $this->assertCount(5, DB::table('business_profiles')->get());
+        $this->assertCount(count(CapabilityCatalog::PROFILES), DB::table('business_profiles')->get());
         (new CapabilitySeeder)->run();
-        $this->assertCount(5, DB::table('business_profiles')->get());
+        $this->assertCount(count(CapabilityCatalog::PROFILES), DB::table('business_profiles')->get());
     }
 
     public function test_enable_and_disable_validate_dependencies_atomically(): void

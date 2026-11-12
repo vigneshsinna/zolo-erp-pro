@@ -38,8 +38,10 @@ class LegacyCommercialCommand
             if ($purchase && (int) ($data['status'] ?? 1) === 2) {
                 $line['received_qty'] = $data['recieved'][$i] ?? null;
             }
-            if ($purchase && !empty($data['batch_no'][$i])) {
-                $line['batch'] = ['batch_no' => $data['batch_no'][$i], 'expired_date' => $data['expired_date'][$i] ?? null];
+            $lineBatchNo = !empty($data['batch_no'][$i]) ? $data['batch_no'][$i] : (!empty($data['lot_number']) ? $data['lot_number'] : null);
+            if (!empty($lineBatchNo)) {
+                $line['batch'] = ['batch_no' => $lineBatchNo, 'expired_date' => $data['expired_date'][$i] ?? null];
+                $line['batch_no'] = $lineBatchNo;
             }
             $items[] = $line;
         }

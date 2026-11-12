@@ -209,6 +209,7 @@ class CommercialApplicationService
                 throw ValidationException::withMessages(['due_date' => 'Due date must be on or after document date.']);
             }
             $document->forceFill(['branch_id' => $context->branchId, 'financial_year_id' => $context->financialYearId,
+                'lot_number' => $data['lot_number'] ?? $document->lot_number,
                 'attributes_json' => $attributes, 'replaces_id' => $replacesId] + (isset($data['_tax_snapshot'])
                     ? ['tax_snapshot_json' => $data['_tax_snapshot']] : []))->save();
             if (!empty($data['project_id'])) {

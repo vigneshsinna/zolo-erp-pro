@@ -60,6 +60,7 @@ final class CapabilityCatalog
         'textile' => ['Textile', ['inventory.multi_uom', 'sales.wholesale', 'printing.dot_matrix', 'communications.whatsapp', 'inventory.lot_report']],
         'timber' => ['Timber', ['inventory.multi_uom', 'inventory.dimension_tracking', 'inventory.lot_tracking', 'sales.wholesale', 'inventory.lot_report']],
         'solar' => ['Solar', ['operations.projects', 'inventory.serial_tracking', 'operations.installation', 'manufacturing.bom', 'service.warranty_amc', 'communications.whatsapp']],
+        'opticals' => ['Opticals & Eyewear', ['inventory.multi_uom', 'inventory.batch_expiry', 'inventory.serial_tracking', 'sales.wholesale', 'service.warranty_amc', 'communications.whatsapp']],
     ];
 
     public const CONFIGURATION = [

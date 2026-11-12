@@ -19,11 +19,17 @@ final class IndustryCatalog
             'formula_version' => 'rectangular-v1', 'labels' => [], 'reports' => ['piece_volume', 'conversion_yield']],
         'solar' => ['quantity_scale' => 4, 'units' => ['PCS', 'KW'], 'labels' => ['project' => 'Site / Project'],
             'document_fields' => ['project_id', 'site_address'], 'reports' => ['project_margin', 'installed_serials', 'warranty_due']],
+        'opticals' => ['quantity_scale' => 2, 'units' => ['PRS', 'PCS', 'BOX'], 'uqc' => 'PRS',
+            'labels' => ['warehouse' => 'Lab / Branch', 'dispatch' => 'Lab Dispatch', 'receipt' => 'Lab Receipt'],
+            'document_fields' => ['doctor_name', 'patient_name', 'fitting_charges', 'tinting_charges', 'coating_charges', 'transporter', 'lr_no'],
+            'entry_aids' => ['previous_rates' => true, 'outstanding' => true, 'clone_invoice' => true, 'inline_party' => true, 'inline_item' => true, 'tracking' => true],
+            'reports' => ['prescription_sales', 'lab_pending_jobs', 'warranty_tracker']],
     ];
 
     /** Preset unit code => [name, other spellings that already count as this unit]. */
     public const UNITS = [
         'PCS' => ['Pieces', ['pc', 'piece', 'nos', 'no', 'unit']], 'BOX' => ['Box', ['bx']], 'CASE' => ['Case', ['cs']],
+        'PRS' => ['Pairs', ['pair', 'prs', 'pr']],
         'KGS' => ['Kilogram', ['kg', 'kilograms', 'kgs']], 'DOZ' => ['Dozen', ['dz', 'dozens']],
         'MTR' => ['Meter', ['m', 'mt', 'metre', 'meters', 'metres']], 'CFT' => ['Cubic feet', ['cu ft']],
         'CBM' => ['Cubic meter', ['m3', 'cubic metre']], 'KW' => ['Kilowatt', ['kilowatts']],
@@ -39,6 +45,14 @@ final class IndustryCatalog
             'standard_dimensions' => ['Standard dimensions', 'text'], 'source' => ['Source', 'text']],
         'solar' => ['wattage' => ['Wattage', 'number'], 'voltage' => ['Voltage', 'number'], 'phase' => ['Phase', 'text'],
             'panel_type' => ['Panel type', 'text'], 'inverter_type' => ['Inverter type', 'text'], 'warranty_months' => ['Warranty (months)', 'integer']],
+        'opticals' => [
+            'lens_material' => ['Lens material', 'text'],
+            'lens_type' => ['Lens type', 'text'],
+            'coating' => ['Coating / Treatment', 'text'],
+            'refractive_index' => ['Refractive index', 'text'],
+            'dia' => ['Diameter (mm)', 'number'],
+            'base_curve' => ['Base curve', 'number'],
+        ],
     ];
 
     // Process thresholds are explicit presets. Users configure their actual process before dispatch.
@@ -47,6 +61,12 @@ final class IndustryCatalog
         'textile' => [['BLEACHING', 'Bleaching', 0, false], ['GREY-DYE', 'Dyeing - grey to dyed fabric', 5, true], ['DYEING', 'Dyeing', 4, false], ['PRINTING', 'Printing', 4, false], ['FINISHING', 'Finishing', 4, false]],
         'timber' => [['SAWING', 'External sawing', 30, true]],
         'fmcg' => [['REPACKING', 'Outsourced repacking', 5, true]],
+        'opticals' => [
+            ['SURFACING', 'Lens Surfacing / Power Grinding', 2, false],
+            ['COATING', 'Hard & Anti-Glare Coating', 1, false],
+            ['TINTING', 'Lens Tinting & Coloring', 1, false],
+            ['FITTING', 'Edging & Frame Fitting', 2, false],
+        ],
     ];
 
     /**
@@ -61,15 +81,28 @@ final class IndustryCatalog
             'manufacturing' => ['operations.job_work', 'manufacturing.bom', 'manufacturing.production']],
         'timber' => ['trading' => [], 'processor' => ['manufacturing.bom', 'manufacturing.production', 'operations.job_work']],
         'solar' => ['epc' => []],
+        'opticals' => [
+            'lens_manufacturing' => ['manufacturing.bom', 'manufacturing.production', 'operations.job_work', 'service.warranty_amc'],
+            'optical_retail' => ['sales.pos', 'service.warranty_amc'],
+            'wholesale_distributor' => ['sales.wholesale'],
+        ],
     ];
 
-    public const SUBTYPE_LABELS = ['wholesale_distributor' => 'Wholesale & Distributor'];
+    public const SUBTYPE_LABELS = [
+        'wholesale_distributor' => 'Wholesale & Distributor',
+        'lens_manufacturing' => 'Lens Manufacturer / Rx Lab',
+        'optical_retail' => 'Optical Retailer / Eyewear Store',
+    ];
 
     /** Business type settings replace the profile's top-level setting of the same key. */
     public const SUBTYPE_SETTINGS = [
         'textile' => ['manufacturing' => [
             'labels' => ['dispatch' => 'Material DC', 'receipt' => 'Job Work GRN', 'warehouse' => 'Godown'],
             'reports' => ['job_work_pending', 'job_work_shrinkage', 'stock_lot', 'previous_rates'],
+        ]],
+        'opticals' => ['lens_manufacturing' => [
+            'labels' => ['warehouse' => 'Lab / Factory', 'dispatch' => 'Lab Job Dispatch', 'receipt' => 'Lab Receipt'],
+            'reports' => ['lab_jobs', 'prescription_sales', 'job_work_pending', 'warranty_tracker'],
         ]],
     ];
 

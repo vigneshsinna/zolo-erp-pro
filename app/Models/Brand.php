@@ -10,8 +10,7 @@ class Brand extends Model
     use ScopesCompanyQueries;
 
     protected $fillable =[
-
-        "title", "image", "page_title", "short_description", "slug", "is_active"
+        "company_id", "title", "image", "page_title", "short_description", "slug", "is_active"
     ];
 
     public function product()

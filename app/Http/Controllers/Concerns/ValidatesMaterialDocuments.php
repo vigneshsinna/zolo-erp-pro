@@ -75,7 +75,11 @@ trait ValidatesMaterialDocuments
         $attributes = $cache->hasColumn(\Illuminate\Support\Facades\DB::connection(), $table, 'variant_id')
             ? ['variant_id' => $request->input('variant_id.'.$index) ? (int) $request->input('variant_id.'.$index) : null] : [];
         if ($cache->hasColumn(\Illuminate\Support\Facades\DB::connection(), $table, 'batch_no')) {
-            $attributes['batch_no'] = trim((string) $request->input('batch_no.'.$index, '')) ?: null;
+            $batch = trim((string) $request->input('batch_no.'.$index, ''));
+            if ($batch === '' && $request->filled('lot_number')) {
+                $batch = trim((string) $request->input('lot_number'));
+            }
+            $attributes['batch_no'] = $batch ?: null;
         }
         return $attributes;
     }

@@ -161,6 +161,7 @@ class SaleService
             if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'sale_type_id')) {
                 $saleFill = array_merge($saleFill, [
                     'sale_type_id' => $data['sale_type_id'] ?? null,
+                    'lot_number' => $data['lot_number'] ?? null,
                     'agent_id' => $data['agent_id'] ?? null,
                     'bale_no' => $data['bale_no'] ?? null,
                     'no_of_bales' => isset($data['no_of_bales']) ? (int) $data['no_of_bales'] : null,
@@ -184,11 +185,25 @@ class SaleService
                 $qty = (float) $item['qty'];
                 $unitPrice = (float) $item['net_unit_price'];
 
+                $batchId = $item['product_batch_id'] ?? null;
+                $batchNo = $item['batch']['batch_no'] ?? ($item['batch_no'] ?? ($data['lot_number'] ?? null));
+                if (!$batchId && !empty($batchNo)) {
+                    $batch = \App\Models\ProductBatch::firstOrCreate([
+                        'company_id' => $context->companyId,
+                        'product_id' => $productId,
+                        'batch_no' => $batchNo,
+                    ], [
+                        'expired_date' => $item['batch']['expired_date'] ?? ($item['expired_date'] ?? null),
+                        'qty' => 0,
+                    ]);
+                    $batchId = $batch->id;
+                }
+
                 (new Product_Sale)->forceFill([
                     'company_id' => $context->companyId,
                     'sale_id' => $sale->id,
                     'product_id' => $productId,
-                    'product_batch_id' => $item['product_batch_id'] ?? null,
+                    'product_batch_id' => $batchId,
                     'variant_id' => $item['variant_id'] ?? null,
                     'imei_number' => $item['imei_number'] ?? null,
                     'qty' => $qty,
@@ -198,6 +213,14 @@ class SaleService
                     'tax_rate' => (float) ($item['tax_rate'] ?? 0),
                     'tax' => (float) ($item['tax'] ?? 0),
                     'total' => (float) ($item['total'] ?? ($qty * $unitPrice)),
+                    'sph' => $item['sph'] ?? null,
+                    'cyl' => $item['cyl'] ?? null,
+                    'axis' => $item['axis'] ?? null,
+                    'base' => $item['base'] ?? null,
+                    'addition' => $item['addition'] ?? null,
+                    'lr' => $item['lr'] ?? null,
+                    'dia' => $item['dia'] ?? null,
+                    'prescription_json' => $item['prescription_json'] ?? null,
                 ] + ($deferPosting ? ['stock_details_json' => $item['stock_details_json'] ?? []] : [])
                     + ($deferPosting && isset($item['_tax_snapshot']) ? ['tax_snapshot_json' => $item['_tax_snapshot']] : []))->save();
             }

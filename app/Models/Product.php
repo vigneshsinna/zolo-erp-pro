@@ -34,7 +34,8 @@ class Product extends Model
 
     protected $fillable =[
         'product_usage',
-        "name", "print_name", "code", "type", "slug", "barcode_symbology", "brand_id", "category_id", "unit_id", "purchase_unit_id", "sale_unit_id", "cost", "profit_margin", "profit_margin_type", "price", "wholesale_price", "qty", "alert_quantity", "neg_stock_allowed", "negative_stock_policy", "sales_account_id", "purchase_account_id", "daily_sale_objective", "promotion", "promotion_price", "starting_date", "last_date", "tax_id", "tax_method", "hsn_code", "image", "file", "is_embeded", "is_batch", "is_variant", "is_diffPrice", "is_imei", "featured", "product_list", "variant_list", "qty_list", "price_list", "product_details", "short_description", "specification", "related_products", "is_addon", "extras", "menu_type", "variant_option", "variant_value", "is_active", "is_online", "kitchen_id", "in_stock", "track_inventory", "is_sync_disable", "woocommerce_product_id","woocommerce_media_id","tags","meta_title","meta_description", "warranty", "guarantee", "warranty_type", "guarantee_type","wastage_percent","combo_unit_id","production_cost","is_recipe"
+        "name", "print_name", "code", "type", "slug", "barcode_symbology", "brand_id", "category_id", "unit_id", "purchase_unit_id", "sale_unit_id", "cost", "profit_margin", "profit_margin_type", "price", "wholesale_price", "qty", "alert_quantity", "neg_stock_allowed", "negative_stock_policy", "sales_account_id", "purchase_account_id", "daily_sale_objective", "promotion", "promotion_price", "starting_date", "last_date", "tax_id", "tax_method", "hsn_code", "image", "file", "is_embeded", "is_batch", "is_variant", "is_diffPrice", "is_imei", "featured", "product_list", "variant_list", "qty_list", "price_list", "product_details", "short_description", "specification", "related_products", "is_addon", "extras", "menu_type", "variant_option", "variant_value", "is_active", "is_online", "kitchen_id", "in_stock", "track_inventory", "is_sync_disable", "woocommerce_product_id","woocommerce_media_id","tags","meta_title","meta_description", "warranty", "guarantee", "warranty_type", "guarantee_type","wastage_percent","combo_unit_id","production_cost","is_recipe",
+        "base", "addition", "lr", "dia", "product_type_id"
     ];
 
     public function salesAccount()
@@ -72,6 +73,11 @@ class Product extends Model
     public function category()
     {
     	return $this->belongsTo('App\Models\Category');
+    }
+
+    public function productType()
+    {
+        return $this->belongsTo('App\Models\ProductType', 'product_type_id');
     }
 
     public function brand()

@@ -74,6 +74,8 @@
 
     function applyProduct($row, product) {
         if (String($row.find('.row-product-id').val()) !== String(product.id)) $row.find('.row-batch').val('');
+        $row.attr('data-product-id', product.id || '');
+        $row.find('.row-item-input-wrap').toggleClass('has-product', Number(product.id) > 0);
         $row.find('.row-product-id').val(product.id);
         $row.find('.row-unit-id').val(product.unit_id);
         $row.find('.row-item-name').val(product.name);
@@ -166,12 +168,18 @@
         }
         const product = products.find(p => String(p.id) === String(item.product_id));
         const rate = item[config.rateField] ?? product?.[config.purchase ? 'cost' : 'price'] ?? 0;
-        const $row = $(`<tr class="item-row">
+        const boundPid = item.product_id ?? product?.id ?? '';
+        const $row = $(`<tr class="item-row" data-product-id="${boundPid}">
             <td><span class="row-num"></span><input type="hidden" name="product_id[]" class="row-product-id">
                 <input type="hidden" name="unit_id[]" class="row-unit-id">
                 <input type="hidden" name="order_item_id[]" class="row-order-item-id">
                 <input type="hidden" name="tax_amount[]" class="row-tax-amount"><input type="hidden" name="total[]" class="row-total"></td>
-            <td><input class="form-control form-control-sm row-item-name" placeholder="Search item or scan..." autocomplete="off" required>
+            <td><div class="row-item-input-wrap ${Number(boundPid) > 0 ? 'has-product' : ''}">
+                    <input class="form-control form-control-sm row-item-name" placeholder="Search item or scan..." autocomplete="off" required>
+                    <button type="button" class="btn-quick-edit-product" title="Edit product master" aria-label="Edit Product">
+                        <i class="dripicons-document-edit"></i><span>Edit</span>
+                    </button>
+                </div>
                 <small class="row-product-code"></small><input type="hidden" name="item_remarks[]" class="row-remarks">
                 <select name="variant_id[]" class="form-control form-control-sm row-variant mt-1" aria-label="Item variant" hidden></select>
                 <input name="batch_no[]" class="form-control form-control-sm row-batch mt-1" maxlength="100" placeholder="Lot / batch (if tracked)" autocomplete="off"></td>
@@ -200,6 +208,7 @@
             var curVal = this.value.trim().toLowerCase();
             var curProd = products.find(p => String(p.id) === String($row.find('.row-product-id').val()));
             if (!curProd || (curProd.name.toLowerCase() !== curVal && (curProd.code || '').toLowerCase() !== curVal)) {
+                $row.removeAttr('data-product-id').find('.row-item-input-wrap').removeClass('has-product');
                 $row.find('.row-product-id, .row-unit-id, .row-order-item-id, .row-batch').val('');
                 $row.find('.row-product-code').text('');
                 variants($row, null);
@@ -208,6 +217,7 @@
         $row.find('.row-item-name').on('change', function () {
             const val = this.value.trim();
             if (!val) {
+                $row.removeAttr('data-product-id').find('.row-item-input-wrap').removeClass('has-product');
                 $row.find('.row-product-id, .row-unit-id, .row-order-item-id, .row-batch').val('');
                 $row.find('.row-product-code').text('');
                 variants($row, null);
@@ -281,8 +291,41 @@
         $('#multi-item-tbody .multi-item-cb:checked').each(function () { addRow({ product_id: this.value }); });
         $('#multi-item-modal').modal('hide').find('input[type="checkbox"]').prop('checked', false);
     });
+    $(document).on('zolo:product-updated', function (e, p, prevMaster) {
+        if (!p || !p.id) return;
+        const idx = products.findIndex(item => String(item.id) === String(p.id));
+        if (idx !== -1) products[idx] = $.extend({}, products[idx], p);
+        else products.unshift(p);
+
+        const rateKey = config.purchase ? 'cost' : 'price';
+        const prevRate = prevMaster ? Number(prevMaster[rateKey] || 0) : null;
+        const nextRate = Number(p[rateKey] ?? 0);
+
+        $body.find('.item-row').filter(function () {
+            return String($(this).find('.row-product-id').val()) === String(p.id);
+        }).each(function () {
+            const $row = $(this);
+            $row.find('.row-item-name').val(p.name);
+            $row.find('.row-product-code').text(p.code);
+            $row.find('.row-unit').text(p.unit);
+            if (p.unit_id) $row.find('.row-unit-id').val(p.unit_id);
+            const curRate = parseFloat($row.find('.row-rate').val());
+            if (isNaN(curRate) || curRate === 0 || (prevRate !== null && Math.abs(curRate - prevRate) < 0.0001)) {
+                $row.find('.row-rate').val(nextRate);
+            }
+            if (p.tax_rate !== undefined && p.tax_rate !== null) {
+                $row.find('.row-tax-rate').val(p.tax_rate);
+            }
+        });
+        totals();
+    });
+
     $('#quick-create-item-form').on('submit', function (event) {
         event.preventDefault();
+        if ($('#quick-edit-product-id').val()) {
+            if (window.zoloSubmitQuickEditProduct) window.zoloSubmitQuickEditProduct(this);
+            return;
+        }
         const $button = $(this).find('[type="submit"]').prop('disabled', true);
         const formArray = $(this).serializeArray();
         const postData = { _token: config.token };
