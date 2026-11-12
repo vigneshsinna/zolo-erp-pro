@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Ai\Gateway;
 
 use App\Ai\DTOs\AiPrincipal;
+use App\Ai\Multimodal\DTOs\PerceptionResult;
+use App\Ai\Multimodal\Enums\ModelPurpose;
+use App\Ai\Multimodal\Exceptions\MultimodalException;
 use App\Ai\Services\AiFeatureGate;
 use Closure;
 use Illuminate\Database\Query\Builder;
@@ -48,6 +51,17 @@ class ApprovedModelGateway
         'anthropic' => ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022'],
     ];
 
+    /**
+     * Dedicated perception models strictly isolated from reasoning/tool-orchestration models.
+     *
+     * @var array<string, array<int, string>>
+     */
+    protected array $allowedPerceptionModels = [
+        'nvidia' => [
+            'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+        ],
+    ];
+
     public function __construct(protected AiFeatureGate $featureGate) {}
 
     /** @return array{provider: string, model: string} */
@@ -69,6 +83,181 @@ class ApprovedModelGateway
     public function isApproved(string $provider, string $model): bool
     {
         return in_array($model, $this->allowedModels[$provider] ?? [], true);
+    }
+
+    /** @return array{provider: string, model: string} */
+    public function resolveApprovedPerceptionModel(): array
+    {
+        $provider = (string) config('ai_multimodal.provider', 'nvidia');
+        if (! isset($this->allowedPerceptionModels[$provider])) {
+            throw new InvalidArgumentException('Multimodal perception provider is outside the approved allowlist.');
+        }
+
+        $model = (string) config('ai_multimodal.model', '');
+        if ($model === '' || ! $this->isApprovedPerceptionModel($provider, $model)) {
+            throw new InvalidArgumentException('Multimodal perception model is outside the approved allowlist.');
+        }
+
+        return [
+            'provider' => $provider,
+            'model' => $model,
+        ];
+    }
+
+    public function isApprovedPerceptionModel(string $provider, string $model): bool
+    {
+        return in_array($model, $this->allowedPerceptionModels[$provider] ?? [], true);
+    }
+
+    /**
+     * Enforce strict separation between reasoning/tool models and perception-only models.
+     */
+    public function assertPurposeAllowsModel(ModelPurpose $purpose, string $provider, string $model): void
+    {
+        if ($purpose->isPerception()) {
+            if (! $this->isApprovedPerceptionModel($provider, $model)) {
+                throw new InvalidArgumentException("Model [{$model}] is not approved for perception purpose [{$purpose->value}].");
+            }
+
+            return;
+        }
+
+        if (! $this->isApproved($provider, $model)) {
+            throw new InvalidArgumentException("Model [{$model}] is not approved for reasoning purpose.");
+        }
+    }
+
+    /**
+     * Enforce company multimodal enablement and daily company media upload quota.
+     */
+    public function admitMediaUpload(AiPrincipal $principal, string $date): void
+    {
+        if (! (bool) config('ai_multimodal.enabled', false)) {
+            throw MultimodalException::featureDisabled();
+        }
+
+        $limit = DB::transaction(function () use ($principal, $date): array {
+            $setting = $this->lockCompany($principal);
+            if (! (bool) ($setting->multimodal_enabled ?? false)) {
+                throw MultimodalException::featureDisabled();
+            }
+
+            $dailyLimit = min(
+                (int) config('ai_multimodal.daily_company_uploads', 100),
+                max(1, (int) ($setting->daily_media_upload_limit ?? 100))
+            );
+
+            $todayCount = DB::table('ai_media_assets')
+                ->where('company_id', $principal->companyId)
+                ->whereDate('created_at', $date)
+                ->count();
+
+            return ['count' => $todayCount, 'limit' => $dailyLimit];
+        }, 3);
+
+        if ($limit['count'] >= $limit['limit']) {
+            throw MultimodalException::dailyLimitExceeded($limit['limit']);
+        }
+    }
+
+    /**
+     * Reserve tokens, enforce the shared NVIDIA RPM bucket, execute perception, and meter usage.
+     *
+     * @param Closure(string, string): PerceptionResult $callback
+     */
+    public function admitPerceptionDispatch(
+        AiPrincipal $principal,
+        string $date,
+        ModelPurpose $purpose,
+        int $estimatedInputBytes,
+        Closure $callback,
+        ?string $mediaId = null,
+    ): PerceptionResult {
+        if (! $purpose->isPerception()) {
+            throw new InvalidArgumentException('admitPerceptionDispatch only accepts perception purposes.');
+        }
+
+        if (! (bool) config('ai_multimodal.enabled', false)) {
+            throw MultimodalException::featureDisabled();
+        }
+
+        ['provider' => $provider, 'model' => $model] = $this->resolveApprovedPerceptionModel();
+        $this->assertPurposeAllowsModel($purpose, $provider, $model);
+
+        $outputLimit = (int) config('ai_multimodal.max_extraction_tokens', 4096);
+        $reserved = max(1024, (int) ceil($estimatedInputBytes / 4)) + $outputLimit;
+
+        DB::transaction(function () use ($principal, $date, $reserved): void {
+            $setting = $this->lockCompany($principal);
+            if (! (bool) ($setting->multimodal_enabled ?? false)) {
+                throw MultimodalException::featureDisabled();
+            }
+
+            if ($this->remainingTokens($principal, $date, $setting) < $reserved) {
+                throw new TooManyRequestsHttpException(message: 'Daily company AI token quota cannot cover the next perception step.');
+            }
+
+            DB::table('ai_usage_counters')->insertOrIgnore([
+                'company_id' => $principal->companyId,
+                'user_id' => $principal->actorId,
+                'date' => $date,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            if ($this->counter($principal, $date)->increment('reserved_tokens', $reserved) !== 1) {
+                throw new ServiceUnavailableHttpException(message: 'AI usage accounting is unavailable.');
+            }
+        }, 3);
+
+        $this->enforceProviderRateLimit($provider);
+        $start = microtime(true);
+
+        try {
+            $result = $callback($provider, $model);
+            $durationMs = max(1, $result->durationMs > 0 ? $result->durationMs : (int) round((microtime(true) - $start) * 1000));
+
+            $this->settleStep(
+                $principal,
+                $date,
+                $reserved,
+                new TextUsage($result->inputTokens, $result->outputTokens)
+            );
+            $this->recordModelInvocation(
+                $principal,
+                1,
+                $provider,
+                $model,
+                'completed',
+                $result->inputTokens,
+                $result->outputTokens,
+                $durationMs,
+                httpAttempts: $result->httpAttempts,
+                modelPurpose: $purpose->value,
+                mediaId: $mediaId,
+            );
+
+            return $result;
+        } catch (Throwable $e) {
+            $this->settleStep($principal, $date, $reserved, new TextUsage());
+            $durationMs = (int) round((microtime(true) - $start) * 1000);
+            $this->recordModelInvocation(
+                $principal,
+                1,
+                $provider,
+                $model,
+                'failed',
+                0,
+                0,
+                $durationMs,
+                class_basename($e),
+                httpAttempts: 1,
+                modelPurpose: $purpose->value,
+                mediaId: $mediaId,
+            );
+
+            throw $e;
+        }
     }
 
     /** Call inside the transaction that creates the run. */
@@ -285,6 +474,8 @@ class ApprovedModelGateway
         int $durationMs,
         ?string $errorMessage = null,
         ?int $httpAttempts = null,
+        ?string $modelPurpose = null,
+        ?string $mediaId = null,
     ): void {
         try {
             DB::table('ai_model_invocations')->insert([
@@ -294,6 +485,8 @@ class ApprovedModelGateway
                 'step_number' => $stepNumber,
                 'provider' => $provider,
                 'model' => $model,
+                'model_purpose' => $modelPurpose,
+                'media_id' => $mediaId,
                 'status' => $status,
                 'input_tokens' => $inputTokens,
                 'output_tokens' => $outputTokens,

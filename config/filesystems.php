@@ -48,6 +48,13 @@ return [
             'root' => storage_path('app'),
         ],
 
+        'ai_private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/ai_media'),
+            'visibility' => 'private',
+            'throw' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

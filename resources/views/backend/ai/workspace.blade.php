@@ -152,7 +152,40 @@
                     <div class="card-footer bg-white border-top p-2 flex-shrink-0">
                         <form id="chat-form" class="m-0">
                             @csrf
+                            @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+                                <input type="file" id="ai-media-file-input" class="d-none"
+                                    accept="image/jpeg,image/png,application/pdf,audio/wav,audio/webm,audio/mpeg,audio/flac,audio/ogg">
+                                <div id="ai-media-attached-bar" class="mb-2 d-none" aria-live="polite"></div>
+                                <div id="ai-voice-recorder-tray" class="border rounded p-2 mb-2 bg-light d-none" aria-live="polite">
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                                        <div class="d-flex align-items-center mb-1 mb-sm-0">
+                                            <span id="ai-voice-timer" class="badge badge-danger mr-2">00:00</span>
+                                            <small id="ai-voice-recorder-status" class="text-muted"></small>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <button type="button" id="btn-ai-voice-stop" class="btn btn-sm btn-danger mr-1 d-none">Stop</button>
+                                            <button type="button" id="btn-ai-voice-upload" class="btn btn-sm btn-success mr-1 d-none">Transcribe &amp; Review</button>
+                                            <button type="button" id="btn-ai-voice-discard" class="btn btn-sm btn-outline-secondary">Discard</button>
+                                        </div>
+                                    </div>
+                                    <audio id="ai-voice-replay" controls class="w-100 mt-2 d-none"></audio>
+                                </div>
+                            @endif
                             <div class="input-group">
+                                @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+                                    <div class="input-group-prepend">
+                                        <button id="btn-ai-attach-media" class="btn btn-outline-secondary" type="button"
+                                            title="Attach invoice image, PDF (max {{ $multimodalLimits['max_pdf_pages'] ?? 5 }} pages), or audio"
+                                            aria-label="Attach invoice image, PDF, or audio">
+                                            <i class="dripicons-paperclip"></i>
+                                        </button>
+                                        <button id="btn-ai-record-audio" class="btn btn-outline-secondary" type="button"
+                                            title="Record voice instruction (max {{ $multimodalLimits['max_audio_seconds'] ?? 120 }}s)"
+                                            aria-label="Record voice instruction">
+                                            <i class="dripicons-microphone"></i>
+                                        </button>
+                                    </div>
+                                @endif
                                 <textarea id="chat-input" class="form-control border-right-0 ai-chat-input" rows="1"
                                     placeholder="Ask about outstanding dues, customer aging, or financial balances..."
                                     maxlength="4000" required></textarea>
@@ -840,10 +873,13 @@
                         }
                         card.append(cardBody);
                         bubble.append(card);
-                    } else if (fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1') {
+                    } else if (fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1' || fact.tool === 'sales_order.create.v1') {
+                        const isSalesOrder = fact.tool === 'sales_order.create.v1';
+                        const partyLabel = isSalesOrder ? (data.customer?.name || 'Customer') : (data.supplier?.name || 'Supplier');
+                        const docTitle = isSalesOrder ? 'Sales Order Proposal' : 'Purchase Order Proposal';
                         const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
                         const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
-                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> Purchase Order Proposal · ' + $('<div>').text(data.supplier?.name || 'Supplier').html() + '</span>'));
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> ' + docTitle + ' · ' + $('<div>').text(partyLabel).html() + '</span>'));
                         cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Requires Approval</span>'));
                         card.append(cardHeader);
 
@@ -859,7 +895,7 @@
                             table.append('<thead class="thead-light"><tr>' +
                                 '<th>Item</th>' +
                                 '<th class="text-right">Qty</th>' +
-                                '<th class="text-right">Cost</th>' +
+                                '<th class="text-right">' + (isSalesOrder ? 'Price' : 'Cost') + '</th>' +
                                 '<th class="text-right">Total</th>' +
                                 '</tr></thead>');
 
@@ -868,7 +904,7 @@
                                 const tr = $('<tr></tr>');
                                 tr.append($('<td></td>').append($('<div class="font-weight-bold"></div>').text(item.product_name || item.product_code || 'Product')).append($('<small class="text-muted"></small>').text(item.product_code || '')));
                                 tr.append($('<td class="text-right"></td>').text(item.qty));
-                                tr.append($('<td class="text-right"></td>').text(currencySymbol + item.net_unit_cost));
+                                tr.append($('<td class="text-right"></td>').text(currencySymbol + (item.net_unit_cost ?? item.net_unit_price ?? '0.00')));
                                 tr.append($('<td class="text-right font-weight-bold"></td>').text(currencySymbol + (item.line_total || item.total || '0.00')));
                                 tbody.append(tr);
                             });
@@ -900,7 +936,8 @@
                                     headers: headers,
                                     data: JSON.stringify({ expected_version: data.version || 1 }),
                                     success: function (res) {
-                                        actionRow.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>Order Placed: PO #' + (res.execution?.receipt?.details?.reference_no || res.proposal_id) + '</span>');
+                                        const docPrefix = isSalesOrder ? 'SO #' : 'PO #';
+                                        actionRow.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>Order Placed: ' + docPrefix + (res.execution?.receipt?.details?.reference_no || res.proposal_id) + '</span>');
                                     },
                                     error: function (xhr) {
                                         btnApprove.prop('disabled', false).text('Approve & Place Order');
@@ -1448,6 +1485,10 @@
                 if (!message) return;
                 sending = true;
 
+                const mediaIds = (window.zoloAiMedia && window.zoloAiMedia.getAttachedMediaIds)
+                    ? window.zoloAiMedia.getAttachedMediaIds()
+                    : [];
+
                 appendMessage('user', message);
                 input.val('');
                 $('#char-counter').text('0 / 4000');
@@ -1457,15 +1498,23 @@
                 $('#btn-send-spinner').show();
                 $('#btn-send').prop('disabled', true);
 
+                const chatBody = {
+                    message: message,
+                    thread_id: currentThreadId
+                };
+                if (mediaIds.length > 0) {
+                    chatBody.media_ids = mediaIds;
+                }
+
                 $.ajax({
                     url: '{{ route("ai.chat") }}',
                     method: 'POST',
                     headers: headers,
-                    data: JSON.stringify({
-                        message: message,
-                        thread_id: currentThreadId
-                    }),
+                    data: JSON.stringify(chatBody),
                     success: function (res) {
+                        if (window.zoloAiMedia && window.zoloAiMedia.clearAttachedMedia) {
+                            window.zoloAiMedia.clearAttachedMedia();
+                        }
                         if (res.thread_id && !currentThreadId) {
                             currentThreadId = res.thread_id;
                             loadThreads();
@@ -1572,10 +1621,33 @@
                 loadTelemetry();
             });
 
+            // Expose safe bridge for modular multimodal JS plugin
+            window.zoloAiWorkspace = {
+                appendMessage: appendMessage,
+                loadThreads: loadThreads,
+                loadTelemetry: loadTelemetry,
+                getCurrentThreadId: function () { return currentThreadId; },
+                setCurrentThreadId: function (id) { currentThreadId = id; },
+                aiBaseUrl: aiBaseUrl,
+                csrfToken: csrfToken,
+                scopeHeader: '{{ $context->companyId }}/{{ $context->branchId }}/{{ $context->financialYearId }}'
+            };
+
             // Boot
             loadThreads();
             loadTelemetry();
 
         })(jQuery);
     </script>
+    <script>
+        window.zoloAiMultimodalConfig = {!! \Illuminate\Support\Js::from([
+            'enabled' => (bool) ($isMultimodalEnabled ?? false),
+            'mediaBaseUrl' => url('ai'),
+            'maxAudioSeconds' => (int) ($multimodalLimits['max_audio_seconds'] ?? 120),
+            'maxPdfPages' => (int) ($multimodalLimits['max_pdf_pages'] ?? 5),
+        ]) !!};
+    </script>
+    @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+        <script src="{{ asset('js/ai-media-input.js') }}"></script>
+    @endif
 @endpush

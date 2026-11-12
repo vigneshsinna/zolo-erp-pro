@@ -7,6 +7,14 @@ namespace App\Providers;
 use App\Ai\Contracts\AiPrincipalAuthorizerInterface;
 use App\Ai\DTOs\AiToolRegistration;
 use App\Ai\Gateway\ApprovedModelGateway;
+use App\Ai\Multimodal\Clients\NullMultilingualSpeechProvider;
+use App\Ai\Multimodal\Clients\NvidiaOmniPerceptionClient;
+use App\Ai\Multimodal\Contracts\AudioTranscoderInterface;
+use App\Ai\Multimodal\Contracts\MultilingualSpeechProviderInterface;
+use App\Ai\Multimodal\Contracts\PdfRasterizerInterface;
+use App\Ai\Multimodal\Contracts\PerceptionClientInterface;
+use App\Ai\Multimodal\Drivers\DefaultAudioTranscoder;
+use App\Ai\Multimodal\Drivers\DefaultPdfRasterizer;
 use App\Ai\Handlers\CompanyKnowledgeHandler;
 use App\Ai\Handlers\CopilotHelpHandler;
 use App\Ai\Handlers\CustomerInvoicesHandler;
@@ -27,8 +35,11 @@ use App\Ai\Services\AiPrincipalAuthorizer;
 use App\Ai\Services\AiPrincipalFactory;
 use App\Ai\Services\AiToolManifest;
 use App\Ai\Services\ErpToolExecutor;
+use App\Models\AiMediaAsset;
+use App\Policies\AiMediaAssetPolicy;
 use Illuminate\Http\Client\Events\RequestSending;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AiServiceProvider extends ServiceProvider
@@ -96,6 +107,12 @@ class AiServiceProvider extends ServiceProvider
         });
         $this->app->singleton(\App\Ai\Registries\SetupCapabilityRegistry::class);
         $this->app->singleton(\App\Ai\Services\ActionApprovalSignature::class);
+
+        // Phase 2.3 Multimodal Perception Bindings
+        $this->app->bind(PdfRasterizerInterface::class, DefaultPdfRasterizer::class);
+        $this->app->bind(AudioTranscoderInterface::class, DefaultAudioTranscoder::class);
+        $this->app->bind(MultilingualSpeechProviderInterface::class, NullMultilingualSpeechProvider::class);
+        $this->app->scoped(PerceptionClientInterface::class, NvidiaOmniPerceptionClient::class);
     }
 
     /**
@@ -103,6 +120,8 @@ class AiServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(AiMediaAsset::class, AiMediaAssetPolicy::class);
+
         Event::listen(RequestSending::class, function (RequestSending $event): void {
             if ($event->request->method() === 'POST' && $this->app->resolved(ApprovedModelGateway::class)) {
                 $this->app->make(ApprovedModelGateway::class)->admitProviderDispatch($event->request->url());

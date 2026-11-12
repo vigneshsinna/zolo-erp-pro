@@ -8,10 +8,12 @@ use App\Ai\Agents\DeepSeekAgent;
 use App\Ai\Agents\ErpCopilot;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Gateway\ApprovedModelGateway;
+use App\Ai\Multimodal\Services\NormalizedInputBuilder;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalFactory;
 use App\Ai\Services\VerifiedSummaryBuilder;
 use App\Http\Controllers\Controller;
+use App\Models\AiMediaAsset;
 use App\Services\Commercial\CommercialPermission;
 use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
@@ -46,10 +48,13 @@ class AiChatController extends Controller
     public function settings(Request $request): JsonResponse
     {
         $principal = $this->principal($request);
+        $multimodalEnabled = $this->featureGate->isMultimodalEnabledForCompany($principal->companyId);
 
         return response()->json([
             'enabled' => $this->featureGate->isEnabledForCompany($principal->companyId),
             'read_only' => $this->featureGate->isReadOnly(),
+            'multimodal_enabled' => $multimodalEnabled,
+            'perception_model' => $multimodalEnabled ? $this->modelGateway->resolveApprovedPerceptionModel() : null,
             'allowed_tools' => $principal->permittedToolNames,
             ...$this->modelGateway->resolveApprovedModel(),
             'scope' => $this->scope($principal),
@@ -133,6 +138,16 @@ class AiChatController extends Controller
                 'date' => $quotaDate,
                 'user_requests' => (int) ($counters->user_requests ?? 0),
                 'model_invocations' => $todayModelCalls,
+                'perception_invocations' => (int) DB::table('ai_model_invocations')
+                    ->where('company_id', $principal->companyId)
+                    ->whereDate('created_at', $quotaDate)
+                    ->whereNotNull('model_purpose')
+                    ->where('model_purpose', '!=', 'reasoning')
+                    ->count(),
+                'media_uploads' => (int) DB::table('ai_media_assets')
+                    ->where('company_id', $principal->companyId)
+                    ->whereDate('created_at', $quotaDate)
+                    ->count(),
                 'provider_http_attempts' => $todayHttpAttempts,
                 'provider_retries' => $todayRetries,
                 'erp_tool_calls' => $todayToolCalls,
@@ -410,10 +425,56 @@ class AiChatController extends Controller
             'message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
             'thread_id' => 'nullable|uuid',
             'image' => 'nullable|string',
+            'media_ids' => 'nullable|array|max:3',
+            'media_ids.*' => 'uuid',
         ]);
         $principal = $this->principal($request);
         if ($denial = $this->accessDenial($principal)) {
             return $denial;
+        }
+
+        $mediaIds = array_values(array_unique((array) ($validated['media_ids'] ?? [])));
+        $normalizedMediaContext = [];
+        if ($mediaIds !== []) {
+            if (! $this->featureGate->isMultimodalEnabledForCompany($principal->companyId)) {
+                return $this->error('MULTIMODAL_DISABLED', 'Multimodal perception is disabled for this company.', 503);
+            }
+
+            $assets = AiMediaAsset::with('latestExtraction')
+                ->where('company_id', $principal->companyId)
+                ->where('actor_id', $principal->actorId)
+                ->whereIn('id', $mediaIds)
+                ->whereNull('deleted_at_policy')
+                ->get();
+
+            if ($assets->count() !== count($mediaIds)) {
+                return $this->error('MEDIA_NOT_FOUND', 'One or more attached media assets are unavailable in this workspace.', 404);
+            }
+
+            $builder = app(NormalizedInputBuilder::class);
+            foreach ($assets as $asset) {
+                if ($asset->isExpired()) {
+                    return $this->error('MEDIA_EXPIRED', 'Attached media asset has expired.', 410);
+                }
+                $latest = $asset->latestExtraction;
+                if ($latest !== null) {
+                    $normalized = $builder->build(
+                        principal: $principal,
+                        asset: $asset,
+                        extracted: (array) $latest->extracted_json,
+                        extractionId: $latest->id,
+                        extractionRevision: (int) $latest->revision,
+                        modelKey: (string) $latest->model_key,
+                        companionText: $validated['message'],
+                    );
+                    $normalizedMediaContext[] = [
+                        'media_id' => $asset->id,
+                        'source_kind' => $asset->source_kind,
+                        'confirmation_status' => $latest->confirmation_status,
+                        'normalized_input' => $normalized->toArray(),
+                    ];
+                }
+            }
         }
 
         $existingThreadId = $validated['thread_id'] ?? null;
@@ -502,7 +563,8 @@ class AiChatController extends Controller
                 $principal,
                 $history,
                 fn(PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
-                $activeEntities
+                $activeEntities,
+                $normalizedMediaContext
             );
             $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
 

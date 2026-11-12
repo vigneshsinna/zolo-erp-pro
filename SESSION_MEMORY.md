@@ -1,5 +1,27 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Phase 2.3 Complete: Multimodal AI Perception & Input Normalization (`feature/ai-multimodal-perception`) — 2026-11-12
+
+- **Branch Isolation:**
+  - All Phase 2.3 multimodal AI work is isolated on `feature/ai-multimodal-perception` (separated cleanly from Opticals / Product Type / LensBreeze / Command Center changes committed on `ui` at `6b3abeb`).
+- **Delivered Architecture & Safeguards:**
+  - **Double-Gated Feature Switch:** Enforces global `config('ai_multimodal.enabled')` (`AI_MULTIMODAL_ENABLED`, defaults `false`) AND per-company `ai_feature_settings.multimodal_enabled` via `AiFeatureGate`. Text Copilot operates independently when disabled.
+  - **Purpose-Scoped Perception Client (`NvidiaOmniPerceptionClient`):** Uses `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` strictly tool-free (`tools`/`tool_choice`/`functions` stripped) for `perception_vision` and `perception_audio`, enforcing `ApprovedModelGateway::admitPerceptionDispatch()`, shared NVIDIA RPM bucket throttling, modality-calibrated token reservations (settled to actual usage), IPv4 + HTTP/1.1 connection timeouts, and `is_verified_by_erp = false` untrusted claims.
+  - **Private Ingestion, Sanitization & Lifecycle (`MediaIngestionService`, `AiMediaAsset`, `AiMediaExtraction`, `AiMediaAssetPolicy`, `AiMediaController`):** Blocks remote URLs (`UploadAiMediaRequest` HTTP 422 SSRF guard), re-encodes/strips EXIF on images, stores files on private `ai_private` disk (`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`), supports optimistic revision locking (`409 REVISION_CONFLICT`), explicit user confirmation (`confirm`), and Phase 2.1/2.2 proposal handoff (`NormalizedInputWorkflowBridge`).
+  - **Additive Migrations (`2026_11_12_000001..000003`):** Applied cleanly on `zolo_test_ai_release` and `salepro_db` while keeping `AI_MULTIMODAL_ENABLED` unset/false by default.
+- **Verification Evidence (Post-Final Edit):**
+  - **AI Unit Suite (`php vendor/bin/phpunit tests/Unit/Ai`):** **34 / 34 passed** (`154 assertions`).
+  - **Full AI Feature Suite (`php vendor/bin/phpunit -c phpunit.ai.xml`):** **117 / 117 passed** (`987 assertions`) on disposable DB `zolo_test_ai_release` (including all `tests/Feature/Ai/Multimodal` suites).
+  - **Live NVIDIA Omni Smoke Test (`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`):**
+    - Vision (`smoke_invoice.jpg`): `11,859ms`, `completed`, `974 in / 1,173 out`, extracted supplier/GSTIN/invoice/totals/line accurately (`is_verified_by_erp: false`).
+    - Audio (`smoke_voice.wav`): `6,763ms`, `completed`, `389 in / 797 out`, transcribed spoken PO instruction & slots (`detected_language: "en"`, `intent_guess: "purchase_order.create.v1"`, `is_verified_by_erp: false`); RPM counter tracked `0 -> 2 / 35`.
+  - **Playwright Real-Browser Check (`tests/Browser/Ai/multimodal-workspace.spec.mjs`, Edge headless):** Both `disabled` and `enabled` passes exited `0` (attach/mic hiding when disabled; voice tray fallback, private upload/preview/discard, edit, `409` reload, confirm, and `purchase_order.create.v1` handoff when enabled).
+- **Host Limitations & Rollback Plan:**
+  - *Host Binary / Language Matrix:* `ffmpeg`/`ffprobe` and `pdftoppm`/`gs` are not installed on this Windows host, so compressed non-WAV audio transcoding (`AUDIO_TRANSCODER_UNAVAILABLE`) and multi-page PDF rasterization (`PDF_RASTERIZER_UNAVAILABLE`) fail closed cleanly until installed on Linux/VPS; WAV audio and JPEG/PNG images execute natively. Multilingual speech routing (`AI_MULTIMODAL_MULTILINGUAL_ENABLED`) remains disabled by default.
+  - *Rollback Plan:* (1) Instant killswitch: set `AI_MULTIMODAL_ENABLED=false` (or unset) and toggle `ai_feature_settings.multimodal_enabled=0`; (2) Schema rollback if needed: `php artisan migrate:rollback --step=3` and purge `storage/app/ai_private`.
+
+---
+
 ## Web Workspace CSRF Mismatch Resolved & Session Workflow-Task Routes Mounted — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
 - **Incident & Symptoms (User Reported with Screenshots):**
