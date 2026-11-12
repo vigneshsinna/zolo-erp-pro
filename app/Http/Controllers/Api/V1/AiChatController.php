@@ -387,13 +387,14 @@ class AiChatController extends Controller
         );
 
         $isPurchase = in_array($type, ['purchase', 'purchase_order', 'purchases'], true);
-        $isSale = in_array($type, ['sale', 'sales_order', 'sales', 'invoice'], true);
+        $isSale = in_array($type, ['sale', 'sales_order', 'sales', 'invoice', 'sales_invoice'], true);
+        $isQuotation = in_array($type, ['quotation', 'quotations', 'quote'], true);
 
-        if (!$isPurchase && !$isSale) {
+        if (!$isPurchase && !$isSale && !$isQuotation) {
             return $this->error('AI_INVALID_DOCUMENT_TYPE', "Unsupported document type [{$type}].", 422);
         }
 
-        $permission = $isPurchase ? 'purchases-index' : 'sales-index';
+        $permission = $isPurchase ? 'purchases-index' : ($isQuotation ? 'quotes-index' : 'sales-index');
         if (!app(CommercialPermission::class)->allows($permission, $context, $principal->actorId)) {
             return $this->error('AI_TOOL_FORBIDDEN', 'Access denied to document.', 403);
         }
@@ -402,6 +403,10 @@ class AiChatController extends Controller
         if ($documentId === null) {
             if ($isPurchase) {
                 $documentId = (int) \App\Models\Purchase::where('company_id', $principal->companyId)
+                    ->where('reference_no', (string) $id)
+                    ->value('id');
+            } elseif ($isQuotation) {
+                $documentId = (int) \App\Models\Quotation::where('company_id', $principal->companyId)
                     ->where('reference_no', (string) $id)
                     ->value('id');
             } else {
@@ -417,6 +422,79 @@ class AiChatController extends Controller
 
         try {
             $renderer = app(\App\Services\Documents\DocumentRenderingService::class);
+
+            if ($isQuotation) {
+                $quote = \App\Models\Quotation::where('company_id', $principal->companyId)->findOrFail($documentId);
+                $customer = $quote->customer;
+                $company = \App\Models\Company::findOrFail($context->companyId);
+                $print = $renderer->printSettings($context);
+
+                $lines = [];
+                foreach ($quote->productQuotations as $pq) {
+                    $lines[] = [
+                        'name' => $pq->product->name ?? 'Product',
+                        'code' => $pq->product->code ?? '',
+                        'unit' => $pq->unit->unit_code ?? 'units',
+                        'discount' => (float) ($pq->discount ?? 0),
+                        'qty' => (float) ($pq->qty ?? 1),
+                        'price' => (float) ($pq->net_unit_price ?? 0),
+                        'taxable_value' => (float) ($pq->total ?? 0) - (float) ($pq->tax ?? 0),
+                        'tax_rate' => (float) ($pq->tax_rate ?? 0),
+                        'cess_rate' => 0,
+                        'tax' => (float) ($pq->tax ?? 0),
+                        'total' => (float) ($pq->total ?? 0),
+                        'hsn_sac' => $pq->product->hsn_code ?? '',
+                        'cgst' => 0,
+                        'sgst' => 0,
+                        'igst' => 0,
+                        'cess' => 0,
+                    ];
+                }
+
+                $docDto = [
+                    'kind' => 'quotation',
+                    'order' => true,
+                    'title' => 'Customer Quotation',
+                    'number' => (string) $quote->reference_no,
+                    'date' => substr((string) $quote->created_at, 0, 10),
+                    'company_name' => $company->legal_name ?? $company->name,
+                    'company_trade_name' => $company->trade_name,
+                    'company_address' => app(\App\Services\Platform\CompanyProfileService::class)->fullAddress($company),
+                    'company_gstin' => $company->vat_number ?? '',
+                    'company_state' => $company->state_code ?? '',
+                    'party_name' => $customer->name ?? 'Customer',
+                    'party_address' => $customer->address ?? '',
+                    'party_gstin' => $customer->tax_no ?? '',
+                    'party_state' => '',
+                    'party_contact' => ['phone' => $customer->phone_number ?? null, 'email' => $customer->email ?? null],
+                    'currency' => 'INR',
+                    'lines' => $lines,
+                    'total_tax' => (float) ($quote->total_tax ?? 0),
+                    'discount' => (float) ($quote->order_discount ?? 0),
+                    'shipping' => (float) ($quote->shipping_cost ?? 0),
+                    'grand_total' => (float) ($quote->grand_total ?? 0),
+                    'round_off' => 0,
+                    'print' => $print,
+                    'note' => $quote->note,
+                    'reversed_at' => null,
+                    'transport' => [],
+                    'material_documents' => [],
+                    'references' => [],
+                    'ship_to' => null,
+                    'source_number' => null,
+                ];
+
+                $profile = $renderer->profile('sale', $context, null, 'a4');
+                $html = $renderer->html($docDto, $profile);
+                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+                $filename = 'Quotation_' . str_replace(['/', '\\'], '_', (string) $quote->reference_no) . '.pdf';
+
+                return response($pdf->output(), 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="' . $filename . '"',
+                ]);
+            }
+
             $docKind = $isPurchase ? 'purchase' : ($type === 'sales_order' ? 'sales_order' : 'sale');
             $dto = $renderer->dto($docKind, $documentId, $context);
             $profile = $renderer->profile($docKind, $context, null, 'a4');
@@ -461,7 +539,8 @@ class AiChatController extends Controller
             $result = json_decode((string) $execution->result_json, true) ?? [];
             $resourceId = (int) ($result['resource_id'] ?? $result['details']['purchase_id'] ?? $result['details']['sale_id'] ?? 0);
             if ($resourceId > 0) {
-                $type = str_contains($proposal->action_key, 'purchase') ? 'purchase' : 'sale';
+                $type = str_contains($proposal->action_key, 'purchase') ? 'purchase'
+                    : (str_contains($proposal->action_key, 'quotation') ? 'quotation' : 'sale');
                 return $this->downloadDocumentPdf($request, $type, $resourceId);
             }
         }

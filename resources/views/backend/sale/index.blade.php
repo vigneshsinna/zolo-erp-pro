@@ -2510,7 +2510,7 @@
             }
         });
 
-        $input.on('change', function() {
+        $input.on('change', async function() {
             var tr = $(this).closest('tr');
             var val = $(this).val().trim();
             if (!val) {
@@ -2536,6 +2536,19 @@
                 CommercialProductLookup.normalize(p.name) === normVal ||
                 CommercialProductLookup.normalize(p.code) === normVal
             ));
+
+            if (!exact) {
+                var partyId = document.querySelector('[name="customer_id"]')?.value || '';
+                try {
+                    var matches = await CommercialProductLookup.search(val, allProducts, 'sale', matchesProductMode);
+                    if (CommercialProductLookup.normalize(this.value) !== normVal ||
+                        (document.querySelector('[name="customer_id"]')?.value || '') !== partyId) return;
+                    exact = CommercialProductLookup.exact(matches, val);
+                } catch (error) {
+                    alert(error.message);
+                    return;
+                }
+            }
 
             if (exact) {
                 applyProductToRow(tr, exact);

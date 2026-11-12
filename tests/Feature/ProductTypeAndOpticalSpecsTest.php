@@ -156,6 +156,15 @@ class ProductTypeAndOpticalSpecsTest extends TestCase
             ->whereNotNull('category_id')
             ->first();
 
+        if (!$product) {
+            (new OpticalsMasterSeeder())->seedCompany($company);
+            $product = Product::withoutGlobalScope('request_company')
+                ->where('company_id', $company->id)
+                ->whereNotNull('brand_id')
+                ->whereNotNull('category_id')
+                ->first();
+        }
+
         $this->assertNotNull($product, 'Expected at least one product with brand and category.');
 
         $response = $this->withSession([

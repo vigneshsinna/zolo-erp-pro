@@ -93,6 +93,60 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
                 . ' Remember: all purchase bills require explicit human approval and are never posted autonomously.';
         }
 
+        $canProposeQuotations = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('quotation.create.v1');
+        if ($canProposeQuotations) {
+            $actionsGuidance .= ' When the user asks to quote, create a customer quotation, or estimate prices (e.g., "Quote 50 shirts to Customer ABC at ₹450"), invoke the prepare_quotation tool with customer, items, prices, warehouse, and valid_until.'
+                . ' Quotations are informational price locks with zero stock decrements or ledger writes.'
+                . ' A quotation requires explicit human approval and is never finalized autonomously.';
+        }
+
+        $canProposeInvoices = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('sales_invoice.create.v1');
+        if ($canProposeInvoices) {
+            $actionsGuidance .= ' When the user asks to create a sales tax invoice, invoice a customer, or bill a sales order (e.g., "Create sales invoice for Customer ABC for 10 units at ₹600"), invoke the prepare_sales_invoice tool with customer, items, prices, and sales order reference.'
+                . ' Invoices post to Accounts Receivable and decrement stock only after explicit human approval.';
+        }
+
+        $canProposeReceipts = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('payment_receipt.create.v1');
+        if ($canProposeReceipts) {
+            $actionsGuidance .= ' When the user asks to record customer collection, receive payment, or settle an open invoice (e.g., "Record payment of ₹5,000 from Customer ABC for invoice INV-101 into Bank account"), invoke the prepare_payment_receipt tool with customer, open_item_id, amount, account, and date.'
+                . ' Payment receipts book accounting vouchers only after explicit human approval.';
+        }
+
+        $canProposeReminders = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('payment_reminder.prepare.v1');
+        if ($canProposeReminders) {
+            $actionsGuidance .= ' When the user asks to prepare an overdue payment reminder (e.g., "Prepare payment reminder for Customer ABC for overdue invoice"), invoke the prepare_payment_reminder tool.'
+                . ' Reminders draft internal notices for staff review and never send external messages automatically.';
+        }
+
+        $canProposeTransfers = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('stock_transfer.create.v1');
+        if ($canProposeTransfers) {
+            $actionsGuidance .= ' When the user asks to transfer stock between warehouses (e.g., "Transfer 20 units of Blue Fabric from Main Warehouse to Showroom"), invoke the prepare_stock_transfer tool with source warehouse, destination warehouse, lines, and reason.'
+                . ' Dual-warehouse transfers decrement source and increment destination only after explicit human approval.';
+        }
+
+        $canProposeAdjustments = config('ai_actions.foundation_enabled', false) && ($this->principal->hasTool('stock_adjustment.create.v1') || $this->principal->hasTool('stock_adjust.create.v1'));
+        if ($canProposeAdjustments) {
+            $actionsGuidance .= ' When the user asks to record stock shrinkage, damage write-off, or physical inventory variance (e.g., "Adjust 5 units of damaged yarn in Main Warehouse"), invoke the prepare_stock_adjustment tool with warehouse_id, reason, and lines (use negative quantity for damage/shrinkage).'
+                . ' Adjustments mutate inventory and book variance journals only after explicit human approval.';
+        }
+
+        $canProposeJournals = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('journal_entry.create.v1');
+        if ($canProposeJournals) {
+            $actionsGuidance .= ' When the user asks to record a manual journal voucher (e.g., "Record journal entry: Debit Rent Expense ₹10,000, Credit Bank ₹10,000"), invoke the prepare_journal_entry tool with business_date, description, and balanced items where total debits equal total credits exactly.'
+                . ' Journal entries post to the general ledger only after explicit human approval.';
+        }
+
+        $canProposeProduction = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('production_order.create.v1');
+        if ($canProposeProduction) {
+            $actionsGuidance .= ' When the user asks to plan a manufacturing production order (e.g., "Plan production order for 100 units of Finished Shirt using BOM-1 in Factory Warehouse"), invoke the prepare_production_order tool with bom_id, warehouse_id, and planned_qty.'
+                . ' Production orders reserve components and create planned work orders without premature stock consumption.';
+        }
+
+        $canImportProducts = config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('setup.products.import.v1');
+        if ($canImportProducts) {
+            $actionsGuidance .= ' When the user asks to test, dry-run, simulate, or import a product spreadsheet, invoke simulate_product_import with the document_id to validate rows, then invoke prepare_product_import with the batch_id to generate the import proposal for approval.';
+        }
+
         $governanceGuidance = '';
         if (config('ai_actions.foundation_enabled', false)) {
             $actionsGuidance .= ' Use prepare_reviewed_action for quotations (quotation.create.v1), sales tax invoices (sales_invoice.create.v1), statutory delivery challans (delivery_challan.create.v1), receipts, reminder drafts, inventory, journals, manufacturing and setup capabilities listed in that tool. A quote is never a sales order. A reminder draft never sends a message. The tool description lists the accepted input fields. Never claim execution before a human approves and an authoritative ERP receipt exists.';
@@ -176,6 +230,43 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
 
         if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('purchase_bill.create.v1')) {
             $tools[] = app(\App\Ai\Tools\PreparePurchaseBill::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('quotation.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PrepareQuotation::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('sales_invoice.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PrepareSalesInvoice::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('payment_receipt.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PreparePaymentReceipt::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('payment_reminder.prepare.v1')) {
+            $tools[] = app(\App\Ai\Tools\PreparePaymentReminder::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('stock_transfer.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PrepareStockTransfer::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && ($this->principal->hasTool('stock_adjustment.create.v1') || $this->principal->hasTool('stock_adjust.create.v1'))) {
+            $tools[] = app(\App\Ai\Tools\PrepareStockAdjustment::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('journal_entry.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PrepareJournalEntry::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('production_order.create.v1')) {
+            $tools[] = app(\App\Ai\Tools\PrepareProductionOrder::class, ['principal' => $this->principal]);
+        }
+
+        if (config('ai_actions.foundation_enabled', false) && $this->principal->hasTool('setup.products.import.v1')) {
+            $tools[] = app(\App\Ai\Tools\SimulateProductImport::class, ['principal' => $this->principal]);
+            $tools[] = app(\App\Ai\Tools\PrepareProductImport::class, ['principal' => $this->principal]);
         }
 
         return $tools;

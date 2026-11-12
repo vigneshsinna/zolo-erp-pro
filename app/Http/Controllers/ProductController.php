@@ -541,12 +541,16 @@ class ProductController extends Controller
             // The margin only restates price against cost; a blank one (no cost yet) is stored as 0.
             $data['profit_margin'] = $data['profit_margin'] ?? 0;
 
-            $data['product_details'] = str_replace('"', '@', $data['product_details']);
+            $data['product_details'] = str_replace('"', '@', $data['product_details'] ?? '');
 
-            if($data['starting_date'])
+            if(!empty($data['starting_date']))
                 $data['starting_date'] = date('Y-m-d', strtotime($data['starting_date']));
-            if($data['last_date'])
+            else
+                unset($data['starting_date']);
+            if(!empty($data['last_date']))
                 $data['last_date'] = date('Y-m-d', strtotime($data['last_date']));
+            else
+                unset($data['last_date']);
             $data['is_active'] = true;
             $images = $request->image;
             $image_names = [];
@@ -1465,11 +1469,15 @@ class ProductController extends Controller
 
             if(isset($data['short_description']))
                 $data['short_description'] = $data['short_description'];
-            $data['product_details'] = str_replace('"', '@', $data['product_details']);
-            if($data['starting_date'])
+            $data['product_details'] = str_replace('"', '@', $data['product_details'] ?? '');
+            if(!empty($data['starting_date']))
                 $data['starting_date'] = date('Y-m-d', strtotime($data['starting_date']));
-            if($data['last_date'])
+            else
+                unset($data['starting_date']);
+            if(!empty($data['last_date']))
                 $data['last_date'] = date('Y-m-d', strtotime($data['last_date']));
+            else
+                unset($data['last_date']);
 
             $previous_images = [];
             //dealing with previous images
