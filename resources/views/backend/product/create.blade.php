@@ -9,6 +9,17 @@
 @endif
 
 @section('content')
+@php
+    try {
+        $context = app(\App\Services\Platform\CompanyContextResolver::class)->forActor();
+        $companyId = $context?->companyId;
+    } catch (\Throwable) {
+        $companyId = session('company_id');
+    }
+    $companyId = $companyId ?: session('company_id');
+    $profileRow = $companyId ? \Illuminate\Support\Facades\DB::table('company_industry_settings')->where('company_id', $companyId)->first() : null;
+    $isOpticalProfile = ($profileRow && $profileRow->profile_key === 'opticals');
+@endphp
 <x-product-command-bar active="products"></x-product-command-bar>
 <section class="forms">
     <div class="container-fluid">
@@ -33,30 +44,47 @@
                                 <x-ui.section-box variant="blue" title="{{__('db.Product Details')}}" icon="box">
                                     <div class="row">
                                         @include('backend.product.partials.usage-options', ['productUsage' => 'composite'])
-                                        <div class="col-6">
-                                            <div class="form-group">
-                                                <label>{{__('db.Product Type')}} *</label>
-                                                <select name="type" required class="form-control selectpicker" id="type">
-                                                    <option value="standard">Standard</option>
-                                                    <option value="combo">Combo</option>
-                                                    <option value="digital">Digital</option>
-                                                    <option value="service">Service</option>
-                                                </select>
+                                        @if($isOpticalProfile)
+                                            <input type="hidden" name="type" id="type" value="standard">
+                                            <div class="col-12">
+                                                <div class="form-group">
+                                                    <label>{{__('db.Barcode Symbology')}} *</label>
+                                                    <select name="barcode_symbology" required class="form-control selectpicker">
+                                                        <option value="C128" selected>Code 128</option>
+                                                        <option value="C39">Code 39</option>
+                                                        <option value="UPCA">UPC-A</option>
+                                                        <option value="UPCE">UPC-E</option>
+                                                        <option value="EAN8">EAN-8</option>
+                                                        <option value="EAN13">EAN-13</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="form-group">
-                                                <label>{{__('db.Barcode Symbology')}} *</label>
-                                                <select name="barcode_symbology" required class="form-control selectpicker">
-                                                    <option value="C128">Code 128</option>
-                                                    <option value="C39">Code 39</option>
-                                                    <option value="UPCA">UPC-A</option>
-                                                    <option value="UPCE">UPC-E</option>
-                                                    <option value="EAN8">EAN-8</option>
-                                                    <option value="EAN13">EAN-13</option>
-                                                </select>
+                                        @else
+                                            <div class="col-6">
+                                                <div class="form-group">
+                                                    <label>{{__('db.Product Type')}} *</label>
+                                                    <select name="type" required class="form-control selectpicker" id="type">
+                                                        <option value="standard">Standard</option>
+                                                        <option value="combo">Combo</option>
+                                                        <option value="digital">Digital</option>
+                                                        <option value="service">Service</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                        </div>
+                                            <div class="col-6">
+                                                <div class="form-group">
+                                                    <label>{{__('db.Barcode Symbology')}} *</label>
+                                                    <select name="barcode_symbology" required class="form-control selectpicker">
+                                                        <option value="C128">Code 128</option>
+                                                        <option value="C39">Code 39</option>
+                                                        <option value="UPCA">UPC-A</option>
+                                                        <option value="UPCE">UPC-E</option>
+                                                        <option value="EAN8">EAN-8</option>
+                                                        <option value="EAN13">EAN-13</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        @endif
                                         <div class="col-12">
                                             <div class="form-group">
                                                 <label>{{__('db.Product Name')}} *</label>
@@ -76,13 +104,13 @@
                                                 <span class="validation-msg text-danger small" id="code-error"></span>
                                             </div>
                                         </div>
-                                        <div class="col-6">
+                                        <div class="{{ $isOpticalProfile ? 'col-md-4 col-12' : 'col-6' }}" id="brand-col">
                                             <div class="form-group">
                                                 <label>{{__('db.Brand')}}</label>
                                                 <div class="input-group">
                                                     <select name="brand_id" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Brand...') }}">
                                                         @foreach($lims_brand_list as $brand)
-                                                            <option value="{{$brand->id}}">{{$brand->title}}</option>
+                                                            <option value="{{$brand->id}}" {{ old('brand_id') == $brand->id ? 'selected' : '' }}>{{$brand->title}}</option>
                                                         @endforeach
                                                     </select>
                                                     <div class="input-group-append">
@@ -91,17 +119,33 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="col-6">
+                                        <div class="{{ $isOpticalProfile ? 'col-md-4 col-12' : 'col-6' }}" id="category-col">
                                             <div class="form-group">
                                                 <label>{{__('db.category')}} *</label>
                                                 <div class="input-group">
                                                     <select name="category_id" required class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Category...') }}">
                                                         @foreach($lims_category_list as $category)
-                                                            <option value="{{$category->id}}" data-hsn="{{ $category->default_hsn_code ?? '' }}">{{$category->name}}</option>
+                                                            <option value="{{$category->id}}" data-hsn="{{ $category->default_hsn_code ?? '' }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>{{$category->name}}</option>
                                                         @endforeach
                                                     </select>
                                                     <div class="input-group-append">
                                                         <button type="button" class="btn btn-default btn-sm category-model" data-toggle="modal" data-target="#category-modal" title="{{ __('db.Add Category') }}"><i class="dripicons-plus"></i></button>
+                                                    </div>
+                                                </div>
+                                                <span class="validation-msg text-danger small"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4 col-12" id="product-type-col" style="{{ $isOpticalProfile ? '' : 'display:none;' }}">
+                                            <div class="form-group">
+                                                <label>Type *</label>
+                                                <div class="input-group">
+                                                    <select name="product_type_id" id="product_type_id" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="Select Type...">
+                                                        @foreach($lims_product_type_list ?? [] as $ptype)
+                                                            <option value="{{$ptype->id}}" {{ old('product_type_id') == $ptype->id ? 'selected' : '' }}>{{$ptype->name}}</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <div class="input-group-append">
+                                                        <button type="button" class="btn btn-default btn-sm product-type-modal-btn" data-toggle="modal" data-target="#product-type-modal" title="Add Type"><i class="dripicons-plus"></i></button>
                                                     </div>
                                                 </div>
                                                 <span class="validation-msg text-danger small"></span>
@@ -136,6 +180,7 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        @if(!$isOpticalProfile)
                                         <div id="digital" class="col-12">
                                             <div class="form-group">
                                                 <label>{{__('db.Attach File')}} *</label>
@@ -143,6 +188,7 @@
                                                 <span class="validation-msg text-danger small"></span>
                                             </div>
                                         </div>
+                                        @endif
                                     </div>
                                 </x-ui.section-box>
 
@@ -380,11 +426,13 @@
                                         <span>{{__('db.Initial Stock')}}</span>
                                     </label>
 
+                                    @if(!$isOpticalProfile)
                                     <label id="variant-option" class="zolo-toggle-pill" data-role="purple" for="is-variant" title="{{ __('db.This product has variant') }}">
                                         <input name="is_variant" type="checkbox" id="is-variant" value="1">
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.This product has variant')}}</span>
                                     </label>
+                                    @endif
 
                                     <label data-usage-side="sale" id="diffPrice-option" class="zolo-toggle-pill" data-role="emerald" for="is-diffPrice" title="{{ __('db.Different price by warehouse') }}">
                                         <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1">
@@ -392,6 +440,7 @@
                                         <span>{{__('db.Different price by warehouse')}}</span>
                                     </label>
 
+                                    @if(!$isOpticalProfile)
                                     <label id="batch-option" class="zolo-toggle-pill" data-role="amber" for="is-batch" title="{{ __('db.Batch & expiry date') }}">
                                         <input name="is_batch" type="checkbox" id="is-batch" value="1">
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
@@ -409,6 +458,7 @@
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.Promotional Price')}}</span>
                                     </label>
+                                    @endif
 
                                     <label data-usage-side="sale" id="featured" class="zolo-toggle-pill" data-role="purple" for="chk_featured" title="{{ __('db.Featured') }}">
                                         <input type="checkbox" name="featured" id="chk_featured" value="1">
@@ -416,10 +466,18 @@
                                         <span>{{__('db.Featured')}}</span>
                                     </label>
 
+                                    @if(!$isOpticalProfile)
                                     <label class="zolo-toggle-pill" data-role="emerald" for="chk_embeded" title="{{ __('db.Embedded Barcode') }}">
                                         <input type="checkbox" name="is_embeded" id="chk_embeded" value="1">
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.Embedded Barcode')}}</span>
+                                    </label>
+                                    @endif
+
+                                    <label id="optical-option" class="zolo-toggle-pill {{ $isOpticalProfile ? 'is-active' : '' }}" data-role="purple" for="is-optical" title="Optical Lens Specifications">
+                                        <input name="is_optical" type="checkbox" id="is-optical" value="1" {{ $isOpticalProfile ? 'checked' : '' }}>
+                                        <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                        <span>Optical / Lens Rx</span>
                                     </label>
 
                                     @if(in_array('ecommerce',explode(',',$general_setting->modules)) || in_array('restaurant',explode(',',$general_setting->modules)))
@@ -453,6 +511,49 @@
                                         <span>{{__('db.This is topping')}}</span>
                                     </label>
                                     @endif
+                                </div>
+                            </div>
+
+                            <!-- Optical Lens Specifications (matches exact 3-column top grid width of Box 1) -->
+                            <div class="zolo-product-grid mt-2" id="optical-container" style="{{ $isOpticalProfile ? '' : 'display:none;' }}">
+                                <div id="optical-section">
+                                    <x-ui.section-box variant="purple" title="Optical Lens Specifications" icon="view-thumb">
+                                        <div class="row">
+                                            <div class="col-3">
+                                                <div class="form-group mb-2">
+                                                    <label class="font-weight-bold small text-nowrap">Base Curve</label>
+                                                    <input type="text" name="base" class="form-control form-control-sm" id="base" value="{{ old('base') }}" placeholder="e.g. 2.00, 4.00">
+                                                </div>
+                                            </div>
+                                            <div class="col-3">
+                                                <div class="form-group mb-2">
+                                                    <label class="font-weight-bold small text-nowrap">Addition (ADD)</label>
+                                                    <input type="text" name="addition" class="form-control form-control-sm" id="addition" value="{{ old('addition') }}" placeholder="e.g. +0.75, +1.50">
+                                                </div>
+                                            </div>
+                                            <div class="col-3">
+                                                <div class="form-group mb-2">
+                                                    <label class="font-weight-bold small text-nowrap">Eye (L/R/Pair)</label>
+                                                    <select name="lr" class="form-control form-control-sm selectpicker" id="lr" title="Select Eye...">
+                                                        <option value="">None / Both</option>
+                                                        <option value="L" {{ old('lr') == 'L' ? 'selected' : '' }}>Left (L)</option>
+                                                        <option value="R" {{ old('lr') == 'R' ? 'selected' : '' }}>Right (R)</option>
+                                                        <option value="Pair" {{ old('lr') == 'Pair' ? 'selected' : '' }}>Pair</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-3">
+                                                <div class="form-group mb-2">
+                                                    <label class="font-weight-bold small text-nowrap">Diameter (DIA)</label>
+                                                    <input type="text" name="dia" class="form-control form-control-sm" id="dia" value="{{ old('dia') }}" placeholder="e.g. 65, 70, 75">
+                                                </div>
+                                            </div>
+                                            <div class="col-12 mt-2 pt-2 border-top d-flex align-items-center justify-content-between small text-muted">
+                                                <span><i class="dripicons-view-thumb mr-1 text-primary"></i> Lens Type: <strong id="optical-type-label" class="text-primary font-weight-bold">None selected</strong></span>
+                                                <span class="text-secondary small">Optical Lens Design</span>
+                                            </div>
+                                        </div>
+                                    </x-ui.section-box>
                                 </div>
                             </div>
 
@@ -757,6 +858,32 @@
 
     <!-- Unit Create Modal Start -->
     @include('backend.unit.add_unit_modal')
+
+    <!-- Product Type Create Modal Start -->
+    <div id="product-type-modal" tabindex="-1" role="dialog" aria-labelledby="productTypeModalLabel" aria-hidden="true" class="modal fade text-left">
+        <div role="document" class="modal-dialog">
+            <div class="modal-content">
+                <form id="product-type-form">
+                    <div class="modal-header">
+                        <h5 id="productTypeModalLabel" class="modal-title">Add Product Type / Lens Design</h5>
+                        <button type="button" data-dismiss="modal" aria-label="Close" class="close"><span aria-hidden="true"><i class="dripicons-cross"></i></span></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="italic"><small>{{__('db.The field labels marked with * are required input fields')}}.</small></p>
+                        <div class="form-group">
+                            <label>Type / Lens Design Name *</label>
+                            <input type="text" name="name" class="form-control" placeholder="e.g. KBF-3C-HMC-180°, Progressive HD Short" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="hidden" name="ajax" value="1">
+                            <button type="button" class="btn btn-primary product-type-submit-btn">{{__('db.submit')}}</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- Product Type Create Modal End -->
 </section>
 @endsection
 @push('scripts')
@@ -1748,6 +1875,31 @@
         applyDynamicGridSpans();
     });
 
+    $("input[name='is_optical']").on("change", function () {
+        var isOpt = $(this).is(':checked');
+        if (isOpt) {
+            $("#optical-container").show(300);
+            $("#product-type-col").show(300);
+            $("#brand-col").removeClass('col-6').addClass('col-md-4 col-12');
+            $("#category-col").removeClass('col-6').addClass('col-md-4 col-12');
+        }
+        else {
+            $("#optical-container").hide(300);
+            $("#product-type-col").hide(300);
+            $("#brand-col").removeClass('col-md-4 col-12').addClass('col-6');
+            $("#category-col").removeClass('col-md-4 col-12').addClass('col-6');
+        }
+        applyDynamicGridSpans();
+    });
+
+    $('select[name="product_type_id"]').on('change', function() {
+        var txt = $(this).find('option:selected').text();
+        $('#optical-type-label').text(txt && $(this).val() ? txt : 'None selected');
+    });
+    if ($('select[name="product_type_id"]').val()) {
+        $('#optical-type-label').text($('select[name="product_type_id"] option:selected').text());
+    }
+
     // Synchronize toggle pill visual active state
     $('.zolo-toggle-pill input[type="checkbox"]').on("change", function () {
         var $pill = $(this).closest('.zolo-toggle-pill');
@@ -2235,7 +2387,26 @@
         if (!$select.find('option[value="' + id + '"]').length) $select.append($('<option>').val(id).text(label));
         $select.val(String(id)).selectpicker('refresh').trigger('change');
     }
-    $('#addBrand, #category-modal, #createUnitModal').on('hidden.bs.modal', function () { $(this).find('.quick-add-error').remove(); });
+    $('#addBrand, #category-modal, #createUnitModal, #product-type-modal').on('hidden.bs.modal', function () { $(this).find('.quick-add-error').remove(); });
+    // Product Type create ajax start
+    $('.product-type-submit-btn').on("click", function() {
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+        $.ajax({
+            type:'POST',
+            url:'{{route("product_types.store")}}',
+            data: $("#product-type-form").serialize(),
+            success:function(response) {
+                $btn.prop('disabled', false);
+                pickOption('product_type_id', response['id'], response['name']);
+                quickAddDone('#product-type-modal', $("#product-type-form")[0]);
+            },
+            error: function (xhr) {
+                $btn.prop('disabled', false);
+                quickAddError('#product-type-modal', xhr);
+            }
+        });
+    });
     // brand create ajax start
     $('.brand-submit-btn').on("click", function() {
         $.ajax({

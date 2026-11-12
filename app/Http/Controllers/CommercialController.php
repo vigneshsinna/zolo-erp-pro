@@ -527,6 +527,12 @@ class CommercialController extends Controller
             'imei_number' => 'nullable|array',
             'variant_option' => 'nullable|array',
             'variant_value' => 'nullable|array',
+            'product_type_id' => 'nullable|integer',
+            'base' => 'nullable|string|max:50',
+            'addition' => 'nullable|string|max:50',
+            'lr' => 'nullable|string|max:20',
+            'dia' => 'nullable|string|max:20',
+            'is_optical' => 'nullable|boolean',
         ]);
 
         if (!empty($validated['tax_category_id']) && !DB::table('tax_categories')->where('company_id', $context->companyId)->where('id', $validated['tax_category_id'])->exists()) {
@@ -597,6 +603,11 @@ class CommercialController extends Controller
             'is_imei' => !empty($validated['is_imei']) ? 1 : 0,
             'featured' => !empty($validated['featured']) ? 1 : 0,
             'is_embeded' => !empty($validated['is_embeded']) ? 1 : 0,
+            'product_type_id' => !empty($validated['product_type_id']) ? $validated['product_type_id'] : null,
+            'base' => $validated['base'] ?? null,
+            'addition' => $validated['addition'] ?? null,
+            'lr' => $validated['lr'] ?? null,
+            'dia' => $validated['dia'] ?? null,
             'product_details' => $validated['product_details'] ?? null,
         ] + array_intersect_key($validated, ['product_usage' => true]);
 

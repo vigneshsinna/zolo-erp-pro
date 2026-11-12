@@ -3012,9 +3012,14 @@
             formData.set('tax_id', $('#quick-item-tax').val() || '');
             formData.delete('tax_category_id');
         }
-        ['is_batch', 'is_imei', 'featured', 'is_embeded', 'is_online', 'in_stock', 'is_initial_stock', 'is_diffPrice', 'is_variant', 'promotion'].forEach(function(k) {
+        ['is_batch', 'is_imei', 'featured', 'is_embeded', 'is_online', 'in_stock', 'is_initial_stock', 'is_diffPrice', 'is_variant', 'promotion', 'is_optical'].forEach(function(k) {
             formData.set(k, $('#quick-create-item-form [name="' + k + '"]').is(':checked') ? 1 : 0);
         });
+        formData.set('product_type_id', $('#quick-item-product-type').val() || '');
+        formData.set('base', $('#quick-item-base').val() || '');
+        formData.set('addition', $('#quick-item-addition').val() || '');
+        formData.set('lr', $('#quick-item-lr').val() || '');
+        formData.set('dia', $('#quick-item-dia').val() || '');
 
         $.ajax({
             type: 'POST',

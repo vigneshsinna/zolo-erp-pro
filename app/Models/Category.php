@@ -10,8 +10,7 @@ class Category extends Model
     use ScopesCompanyQueries;
 
     protected $fillable =[
-
-        "name", "default_hsn_code", 'image', "parent_id", "is_active", "is_sync_disable", "woocommerce_category_id","slug","featured","page_title","short_description"
+        "company_id", "name", "default_hsn_code", 'image', "parent_id", "is_active", "is_sync_disable", "woocommerce_category_id","slug","featured","page_title","short_description"
     ];
 
     public function product()

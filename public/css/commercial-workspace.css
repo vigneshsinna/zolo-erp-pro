@@ -1666,7 +1666,8 @@ body.commercial-screen-lock.topbar-hidden .reveal-topbar-strip {
 }
 
 .desk-bill-list-panel .side-filter-group select,
-.desk-bill-list-panel .side-filter-group .form-control {
+.desk-bill-list-panel .side-filter-group select.form-control,
+.desk-bill-list-panel .side-filter-group select.custom-select-native {
     height: 24px !important;
     font-size: 11px !important;
     padding: 1px 5px !important;
@@ -1675,6 +1676,29 @@ body.commercial-screen-lock.topbar-hidden .reveal-topbar-strip {
     background: #ffffff !important;
     color: #0f172a !important;
     flex: 1;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.desk-bill-list-panel .side-filter-group .bootstrap-select.form-control {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    height: auto !important;
+    flex: 1;
+}
+
+.desk-bill-list-panel .side-filter-group .bootstrap-select > .btn.dropdown-toggle {
+    height: 24px !important;
+    font-size: 11px !important;
+    padding: 1px 6px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    line-height: 20px !important;
 }
 
 .side-bill-card.active-editing {

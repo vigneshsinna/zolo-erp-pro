@@ -75,6 +75,10 @@ class CapabilityService
         $this->change($context, $actor, function () use ($key) {
             $profile = DB::table('business_profiles')->where('key', $key)->first();
             if (!$profile) {
+                (new \Database\Seeders\CapabilitySeeder)->run();
+                $profile = DB::table('business_profiles')->where('key', $key)->first();
+            }
+            if (!$profile) {
                 throw ValidationException::withMessages(['profile' => 'Unknown business profile.']);
             }
             $states = [];

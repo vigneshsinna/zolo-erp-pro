@@ -215,6 +215,9 @@
                             <a href="javascript:void(0)" id="btn-quick-logistics" class="u-c-primary u-fw-600 u-ml-auto u-tdec-none u-ws-nowrap">
                                 + Transport &amp; Remarks &rarr;
                             </a>
+                            <a href="javascript:void(0)" id="btn-quick-optical" class="text-info font-weight-bold ml-2 text-decoration-none text-nowrap">
+                                + Optical &amp; Warranty &rarr;
+                            </a>
                         </div>
                         </div>
                     </div>
@@ -327,6 +330,12 @@
                         <button type="button" class="btn btn-outline-secondary comm-bottom-btn" id="btn-view-to-print" title="Print invoice">
                             <i class="dripicons-print"></i> Print
                         </button>
+                        <button type="button" class="btn btn-outline-secondary comm-bottom-btn" id="btn-view-to-lab" title="Print Optical Lab Receipt">
+                            <i class="dripicons-article"></i> Lab Receipt
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary comm-bottom-btn" id="btn-view-to-packing" title="Print Packing Slip">
+                            <i class="dripicons-box"></i> Packing Slip
+                        </button>
                         <button type="button" class="btn btn-outline-secondary comm-bottom-btn" id="btn-view-close" title="Close view and start new bill">
                             <i class="dripicons-cross"></i> Close View
                         </button>
@@ -365,6 +374,13 @@
                     <input type="hidden" name="supply_type" id="hidden-supply-type" value="">
                     <input type="text" name="sale_note" id="hidden-note">
                     <input type="text" name="staff_note" id="hidden-staff-note">
+                    <input type="text" name="end_user_name" id="hidden-end-user-name">
+                    <input type="text" name="end_user_phone" id="hidden-end-user-phone">
+                    <input type="email" name="end_user_email" id="hidden-end-user-email">
+                    <input type="text" name="end_user_address" id="hidden-end-user-address">
+                    <input type="number" name="fitting_charge" id="hidden-fitting-charge" step="any">
+                    <input type="number" name="tinting_cost" id="hidden-tinting-cost" step="any">
+                    <input type="text" name="customer_order_no" id="hidden-customer-order-no">
                     <select name="account_id" id="hidden-account-id">
                         @foreach($lims_account_list as $acc)
                             <option value="{{ $acc->id }}">{{ $acc->name }}</option>
@@ -436,7 +452,7 @@
                 <div class="side-dropdown-filters">
                     <div class="side-filter-group">
                         <label>{{ \App\Services\Industry\IndustryProfileService::label('warehouse', 'Warehouse') }}</label>
-                        <select id="side-filter-warehouse" class="form-control">
+                        <select id="side-filter-warehouse" class="form-control custom-select-native">
                             <option value="0">All Warehouse</option>
                             @foreach($lims_warehouse_list as $wh)
                                 <option value="{{ $wh->id }}">{{ $wh->name }}</option>
@@ -445,7 +461,7 @@
                     </div>
                     <div class="side-filter-group">
                         <label>Sale Status</label>
-                        <select id="side-filter-status" class="form-control">
+                        <select id="side-filter-status" class="form-control custom-select-native">
                             <option value="0">All</option>
                             <option value="1">Completed</option>
                             <option value="2">Pending</option>
@@ -454,7 +470,7 @@
                     </div>
                     <div class="side-filter-group">
                         <label>Payment Status</label>
-                        <select id="side-filter-payment" class="form-control">
+                        <select id="side-filter-payment" class="form-control custom-select-native">
                             <option value="0">All</option>
                             <option value="1">Pending</option>
                             <option value="2">Due</option>
@@ -514,6 +530,12 @@
                                 </a>
                                 <a href="javascript:void(0)" class="side-action-btn print btn-side-print" data-id="{{ $bill->id }}" title="Print invoice">
                                     <i class="dripicons-print"></i> Print
+                                </a>
+                                <a href="{{ route('sale.lab_receipt', $bill->id) }}" target="_blank" class="side-action-btn print" title="Print Optical Lab Receipt">
+                                    <i class="dripicons-article"></i> Lab
+                                </a>
+                                <a href="{{ route('sale.packing_slip', $bill->id) }}" target="_blank" class="side-action-btn print" title="Print Dispatch Packing Slip">
+                                    <i class="dripicons-box"></i> Pack
                                 </a>
                                 @if($returnsTab && $bill->posted_at && !$bill->reversed_at)
                                 <a href="javascript:void(0)" class="side-action-btn edit btn-side-return" data-id="{{ $bill->id }}" title="Return goods or adjust value: make a credit note against this bill">
@@ -828,6 +850,9 @@
                     <li class="nav-item">
                         <a class="nav-link font-weight-bold u-fs-11_5px u-p-6px-12px" id="tab-settlement" data-toggle="tab" href="#pane-settlement" role="tab">Payment</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link font-weight-bold u-fs-11_5px u-p-6px-12px" id="tab-optical" data-toggle="tab" href="#pane-optical" role="tab"><i class="dripicons-preview mr-1"></i> Optical &amp; Warranty</a>
+                    </li>
                 </ul>
 
                 <div class="tab-content" id="drawerTabContent">
@@ -953,6 +978,47 @@
                         <div class="form-group mb-2">
                             <label class="text-muted font-weight-bold">Paid Outflow Amount (₹)</label>
                             <input type="number" step="0.01" id="drawer-paid-amount" class="form-control form-control-sm" value="0.00">
+                        </div>
+                    </div>
+
+                    <!-- Optical & Warranty Tab -->
+                    <div class="tab-pane fade" id="pane-optical" role="tabpanel">
+                        <h6 class="text-primary font-weight-bold mb-2"><i class="dripicons-user mr-1"></i> End User Details (Captured for Warranty)</h6>
+                        <div class="form-row">
+                            <div class="form-group col-md-6 mb-2">
+                                <label class="text-muted font-weight-bold">End User Name</label>
+                                <input type="text" id="drawer-end-user-name" name="end_user_name" class="form-control form-control-sm" placeholder="Full name of buyer">
+                            </div>
+                            <div class="form-group col-md-6 mb-2">
+                                <label class="text-muted font-weight-bold">End User Phone</label>
+                                <input type="text" id="drawer-end-user-phone" name="end_user_phone" class="form-control form-control-sm" placeholder="Phone number">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6 mb-2">
+                                <label class="text-muted font-weight-bold">End User Email</label>
+                                <input type="email" id="drawer-end-user-email" name="end_user_email" class="form-control form-control-sm" placeholder="Email (optional)">
+                            </div>
+                            <div class="form-group col-md-6 mb-2">
+                                <label class="text-muted font-weight-bold">End User Address</label>
+                                <input type="text" id="drawer-end-user-address" name="end_user_address" class="form-control form-control-sm" placeholder="City or Address">
+                            </div>
+                        </div>
+                        <hr class="my-2">
+                        <h6 class="text-primary font-weight-bold mb-2"><i class="dripicons-wallet mr-1"></i> Payment &amp; Finalization Extras</h6>
+                        <div class="form-row">
+                            <div class="form-group col-md-4 mb-2">
+                                <label class="text-muted font-weight-bold">Fitting Charge (₹)</label>
+                                <input type="number" id="drawer-fitting-charge" name="fitting_charge" class="form-control form-control-sm" step="any" placeholder="0.00">
+                            </div>
+                            <div class="form-group col-md-4 mb-2">
+                                <label class="text-muted font-weight-bold">Tinting Cost (₹)</label>
+                                <input type="number" id="drawer-tinting-cost" name="tinting_cost" class="form-control form-control-sm" step="any" placeholder="0.00">
+                            </div>
+                            <div class="form-group col-md-4 mb-2">
+                                <label class="text-muted font-weight-bold">Customer Order No</label>
+                                <input type="text" id="drawer-customer-order-no" name="customer_order_no" class="form-control form-control-sm" placeholder="Customer Order No.">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1900,6 +1966,10 @@
                 'unit' => (string)($prod->unit_code ?? ($prod->unit_name ?? 'Unit')),
                 'value' => (string)$prod->code . '|' . (string)$prod->name,
                 'label' => (string)$prod->code . ' - ' . (string)$prod->name,
+                'base' => (string)($prod->base ?? ''),
+                'addition' => (string)($prod->addition ?? ''),
+                'lr' => (string)($prod->lr ?? ''),
+                'dia' => (string)($prod->dia ?? ''),
             ];
         }
         foreach($lims_product_list_with_variant as $prod) {
@@ -1921,6 +1991,10 @@
                 'unit' => (string)($prod->unit_code ?? ($prod->unit_name ?? 'Unit')),
                 'value' => (string)($prod->item_code ?? $prod->code) . '|' . (string)$prod->name,
                 'label' => (string)($prod->item_code ?? $prod->code) . ' - ' . (string)$prod->name,
+                'base' => (string)($prod->base ?? ''),
+                'addition' => (string)($prod->addition ?? ''),
+                'lr' => (string)($prod->lr ?? ''),
+                'dia' => (string)($prod->dia ?? ''),
             ];
         }
     @endphp
@@ -1958,6 +2032,8 @@
     var rowCounter = 0;
     var taxList = @json($lims_tax_list);
     var unitList = @json($lims_unit_list ?? \App\Models\Unit::where('is_active', true)->get());
+    var productTypeMap = @json(\App\Models\ProductType::where('is_active', true)->pluck('name', 'id'));
+    window.productTypeMap = productTypeMap;
     function escapeHtml(value) { return $('<span>').text(value ?? '').html().replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
     var decimalPlaces = {{ $general_setting->decimal ?? 2 }};
 
@@ -2269,6 +2345,41 @@
         tr.find('.row-tax-amount-input').val(taxAmount.toFixed(decimalPlaces));
         tr.find('.row-total').val(lineTotal.toFixed(decimalPlaces));
 
+        // Populate Optical Lens Specifications if present
+        if (p.base !== undefined && p.base !== null && p.base !== '') {
+            tr.find('.row-base').val(p.base);
+            tr.find('.optical-base-text').text(p.base);
+            tr.find('.optical-base-badge').show();
+        } else {
+            tr.find('.row-base').val('');
+            tr.find('.optical-base-badge').hide();
+        }
+
+        if (p.dia !== undefined && p.dia !== null && p.dia !== '') {
+            tr.find('.row-dia').val(p.dia);
+            tr.find('.optical-dia-text').text(p.dia);
+            tr.find('.optical-dia-badge').show();
+        } else {
+            tr.find('.row-dia').val('');
+            tr.find('.optical-dia-badge').hide();
+        }
+
+        if (p.addition !== undefined && p.addition !== null && p.addition !== '') {
+            tr.find('.row-addition').val(p.addition);
+        }
+
+        if (p.lr !== undefined && p.lr !== null && p.lr !== '') {
+            tr.find('.row-lr').val(p.lr);
+        }
+
+        var typeName = p.type_name || p.product_type_name || p.product_type || (p.product_type_id && window.productTypeMap && window.productTypeMap[p.product_type_id]);
+        if (typeName) {
+            tr.find('.optical-type-text').text(typeName);
+            tr.find('.optical-type-badge').show();
+        } else {
+            tr.find('.optical-type-badge').hide();
+        }
+
         recalcTableSummary();
         $(document).trigger('command-center-row-product', [tr]);
     }
@@ -2566,6 +2677,24 @@
                         <span class="badge badge-light border text-muted u-fs-10px row-lot-badge" title="Lot / Batch for this item">
                             <i class="dripicons-tag mr-1 text-primary"></i>Lot: <span class="row-lot-text">${escapeHtml(initialBatch)}</span>
                         </span>
+                    </div>
+                    <div class="optical-rx-strip d-flex align-items-center mt-1 pt-1 border-top" style="gap: 4px; font-size: 11px;">
+                        <span class="badge badge-info text-white px-1 optical-type-badge" style="display: ${(item.type_name || item.product_type_name) ? 'inline-block' : 'none'};"><strong class="optical-type-text">${escapeHtml(item.type_name || item.product_type_name || '')}</strong></span>
+                        <span class="badge badge-light border text-muted px-1 optical-base-badge" style="display: ${item.base ? 'inline-block' : 'none'};">Base: <strong class="optical-base-text">${escapeHtml(item.base || '')}</strong></span>
+                        <span class="badge badge-light border text-muted px-1 optical-dia-badge" style="display: ${item.dia ? 'inline-block' : 'none'};">DIA: <strong class="optical-dia-text">${escapeHtml(item.dia || '')}</strong></span>
+                        <span class="text-muted ml-1" style="font-weight: 600;">Rx:</span>
+                        <input type="text" name="sph[]" class="form-control form-control-sm row-sph px-1 text-center" style="width: 55px; height: 24px; font-size: 11px;" placeholder="SPH" value="${escapeHtml(item.sph || '')}" title="Sphere (SPH)">
+                        <input type="text" name="cyl[]" class="form-control form-control-sm row-cyl px-1 text-center" style="width: 55px; height: 24px; font-size: 11px;" placeholder="CYL" value="${escapeHtml(item.cyl || '')}" title="Cylinder (CYL)">
+                        <input type="text" name="axis[]" class="form-control form-control-sm row-axis px-1 text-center" style="width: 50px; height: 24px; font-size: 11px;" placeholder="AXIS" value="${escapeHtml(item.axis || '')}" title="Axis (1-180)">
+                        <input type="text" name="addition[]" class="form-control form-control-sm row-addition px-1 text-center" style="width: 55px; height: 24px; font-size: 11px;" placeholder="ADD" value="${escapeHtml(item.addition || '')}" title="Addition (ADD)">
+                        <select name="lr[]" class="form-control form-control-sm custom-select-native row-lr px-1 text-center" style="width: 48px; height: 24px; font-size: 11px;" title="Eye (L/R/Pair)">
+                            <option value="" ${!item.lr ? 'selected' : ''}>-</option>
+                            <option value="L" ${item.lr === 'L' ? 'selected' : ''}>L</option>
+                            <option value="R" ${item.lr === 'R' ? 'selected' : ''}>R</option>
+                            <option value="Pair" ${item.lr === 'Pair' ? 'selected' : ''}>Pair</option>
+                        </select>
+                        <input type="hidden" name="base[]" class="row-base" value="${escapeHtml(item.base || '')}">
+                        <input type="hidden" name="dia[]" class="row-dia" value="${escapeHtml(item.dia || '')}">
                     </div>
                 </td>
                 <td>
@@ -3232,9 +3361,14 @@
             formData.set('tax_id', $('#quick-item-tax').val() || '');
             formData.delete('tax_category_id');
         }
-        ['is_batch', 'is_imei', 'featured', 'is_embeded', 'is_online', 'in_stock', 'is_initial_stock', 'is_diffPrice', 'is_variant', 'promotion'].forEach(function(k) {
+        ['is_batch', 'is_imei', 'featured', 'is_embeded', 'is_online', 'in_stock', 'is_initial_stock', 'is_diffPrice', 'is_variant', 'promotion', 'is_optical'].forEach(function(k) {
             formData.set(k, $('#quick-create-item-form [name="' + k + '"]').is(':checked') ? 1 : 0);
         });
+        formData.set('product_type_id', $('#quick-item-product-type').val() || '');
+        formData.set('base', $('#quick-item-base').val() || '');
+        formData.set('addition', $('#quick-item-addition').val() || '');
+        formData.set('lr', $('#quick-item-lr').val() || '');
+        formData.set('dia', $('#quick-item-dia').val() || '');
 
         $.ajax({
             type: 'POST',
@@ -4207,6 +4341,13 @@
                 if (s.order_discount) {
                     $('#drawer-order-discount, #hidden-order-discount').val(s.order_discount);
                 }
+                $('#drawer-end-user-name, #hidden-end-user-name').val(s.end_user_name || '');
+                $('#drawer-end-user-phone, #hidden-end-user-phone').val(s.end_user_phone || '');
+                $('#drawer-end-user-email, #hidden-end-user-email').val(s.end_user_email || '');
+                $('#drawer-end-user-address, #hidden-end-user-address').val(s.end_user_address || '');
+                $('#drawer-fitting-charge, #hidden-fitting-charge').val(s.fitting_charge || '');
+                $('#drawer-tinting-cost, #hidden-tinting-cost').val(s.tinting_cost || '');
+                $('#drawer-customer-order-no, #hidden-customer-order-no').val(s.customer_order_no || '');
                 var attr = s.attributes_json;
                 if (typeof attr === 'string') { try { attr = JSON.parse(attr); } catch(e){ attr = {}; } }
                 if (attr) {
@@ -4266,6 +4407,13 @@
         $('#sale_type_id').val('0');
 
         $('.side-bill-card').removeClass('active-editing active-viewing');
+        $('#drawer-end-user-name, #hidden-end-user-name').val('');
+        $('#drawer-end-user-phone, #hidden-end-user-phone').val('');
+        $('#drawer-end-user-email, #hidden-end-user-email').val('');
+        $('#drawer-end-user-address, #hidden-end-user-address').val('');
+        $('#drawer-fitting-charge, #hidden-fitting-charge').val('');
+        $('#drawer-tinting-cost, #hidden-tinting-cost').val('');
+        $('#drawer-customer-order-no, #hidden-customer-order-no').val('');
         $('#order-table-body .order-item-row, #order-table-body .empty-placeholder-row').remove();
         $productSearch.val('');
         rowCounter = 0;
@@ -4315,6 +4463,20 @@
         }
     });
 
+    $(document).on('click', '#btn-view-to-lab', function(e) {
+        e.preventDefault();
+        if (currentLoadedSaleId) {
+            window.open('{{ url("sales/lab_receipt") }}/' + currentLoadedSaleId, '_blank');
+        }
+    });
+
+    $(document).on('click', '#btn-view-to-packing', function(e) {
+        e.preventDefault();
+        if (currentLoadedSaleId) {
+            window.open('{{ url("sales/packing_slip") }}/' + currentLoadedSaleId, '_blank');
+        }
+    });
+
     $(document).on('click', '#btn-view-close', function(e) {
         e.preventDefault();
         resetFormToNew();
@@ -4354,6 +4516,11 @@
         $('#charges-drawer').modal('show');
     });
 
+    $('#btn-quick-optical').on('click', function() {
+        $('#charges-drawer').modal('show');
+        $('#tab-optical').tab('show');
+    });
+
     $('#btn-save-drawer-details').on('click', function() {
         $('#hidden-bale-no').val($('#drawer-bale-no').val());
         $('#hidden-no-of-bales').val($('#drawer-no-of-bales').val());
@@ -4371,8 +4538,14 @@
         $('#hidden-note').val($('#drawer-note').val());
         $('#hidden-account-id').val($('#drawer-account-id').val());
         $('#input-paying-method').val($('#drawer-paying-method').val());
-        $('#input-paying-method').val($('#drawer-paying-method').val());
         $('#hidden-paid-amount').val($('#drawer-paid-amount').val());
+        $('#hidden-end-user-name').val($('#drawer-end-user-name').val());
+        $('#hidden-end-user-phone').val($('#drawer-end-user-phone').val());
+        $('#hidden-end-user-email').val($('#drawer-end-user-email').val());
+        $('#hidden-end-user-address').val($('#drawer-end-user-address').val());
+        $('#hidden-fitting-charge').val($('#drawer-fitting-charge').val());
+        $('#hidden-tinting-cost').val($('#drawer-tinting-cost').val());
+        $('#hidden-customer-order-no').val($('#drawer-customer-order-no').val());
 
         var count = 0;
         if ($('#drawer-bale-no').val()) count++;

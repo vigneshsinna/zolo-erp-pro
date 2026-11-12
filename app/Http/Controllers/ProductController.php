@@ -15,6 +15,7 @@ use App\Models\Brand;
 use App\Models\Barcode;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductType;
 use App\Models\Variant;
 use App\Models\Category;
 use App\Models\Purchase;
@@ -424,16 +425,18 @@ class ProductController extends Controller
             $lims_warehouse_list = Warehouse::where('is_active', true)->get();
             $numberOfProduct = Product::where('is_active', true)->count();
             $custom_fields = CustomField::where('belongs_to', 'product')->get();
+            $companyId = app(\App\Services\Platform\CompanyContextResolver::class)->forActor()?->companyId ?? session('company_id');
+            $lims_product_type_list = ProductType::forCompany($companyId)->where('is_active', true)->orderBy('name')->get();
 
             $general_setting = DB::table('general_settings')->select('modules')->first();
             if(in_array('restaurant',explode(',',$general_setting->modules))){
                 $kitchen_list = DB::table('kitchens')->where('is_active',1)->get();
                 $menu_type_list = DB::table('menu_type')->where('is_active',1)->get();
 
-                return view('backend.product.create',compact('kitchen_list','menu_type_list','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_warehouse_list', 'numberOfProduct', 'custom_fields'));
+                return view('backend.product.create',compact('kitchen_list','menu_type_list','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_warehouse_list', 'numberOfProduct', 'custom_fields', 'lims_product_type_list'));
             }
 
-            return view('backend.product.create',compact('lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_warehouse_list', 'numberOfProduct', 'custom_fields'));
+            return view('backend.product.create',compact('lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_warehouse_list', 'numberOfProduct', 'custom_fields', 'lims_product_type_list'));
         }
         else
             return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
@@ -1315,12 +1318,14 @@ class ProductController extends Controller
             $lims_warehouse_list = Warehouse::where('is_active', true)->get();
             $noOfVariantValue = 0;
             $custom_fields = CustomField::where('belongs_to', 'product')->get();
+            $companyId = app(\App\Services\Platform\CompanyContextResolver::class)->forActor()?->companyId ?? session('company_id');
+            $lims_product_type_list = ProductType::forCompany($companyId)->where('is_active', true)->orderBy('name')->get();
 
             $general_setting = DB::table('general_settings')->select('modules')->first();
             if(in_array('ecommerce', explode(',',$general_setting->modules))) {
                 $product_arr = explode(',',$lims_product_data->related_products);
                 $related_products = DB::table('products')->whereIn('id',$product_arr)->get();
-                return view('backend.product.edit',compact('related_products','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields'));
+                return view('backend.product.edit',compact('related_products','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
             }
 
             $general_setting = DB::table('general_settings')->select('modules')->first();
@@ -1334,9 +1339,9 @@ class ProductController extends Controller
                 $extra_arr = explode(',',$lims_product_data->extras);
                 $extras = DB::table('products')->whereIn('id',$extra_arr)->get();
 
-                return view('backend.product.edit',compact('kitchen_list','menu_type_list','related_products','extras','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields'));
+                return view('backend.product.edit',compact('kitchen_list','menu_type_list','related_products','extras','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
             }
-            return view('backend.product.edit',compact('lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields'));
+            return view('backend.product.edit',compact('lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
         }
         else
             return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));

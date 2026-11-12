@@ -94,6 +94,13 @@
                     dimension_uom: d.dimension_uom || tracking.dimension_unit || 'mm', grade: d.grade || undefined, identity_no: d.identity_no || undefined};
             }
         }
+        if (t.sph !== undefined && t.sph !== null && t.sph !== '') out.sph = String(t.sph);
+        if (t.cyl !== undefined && t.cyl !== null && t.cyl !== '') out.cyl = String(t.cyl);
+        if (t.axis !== undefined && t.axis !== null && t.axis !== '') out.axis = String(t.axis);
+        if (t.base !== undefined && t.base !== null && t.base !== '') out.base = String(t.base);
+        if (t.addition !== undefined && t.addition !== null && t.addition !== '') out.addition = String(t.addition);
+        if (t.lr !== undefined && t.lr !== null && t.lr !== '') out.lr = String(t.lr);
+        if (t.dia !== undefined && t.dia !== null && t.dia !== '') out.dia = String(t.dia);
         return out;
     }
     window.zoloDocumentAids = {lineExtras};
@@ -157,6 +164,18 @@
             tracking.schemes.forEach(scheme => select.append($('<option>').val(scheme.id).attr('data-product', scheme.product_id || '').text(scheme.name + ' · ' + scheme.buy_qty + '+' + scheme.free_qty)));
             add('quantity_scheme_id', 'Quantity scheme', select);
         }
+        if (tracking.profile === 'opticals' || !purchase) {
+            extra.append($('<div style="font-size:11px;font-weight:700;color:#0284c7;margin:10px 0 4px;">').text('Optical Rx Prescription'));
+            const eyeSelect = $('<select id="trk-lr" class="form-control form-control-sm" style="height:32px;font-size:12px;">')
+                .append(new Option('Both / Pair', 'Pair'), new Option('Right (R)', 'R'), new Option('Left (L)', 'L'));
+            add('lr', 'Eye', eyeSelect);
+            add('sph', 'SPH (Sphere Power)', input('trk-sph', 'text', {placeholder: '-2.50 / +1.00'}));
+            add('cyl', 'CYL (Cylinder Power)', input('trk-cyl', 'text', {placeholder: '-0.75 / +0.50'}));
+            add('axis', 'AXIS (Degrees)', input('trk-axis', 'number', {min: 0, max: 180, placeholder: '90 / 180'}));
+            add('addition', 'ADD (Reading Addition)', input('trk-addition', 'text', {placeholder: '+2.00'}));
+            add('dia', 'Diameter (mm)', input('trk-dia', 'number', {placeholder: '65 / 70'}));
+            add('base', 'Base Curve', input('trk-base', 'text', {placeholder: '4.00 / 6.00'}));
+        }
         body.append(extra);
 
         const slots = {
@@ -165,6 +184,7 @@
             dim_uom: t => (t.dimensions || {}).dimension_uom || tracking.dimension_unit || 'mm', dim_pieces: t => (t.dimensions || {}).pieces || 1,
             dim_grade: t => (t.dimensions || {}).grade, dim_identity: t => (t.dimensions || {}).identity_no, dim_length: t => (t.dimensions || {}).length,
             dim_width: t => (t.dimensions || {}).width, dim_thickness: t => (t.dimensions || {}).thickness,
+            lr: t => t.lr, sph: t => t.sph, cyl: t => t.cyl, axis: t => t.axis, addition: t => t.addition, dia: t => t.dia, base: t => t.base,
         };
         $('#row-detail-modal').on('show.bs.modal', () => {
             const row = $('#order-table-body tr.order-item-row[data-row-id="' + $('#modal-target-row-id').val() + '"]');
@@ -194,7 +214,7 @@
             if (!row.length) return;
             const value = key => { const control = fields.find(([name]) => name === key); return control ? control[1].val() : ''; };
             const saved = {};
-            ['product_batch_id', 'variant_id', 'mfg_date', 'mrp', 'hsn_code', 'weight', 'landed_cost', 'quantity_scheme_id', 'stock_identity_id'].forEach(key => {
+            ['product_batch_id', 'variant_id', 'mfg_date', 'mrp', 'hsn_code', 'weight', 'landed_cost', 'quantity_scheme_id', 'stock_identity_id', 'lr', 'sph', 'cyl', 'axis', 'addition', 'dia', 'base'].forEach(key => {
                 if (fields.some(([name]) => name === key) && value(key) !== '') saved[key] = value(key);
             });
             if (fields.some(([name]) => name === 'dim_length') && value('dim_length') !== '') {

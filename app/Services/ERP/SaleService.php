@@ -213,6 +213,14 @@ class SaleService
                     'tax_rate' => (float) ($item['tax_rate'] ?? 0),
                     'tax' => (float) ($item['tax'] ?? 0),
                     'total' => (float) ($item['total'] ?? ($qty * $unitPrice)),
+                    'sph' => $item['sph'] ?? null,
+                    'cyl' => $item['cyl'] ?? null,
+                    'axis' => $item['axis'] ?? null,
+                    'base' => $item['base'] ?? null,
+                    'addition' => $item['addition'] ?? null,
+                    'lr' => $item['lr'] ?? null,
+                    'dia' => $item['dia'] ?? null,
+                    'prescription_json' => $item['prescription_json'] ?? null,
                 ] + ($deferPosting ? ['stock_details_json' => $item['stock_details_json'] ?? []] : [])
                     + ($deferPosting && isset($item['_tax_snapshot']) ? ['tax_snapshot_json' => $item['_tax_snapshot']] : []))->save();
             }

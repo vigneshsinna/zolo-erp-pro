@@ -1,6 +1,330 @@
-# zoloERP Pro — Persistent Session Memory & State
+# zoloERP Pro â€” Persistent Session Memory & State
 
-## Active Session & Follow-up — 2026-11-10: NVIDIA NIM API Key & Free Best Model Update (branch ui)
+## Active Session & Follow-up â€” 2026-11-11: Resolution of `Cannot read properties of undefined (reading 'recalcTableSummary')` on Sales & Purchase Desk (`media_1794406297690_7f2a8e5c.jpg`)
+
+- **User Inquiry Addressed:**
+  - *"why this happens everytime? what is the issue?"*
+  - Attached screenshot `media_1794406297690_7f2a8e5c.jpg` showing:
+    - Red error banner in `/sales`:
+      `Cannot read properties of undefined (reading 'recalcTableSummary')`
+      `HOW TO FIX Copy any unsaved bill details, then reload this page.`
+      `Why: The item grid did not finish loading, so the ERP cannot check the bill totals.`
+- **Comprehensive Root Cause Analysis:**
+  1. **Blade Stack Indexing Inversion Bug:**
+     - In Laravel 13 (`ManagesStacks.php`), `$this->pushes[$section][$this->renderCount]` stores pushes in an associative array keyed by `$this->renderCount` (the view rendering depth).
+     - Inside `sale/index.blade.php`, `@include('backend.product.partials.quick_create_modal')` was rendered inside `@section('content')` at depth `2`.
+     - When `quick_create_modal.blade.php` contained `@push('scripts')`, key `2` was created as the **first key** in `$this->pushes['scripts']`.
+     - When `sale/index.blade.php` later opened `@push('scripts')` at depth `1` (containing `window.commandCenterGrid = ...`), key `1` was added as the **second key**.
+     - When `@include('backend.partials.command-center-form')` was rendered at depth `2`, its scripts were appended to key `2`.
+     - When `@stack('scripts')` executed, PHP iterated through the keys in array insertion order: key `2` FIRST (`command-center-form.js`, `document-workspace.js`), and key `1` SECOND (the 175KB inline page script defining `window.commandCenterGrid`).
+  2. **JavaScript Static Grid Binding Closure:**
+     - In `public/js/command-center-form.js`:
+       - Line 6 executed `const grid = window.commandCenterGrid;` at script load time.
+       - Because `command-center-form.js` ran before the inline script, `window.commandCenterGrid` was `undefined`.
+       - The variable `grid` was frozen as `undefined` inside the module closure.
+       - Whenever any bill event fired (autocomplete selection, quantity/rate change, drawer save, reset, or payment selection), `grid.recalcTableSummary()` was invoked on `undefined`, triggering `TypeError: Cannot read properties of undefined (reading 'recalcTableSummary')`.
+  3. **Premature Bailout in `document-workspace.js`:**
+     - Line 21 had `if (!form || !grid) return;`.
+     - Because `grid` was `undefined` on initial script load, `document-workspace.js` silently returned and never initialized autosave, draft tabs, or document shortcuts.
+- **Architectural Resolution & Deliverables:**
+  1. **Blade Stack Order Restored:**
+     - Removed `@push('scripts')` wrapper from `resources/views/backend/product/partials/quick_create_modal.blade.php`, executing the modal toggle script inline within the modal DOM.
+     - Result: `window.commandCenterGrid` is guaranteed to be declared and initialized at offset `442755` **BEFORE** `command-center-form.js` (offset `445405`) and `document-workspace.js` (offset `445537`).
+  2. **Defensive Dynamic Grid Proxy in `command-center-form.js`:**
+     - Replaced static `const grid = window.commandCenterGrid;` with a dynamic `Proxy`:
+       ```javascript
+       const grid = new Proxy({}, {
+           get(_target, prop) {
+               const instance = window.commandCenterGrid;
+               if (!instance) {
+                   if (prop === 'products') return [];
+                   if (['recalcTableSummary', 'applyProductToRow', 'addProductRow', 'resetFormToNew', 'switchWorkspaceMode'].includes(prop)) {
+                       return (...args) => window.commandCenterGrid?.[prop]?.(...args);
+                   }
+                   return undefined;
+               }
+               const val = instance[prop];
+               return typeof val === 'function' ? val.bind(instance) : val;
+           }
+       });
+       ```
+     - Added optional chaining `grid.recalcTableSummary?.();` across all event triggers (lines 175, 280, 336, 361).
+     - Guarded `(grid.products || [])` in product name change and autocomplete lookup.
+  3. **Resilient Initialization in `document-workspace.js`:**
+     - Wrapped document workspace initialization in `function initWorkspace()`.
+     - Added DOM-ready and deferred timeout fallbacks: if `window.commandCenterGrid` is not immediately ready, it retries cleanly once the DOM and grid are mounted without bailing permanently.
+  4. **Automated Regression Test Suite:**
+     - Created `tests/Feature/CommandCenterScriptOrderingTest.php`:
+       - `test_sales_page_renders_window_command_center_grid_before_dependent_scripts`: Verifies that `strpos($html, 'window.commandCenterGrid') < strpos($html, 'command-center-form.js')` and `< strpos($html, 'document-workspace.js')`.
+       - `test_purchase_page_renders_window_command_center_grid_before_dependent_scripts`: Verifies the same script ordering contract for `/purchases`.
+     - Cleaned up all scratch files.
+- **Verification & Test Status:**
+  - `CommandCenterScriptOrderingTest`: **2/2 passed (12 assertions)**.
+  - Optical & Commerce Suite (`ProductTypeAndOpticalSpecsTest` + `OpticalsProfileAndVouchersTest` + `CommandCenterScriptOrderingTest`): **14/14 passed (100 assertions, 0 errors, 0 failures)**.
+  - JavaScript Unit Suite (`tests/JavaScript/error-help.test.cjs`): **5/5 passed (0 failures)**.
+  - Cache recompiled: `php artisan optimize:clear; php artisan view:cache` -> **100% DONE**.
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: Resolution of Missing Brands & Categories on Product Edit (`media_1794404800952_a9cabaaf.jpg`)
+
+- **User Inquiry Addressed:**
+  - *"but where are the brands and category in this?"*
+  - Attached screenshot `media_1794404800952_a9cabaaf.jpg` of `products/380/edit` showing:
+    - `Brand`: "Select Brand..." (empty / unselected)
+    - `Category *`: Dropdown contained only `General`, leaving "Select Category..." unselected.
+- **Root Cause Analysis:**
+  1. `Brand.php`, `Category.php`, and `Unit.php` use `ScopesCompanyQueries` to enforce tenancy.
+  2. While the database tables `brands`, `categories`, and `units` had `company_id` columns, `company_id` was **omitted from `$fillable`** across all three models.
+  3. Consequently, when `Category::firstOrCreate` or `Brand::create` was executed during the demo data import, Eloquent silently dropped `company_id`, leaving `company_id = NULL`.
+  4. During web requests, `ScopesCompanyQueries` applies `WHERE company_id = 6`. Because all optical categories and brands had `company_id = NULL`, the query returned 0 brands and only the pre-existing `General` category for Company 6. Products referencing the newly created brands/categories had no matching dropdown options and defaulted to "Select Brand..." and "Select Category...".
+- **Resolution & Deliverables:**
+  1. **Model Fillable Hardening:**
+     - Added `"company_id"` to `$fillable` in `app/Models/Brand.php`.
+     - Added `"company_id"` to `$fillable` in `app/Models/Category.php`.
+     - Added `"company_id"` to `$fillable` in `app/Models/Unit.php`.
+  2. **Company 6 Brand & Category Sync:**
+     - Created and assigned all optical brands for Company 6: `LenzBreeze` (ID 469), `Crizal` (ID 470), `Essilor` (ID 471), `Zeiss` (ID 472), `Hoya` (ID 473), `Nova` (ID 474).
+     - Created and assigned all optical categories for Company 6: `Progressive Lenses (PAL)` (ID 447), `Bifocal & Kryptok` (ID 448), `Single Vision Lenses` (ID 449), `Finished Blanks (FSV)` (ID 450), `Semi-Finished Blanks (SF)` (ID 451), `Optical Accessories & Services` (ID 452).
+  3. **Product Re-association:**
+     - All 100 products for Company 6 updated with authentic `brand_id = 469` (`LenzBreeze`) and exact `category_id`:
+       - 50 Progressive PAL products (`LB-001` to `LB-050`) &rarr; Category ID 447 (`Progressive Lenses (PAL)`).
+       - 50 Bifocal products (`LBS-001` to `LBS-050`) &rarr; Category ID 448 (`Bifocal & Kryptok`).
+  4. **Import Command Updated:**
+     - Updated `app/Console/Commands/ImportLenzbreezeDemoDataCommand.php` to force-create and synchronize brands and categories scoped to `company_id`.
+  5. **Automated Verification:**
+     - Added `test_optical_product_edit_view_renders_brands_and_categories_for_company` to `tests/Feature/ProductTypeAndOpticalSpecsTest.php`.
+     - Combined optical feature test suites (`ProductTypeAndOpticalSpecsTest` + `OpticalsProfileAndVouchersTest`): **12/12 passed (88 assertions, 0 errors, 0 failures)**.
+     - Recompiled Blade views cleanly: `php artisan optimize:clear; php artisan view:cache` -> **100% DONE**.
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: 100 Authentic Optical Products & Customers Imported from LenzBreeze Database
+
+- **User Requests Addressed:**
+  - *"there are some products present in the database of lensbreeze, can you import few products, 100 products with stock and cost? and lets check how it works. we can show this for demo."*
+  - *"products imported?"*
+  - *"only 100 products and few customers enough"*
+  - *"i hope you are importing the products from the database from lenzbreeze?"*
+- **Source Database Analysis & Data Provenance:**
+  - Source SQL Dump: `D:\PROJECTS\WEBSITES\lenzbreeze\database\u362580417_lenzbreezedb.sql` (Live production database with 70,075 product records and authentic optical customer accounts).
+  - Target ERP Tenant: Company ID 6 (`LenzBreeze Optical Lab`, code `LENZ`).
+  - Target Warehouse: Warehouse ID 10 (`LenzBreeze Optical Lab - Main`).
+- **Completed Deliverables:**
+  1. **Artisan Import Command (`App\Console\Commands\ImportLenzbreezeDemoDataCommand`):**
+     - Signature: `php artisan erp:import-lenzbreeze-demo {--company=6} {--warehouse=10} {--products=100} {--customers=12}`.
+     - Streams directly through `u362580417_lenzbreezedb.sql` to extract:
+       - **50 Progressive Lenses (PAL):** Exact product codes `LB-001` through `LB-050` (e.g. `LB-001-PRO-2-0.75-R`), authentic costs (â‚¹100) and prices (â‚¹225), base curve (`2.00`), addition (`0.750` to `3.500`), eye (`R` / `L`), diameter (`70` mm), category `Progressive Lenses (PAL)`, and lens design type `Progressive`.
+       - **50 Bifocal & Kryptok Lenses:** Exact product codes `LBS-001` through `LBS-050` (e.g. `LBS-001-CRD-PLANO-1-R`), authentic costs (â‚¹81) and prices (â‚¹180), base curve (`PLANO`), addition (`1.00` to `3.00`), eye (`R` / `L`), diameter (`70` mm), category `Bifocal & Kryptok`, and lens design type `D-Bifocal`.
+       - **Initial Stock in Main Lab Warehouse:** Inserted 50 pairs for each product in `product_warehouse` (Warehouse ID 10) â€” totaling **5,000 pairs** in stock ready for commercial sales orders.
+       - **12 Authentic Optical Customers:** Extracted from the `customers` table in `u362580417_lenzbreezedb.sql`:
+         - `ARPANA OPTICALS` (Manacaud, Thiruvananthapuram, Ph: 9447863297)
+         - `4 EYES OPTICALS` (Mannamthala, Thiruvananthapuram, Ph: 9809171229)
+         - `ADITYA OPTICALS` (Staute, Thiruvananthapuram, GSTIN: 32BKKPS8793K1Z9, Ph: 7736061887)
+         - `ALEENA OPTICALS` (General Hospital Rd, GSTIN: 32AAJPF2577Q1ZB, Ph: 9747366788)
+         - `NOEL OPTICALS` (Dhanuvachapuram, Thiruvananthapuram, Ph: 9446701206)
+         - `EVEREST OPTICALS` (Kunnathukal, Thiruvananthapuram, Ph: 8113900390)
+         - `SPECS CLUB OPTICALS` (Palarivattom, Ernakulam, Ph: 9072589555)
+         - `EYE CARE OPTICALS` (T D Road, Ernakulam, Ph: 9947273010)
+         - `INDIAN OPTICALS` (M G Road, Ernakulam, Ph: 9895148362)
+         - `GALAXY OPTICALS` (Ambalamukku, Thiruvananthapuram, Ph: 9544879663)
+         - `LENS WORLD` (Ambalamukku, Thiruvananthapuram, Ph: 7907843898)
+         - `LAWRENCE & MOYO OPTICALS` (Chittoor Road, Ernakulam, Ph: 04842368645)
+  2. **Automated Verification:**
+     - Added `test_lenzbreeze_demo_products_and_customers_imported_for_company` to `tests/Feature/OpticalsProfileAndVouchersTest.php`.
+     - Combined optical feature suites (`OpticalsProfileAndVouchersTest` + `ProductTypeAndOpticalSpecsTest`): **11/11 passed (81 assertions, 0 errors, 0 failures)**.
+     - Blade templates recompiled: `php artisan optimize:clear; php artisan view:cache` -> **100% DONE**.
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: Enable/Disable Module Toggle Restored, Clean Vertical Forms & Field Deduplication
+
+- **User Requests Addressed:**
+  - *"why the enable disable button is removed? that is important to include. make each vertical clean by eliminating the unwanted items for that vertical."* (Attached: `media_1794402779311_1b9cabe5.png`)
+  - *"why these fileds are appearing 2 times?"* (Attached: `media_1794402878105_e06dd02a.png`)
+- **Root Cause Analysis:**
+  1. **Missing Enable/Disable Toggle in Quick Create Modal:**
+     - In `resources/views/backend/product/partials/quick_create_modal.blade.php`, optical fields were directly rendered inside Box 1 (`Product Details`) under Brand & Category without an enable/disable toggle button.
+     - The user's architectural rule is that optical parameters must live in a dedicated modular card controlled by an explicit `Optical / Lens Rx` toggle pill, active by default for `opticals` profile and disabled for others.
+  2. **Unwanted Items Cluttering Opticals Master:**
+     - Generic ecommerce and general retail toggles (IMEI/Serial numbers, Batch & Expiry date, Apparel variant matrix, Supermarket scale embedded barcode, Promotional pricing dates, Digital file downloads) were showing on optical forms where they are completely irrelevant to ophthalmic lens manufacturing.
+  3. **Duplicate Fields & Double-Border Glitch:**
+     - **Form "Type" Duplication:** Forms showed both generic Salepro `Product Type *` (Standard/Combo/Digital/Service) and the Ophthalmic `Type *` / `Lens Type` (`product_types`), causing "Type" to appear twice.
+     - **Nested Double-Border Boxes in Sidebar Filters (`media_1794402878105_e06dd02a.png`):**
+       - In `public/css/commercial-workspace.css`, `.side-filter-group .form-control` had `border: 1px solid #cbd5e1; border-radius: 4px;`.
+       - When Bootstrap Select initialized on `<select class="form-control">`, it created an outer `<div class="bootstrap-select form-control">` (which took the `.form-control` border) wrapping an inner `<button class="btn dropdown-toggle">` (which had its own Bootstrap border), rendering nested double-borders.
+- **Architectural & Design Deliverables:**
+  1. **Restored Modular Enable/Disable Toggle Pill:**
+     - In `quick_create_modal.blade.php`: Added `#quick-optical-option` (`Optical / Lens Rx`) in the Inventory Stripe.
+     - Extracted optical fields into dedicated `#quick-optical-container` card `<x-ui.section-box variant="purple" title="Optical Lens Specifications" icon="view-thumb">` with Base Curve, Addition, Eye (L/R/Pair), and Diameter.
+     - Toggle pill dynamically shows/hides `#quick-optical-container` and `#quick-product-type-col`.
+     - Enabled by default for companies with `opticals` profile; disabled by default for other verticals.
+  2. **Clean Vertical Elimination of Unwanted Items:**
+     - For Opticals Vertical (`$isOpticalProfile`):
+       - Hidden: IMEI / Serial numbers toggle (`is_imei`).
+       - Hidden: Batch & expiry date toggle (`is_batch`).
+       - Hidden: Variant matrix toggle (`is_variant`).
+       - Hidden: Supermarket scale embedded barcode toggle (`is_embeded`).
+       - Hidden: Promotional price toggle (`promotion`).
+       - Hidden: Digital downloadable file attachments (`#digital`).
+       - Hidden: Generic Salepro duplicate `Product Type *` (Standard/Combo/Digital/Service) select; defaulted to `standard` as a hidden input.
+       - Result: Only ONE "Type *" exists â€” the actual Ophthalmic Lens Design Type (`product_types`).
+     - Applied uniformly across `create.blade.php`, `edit.blade.php`, and `quick_create_modal.blade.php`.
+  3. **Sidebar Filter Double-Border Resolution (`media_1794402878105_e06dd02a.png`):**
+     - In `public/css/commercial-workspace.css`: Removed borders from `.bootstrap-select.form-control` wrappers in `.side-filter-group`.
+     - Applied `.custom-select-native` single-border styling for `#side-filter-warehouse`, `#side-filter-status`, and `#side-filter-payment`.
+     - Resolved the nested double-box rendering, restoring clean single-border native dropdowns.
+  4. **Controller & Quick Store Binding:**
+     - In `app/Http/Controllers/CommercialController.php` (`quickStoreProduct`): Validated and persisted `product_type_id`, `base`, `addition`, `lr`, `dia`, and `is_optical`.
+     - In `sale/index.blade.php` and `purchase/index.blade.php`: Appended `is_optical` and optical fields into quick-create `FormData`.
+  5. **Automated Verification:**
+     - Added `test_optical_product_quick_store_with_specs` in `tests/Feature/ProductTypeAndOpticalSpecsTest.php`.
+     - Full suite `ProductTypeAndOpticalSpecsTest` + `OpticalsProfileAndVouchersTest`: **10/10 passed (67 assertions, 0 errors, 0 failures)**.
+     - Blade caches compiled cleanly via `php artisan optimize:clear; php artisan view:cache` -> **100% DONE**.
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: Optical Specifications Box Width Alignment with Top Box
+
+- **User Request Addressed:**
+  - *"make the optical box same width as the top box."*
+  - Attached screenshot `media_1794401653064_86c63adc.png` showing Box 1 ("Product Details") in top 3-column grid at 33.3% width, while the Optical Lens Specifications box below the stripe was placed in a 4-column container and rendered narrower at 25% width, causing fields to cram.
+- **Resolution & Architectural Alignment:**
+  - Wrapped `#optical-section` in its dedicated `.zolo-product-grid mt-2` container (`#optical-container`), matching the exact 3-column CSS grid system (`grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px !important;`) of the top primary boxes.
+  - Positioned `#optical-section` in Column 1 directly underneath Box 1:
+    - **Identical Width:** Exactly matches Box 1 width (33.333% of page grid on desktop, 50% on medium screens, 100% on mobile).
+    - **Pixel-Perfect Alignment:** Left border and right border align with Box 1.
+    - **Clean Specification Controls:** Base Curve, Addition (ADD), Eye (L/R/Pair), and Diameter (DIA) are cleanly laid out across `col-3` columns with no text truncation.
+  - Removed `#optical-section` from the 4-column table container (`product-extended-details-container`), ensuring independent dynamic packing for other tables without grid interference.
+  - Applied uniformly in both `create.blade.php` and `edit.blade.php`.
+  - Recompiled view cache cleanly: `php artisan optimize:clear && php artisan view:cache` -> 100% clean.
+  - All test suites green: `ProductTypeAndOpticalSpecsTest` + `OpticalsProfileAndVouchersTest` (9/9 passed, 65 assertions).
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: Lens Design Type Master (`product_types`), Dropdown Integration & LenzBreeze Parity
+
+- **User Request Addressed:**
+  - *"what about type?"*
+  - Uploaded screenshot `media_1794400444558_a858c822.png` showing `Category *` on left and `Type *` on right with dropdown options:
+    `KBF-3C-HMC-180Â°`, `KBF-3C-HC-PG-180Â°`, `KBF-3C-HMC-PG-180Â°`, `DUP`, `Others`, `KBF-Minus/Plus`, `KBF-4C-90Â°`, `KBF-4C-45Â°`...
+- **Domain Discovery in `D:\PROJECTS\WEBSITES\lenzbreeze`:**
+  - In ophthalmic lens manufacturing:
+    - **Category:** Broad grouping (e.g. Single Vision, Progressive, Bifocal, Blanks, Services).
+    - **Type (`product_types` table):** Specific optical lens design/treatment curve classification (e.g. `KBF-3C-HMC-180Â°`, `Progressive HD Short`, `SV-ARC-BC-Blue`, etc.).
+  - In `lenzbreeze`, `products.product_type_id` references `product_types.id`.
+- **Completed Deliverables:**
+  1. **Database Schema & Tenancy (`product_types` table):**
+     - `database/migrations/2026_11_11_000003_create_product_types_table.php`: Migrated cleanly on development database.
+     - Columns: `id`, `company_id` (nullable, multi-tenant scoped), `name`, `parent_id`, `is_active`, `timestamps`.
+  2. **Eloquent Model & Relationships:**
+     - `app/Models/ProductType.php`: Fillable `company_id`, `name`, `parent_id`, `is_active`. Scopes `scopeActive` and `scopeForCompany`.
+     - `app/Models/Product.php`: Bound `public function productType() { return $this->belongsTo(ProductType::class, 'product_type_id'); }`.
+  3. **Master Seeder (`ProductTypeSeeder.php`):**
+     - Seeded all 83 exact optical lens design types from `lenzbreeze` (Progressive PALs, Kryptok Bifocals, Single Vision coatings, KBF base curves/axes, PRO series, specialized blanks, DUP, Others).
+     - Hooked into `database/seeders/OpticalsMasterSeeder.php`.
+  4. **Controller & Routes (`ProductTypeController.php`):**
+     - Registered resource and AJAX endpoints in `routes/web.php` (`product_types`, `product_type`).
+     - Supports inline modal creation via AJAX (`name`, `ajax=1`) returning JSON `{id, name}`.
+  5. **Product Forms Integration:**
+     - `resources/views/backend/product/create.blade.php` and `edit.blade.php`:
+       - Box 1: In optical mode / optical profile, `Brand`, `Category *`, and `Type *` are arranged side by side as `col-md-4 col-12`, with quick-add `+` modal `#product-type-modal`.
+       - When toggled dynamically via `Optical / Lens Rx`, JavaScript toggles `#product-type-col` and adapts column spans between `col-6` and `col-md-4`.
+       - `#optical-section`: Displays synchronized Lens Type badge with classification description.
+     - `resources/views/backend/product/partials/quick_create_modal.blade.php`: Added `Type` dropdown when `$isOpticalProfile` is true.
+     - `resources/views/backend/sale/index.blade.php`: Displayed `Lens Type` badge in line item Rx strip upon product selection.
+  6. **Automated Verification:**
+     - `tests/Feature/ProductTypeAndOpticalSpecsTest.php`: **3/3 passed (10 assertions)** verifying seeder, model relation, and AJAX creation.
+     - Full suite `OpticalsProfileAndVouchersTest` + `ProductTypeAndOpticalSpecsTest`: **9/9 passed (65 assertions)**.
+     - `CapabilityEngineTest`: **22/22 passed (122 assertions)**.
+     - View cache: `php artisan optimize:clear && php artisan view:cache` -> **100% DONE**.
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: Optical Lens Specifications Card, Module Add-on Toggle & Sales Order Prescription Desk
+
+- **User Request Addressed:**
+  - *"add product has these items, when creating the order, they will use the power of the lens etc. check the lenzbreeze project and bring that setup to adopt our project."* (Reference: `D:\PROJECTS\WEBSITES\lenzbreeze`)
+  - *"keep the opticals details as a separate card, and keep that as a module add on toggle button, while the opticals profile selected, switch on this always. but for others disable by default."*
+  - Screenshots evaluated:
+    - `media_1794392315897_a92cfedd.png`: Showed Optical Lens Specifications placed inside Box 1 (Product Details) above "Product Unit", crowding core identity fields.
+    - `media_1794392345146_68971692.png`: Highlighted the "INVENTORY & STOCK CONTROL" stripe toggle pill group (`Initial Stock`, `This product has variant`, etc.).
+- **Architectural & Design Decisions:**
+  1. **Product Master Clean Separation:**
+     - Removed optical fields from Box 1 (Product Identity & Units).
+     - Added a dedicated toggle pill `optical-option` (`Optical / Lens Rx`) in `zolo-inventory-stripe-toggles` with purple accent styling matching the ERP design system.
+     - Created a standalone collapsible card `#optical-section` (`<x-ui.section-box variant="purple" title="Optical Lens Specifications" icon="view-thumb">`) containing:
+       - **Base Curve** (`base`)
+       - **Addition (ADD)** (`addition`)
+       - **Eye (L / R / Pair)** (`lr`)
+       - **Diameter (DIA mm)** (`dia`)
+     - **Dynamic Profile-Aware Defaults:**
+       - Server-side evaluates `$isOpticalProfile = ($profileRow && $profileRow->profile_key === 'opticals')`.
+       - For companies with `opticals` profile (e.g. `LenzBreeze Optical Lab`, Company ID 6), the toggle pill is `checked` and `.is-active` by default, and `#optical-section` is visible.
+       - For other profiles (general trading, textile, fmcg, etc.), the toggle pill is unchecked and disabled/hidden by default, while allowing users to turn it on manually on-demand.
+       - In `edit.blade.php`, auto-enables if the product already has optical data or if the company profile is opticals.
+       - Fully integrated with the 4-column responsive grid layout manager (`applyDynamicGridSpans`) with `isWide: true`.
+     - In `quick_create_modal.blade.php`: conditionally displays optical lens specifications only when `$isOpticalProfile` is true.
+  2. **Sales Desk & Commercial Order Entry:**
+     - In `resources/views/backend/sale/index.blade.php`, each line item row renders an inline optical prescription input strip (`SPH`, `CYL`, `AXIS`, `ADD`, `L/R`, `Base`, `DIA`) under the product name/item search.
+     - Selecting an optical product in autocomplete auto-populates `addition`, `lr`, `base`, `dia` and displays dynamic `Base` and `DIA` badges.
+     - Added "+ Optical & Warranty &rarr;" shortcut button (`#btn-quick-optical`) in the desk top strip opening `#charges-drawer` with active tab `#tab-optical`.
+     - End-user warranty inputs (`end_user_name`, `end_user_phone`, `end_user_email`, `end_user_address`) and extra charges (`fitting_charge`, `tinting_cost`, `customer_order_no`) save, persist into `sales`, and populate during edit / duplicate / reload.
+  3. **Verification & Tests:**
+     - Compiled view cache: `php artisan optimize:clear; php artisan view:cache` -> 100% clean.
+     - `tests/Feature/CapabilityEngineTest.php`: Updated profile catalog count assertion to dynamic `count(CapabilityCatalog::PROFILES)` (6 profiles); 22/22 tests passed, 122 assertions.
+     - `tests/Feature/OpticalsProfileAndVouchersTest.php`: 6/6 tests passed, 55 assertions.
+
+---
+
+## Active Session & Follow-up â€” 2026-11-11: Lens Manufacturer Company Profile, Opticals Vertical, Prescription Rx & Vouchers
+
+- **User Request Addressed:**
+  - *"we need an company profile for lens manufacturer, study the D:\PROJECTS\WEBSITES\lenzbreeze and implement the sale type here too under the opticals vertical company profile. use the lab reciept, and packing slips etc."*
+- **Research & Domain Discovery in `D:\PROJECTS\WEBSITES\lenzbreeze`:**
+  - Optical lens manufacturing and retail flows require tracking detailed ophthalmic lens prescription parameters on every sale line item:
+    - **SPH (Sphere):** `-20.00` to `+20.00`
+    - **CYL (Cylinder):** `-6.00` to `+6.00`
+    - **AXIS:** `1` to `180` degrees
+    - **ADD (Addition):** `+0.75` to `+4.00`
+    - **Base:** Base curve (`2.00` to `8.00`)
+    - **DIA:** Lens diameter in mm (`60`, `65`, `70`, `75`)
+    - **LR / Eye:** Right (`R`), Left (`L`), or Pair (`Pair`)
+  - Indian GST statutory classification: Corrective optical lenses fall under **HSN 9001** attracting **12% GST** (6% CGST + 6% SGST, or 12% IGST). Optical frames and sunglasses fall under 18% GST.
+  - Specialized vouchers required:
+    - **Lab Receipt (`sale.lab_receipt`):** Specialized 100mm thermal slip for surfacing/edging lab technicians featuring 2D QR barcode, patient metadata, and Rx power chart.
+    - **Packing Slip (`sale.packing_slip` / `packing-slips/invoice/{id}`):** Specialized A6 dispatch packing slip with 1D Code128 barcodes, shipper/consignee layout, and optical Rx badges.
+
+- **Completed Deliverables:**
+  1. **Additive Database Migration:**
+     - `database/migrations/2026_11_11_000001_add_optical_prescription_columns_to_product_sales_table.php`: Added nullable `sph`, `cyl`, `axis`, `base`, `addition`, `lr`, `dia`, and `prescription_json` to `product_sales`. Migrated cleanly on development database.
+  2. **Domain Models & Service Binding:**
+     - `app/Models/Product_Sale.php`: Added optical parameters to `$fillable` and cast `prescription_json` to `array`.
+     - `app/Http/Requests/StoreSaleRequest.php`: Extracted prescription parameters (`sph`, `cyl`, `axis`, `base`, `addition`, `lr`, `dia`) in `prepareForValidation`.
+     - `app/Http/Controllers/SaleController.php`: Stored prescription fields during `storeSale` and `updateSale`. Added `genLabReceipt($id)` and `packingSlip($id)` actions.
+     - `app/Services/ERP/SaleService.php`: Bound prescription fields into commercial sale creation.
+  3. **Opticals Vertical & Industry Catalog Registration:**
+     - `app/Services/Platform/CapabilityCatalog.php`: Registered `'opticals' => ['Opticals & Eyewear', ...]` with capabilities (`inventory.multi_uom`, `inventory.batch_expiry`, `inventory.serial_tracking`, `sales.wholesale`, `service.warranty_amc`, `communications.whatsapp`).
+     - `app/Services/Industry/IndustryCatalog.php`: Registered optical industry settings (`PRS`, `PCS`, `BOX`, uqc `PRS`), attributes (`lens_material`, `lens_type`, `coating`, `refractive_index`, `dia`, `base_curve`), processes (`SURFACING`, `COATING`, `TINTING`, `FITTING`), and subtypes (`lens_manufacturing`, `optical_retail`, `wholesale_distributor`).
+     - `app/Services/Platform/CapabilityService.php`: Added auto-sync self-healing so missing profiles in `business_profiles` automatically invoke `CapabilitySeeder`.
+  4. **Master Seeder & Company Generator:**
+     - `database/seeders/OpticalsMasterSeeder.php`: Seeds units (`PRS`, `PCS`, `BOX`), brands (`LenzBreeze`, `Crizal`, `Essilor`, `Zeiss`, `Hoya`, `Nova`), categories (`Single Vision`, `Bifocal & Kryptok`, `Progressive PAL`, `Finished Blanks`, `Semi-Finished Blanks`, `Services`), 12% GST optical lens sale types (`SGST12-OPT`, `SIGST12-OPT`, `SGST18-OPT`), document series (`LAB-`, `PS-`, `INV-`), and optical products with stock.
+     - `app/Console/Commands/CreateOpticalsCompanyCommand.php` (`php artisan erp:create-opticals-company`): Created Company ID 6 (`LenzBreeze Optical Lab`, code `LENZ`).
+  5. **Vouchers & Print Layouts:**
+     - `resources/views/backend/sale/lab_receipt.blade.php`: Thermal slip printout (100mm) with QR barcode, doctor/ref, customer order number, and lens power prescription chart.
+     - `resources/views/backend/packing_slip/invoice.blade.php`: Standard A6 shipping slip with Code128 barcode, warehouse return address, consignee details, and prescription specification badges.
+  6. **UI Integration in Sales Workspace:**
+     - `public/js/command-center-form.js` & `public/js/document-aids.js`: Enhanced `#row-detail-modal` with dedicated Optical Rx Prescription input group (SPH, CYL, AXIS, ADD, Eye, DIA, Base).
+     - `resources/views/backend/sale/index.blade.php`: Added "Lab Receipt" and "Packing Slip" action buttons in `view-mode-actions` and on side bill cards.
+     - `routes/web.php`: Registered `sales/lab_receipt/{id}` and `sales/packing_slip/{id}` under authenticated company scope.
+  7. **Automated Verification:**
+     - Feature suite `tests/Feature/OpticalsProfileAndVouchersTest.php`: **5/5 passed (41 assertions, 0 errors, 0 failures)** verifying catalog registration, optical master seeder, prescription persistence, lab receipt HTML generation, and packing slip barcode rendering.
+     - Blade caches compiled cleanly via `php artisan optimize:clear; php artisan view:cache`.
+
+---
+
+
+## Active Session & Follow-up â€” 2026-11-10: NVIDIA NIM API Key & Free Best Model Update (branch ui)
 
 - **User Request Addressed:**
   - *"Update the AI api key in the .env file use the best model and free model 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"*
@@ -18,7 +342,7 @@
 
 
 
-## Active Session & Follow-up — 2026-11-10: Remote Verification, Pull & Migration Parity (branch ui)
+## Active Session & Follow-up â€” 2026-11-10: Remote Verification, Pull & Migration Parity (branch ui)
 
 - **User Request Addressed:**
   - *"pull the latest"*
@@ -47,7 +371,7 @@
 
 
 
-## Active Session & Follow-up — 2026-11-10: Inline Hover Product Edit on Voucher Rows & Tax UI Clarification (branch ui)
+## Active Session & Follow-up â€” 2026-11-10: Inline Hover Product Edit on Voucher Rows & Tax UI Clarification (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Hover "Edit" Button on Voucher Product Cells (`media_1794290306012_92ff49a0.png`):*
@@ -62,9 +386,9 @@
        - Extracted shared helpers in `CommercialController` (`validateQuickProduct`, `resolveQuickProductAttributes`, `persistQuickProductExtensions`, `formatQuickProductPayload`).
        - Added `ProductMasterService::update()` and `$ignoreProductId` support on `validateCreation()` so updating an existing item reuses all company-scoped uniqueness, UOM conversion, and GST/HSN validation rules.
        - Added `GET /products/{id}/quick-edit` and `POST /products/{id}/quick-update` guarded by `products-edit` permission and `Product::forCompany($context)`.
-  2. *Explained Live (`Tax Classification`) vs Local (`GST · Place of supply` + `RCM`) UI difference:*
+  2. *Explained Live (`Tax Classification`) vs Local (`GST Â· Place of supply` + `RCM`) UI difference:*
      - Verified via `app/Services/Tax/GstSetupService.php` (`entryConfig()`, `enabled()`, `registration()`), `resources/views/backend/partials/gst-entry.blade.php`, and `public/js/gst-entry.js`.
-     - Local shows `GST · Place of supply` + `RCM` because `.env` has `ERP_COMPLIANCE_ENABLED=true` and `zoloERP Textiles` (`company_id = 4`, `branch_id = 5`) has an active Indian registration in `tax_registrations`. Live shows `Tax Classification` when `ERP_COMPLIANCE_ENABLED=false` or the active company/branch lacks an active GST registration row.
+     - Local shows `GST Â· Place of supply` + `RCM` because `.env` has `ERP_COMPLIANCE_ENABLED=true` and `zoloERP Textiles` (`company_id = 4`, `branch_id = 5`) has an active Indian registration in `tax_registrations`. Live shows `Tax Classification` when `ERP_COMPLIANCE_ENABLED=false` or the active company/branch lacks an active GST registration row.
   3. *Test Suite & Cache Verification (100% Green):*
      - `tests/Feature/QuickEditProductModalTest.php`: **3/3 passed (45 assertions, 100% green)**.
      - `tests/Unit/DesignTokensTest.php`: **4/4 passed (100% green)**.
@@ -76,7 +400,7 @@
      - Cleared & cached views cleanly via `php artisan optimize:clear; php artisan view:cache`.
 
 
-## Active Session & Follow-up — 2026-11-10: Automated & Overridable Lot/Batch Numbers & Autoloader Parity (branch ui)
+## Active Session & Follow-up â€” 2026-11-10: Automated & Overridable Lot/Batch Numbers & Autoloader Parity (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Automated & Overridable Lot/Batch Numbers next to Bill Number:*
@@ -89,7 +413,7 @@
        - Models `Purchase` and `Sale` updated with `lot_number` in `$fillable`.
        - `Unit` updated with `company_id` in `$fillable`.
        - In `PurchaseController`/`PurchaseService` and `SaleController`/`SaleService`, fallback logic links or creates `ProductBatch` records with `batch_no = lot_number`, establishing FIFO cost and margin traceability across the ERP.
-       - `ValidatesMaterialDocuments`, `GoodsReceivedNoteController`, and `DeliveryChallanController` pass `lot_number` and row batch numbers through when converting GRN → Purchase or DC → Sale.
+       - `ValidatesMaterialDocuments`, `GoodsReceivedNoteController`, and `DeliveryChallanController` pass `lot_number` and row batch numbers through when converting GRN â†’ Purchase or DC â†’ Sale.
   2. *Autoloader Workspace Parity Fix:*
      - Ran `composer dump-autoload -o --ignore-platform-reqs` to purge obsolete hardcoded paths pointing to `DK Enterprises` from `vendor/composer/autoload_static.php` and `autoload_psr4.php`. All 12,726 classes now map cleanly to `zolo-erp-pro`.
   3. *Test Suite Verification (100% Green):*
@@ -101,7 +425,7 @@
      - View cache recompiled cleanly via `php artisan optimize:clear; php artisan view:cache`.
 
 
-## Active Session & Follow-up — 2026-11-10: Resolution of "Two Boxes in Fields" in Voucher Table Rows (branch ui)
+## Active Session & Follow-up â€” 2026-11-10: Resolution of "Two Boxes in Fields" in Voucher Table Rows (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Root Cause for "Two Boxes in Fields" (`media_1794283221610_852db731.png`):*
@@ -119,7 +443,7 @@
      - `tests/Feature/StockReportTest.php`: 9/9 passed (68 assertions, 100% green).
      - Views cleared and cached cleanly via `php artisan optimize:clear; php artisan view:cache`.
 
-## Active Session & Follow-up — 2026-11-10: Theme Colors Integration, Table Header Modernization & Inline Row Add Removal (branch ui)
+## Active Session & Follow-up â€” 2026-11-10: Theme Colors Integration, Table Header Modernization & Inline Row Add Removal (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Elimination of Pitch-Dark Black Headers in Voucher Tables & ERP-Wide Tables (`media_1794282795938_988b185e.png`):*
@@ -141,7 +465,7 @@
      - `tests/Feature/StockReportTest.php`: 9/9 passed (68 assertions, 100% green).
      - Views cleared and re-cached cleanly via `php artisan optimize:clear; php artisan view:cache`.
 
-## Active Session & Follow-up — 2026-11-10: CSRF Middleware Class Resolution (`VerifyCsrfToken` Import Parity) (branch ui)
+## Active Session & Follow-up â€” 2026-11-10: CSRF Middleware Class Resolution (`VerifyCsrfToken` Import Parity) (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Root Cause & Resolution for Ignition Error (`media_1794282427742_e1e0f22a.jpg`):*
@@ -157,7 +481,7 @@
          - `GoodsReceivedNoteWebTest`: 4/4 passed (22 assertions, 100% green).
          - `StockReportTest`: 9/9 passed (68 assertions, 100% green).
 
-## UI Remote Pull, Conflict Resolution, Parity Verification & Push Complete — 2026-11-09 (`ui` at `fb6fb6e`)
+## UI Remote Pull, Conflict Resolution, Parity Verification & Push Complete â€” 2026-11-09 (`ui` at `fb6fb6e`)
 
 - **User Request Addressed:**
   - *"can you pull the update from git in UI, check if everything is correct and then merge correctly and push it."*
@@ -186,7 +510,7 @@
   - Fast-forward merged local `main` to parity with `ui` at `fb6fb6e`.
   - Repository branch remains on `ui`, completely clean (`working tree clean`).
 
-## Active Session & Follow-up — 2026-11-09: Grid Syntax Error Fix, Search Dropdown In-Place Product Creation & Zero-Confirm Workflow (branch ui)
+## Active Session & Follow-up â€” 2026-11-09: Grid Syntax Error Fix, Search Dropdown In-Place Product Creation & Zero-Confirm Workflow (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Root Cause & Fix for Purchase Bill Red Banner Error (`media_1794232347072_aa190992.jpg`):*
@@ -228,7 +552,7 @@
      - `tests/Feature/StockReportTest.php`: **9/9 passed (67 assertions, 100% green)**.
      - Blade templates cleared and cached cleanly via `php artisan optimize:clear` and `php artisan view:cache`.
 
-## Database Architecture & Multi-Company Resolution — 2026-11-09 (`ui` & `main`)
+## Database Architecture & Multi-Company Resolution â€” 2026-11-09 (`ui` & `main`)
 - **User Inquiry:** *"previously there are lot of companies in my localhost db, now why only one company is there?"*
 - **Root Cause & Database Architecture Explained:**
   - **1. Primary DEV Database (`zoloerp` on Port 3307):**
@@ -242,7 +566,7 @@
     - The server on port 3307 was stopped, so when testing earlier it timed out.
   - **2. Isolated Upgrade Sandbox Database (`zoloerp_upgrade` on Port 3306):**
     - Runs on MariaDB (`VainaviMariaDB`) on port 3306.
-    - Was created specifically as an isolated clean-slate sandbox for testing Laravel 10 → 13 and PHP 8.5 upgrades so real development data would not be corrupted.
+    - Was created specifically as an isolated clean-slate sandbox for testing Laravel 10 â†’ 13 and PHP 8.5 upgrades so real development data would not be corrupted.
     - Because it was migrated from scratch, it only contained the single company (`zoloERP Textiles`) seeded by the baseline migration.
 - **Actions Taken:**
   1. Booted local MySQL 8.4 dev daemon (`C:\Users\vigne\zolo-mysql-dev\my.ini`, port 3307).
@@ -251,13 +575,13 @@
   4. Verified that all **5 companies** are completely intact, with all transactions, ledgers, and products preserved.
   5. Optimized route and view caches (`php artisan route:cache`, `php artisan view:cache`).
 
-## Main publication candidate — 2026-11-09
+## Main publication candidate â€” 2026-11-09
 
 - Local `main` and `ui` matched at `9d60d5a` before this commit. Both include the upgrade worktree tip `22fd2ff`.
 - The publication candidate includes the seven blank-line edits from the `ui` worktree. The database snapshot remains local and untracked. The push target is `origin/main`.
 - GitHub requires the ERP acceptance gate and a pull request for `main`. PR #5 publishes the integration. The first operations run flagged inline styles in four role dashboards and the stock report. The dashboards now use existing style classes. The stock report loads its styles in the document head and passes column widths through DataTables options.
 
-## Remote UI Pull, Full Main Integration & Upgrade Worktree Parity Completed — 2026-11-09 (`ui` & `main` at `96653eb`)
+## Remote UI Pull, Full Main Integration & Upgrade Worktree Parity Completed â€” 2026-11-09 (`ui` & `main` at `96653eb`)
 
 - **User Requests Addressed:**
   - *"can you pull all the UI and merge everything from UI to the main? Now upgrade worktree are merged to main?"* with Herd screenshot (`media_1794211636007_5e9e7119.png`).
@@ -292,7 +616,7 @@
   - Route compilation: `php artisan route:cache` serialized all 1,118 routes cleanly.
   - View compilation: `php artisan view:cache` compiled 100% with 0 errors.
 
-## UI to Main and Upgrade Worktree Merges Completed — 2026-11-09 (`main`)
+## UI to Main and Upgrade Worktree Merges Completed â€” 2026-11-09 (`main`)
 
 - **Context & Safety Backups Established:**
   - Git Branch Backups created locally and pushed to GitHub remote `origin`:
@@ -311,9 +635,9 @@
      - Routes cached (`php artisan route:cache`, 1,089 routes) and Blade templates compiled (`php artisan view:cache`) with 100% success.
 - **Verification:** Zero merge conflicts remaining across all application code, models, controllers, views, workflows, and configuration.
 
-## End-to-End Comparison Test: UI Branch vs. Upgrade Worktree — 2026-11-09 (`upgrade/laravel13-php85`)
+## End-to-End Comparison Test: UI Branch vs. Upgrade Worktree â€” 2026-11-09 (`upgrade/laravel13-php85`)
 
-- **Scope & Objective:** User requested a complete end-to-end comparison test between the `ui` branch (`V:\pers\Freelance\zolo-erp-pro`) and the upgrade worktree (`V:\pers\Freelance\zolo-erp-pro-upgrade`) to detect any bug or regression created during the Laravel 10 → 13 and PHP 8.5 upgrade.
+- **Scope & Objective:** User requested a complete end-to-end comparison test between the `ui` branch (`V:\pers\Freelance\zolo-erp-pro`) and the upgrade worktree (`V:\pers\Freelance\zolo-erp-pro-upgrade`) to detect any bug or regression created during the Laravel 10 â†’ 13 and PHP 8.5 upgrade.
 - **Architectural & Dependency Audit:**
   - `composer validate --strict`: 100% valid.
   - `composer check-platform-reqs`: 27/27 requirements satisfied on PHP 8.5.12.
@@ -339,7 +663,7 @@
   - `/login` (GET 200, POST 302 -> `/dashboard` 200), `/report/customer_report` (200 OK), `/report/supplier_report` (200 OK), `/report/outstanding-dues` (200 OK), `/accounting/general-ledger` (200 OK), `/accounting/journal-entries` (200 OK), `/accounting/trial-balance` (200 OK), `/sales` (200 OK), `/purchases` (200 OK), `/products` (200 OK), `/transfers` (200 OK), `/quotations` (200 OK).
 - **Finding:** Zero bugs or functional regressions created. All recent UI features (9-column job work print, voucher preview modals, A4 zero-overflow print rules) are fully retained and operational on Laravel 13 + PHP 8.5.
 
-## Upgrade Worktree Localhost & Herd Linking — 2026-11-09 (`upgrade/laravel13-php85`)
+## Upgrade Worktree Localhost & Herd Linking â€” 2026-11-09 (`upgrade/laravel13-php85`)
 
 - **Context & User Request:** User requested to start the local host with the upgrade worktree (`V:\pers\Freelance\zolo-erp-pro-upgrade`) used for Laravel 13 and PHP 8.5, sharing a screenshot of Herd.
 - **Herd Sites Linked & Isolated:**
@@ -349,9 +673,9 @@
 - **Artisan Serve Localhost Daemon:**
   - Started background daemon on `http://127.0.0.1:8080` (and `http://localhost:8080`) from `V:\pers\Freelance\zolo-erp-pro-upgrade`.
   - Connected to isolated database `zoloerp_upgrade` on MariaDB/MySQL port 3306.
-- **Verification:** Both `http://zolo-erp-upgrade.test/login` (Herd) and `http://localhost:8080/login` return HTTP 200 OK with `<title>zoloERP Pro — Sign In</title>`.
+- **Verification:** Both `http://zolo-erp-upgrade.test/login` (Herd) and `http://localhost:8080/login` return HTTP 200 OK with `<title>zoloERP Pro â€” Sign In</title>`.
 
-## Upgrade Worktree Localhost & Herd Linking — 2026-11-09 (upgrade/laravel13-php85)
+## Upgrade Worktree Localhost & Herd Linking â€” 2026-11-09 (upgrade/laravel13-php85)
 
 - **Context & User Request:** User requested to start the local host with the upgrade worktree (V:\pers\Freelance\zolo-erp-pro-upgrade) used for Laravel 13 and PHP 8.5, sharing a screenshot of Herd.
 - **Herd Sites Linked & Isolated:**
@@ -361,9 +685,9 @@
 - **Artisan Serve Localhost Daemon:**
   - Started background daemon on http://127.0.0.1:8080 (and http://localhost:8080) from V:\pers\Freelance\zolo-erp-pro-upgrade.
   - Connected to isolated database zoloerp_upgrade on MariaDB/MySQL port 3306.
-- **Verification:** Both http://zolo-erp-upgrade.test/login (Herd) and http://localhost:8080/login return HTTP 200 OK with <title>zoloERP Pro — Sign In</title>.
+- **Verification:** Both http://zolo-erp-upgrade.test/login (Herd) and http://localhost:8080/login return HTTP 200 OK with <title>zoloERP Pro â€” Sign In</title>.
 
-## PR #4 review fixes — 2026-11-09 (upgrade/laravel13-php85)
+## PR #4 review fixes â€” 2026-11-09 (upgrade/laravel13-php85)
 
 - Returned PR #4 to draft while revalidating review findings. Commit fdf0c89 was pushed to the upgrade branch. GitHub acceptance run 42580211190 passed all nine jobs and the aggregate gate. PR #4 is ready for review and remains unmerged.
 - Catalog-only Textile seeding now skips existing products without changing product or warehouse quantities. The disposable MySQL test verifies 250 units remain in both tables with zero ledger movements.
@@ -373,7 +697,7 @@
 - VPS preflight run 42580258086 passed for fdf0c89. The live release and its scheduler were not changed. The user asked to hold the merge.
 
 
-## Laravel 13 release acceptance and VPS rehearsal — 2026-11-08 (upgrade/laravel13-php85)
+## Laravel 13 release acceptance and VPS rehearsal â€” 2026-11-08 (upgrade/laravel13-php85)
 
 - [PR #4](https://github.com/vigneshsinna/zolo-erp-pro/pull/4) targets main. Main requires the strict ERP acceptance gate, including all seven acceptance suites and clean migrations on MySQL 8.0 and 8.4.
 - The branch requires PHP 8.5.12 or later in the 8.5 series, removes Composer's PHP 8.3.20 override, restores default advisory blocking, and audits the lock in CI. Fresh checkouts regenerate application and module caches. CI checks pending application and Manufacturing migrations by name.
@@ -385,7 +709,7 @@
 - Preserved the user's pre-existing uncommitted TextileCompanyMigrationTest.php formatting changes. No edits were made in the ui checkout.
 
 
-## Audit Review Hardening, Fresh-DB CI Fix & Merge Readiness Complete — 2026-11-08 (commit `91be69f` on `upgrade/laravel13-php85`)
+## Audit Review Hardening, Fresh-DB CI Fix & Merge Readiness Complete â€” 2026-11-08 (commit `91be69f` on `upgrade/laravel13-php85`)
 
 Addressed all audit items and CI blockers identified during the static source-code review:
 1. **Clean-Database CI Job Fixed (`.github/workflows/company-foundation.yml`):**
@@ -408,7 +732,7 @@ Addressed all audit items and CI blockers identified during the static source-co
    - All tests passing green (100%): `TextileCompanyMigrationTest` (2/2), `CustomerSupplierReportsNavigationTest` (7/7), `IndustryFlowIntegrationTest` (7/7).
    - Branch `upgrade/laravel13-php85` pushed to `origin` at commit `91be69f`.
 
-## Source-Code Review Hardening & Merge Readiness Completion — 2026-11-08 (upgrade/laravel13-php85)
+## Source-Code Review Hardening & Merge Readiness Completion â€” 2026-11-08 (upgrade/laravel13-php85)
 
 Addressed all 6 audit priorities identified during static source-code and GitHub review:
 1. **Textile Migration Hardened:**
@@ -437,26 +761,26 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
    - `php artisan optimize:clear`, `route:cache`, `view:cache`: 100% clean compilation.
    - Verified test suites on PHP 8.5.12: `TextileCompanyMigrationTest` (1/1), `IndustryFlowIntegrationTest` (7/7), `TextileEndToEndLedgerTest` (1/1), `ManufacturingJobWorkTest` (10/10), `CustomerSupplierReportsNavigationTest` (7/7), `PartiesGlobalUiTest` (11/11), `OutstandingDuesAndGstTypeTest` (8/8), `ComplianceBrowserFixtureTest` & `ComplianceHttpTest` (6/6).
 
-## Full Major Upgrade Completed: Laravel 10 → 11 → 12 → 13 on PHP 8.5.12 (upgrade/laravel13-php85) — 2026-11-08
+## Full Major Upgrade Completed: Laravel 10 â†’ 11 â†’ 12 â†’ 13 on PHP 8.5.12 (upgrade/laravel13-php85) â€” 2026-11-08
 
 - **Execution Strategy & Worktree Isolation:**
-  - Carried out sequential, step-by-step upgrade (**10 → 11 → 12 → 13**) inside dedicated worktree `v:\pers\Freelance\zolo-erp-pro-upgrade` on branch `upgrade/laravel13-php85` with an isolated MariaDB database `zoloerp_upgrade` on port 3306.
+  - Carried out sequential, step-by-step upgrade (**10 â†’ 11 â†’ 12 â†’ 13**) inside dedicated worktree `v:\pers\Freelance\zolo-erp-pro-upgrade` on branch `upgrade/laravel13-php85` with an isolated MariaDB database `zoloerp_upgrade` on port 3306.
   - Active workspace `v:\pers\Freelance\zolo-erp-pro` remains clean on branch `ui`.
   - Pushed branch `upgrade/laravel13-php85` to GitHub remote `origin`: `https://github.com/vigneshsinna/zolo-erp-pro/pull/new/upgrade/laravel13-php85`.
 
 - **Milestone Checkpoints & Git Commits:**
-  1. **Checkpoint A (Commit `5459a8f`): Laravel 10 → 11.57.1:**
+  1. **Checkpoint A (Commit `5459a8f`): Laravel 10 â†’ 11.57.1:**
      - Replaced abandoned `laravelcollective/html` with drop-in fork `konekt/html: ^6.5` (version `6.8.0`), preserving all ~100 Blade views using `Form::` and `Html::` with zero template rewrites.
      - Upgraded `laravel/framework` to `^11.0` (`v11.57.1`), `laravel/sanctum` to `^4.0` (`v4.3.3`), `spatie/laravel-permission` to `^6.0` (`6.25.0`), `nwidart/laravel-modules` to `^11.0` (`v11.1.10`), `milon/barcode` to `^11.0` (`v11.0.1`), `nunomaduro/collision` to `^8.1` (`v8.5.0`).
      - Fixed `InventoryMovementService.php` schema introspection: replaced removed `getDoctrineColumn` with Laravel 11 `Schema::getColumns('product_batches')`.
      - Migrated `config/modules.php` commands to `ConsoleServiceProvider::defaultCommands()`.
      - Restored modern live hydrated voucher preview modals for sales and purchases.
      - Ran full database migrations from 2014 to 2026 with 100% success on `zoloerp_upgrade`.
-  2. **Checkpoint B (Commit `a590faf`): Laravel 11 → 12.71.0:**
+  2. **Checkpoint B (Commit `a590faf`): Laravel 11 â†’ 12.71.0:**
      - Bumped `laravel/framework` to `^12.0` (`v12.71.0`), `nwidart/laravel-modules` to `^12.0` (`v12.0.5`), `milon/barcode` to `^12.0` (`v12.1.0`), `nunomaduro/collision` to `^8.9` (`v8.9.5`), `phpunit/phpunit` to `^11.0` (`11.5.57`).
      - Carbon 3 (`3.15.1`) validated across financial statements, aging, and tax dates.
      - Automated regression suites passed cleanly with 0 deprecation notices and 0 failures.
-  3. **Checkpoint C (Commit `b50c0b7`): Laravel 12 → 13.40.0 (Target):**
+  3. **Checkpoint C (Commit `b50c0b7`): Laravel 12 â†’ 13.40.0 (Target):**
      - Bumped `laravel/framework` to `^13.2` (`v13.40.0`), `laravel/tinker` to `^3.0` (`v3.0.2`), `nwidart/laravel-modules` to `^13.0` (`v13.3.0`), `milon/barcode` to `^13.0` (`v13.6.0`), `barryvdh/laravel-debugbar` to `^4.0` (`v4.4.5`), `phpunit/phpunit` to `^12.0` (`12.5.43`).
      - Updated CSRF middleware base class to `Illuminate\Foundation\Http\Middleware\PreventRequestForgery`.
      - Fixed duplicate route definitions in `Modules/Manufacturing/Routes/web.php` (`products.getdata` and `product.search`), enabling 100% clean route caching.
@@ -482,23 +806,23 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Combined verification: **Over 100 tests and 1,000+ assertions passing green with ZERO failures.**
 
 
-## 100% Authentic Real Test Example PDF Replacement via Edge Headless & General Ledger Alignment — 2026-11-07 (branch ui)
+## 100% Authentic Real Test Example PDF Replacement via Edge Headless & General Ledger Alignment â€” 2026-11-07 (branch ui)
 
 - **Client Requests Addressed:**
   - *"from the erp the bank account has this ledger, how it differs from yours? there is no ZTEX-BANK?"* with screenshot of `http://localhost:8080/accounting/general_ledger?account_id=3345` showing the real ERP General Ledger for Account `1020 - Bank Accounts (Asset)`.
 - **Root Cause & Fix:**
-  - Previously, Document #8 used a synthetic placeholder name `ZTEX-BANK` with made-up transactions and a fake opening balance of ₹50,000.
+  - Previously, Document #8 used a synthetic placeholder name `ZTEX-BANK` with made-up transactions and a fake opening balance of â‚¹50,000.
   - Sourced 100% of Document #8 directly from the real ERP General Ledger for **`1020 - Bank Accounts`** (Account ID `3345`, Type `Asset`, Subtype `bank`):
-    - Opening Balance: **₹ 0.00**
-    - 4 KPI cards: Opening Balance (`₹ 0.00`), Period Debits (`₹ 101,000.00`), Period Credits (`₹ 13,800.00`), Closing Balance (`₹ 87,200.00`).
+    - Opening Balance: **â‚¹ 0.00**
+    - 4 KPI cards: Opening Balance (`â‚¹ 0.00`), Period Debits (`â‚¹ 101,000.00`), Period Credits (`â‚¹ 13,800.00`), Closing Balance (`â‚¹ 87,200.00`).
     - Exact 5 posted Journal Entries matching the ERP screen:
-      1. `2026-11-06` | `JE-00026` | `VOUCHER ZT-DEMO-CAPITAL` | `Demo capital funding into Bank and Cash` | Debit: `₹ 90,000.00` | Balance: `₹ 90,000.00`
-      2. `2026-11-06` | `JE-00029` | `PAYMENT PAY-00004` | `Bank/Cash deduction for Supplier payment ref PAY-00004` | Credit: `₹ 7,500.00` | Balance: `₹ 82,500.00`
-      3. `2026-11-06` | `JE-00035` | `PAYMENT REC-00004` | `Payment received for Sale payment ref REC-00004` | Debit: `₹ 9,000.00` | Balance: `₹ 91,500.00`
-      4. `2026-11-06` | `JE-00048` | `PAYMENT PAY-00005` | `Bank/Cash deduction for Supplier payment ref PAY-00005` | Credit: `₹ 6,300.00` | Balance: `₹ 85,200.00`
-      5. `2026-11-06` | `JE-00049` | `MANUAL` | `internal transfer` | Debit: `₹ 2,000.00` | Balance: `₹ 87,200.00`
+      1. `2026-11-06` | `JE-00026` | `VOUCHER ZT-DEMO-CAPITAL` | `Demo capital funding into Bank and Cash` | Debit: `â‚¹ 90,000.00` | Balance: `â‚¹ 90,000.00`
+      2. `2026-11-06` | `JE-00029` | `PAYMENT PAY-00004` | `Bank/Cash deduction for Supplier payment ref PAY-00004` | Credit: `â‚¹ 7,500.00` | Balance: `â‚¹ 82,500.00`
+      3. `2026-11-06` | `JE-00035` | `PAYMENT REC-00004` | `Payment received for Sale payment ref REC-00004` | Debit: `â‚¹ 9,000.00` | Balance: `â‚¹ 91,500.00`
+      4. `2026-11-06` | `JE-00048` | `PAYMENT PAY-00005` | `Bank/Cash deduction for Supplier payment ref PAY-00005` | Credit: `â‚¹ 6,300.00` | Balance: `â‚¹ 85,200.00`
+      5. `2026-11-06` | `JE-00049` | `MANUAL` | `internal transfer` | Debit: `â‚¹ 2,000.00` | Balance: `â‚¹ 87,200.00`
     - Exact 7 columns: `DATE`, `ENTRY #`, `REFERENCE`, `MEMO / DESCRIPTION`, `DEBIT`, `CREDIT`, `RUNNING BALANCE`.
-    - Period Totals: Debits `₹ 101,000.00` | Credits `₹ 13,800.00` | Closing Balance `₹ 87,200.00`.
+    - Period Totals: Debits `â‚¹ 101,000.00` | Credits `â‚¹ 13,800.00` | Closing Balance `â‚¹ 87,200.00`.
 - **Physical Deliverables Replaced & Verified (All 8 Documents):**
   1. `01_Sales_Return_Credit_Note_SR-00001.pdf` (99.6 KB)
   2. `02_Purchase_Return_Debit_Note_PR-00001.pdf` (98.9 KB)
@@ -516,7 +840,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `CustomerSupplierReportsNavigationTest`: 7/7 passed (45 assertions).
   - `ComplianceBrowserFixtureTest` & `ComplianceHttpTest`: 6/6 passed (54 assertions).
 
-## Job Work Service Bill 9-Column Print Matching Textile Physical Invoice — 2026-11-07 (branch ui)
+## Job Work Service Bill 9-Column Print Matching Textile Physical Invoice â€” 2026-11-07 (branch ui)
 
 - **Client Request Addressed:**
   - *"Service bill should have all the coloumn from the 2nd image? The 1st image has less couloumn in our ERP. I want you to make the printing bill with all the coloumns"* with 1st image (ERP Job Work Service Bill printout PUR-00012) and 2nd image (physical job worker invoice from MJ APPAREL ERODE).
@@ -560,17 +884,17 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Clear and cached views with `php artisan view:clear` and `php artisan view:cache` (100% compiled).
 
 
-## Shared Report Printing and Print Spacing — 2026-11-06 (branch ui)
+## Shared Report Printing and Print Spacing â€” 2026-11-06 (branch ui)
 
 - Customer and supplier ledger actions use the shared print document. Complete Ledger exports every transaction in the submitted date range, Current Filtered View uses the active table filters, and transaction-specific actions retain the opening balance. Print output includes the eight ledger columns, party details, totals and signatures. Filtered printouts label the totals as full-ledger figures. Ledger actions preserve the screen's search, pagination and column settings.
 - The Outstanding Dues command-bar button uses the shared report printer. Shared DataTables printing includes filtered client-side rows across pages. Server-side printing requests all matching rows, restores the original page after the request, and shows an error instead of printing an incomplete result. The app shell stylesheet applies only to screen media.
 - Applied 11 mm A4 top and side margins and a 12 mm bottom margin. Added vertical space around the letterhead, party card, table and closing section. Both ledger signature lines align and have 30 px of signing space above them.
 - Chromium verified the six-row demo customer ledger on one A4 page, each customer print scope, the supplier ledger and bills, an empty ledger and Outstanding Dues. A 151-row stress fixture paginated across 15 A4 pages with repeated headings. An intercepted server-side table verified 57 printed rows, page restoration and retry after an AJAX failure. All 15 targeted PHP tests passed with 74 assertions. Changes were verified locally on `ui`.
 
-## Complete Ledger Printing Visibility, Zero-Overflow A4 Geometry & Screen Style Isolation — 2026-11-06 (branch ui)
-## Active Session & Follow-up — 2026-11-09: Printed Footer URL Elimination, Column Header Text Wrap & Natural Screen Vertical Scroll Restoration (branch ui)
+## Complete Ledger Printing Visibility, Zero-Overflow A4 Geometry & Screen Style Isolation â€” 2026-11-06 (branch ui)
+## Active Session & Follow-up â€” 2026-11-09: Printed Footer URL Elimination, Column Header Text Wrap & Natural Screen Vertical Scroll Restoration (branch ui)
 
-## Active Session & Follow-up — 2026-11-09: Dynamic Product Name Change & In-Place Resolution for GRN & Commercial Workspaces (branch ui)
+## Active Session & Follow-up â€” 2026-11-09: Dynamic Product Name Change & In-Place Resolution for GRN & Commercial Workspaces (branch ui)
 
 - **Issues Addressed & Status:**
   1. *Dynamic Product Resolution & New Item Creation on GRN Rows (`material-document.js` & `goods_received_note/index.blade.php`):*
@@ -601,7 +925,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
      - `tests/Feature/CustomerSupplierReportsNavigationTest.php`: **7/7 passed (41 assertions, 100% green)**.
      - `php artisan optimize:clear` and `php artisan view:cache`: Executed cleanly.
 
-## Active Session & Follow-up — 2026-11-09: Printed Footer URL Elimination, Column Header Text Wrap & Natural Screen Vertical Scroll Restoration (branch ui)
+## Active Session & Follow-up â€” 2026-11-09: Printed Footer URL Elimination, Column Header Text Wrap & Natural Screen Vertical Scroll Restoration (branch ui)
 
 - **Issues Addressed & Visual Evidence Resolved:**
   1. *Printed Footer Link Text (`media_1794210333442_e6acc1b4.jpg`):*
@@ -612,7 +936,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - Configured `@page { size: A4 portrait; margin: 0 !important; }` and `@page wide { size: A4 landscape; margin: 0 !important; }` in both `public/css/erp-print.css` and `@media print` in `stock_report.blade.php`. With zero page margins, Chromium suppresses browser URL and page number chrome completely.
        - Added `padding: 8mm 10mm 10mm 10mm` to `body` / `.erp-print-doc` to supply the physical document margins cleanly.
        - Wired the Command Bar button to `<button class="btn btn-secondary btn-action-pill" data-erp-print>`, fully integrating with the Global Report Engine (`public/js/erp-print.js`).
-       - Configured DataTables `buttons: [...]` (`print`, `csv`, `colvis`) so `erp-print.js` hidden `<iframe>` printing is triggered with full letterhead, alternating row styling, and Indian number formatting (`₹ 1,50,000.00`).
+       - Configured DataTables `buttons: [...]` (`print`, `csv`, `colvis`) so `erp-print.js` hidden `<iframe>` printing is triggered with full letterhead, alternating row styling, and Indian number formatting (`â‚¹ 1,50,000.00`).
   2. *Column Header Truncation (`STOCK VALUE BY C` and `STOCK VALUE BY P`):*
      - Root Cause: Under `@media print`, `.stock-table th.col-val-cost` and `th.col-val-price` had `white-space: nowrap !important;` on 10% column widths. "STOCK VALUE BY COST" and "STOCK VALUE BY PRICE" overflowed and were clipped at their boundaries.
      - Solution:
@@ -620,7 +944,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - Updated column headers in `thead` to `Stock Value (Cost)` and `Stock Value (Retail)`.
        - Tagged `.col-alert` as `not-exported not-exported-col` on `th`, `td`, and `tfoot th`, ensuring exactly 8 valuation columns print across 100% A4 width, matching the footer total layout (52% label + 10% qty + 9% cost + 10% cost val + 9% price + 10% price val).
   3. *Screen Page Cut at Bottom with Zero Vertical Scroll (`media_1794205429569_4da9ba42.png`):*
-     - Root Cause: `app-shell.css:91-98` clamped `.report-workspace-view` and `.desk-card-wrapper` inside flex items with `min-height: 0; flex: 1 1 0 !important;`. Because DataTables is present, `.desk-card-wrapper` did not receive `overflow-y: auto`, and `.report-workspace-view` took up exactly the viewport height, causing `#content` to see zero overflow and display no scrollbar. Rows 10–25, table footer totals, and pagination were cut off.
+     - Root Cause: `app-shell.css:91-98` clamped `.report-workspace-view` and `.desk-card-wrapper` inside flex items with `min-height: 0; flex: 1 1 0 !important;`. Because DataTables is present, `.desk-card-wrapper` did not receive `overflow-y: auto`, and `.report-workspace-view` took up exactly the viewport height, causing `#content` to see zero overflow and display no scrollbar. Rows 10â€“25, table footer totals, and pagination were cut off.
      - Solution:
        - In `@media screen`, explicitly unconstrained `#content > .report-workspace-view` and `.desk-card-wrapper` with `display: block !important; flex: none !important; height: auto !important; min-height: calc(100vh - 60px) !important;`.
        - Set `html.app-shell #content { overflow-y: auto !important; overflow-x: hidden !important; }`.
@@ -635,7 +959,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Total verified: **38 tests passing, 205 assertions, 100% green**.
   - Mirrored changes to `d:\PROJECTS\WEBSITES\DK Enterprises`.
 
-## Active Session & Follow-up — 2026-11-09: Elimination of Raw Printed CSS Text, Screen Table Layout Restoration, and Attribute-Based Zero-TypeError Recalculation (branch ui)
+## Active Session & Follow-up â€” 2026-11-09: Elimination of Raw Printed CSS Text, Screen Table Layout Restoration, and Attribute-Based Zero-TypeError Recalculation (branch ui)
 
 - **Issues Addressed & Visual Evidence Resolved:**
   1. *Raw CSS Code Printed Directly on Paper (`media_1794208622631_002a1048.jpg`):*
@@ -664,7 +988,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Zero `<style>` tags exist inside `#content`.
   - Date Range Filter, 8-column 100% A4 print layout, single authoritative letterhead, and Quick Filter status pills verified working.
 
-## Active Session & Follow-up — 2026-11-09: Complete Role-Isolated Operational Dashboards & Real-Time Backend Insights (branch main & ui)
+## Active Session & Follow-up â€” 2026-11-09: Complete Role-Isolated Operational Dashboards & Real-Time Backend Insights (branch main & ui)
 
 - **Issues Addressed & Features Delivered:**
   1. *Role-Specific Insights & Dashboards for Every Operational Role:*
@@ -681,10 +1005,10 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - Features: Assigned Tata Ace van (`TN-58-WA-101`), route beat (`Erode Commercial Route Beat A`), live can inventory manifest (Loaded, Delivered, Empty Collected, Return Ratio %, Remaining on truck), route cash collected, delivery stops list with customer phone, address, empty dues, and 1-tap Google Maps navigation.
      - **Cashier (`cashier` - Aran Cafe):**
        - Mobile (`CashierDashboardScreen`) & Web (`backend.role_dashboards.cashier`).
-       - Features: Aran Cafe POS terminal, shift drawer status (`DRAWER OPEN`, opened at 07:30 AM), 4 live KPI insight cards: Today's Counter Sales (₹), Orders Billed (count), Cash in Drawer (₹), Average Order Value (AOV ₹); digital UPI vs cash breakdown, active kitchen KOT count, Express Touch POS launcher (`/cafe/pos` / `sale.pos`), Standard Sale launcher, and Drawer Reconciliation.
+       - Features: Aran Cafe POS terminal, shift drawer status (`DRAWER OPEN`, opened at 07:30 AM), 4 live KPI insight cards: Today's Counter Sales (â‚¹), Orders Billed (count), Cash in Drawer (â‚¹), Average Order Value (AOV â‚¹); digital UPI vs cash breakdown, active kitchen KOT count, Express Touch POS launcher (`/cafe/pos` / `sale.pos`), Standard Sale launcher, and Drawer Reconciliation.
      - **Field Agent (`fieldAgent` / `agent`):**
        - Mobile (`FieldAgentDashboardScreen`) & Web (`backend.role_dashboards.field_agent`).
-       - Features: Field KYC & Collections Desk, 4 live KPI insight cards: Assigned Customer Accounts (count), Total Receivables (₹), Today's Field Collections (₹), Recovery Rate (%); overdue accounts count (>30 days), geocoded vs missing GPS count, searchable customer directory with dues amount badge, GPS pin status badge, 1-tap phone dialer, 1-tap WhatsApp location capture modal (`CaptureLocationDialog`), and 1-tap collection.
+       - Features: Field KYC & Collections Desk, 4 live KPI insight cards: Assigned Customer Accounts (count), Total Receivables (â‚¹), Today's Field Collections (â‚¹), Recovery Rate (%); overdue accounts count (>30 days), geocoded vs missing GPS count, searchable customer directory with dues amount badge, GPS pin status badge, 1-tap phone dialer, 1-tap WhatsApp location capture modal (`CaptureLocationDialog`), and 1-tap collection.
      - **Executive / Super Admin (`admin`):**
        - Retains full multi-entity group workspace rollup (`/workspace`), executive company switcher, and corporate P&L balance sheet.
   3. *Backend Controllers & API Contracts Synchronized across Repositories:*
@@ -706,7 +1030,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - **21/21 passed (100% green)**.
   - Blade template compilation: `php artisan view:cache` **100% clean**.
 
-## Active Session & Follow-up — 2026-11-09: Stock Report Print Invisible Table Resolution, Duplicate Letterhead Elimination & Full Multi-Page A4 Inventory Layout (branch main & ui)
+## Active Session & Follow-up â€” 2026-11-09: Stock Report Print Invisible Table Resolution, Duplicate Letterhead Elimination & Full Multi-Page A4 Inventory Layout (branch main & ui)
 
 - **Issues Addressed & Visual Evidence Resolved:**
   1. *Stocks Missing in Print Preview & Scrollbar Container Collapse (`media_1794204697732_e8e1f795.png`):*
@@ -717,7 +1041,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - **Duplicate Header:** Removed redundant in-view `<div class="erp-print-header">` so the single authoritative letterhead from `backend.layout.partials.print-letterhead.blade.php` prints cleanly with active company name, GSTIN, fiscal year, and metadata.
        - **Container Overflow & 100vh Root Lock:** In `public/css/app-shell.css`, `html.app-shell`, `body`, `.page`, `.page-content`, and `#content` had `height: 100% / 100vh; overflow: hidden !important; display: flex !important;`. During Chromium printing, root containers locked at `100vh` clipped all overflowing content and forced children (`.table-responsive`, `.desk-card-wrapper`) to render as collapsed scroll containers on paper.
        - **Print Unconstrain:** In `public/css/erp-print.css` and `stock_report.blade.php`, comprehensively unlocked `html`, `body`, `.page`, `.page-content`, `#content`, `[class$="-workspace-view"]`, `.report-workspace-view`, `.desk-card-wrapper`, and `.table-responsive` with `height: auto !important; min-height: 0 !important; max-height: none !important; overflow: visible !important; display: block !important; flex: none !important; position: static !important;`.
-       - **`data-erp-print` Hidden Iframe Integration:** Wired `Print Statement` button to `data-erp-print` and DataTables Buttons (`buttons: [{ extend: 'print', ... }, { extend: 'csv', ... }]`). Now prints through `erp-print.js` hidden `<iframe>` (`.erp-print-doc`) with zero layout interference, clean Indian number formatting (`₹ 1,50,000.00`), running table headers, and signature blocks.
+       - **`data-erp-print` Hidden Iframe Integration:** Wired `Print Statement` button to `data-erp-print` and DataTables Buttons (`buttons: [{ extend: 'print', ... }, { extend: 'csv', ... }]`). Now prints through `erp-print.js` hidden `<iframe>` (`.erp-print-doc`) with zero layout interference, clean Indian number formatting (`â‚¹ 1,50,000.00`), running table headers, and signature blocks.
        - **Dual-Path Safety:** If printed directly via browser (`Ctrl+P`), `@media print` rules ensure all rows break across A4 pages without clipping.
   2. **Codebase Synchronization across Repositories:**
      - Mirrored complete stock report implementation to `d:\PROJECTS\WEBSITES\DK Enterprises` (`stock_report.blade.php`, `ReportController.php` with `use App\Models\Category;` and `use App\Models\Brand;`, `routes/web.php`, `sidebar.blade.php`, `erp-print.css`, and `tests/Feature/StockReportTest.php`).
@@ -726,7 +1050,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `DK Enterprises`: `tests/Feature/StockReportTest.php`: 8/8 passed (53 assertions, 100%).
   - `mobile/`: 21/21 passed (100% green).
 
-## Active Session & Follow-up — 2026-11-09: Complete Null-Safety Crash Elimination, Double-Gated Role Isolation, Dynamic Metric Deserialization & Zero-Overlap UI Polish (branch main)
+## Active Session & Follow-up â€” 2026-11-09: Complete Null-Safety Crash Elimination, Double-Gated Role Isolation, Dynamic Metric Deserialization & Zero-Overlap UI Polish (branch main)
 
 - **Issues Addressed & Visual Evidence Resolved:**
   1. *Flutter Runtime Null Exception & Blank Dark Screen (`media_1794199137365_db432695.png`):*
@@ -752,7 +1076,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - `tests/Feature/DriverIsolationAndLocationTest.php`: 6/6 passed (31 assertions, 100%).
     - `tests/Feature/ThreeCompaniesWorkflowAndFraudTest.php`: 18/18 passed (160 assertions, 100%).
 
-## Active Session & Follow-up — 2026-11-07: Strict Role Gating, Driver Data Isolation, WhatsApp GPS Capture & Live MilesWeb Production Deployment (commits 22c0466 & b4bdc3c on branch main)
+## Active Session & Follow-up â€” 2026-11-07: Strict Role Gating, Driver Data Isolation, WhatsApp GPS Capture & Live MilesWeb Production Deployment (commits 22c0466 & b4bdc3c on branch main)
 
 - **User Requests Addressed:**
   1. *"tanker drivers dont want to see other's locations, we can just load the customer's location for drivers. also if a customer shares their location through whatsapp, can we capture from that and keep it in our location database for next order? not only tanker drviers, any, field assisstants and delivery persons dont see other's data except thier customer data. also all the data are showing to drivers and other roles? what kind of app management is this? make it high priority make the gating rules first and assing the roles according to their work. never see company dashboard, only a dashboard relevant to them. only a super admin can watch anything. admin can be assinged to one or two companies, etc."*
@@ -792,21 +1116,21 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `mobile/test/`: 15/15 passed (25 assertions, 100%).
   - `mobile` flutter analyze: 0 errors.
 
-## Active Session & Follow-up — 2026-11-07: Production Demo Data Seeding, 1-Tap Demo Auth, Missing Token Resolution, Accounting Books Unwrap & Fleet Radar Overlap Elimination (branch main)
+## Active Session & Follow-up â€” 2026-11-07: Production Demo Data Seeding, 1-Tap Demo Auth, Missing Token Resolution, Accounting Books Unwrap & Fleet Radar Overlap Elimination (branch main)
 
 - **User Requests & Visual Evidence Addressed:**
   1. *Login Screen Missing Token Error (`media_1794043990840_19bd44cb.png`):* Eliminated generic "Invalid authentication response: Missing token." by passing multi-field credentials (`username`, `email`, `name`), surfacing explicit backend error messages on `success: false`, and supporting both `token` and `access_token` fields.
   2. *ERP Server Settings Connection Test (`media_1794043819352_ccb95b3f.jpg`):* Verified `/api/v1/health` and `/api/v1/ping` return HTTP 200 OK on live production MilesWeb server.
-  3. *All Metrics Showing ₹0.00 across Workspace, Dashboard, and Cash Books (`media_1794042569824_7395a67a.png`, `media_1794042356790_4f3210c6.png`):*
+  3. *All Metrics Showing â‚¹0.00 across Workspace, Dashboard, and Cash Books (`media_1794042569824_7395a67a.png`, `media_1794042356790_4f3210c6.png`):*
      - Deployed and executed `ProductionDemoDataSeeder` on MilesWeb production (`animazon1@45.199.139.25`).
-     - Group Workspace Rollup: Total Turnover ₹39,125.00, Total Cash & Bank ₹3,96,400.00, Total Receivables ₹2,100.00.
-     - Aran Cafe: Turnover ₹18,450.00, Cash ₹14,200.00, Bank ₹45,500.00, Today's Collections ₹16,350.00, Receivables ₹2,100.00.
-     - TMWS: Turnover ₹15,600.00, Cash ₹18,500.00, Bank ₹82,000.00, Today's Collections ₹15,600.00, Receivables ₹0.00.
-     - DK Waters: Turnover ₹5,075.00, Cash ₹12,800.00, Bank ₹38,400.00, Today's Collections ₹5,075.00, Receivables ₹0.00.
+     - Group Workspace Rollup: Total Turnover â‚¹39,125.00, Total Cash & Bank â‚¹3,96,400.00, Total Receivables â‚¹2,100.00.
+     - Aran Cafe: Turnover â‚¹18,450.00, Cash â‚¹14,200.00, Bank â‚¹45,500.00, Today's Collections â‚¹16,350.00, Receivables â‚¹2,100.00.
+     - TMWS: Turnover â‚¹15,600.00, Cash â‚¹18,500.00, Bank â‚¹82,000.00, Today's Collections â‚¹15,600.00, Receivables â‚¹0.00.
+     - DK Waters: Turnover â‚¹5,075.00, Cash â‚¹12,800.00, Bank â‚¹38,400.00, Today's Collections â‚¹5,075.00, Receivables â‚¹0.00.
      - In `accounting_books_screen.dart`, unwrapped `rawData['data']` so `cash_balance` and `recent_transactions` render live numbers immediately.
   4. *1-Tap Demo Role Fast Login:* Updated `login_screen.dart` so tapping any demo chip (`Admin`, `Driver`, `Tanker Driver`, `Cashier`, `Field Agent`) populates the form and immediately triggers login without requiring a second button press.
   5. *Live Fleet GPS Radar Blip Overlap Elimination (`media_1794029792894_b85a6001.png`):*
-     - In `fleet_gps_screen.dart`, shortened radar blip tags from 35-character descriptions to concise vehicle codes (`TN-58-WA-101 · 0 km/h`).
+     - In `fleet_gps_screen.dart`, shortened radar blip tags from 35-character descriptions to concise vehicle codes (`TN-58-WA-101 Â· 0 km/h`).
      - Established clean radar blip coordinates separated by 100px+ to ensure zero collision with each other, landmarks (`Borewell Hub`, `DK Waters Plant`, `Texvalley Mall`, `Chennai Silks`), or HUD chips (`Erode-Perundurai Fleet Zone`, `GRID: 30 KM RADIUS`).
   6. *Full 5-Tab Product Configuration & Details Screen (`product_form_screen.dart`):* Web ERP parity across all 5 tabs and 40+ attributes. Verified `GET /api/v1/products/metadata` returns HTTP 200 OK without 422 error.
 - **Verification Status (100% Green):**
@@ -818,7 +1142,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 
 
 
-## Active Session & Follow-up — 2026-11-07: Full-Featured 5-Tab Product Configuration System & Mouse Tracker / RenderClipRRect Crash Elimination (branch main)
+## Active Session & Follow-up â€” 2026-11-07: Full-Featured 5-Tab Product Configuration System & Mouse Tracker / RenderClipRRect Crash Elimination (branch main)
 
 - **User Requests Addressed:**
   1. *"Where can i make the product configurations and other details in mobile? this is going to be a full featured mobile application, so Bring all the options from the web app. never miss single element. they use tab to organize this, so make sure the UI is responsive to both mobile and web app. bring the theme colors of zolo erp. never hardcode. also check the tamil, english conversion."*
@@ -831,11 +1155,11 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
      - In `mobile/lib/screens/fleet_gps_screen.dart`: replaced unconstrained `ClipRRect` with bounded `Container(height: 250, clipBehavior: Clip.antiAlias)` and wrapped animated radar canvas in `Positioned.fill` to eliminate `double.infinity` layout collision inside `SingleChildScrollView`.
   2. **Full-Featured 5-Tab Product Configuration & Details Screen (`product_form_screen.dart`):**
      - Organized into 5 responsive tabs matching the complete web app product architecture:
-       - **Tab 1: General Info (பொதுத் தகவல்கள்):** Product Name, Print Name for POS vouchers, Code / SKU with auto-generate button, Barcode Symbology (C128, C39, UPCA, UPCE, EAN8, EAN13), Product Type (standard, combo, digital, service), Product Usage (composite, sale, purchase), Category dropdown, Brand dropdown, Base Unit dropdown, Tags, Details & Specifications.
-       - **Tab 2: Pricing & Tax (விலை & வரிகள்):** Cost price (₹), Profit Margin (% or fixed ₹), MRP Selling Price with auto-computation from Cost + Margin, Wholesale Price, GST Tax Rate dropdown, Tax Method (Exclusive vs Inclusive), Daily Sales Objective, Promotional Pricing with Promo Price, Start Date and End Date pickers.
-       - **Tab 3: Stock & Godown (இருப்பு & கிடங்கு):** Initial Stock and Warehouse selector (for new items), Minimum Alert Quantity, In Stock availability toggle, Track Inventory toggle, Batch & Expiry Date tracking toggle, IMEI / Serial Number tracking toggle, Warehouse Differential Pricing toggle.
-       - **Tab 4: Variants (மாறுபாடுகள்):** "This product has variants" toggle, Variant Option Attribute (Size, Volume, Weight, Color), Variant Values chips list (20L, 1L, 500ml, etc.).
-       - **Tab 5: Verticals & Special (சிறப்பு & தொழில்கள்):** Packaged Water Jar Deposit (₹) and Nominal Capacity (L), Restaurant/Cafe Kitchen Station ID, Menu Type (regular, breakfast, evening, special), Is Topping / Addon toggle, Featured Product toggle, Online POS / Delivery availability toggle, Warranty and Guarantee duration specifications.
+       - **Tab 1: General Info (à®ªà¯Šà®¤à¯à®¤à¯ à®¤à®•à®µà®²à¯à®•à®³à¯):** Product Name, Print Name for POS vouchers, Code / SKU with auto-generate button, Barcode Symbology (C128, C39, UPCA, UPCE, EAN8, EAN13), Product Type (standard, combo, digital, service), Product Usage (composite, sale, purchase), Category dropdown, Brand dropdown, Base Unit dropdown, Tags, Details & Specifications.
+       - **Tab 2: Pricing & Tax (à®µà®¿à®²à¯ˆ & à®µà®°à®¿à®•à®³à¯):** Cost price (â‚¹), Profit Margin (% or fixed â‚¹), MRP Selling Price with auto-computation from Cost + Margin, Wholesale Price, GST Tax Rate dropdown, Tax Method (Exclusive vs Inclusive), Daily Sales Objective, Promotional Pricing with Promo Price, Start Date and End Date pickers.
+       - **Tab 3: Stock & Godown (à®‡à®°à¯à®ªà¯à®ªà¯ & à®•à®¿à®Ÿà®™à¯à®•à¯):** Initial Stock and Warehouse selector (for new items), Minimum Alert Quantity, In Stock availability toggle, Track Inventory toggle, Batch & Expiry Date tracking toggle, IMEI / Serial Number tracking toggle, Warehouse Differential Pricing toggle.
+       - **Tab 4: Variants (à®®à®¾à®±à¯à®ªà®¾à®Ÿà¯à®•à®³à¯):** "This product has variants" toggle, Variant Option Attribute (Size, Volume, Weight, Color), Variant Values chips list (20L, 1L, 500ml, etc.).
+       - **Tab 5: Verticals & Special (à®šà®¿à®±à®ªà¯à®ªà¯ & à®¤à¯Šà®´à®¿à®²à¯à®•à®³à¯):** Packaged Water Jar Deposit (â‚¹) and Nominal Capacity (L), Restaurant/Cafe Kitchen Station ID, Menu Type (regular, breakfast, evening, special), Is Topping / Addon toggle, Featured Product toggle, Online POS / Delivery availability toggle, Warranty and Guarantee duration specifications.
   3. **Product Catalog Screen (`products_catalog_screen.dart`):**
      - Live searchable SKU list with real-time text filter and status badges (`IN STOCK`, `VARIANTS`, `BATCH EXPIRY`).
      - Tap any item to open full product configuration in Edit Mode.
@@ -853,7 +1177,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `mobile/test/`: 10/10 passed (100%).
   - `mobile` flutter analyze: 0 errors.
 
-## Active Session & Follow-up — 2026-11-07: Multi-Entity Strict Isolation, Backend Dynamic Calculations, Real Fleet GPS Telematics & Audit Spec Execution (branch main)
+## Active Session & Follow-up â€” 2026-11-07: Multi-Entity Strict Isolation, Backend Dynamic Calculations, Real Fleet GPS Telematics & Audit Spec Execution (branch main)
 
 - **User Requests Addressed:**
   1. Complete adherence to `docs/DK_Enterprises_Antigravity_ERP_Mobile_Web_Audit_and_Fix_Spec.md`.
@@ -903,7 +1227,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Recompiled and uploaded production APK to `public/downloads/dk-track-field-erp.apk` (213.27 MB).
   - Live authentication verified: `admin` / `admin` and `driver` / `driver123` issue Sanctum Bearer tokens and retrieve 4 accessible companies.
 
-## Active Session & Follow-up — 2026-11-07: ZOLO ERP Complete Mobile Application Redesign, ERP Feature Parity & Production-Ready Implementation (branch main)
+## Active Session & Follow-up â€” 2026-11-07: ZOLO ERP Complete Mobile Application Redesign, ERP Feature Parity & Production-Ready Implementation (branch main)
 
 - **User Requests Addressed:**
   - Complete Mobile Application Redesign, ERP Feature Parity & Production-Ready Implementation (`docs/DK Track Mobile Audit and Full-ERP Mobile Master Prompt.md`).
@@ -933,7 +1257,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
      - 9-domain searchable module launcher.
      - Offline-first SQLite outbox sync engine with UUID idempotency keys and client timestamps.
      - Bilingual ARB localization: `lib/l10n/app_en.arb` and `lib/l10n/app_ta.arb`.
-  4. **Phase 4–8: Feature Parity & Field Workflows Implemented:**
+  4. **Phase 4â€“8: Feature Parity & Field Workflows Implemented:**
      - `features/auth`: Real username/password login, Sanctum token storage, zero demo mode.
      - `features/dashboard`: Executive multi-entity KPIs, period filters, vertical operational cards, live/cached indicator.
      - `features/tasks`: Route beat stops, outbox sync queue, approval inbox.
@@ -959,7 +1283,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - `docs/mobile/MOBILE_IMPLEMENTATION_STATUS.md`
        - `docs/mobile/MOBILE_TEST_REPORT.md`
 
-## Active Session & Follow-up — 2026-11-07: Upstream zolo-erp-pro Synchronization, Vertical Screen & Dashboard Gating, UI Skill Installation (branch main)
+## Active Session & Follow-up â€” 2026-11-07: Upstream zolo-erp-pro Synchronization, Vertical Screen & Dashboard Gating, UI Skill Installation (branch main)
 
 - **User Requests Addressed:**
   1. *"we have updated the zolo erp project bring all the changes done there with bugs are gixed D:\PROJECTS\WEBSITES\zolo-erp-pro also the dashboard needs to be separate for each one, same like the zolo ERP Pro. over all dashboard is at the workspace (check the zolo RP pro). also gate each vertical and company's data and screens individual. no merge or combined work flow."*
@@ -985,7 +1309,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
      - Installed `ui-design-director` from `https://github.com/moctelyt/ui-skill.git`.
      - Installed 40 official Flutter & Dart agent skills from `https://github.com/zakariaf/Flutter-Skills` (`skills/*`) into `.agents/skills/` (project) and `~/.agents/skills/` (user).
      - Configured the official **Dart and Flutter Model Context Protocol (MCP) server** (`dart mcp-server` per `https://docs.flutter.dev/ai/tools`) into Antigravity global MCP configuration (`C:\Users\gnand\.gemini\antigravity\mcp_config.json`) and workspace MCP settings (`.vscode/mcp.json`).
-     - Updated `AGENTS.md` with the full Flutter Skills routing playbook, canonical stack guidelines, and Intent → Skill Map.
+     - Updated `AGENTS.md` with the full Flutter Skills routing playbook, canonical stack guidelines, and Intent â†’ Skill Map.
      - Registered skills in `skills-lock.json`.
 - **Verification & Test Status:**
   - `ThreeCompaniesWorkflowAndFraudTest`: **18/18 passed (159 assertions, 100%)**
@@ -1001,21 +1325,21 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Blade template compilation (`php artisan view:cache`): **100% clean**.
 
 
-## Active Session & Follow-up — 2026-11-06: Voucher Modal Alignment, Authoritative Live Server Details, Supplier Card & Financial Totals Fix (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Voucher Modal Alignment, Authoritative Live Server Details, Supplier Card & Financial Totals Fix (branch ui)
 
 - **Problem & User Feedback Addressed:**
   - Client reported: *"align the table properly.. also why there is not total item cost and other details are zeor at bottom? also the supplier billed from? and other details are empty?"* with screenshot `media_1793965487744_a6abe229.png`.
   - In the screenshot:
     - Bill Reference displayed `#REF` instead of `#PUR-00012`.
-    - Supplier (Billed From) card was empty (`—`).
-    - Purchase & Warehouse Details metadata was empty (`—`).
+    - Supplier (Billed From) card was empty (`â€”`).
+    - Purchase & Warehouse Details metadata was empty (`â€”`).
     - Product items table had 9 `<td>` cells under an 8-column header, shifting returned quantity (`0`) under Unit Cost, unit cost (`35`) under Tax, tax (`0`) under Discount, discount (`0`) under Subtotal, and overflowing subtotal (`3500`) beyond the table's right border.
-    - Financial summary totals (Total Items Cost, Order Tax, Order Discount, Shipping/Freight, Grand Total, Paid Amount, Balance Due) all showed `₹0.00`.
+    - Financial summary totals (Total Items Cost, Order Tax, Order Discount, Shipping/Freight, Grand Total, Paid Amount, Balance Due) all showed `â‚¹0.00`.
 - **Root Cause Analysis:**
   1. **Legacy Positional Array & Numeric Parsing:**
      - The modal previously relied on `PurchaseController::purchaseData`'s legacy 28-element positional string array (`purchase[3]`, `purchase[1]`, `purchase[7]`, `purchase[15]`, `purchase[20]`, etc.).
-     - `PurchaseController` formatted strings with leading spaces and double quotes (e.g. `' "3500"'`), which caused JavaScript `parseFloat(' "3500"')` to return `NaN` and fall back to `0` (`₹0.00`).
-     - When opened via DataTables row action or passing row ID/object, positional indices were undefined, leaving default template placeholders (`#REF`, `—`, `₹0.00`) intact.
+     - `PurchaseController` formatted strings with leading spaces and double quotes (e.g. `' "3500"'`), which caused JavaScript `parseFloat(' "3500"')` to return `NaN` and fall back to `0` (`â‚¹0.00`).
+     - When opened via DataTables row action or passing row ID/object, positional indices were undefined, leaving default template placeholders (`#REF`, `â€”`, `â‚¹0.00`) intact.
   2. **Table Misalignment:**
      - Header had 8 columns (`#`, `Product`, `Batch No`, `Qty`, `Unit Cost`, `Tax`, `Discount`, `Subtotal`).
      - Legacy row injection in SalePro included a 9th column (`Returned`), offsetting each numeric cell by one column.
@@ -1033,12 +1357,12 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - Renders table with exact 1:1 8 columns:
          1. `#` (`text-center`)
          2. `Product` (Bold title + code badge)
-         3. `Batch No` (Batch pill or `—`)
+         3. `Batch No` (Batch pill or `â€”`)
          4. `Qty` (`text-right` badge with unit)
-         5. `Unit Cost` (`text-right` with ₹ currency)
-         6. `Tax` (`text-right` with ₹ and % rate)
-         7. `Discount` (`text-right` with ₹)
-         8. `Subtotal` (`text-right font-weight-bold text-primary` with ₹)
+         5. `Unit Cost` (`text-right` with â‚¹ currency)
+         6. `Tax` (`text-right` with â‚¹ and % rate)
+         7. `Discount` (`text-right` with â‚¹)
+         8. `Subtotal` (`text-right font-weight-bold text-primary` with â‚¹)
        - Populates financial summary totals: Total Items Cost, Order Tax, Order Discount, Shipping/Freight, Grand Total, Paid Amount, and Balance Due with dynamic `.has-due` / `.settled` states.
        - Rewired `Action > View` on `#purchase-table` to trigger `openPurchaseDetailsModal(id)`.
   3. **Sales Details Modal Redesign (`resources/views/backend/sale/index.blade.php`):**
@@ -1059,14 +1383,14 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - View cache: `php artisan view:clear` & `php artisan view:cache` compiled with 100% success.
 
 
-## Global Printing Rules, Spacing Standardization & Ledger Data Visibility — 2026-11-06 (branch ui)
+## Global Printing Rules, Spacing Standardization & Ledger Data Visibility â€” 2026-11-06 (branch ui)
 
 - **Client Requests Addressed:**
   - *"printing options has the problem, kindly check all the printing options. Does it have the spaces correctly and all the datas are visible or not. Make a global printing rules to do that."* with print preview screenshot `media_1793965297080_cd11ba3c.png`.
 - **Diagnosis of Printing Defects:**
-  1. **Duplicate Header:** The print preview rendered the official ERP letterhead (`zoloERP Textiles`, Tiruppur address, GSTIN `33ZOLOT1234K1Z5`, phone, FY, user) AND right below it a duplicate company header (`zoloERP Pro`, `GSTIN: —`) from a custom `.print-only-header` block in the view.
+  1. **Duplicate Header:** The print preview rendered the official ERP letterhead (`zoloERP Textiles`, Tiruppur address, GSTIN `33ZOLOT1234K1Z5`, phone, FY, user) AND right below it a duplicate company header (`zoloERP Pro`, `GSTIN: â€”`) from a custom `.print-only-header` block in the view.
   2. **Unwanted Screen Chrome on Paper:** The 5-card KPI summary strip (`REPORT TIMEFRAME`, `OPENING BALANCE`, etc.) and DataTables controls (`All records per page`, `Search: [ ]`) were printing, cluttering the statement and pushing content down.
-  3. **Horizontal Table Truncation & Missing Data:** On A4 portrait paper (width ~790px), the table had rigid pixel widths (`style="width: 130px;"`, etc.) totaling > 1,050px. Columns beyond `DEBIT (₹)` (`CREDIT`, `RUNNING BALANCE`, `STATUS`) overflowed the right margin, rendering them invisible.
+  3. **Horizontal Table Truncation & Missing Data:** On A4 portrait paper (width ~790px), the table had rigid pixel widths (`style="width: 130px;"`, etc.) totaling > 1,050px. Columns beyond `DEBIT (â‚¹)` (`CREDIT`, `RUNNING BALANCE`, `STATUS`) overflowed the right margin, rendering them invisible.
 - **Global Architecture & Implementation (`public/css/erp-print.css`):**
   1. **Global Page Geometry & Margins:**
      - Standardized `@page { size: A4 portrait; margin: 8mm 8mm 10mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt "Inter", sans-serif; color: #64748b; } }`.
@@ -1109,9 +1433,9 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - **Client Requests Addressed:**
   - *"printing options has the problem, kindly check all the printing options. Does it have the spaces correctly and all the datas are visible or not. Make a global printing rules to do that."* with print preview screenshot `media_1793965297080_cd11ba3c.png`.
 - **Diagnosis of Printing Defects:**
-  1. **Duplicate Header:** The print preview rendered the official ERP letterhead (`zoloERP Textiles`, Tiruppur address, GSTIN `33ZOLOT1234K1Z5`, phone, FY, user) AND right below it a duplicate company header (`zoloERP Pro`, `GSTIN: —`) from a custom `.print-only-header` block in the view.
+  1. **Duplicate Header:** The print preview rendered the official ERP letterhead (`zoloERP Textiles`, Tiruppur address, GSTIN `33ZOLOT1234K1Z5`, phone, FY, user) AND right below it a duplicate company header (`zoloERP Pro`, `GSTIN: â€”`) from a custom `.print-only-header` block in the view.
   2. **Unwanted Screen Chrome on Paper:** The 5-card KPI summary strip (`REPORT TIMEFRAME`, `OPENING BALANCE`, etc.) and DataTables controls (`All records per page`, `Search: [ ]`) were printing, cluttering the statement and pushing content down.
-  3. **Horizontal Table Truncation & Missing Data:** On A4 portrait paper (width ~790px), the table had rigid pixel widths (`style="width: 130px;"`, etc.) totaling > 1,050px. Columns beyond `DEBIT (₹)` (`CREDIT`, `RUNNING BALANCE`, `STATUS`) overflowed the right margin, rendering them invisible.
+  3. **Horizontal Table Truncation & Missing Data:** On A4 portrait paper (width ~790px), the table had rigid pixel widths (`style="width: 130px;"`, etc.) totaling > 1,050px. Columns beyond `DEBIT (â‚¹)` (`CREDIT`, `RUNNING BALANCE`, `STATUS`) overflowed the right margin, rendering them invisible.
 - **Global Architecture & Implementation (`public/css/erp-print.css`):**
   1. **Global Page Geometry & Margins:**
      - Standardized `@page { size: A4 portrait; margin: 8mm 8mm 10mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt "Inter", sans-serif; color: #64748b; } }`.
@@ -1151,7 +1475,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Clean view cache compilation: `php artisan view:clear` & `php artisan view:cache` (100% clean).
   - Chrome / Print preview verification: zero double headers, zero horizontal truncation, all columns fully visible within A4 portrait printable area.
 
-## Active Session & Follow-up — 2026-11-06: Remote Sync, Main Merged & Live Production Deployment Verified at `ae637a9` (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Remote Sync, Main Merged & Live Production Deployment Verified at `ae637a9` (branch ui)
 
 - **Remote Synchronization & Latest Code Pull:**
   - Pulled latest commits (`96d0581`, `e53a1c1`, `3d4d384`, `ae637a9`) from `origin`:
@@ -1171,7 +1495,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - **Active Working Branch:**
   - Workspace restored to branch `ui` per persistent session memory guidelines.
 
-## Active Session & Follow-up — 2026-11-06: Unified Beautiful Voucher Details Popups, Product Edit Restorations, Product History GRN/Variant Enhancements & Guided Tutorial (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Unified Beautiful Voucher Details Popups, Product Edit Restorations, Product History GRN/Variant Enhancements & Guided Tutorial (branch ui)
 
 - **Detailed Voucher Popups Redesigned (`Action > View` on Sales, Purchases, and Products):**
   - Replaced legacy multi-table/plain modals with unified modern executive preview cards (`public/css/pages/voucher-preview-modal.css`):
@@ -1201,7 +1525,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     4. Customers, Groups & Supplier Vendors (`route('customer.index')`)
     5. Sales Invoicing, Purchase Bills & GRNs (`route('sales.index')`)
     6. Centralized Due & Payment Command Center (`route('dues.index')`)
-  - Features progress rail, step indicators, direct jump navigation, `localStorage` persistence, and a `💡 Guided Tour` launcher pill in the top navigation bar (`resources/views/backend/layout/main.blade.php`).
+  - Features progress rail, step indicators, direct jump navigation, `localStorage` persistence, and a `ðŸ’¡ Guided Tour` launcher pill in the top navigation bar (`resources/views/backend/layout/main.blade.php`).
 - **Verification & Test Coverage:**
   - Created `tests/Feature/VoucherPopupAndProductEnhancementsTest.php` passing 6/6 tests (41 assertions).
   - Regression verified `tests/Feature/BillStockPaymentWorkflowTest.php` passing 9/9 tests (114 assertions).
@@ -1209,14 +1533,14 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Regression verified `tests/Feature/CustomerGroupNavigationTest.php` passing 3/3 tests (8 assertions).
   - Regression verified `tests/Feature/CompanyGroupInsightTest.php` passing 3/3 tests (37 assertions).
 
-## Single-Page View Customer & Supplier Ledger Desk with Dynamic Print Filters — 2026-11-06 (branch ui)
+## Single-Page View Customer & Supplier Ledger Desk with Dynamic Print Filters â€” 2026-11-06 (branch ui)
 
 - **Client Requests Addressed:**
-  1. *"expenses, where it is being debited from? what this expenses it is about?"* with screenshot of expense EXP-00001 (₹100, category: stationary, note: cover).
+  1. *"expenses, where it is being debited from? what this expenses it is about?"* with screenshot of expense EXP-00001 (â‚¹100, category: stationary, note: cover).
      - **Diagnosis & Explanation:**
        - **What the expense is about:** It is an operational business expense recorded under category `stationary` with memo/note `cover` (purchase of stationery/covers) allocated to godown `zoloERP Textiles - Main`.
        - **Where it is debited from / accounting flow:**
-         - **Expense Account (Debited):** `Stationary Expense` is debited by ₹100.00 (increases operational expenses on the Profit & Loss statement).
+         - **Expense Account (Debited):** `Stationary Expense` is debited by â‚¹100.00 (increases operational expenses on the Profit & Loss statement).
          - **Payment / Asset Account (Credited / Deducted from):** Paid out from the default business account `Cash [ZTEX-CASH]` (Account ID: 29). Money was disbursed from cash-in-hand.
   2. *"According to the global UI, there should not be tabs, need it in single page view, then while printing you can insert a filter to print also, if no filter i need the complete ledger of the customer/supplier report"* with screenshot of `/report/customer_report`.
      - **Diagnosis:**
@@ -1233,13 +1557,13 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
      - Auto-selects the first active party if none is explicitly chosen in the request.
   2. **Single-Page View Customer Ledger Desk (`resources/views/backend/report/customer_report.blade.php`):**
      - Replaced 4 tabs with a unified **Single-Page View** command center following Global UI standards.
-     - **Global UI Command Bar (`.comm-command-bar`):** Title, badge (`360° Account Receivable & Single-View Ledger`), contextual nav pills, and print action dropdown.
+     - **Global UI Command Bar (`.comm-command-bar`):** Title, badge (`360Â° Account Receivable & Single-View Ledger`), contextual nav pills, and print action dropdown.
      - **5-KPI Quick Strip:** Timeframe, Opening Balance (Dr/Cr), Total Invoiced (Debits), Total Credits (Payments/Returns), and Net Closing Balance (Dr/Cr) with color-coded status badges.
      - **Filter Bar (`.desk-filter-card`):** Date range picker, customer searchable selectpicker, and transaction type selector.
      - **Quick-Filter Pills (`.quick-filter-pills`):** In-screen instant filtering pills with transaction counts: `All`, `Invoices`, `Payments`, `Returns`, `Quotations`.
      - **Unified Ledger Table (`#customer-ledger-table`):**
        - Opening Balance row with badge `B/F` and brought-forward Dr/Cr amount.
-       - Columns: `#`, `Date`, `Type` (color-coded badges), `Reference No` (with link to invoice), `Warehouse`, `Description / Particulars`, `Debit (₹)`, `Credit (₹)`, `Running Balance (₹)` (with Dr/Cr indicators), and `Status`.
+       - Columns: `#`, `Date`, `Type` (color-coded badges), `Reference No` (with link to invoice), `Warehouse`, `Description / Particulars`, `Debit (â‚¹)`, `Credit (â‚¹)`, `Running Balance (â‚¹)` (with Dr/Cr indicators), and `Status`.
        - Footer summary row with total debits, total credits, and net closing balance.
   3. **Single-Page View Supplier Ledger Desk (`resources/views/backend/report/supplier_report.blade.php`):**
      - Modernized with matching Single-Page View: Opening balance row, 5-KPI strip, unified ledger table, quick-filter pills, and running balance calculation with Cr/Dr liability tracking.
@@ -1259,7 +1583,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `Tests\Feature\PartiesGlobalUiTest`: 11/11 passed (59 assertions).
   - Blade template compilation: `php artisan view:clear` & `php artisan view:cache` compiled with 100% success.
 
-## Customer and Supplier Reports in Reporting Navigation — 2026-11-06 (branch ui)
+## Customer and Supplier Reports in Reporting Navigation â€” 2026-11-06 (branch ui)
 
 - **Client Request Addressed:**
   - Client reported: *"In report drop down i dont see customer/supplier reports"*.
@@ -1281,13 +1605,13 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - `Tests\Feature\PartiesGlobalUiTest`: 11/11 passed (59 assertions).
     - `php artisan view:cache`: 100% clean compilation.
 
-## Dashboard financial and operational data — 2026-11-06 (branch ui)
+## Dashboard financial and operational data â€” 2026-11-06 (branch ui)
 
 - The dashboard uses the active company, branch, and financial year. Period changes refresh the overview and breakdown together. The warehouse filter applies to operational records and stock, while posted P&L and cash figures retain branch scope. Receivables, payables, cash, stock, and party counts show current balances or totals.
 - Purchases and returns with a missing exchange rate use the base currency. Sales and purchase totals exclude orders and reversals. Posted financials come from the Profit and Loss report, cash journal lines, and open items. Inventory uses posted movement values with a fallback for stock without movement history. Recent bill references open the existing single-view workspace.
-- Verified on local zoloERP Textiles. Net purchases were ₹62,021.40, payables ₹48,221.40, cash and bank ₹95,767.00, and inventory ₹40,290.77. Two dashboard tests and the targeted financial-year accounting test passed. Chrome verified both filters, cash chart rendering, purchase drill-down, and the Profit and Loss report.
+- Verified on local zoloERP Textiles. Net purchases were â‚¹62,021.40, payables â‚¹48,221.40, cash and bank â‚¹95,767.00, and inventory â‚¹40,290.77. Two dashboard tests and the targeted financial-year accounting test passed. Chrome verified both filters, cash chart rendering, purchase drill-down, and the Profit and Loss report.
 
-## Parties Global UI Standardization across Master Data — 2026-11-06 (branch ui)
+## Parties Global UI Standardization across Master Data â€” 2026-11-06 (branch ui)
 
 - **Client Request Addressed:**
   - Client raised: *"check in the parties section, where all the pages should respect and look like in the global UI"* with screenshot of `http://localhost:8080/customer/create`.
@@ -1349,12 +1673,12 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - JavaScript regression suite `node --test tests/JavaScript/*.cjs`: 26/26 passed.
   - Blade template compilation `php artisan view:cache`: 100% clean compilation.
 
-## Angalammantex textile product categories — 2026-11-06 (branch ui)
+## Angalammantex textile product categories â€” 2026-11-06 (branch ui)
 
-- Assigned the existing Textiles & Handlooms category and its five subcategories (IDs 144–149) to Angalammantex (company 26) in the local `zoloerp` database. The categories had no company owner and were referenced only by the 12 seeded Angalammantex textile products.
+- Assigned the existing Textiles & Handlooms category and its five subcategories (IDs 144â€“149) to Angalammantex (company 26) in the local `zoloerp` database. The categories had no company owner and were referenced only by the 12 seeded Angalammantex textile products.
 - A fresh company-scoped query verified 2 Yarn & Spinning, 3 Grey & Woven Fabrics, 3 Dyed & Finished Fabrics, 3 Apparel & Made-ups, and 1 Textile Trims & Accessories product. The transaction updated the six category records.
 
-## Production Migration for zoloERP Textiles & Main Branch Merge — 2026-11-06 (branch ui -> main)
+## Production Migration for zoloERP Textiles & Main Branch Merge â€” 2026-11-06 (branch ui -> main)
 
 - **Client Request:** *"can you merge the ui to main branch? Along with zoloerp textile db to be migrated to the actual production site, create a file for it the github will deploy it"*
 - **Automated Production Migration for zoloERP Textiles (`database/migrations/2026_11_06_143000_migrate_zoloerp_textile_company_and_masters.php`):**
@@ -1377,13 +1701,13 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Tests passing: `SingleViewVoucherDeskTest` (8/8 passed, 28 assertions), `TextileMasterSeederTest` (1/1 passed, 154 assertions), `ProductUsageTest` (3/3 passed, 34 assertions), `ProductCreateSmokeTest` (3/3 passed, 23 assertions), `NavigationAuditResolutionTest` (6/6 passed, 93 assertions).
 
 
-## Product usage for purchase and sales bills — 2026-11-06 (branch ui)
+## Product usage for purchase and sales bills â€” 2026-11-06 (branch ui)
 
 - Added Purchase, Sales, and Composite usage options to the product master. Product usage controls the visible pricing and unit fields. Existing products default to Composite. The local database reports the usage migration as applied.
 - Purchase bills list Purchase and Composite products. Sales bills list Sales and Composite products. Bill quick-create defaults to the current bill's usage and also offers Composite. Shared review and posting, legacy bill submission, and legacy bill imports check product eligibility.
 - Product Usage tests and Product Create smoke tests passed. Browser verification stopped because Computer Use could not establish the active URL. The broader DocumentEntryWeb test run exposed an existing redirect conflict in the pending `sales/{id}` route, which captures `sales/create`.
 
-## Active Session & Follow-up — 2026-11-06: Commercial Command Center Single View Setup — Dialog Box Elimination for View, Edit & Duplicate across Split & Full Register Views (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Commercial Command Center Single View Setup â€” Dialog Box Elimination for View, Edit & Duplicate across Split & Full Register Views (branch ui)
 
 - **Problem & Client Request Addressed:**
   - Client raised: *"view, edit, duplicate button does not work. I dont want a dialog box, in split view when i click view it opens a dialog box. I want in both split or full view, a single view setup, same for the duplicate, Edit"* with screenshot showing the Purchases register DataTables action dropdown menu.
@@ -1424,20 +1748,20 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - Auto-routes URL query parameters on load: `edit`, `duplicate`, `view_id`, and `show_bill`.
 - **Verification & Test Coverage:**
   - Created `tests/Feature/SingleViewVoucherDeskTest.php` passing 8/8 tests (28 assertions):
-    - `✓ purchase edit redirects to single view workspace`
-    - `✓ purchase duplicate redirects to single view workspace`
-    - `✓ purchase browser view redirects to single view workspace`
-    - `✓ purchase ajax show returns json`
-    - `✓ sale edit redirects to single view workspace`
-    - `✓ sale browser view redirects to single view workspace`
-    - `✓ purchase workspace contains single view elements`
-    - `✓ sale workspace contains single view elements`
+    - `âœ“ purchase edit redirects to single view workspace`
+    - `âœ“ purchase duplicate redirects to single view workspace`
+    - `âœ“ purchase browser view redirects to single view workspace`
+    - `âœ“ purchase ajax show returns json`
+    - `âœ“ sale edit redirects to single view workspace`
+    - `âœ“ sale browser view redirects to single view workspace`
+    - `âœ“ purchase workspace contains single view elements`
+    - `âœ“ sale workspace contains single view elements`
   - JavaScript regression suite passing 26/26 tests (`node --test tests/JavaScript/*.cjs`).
   - Navigation audit resolution suite passing 6/6 tests (93 assertions).
   - Centralized due management suite passing 7/7 active tests (37 assertions).
 
 
-## Active Session & Follow-up — 2026-11-06: Comprehensive Master Engineering Reference Update (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Comprehensive Master Engineering Reference Update (branch ui)
 
 - **Documentation Modernization (`ENGINEERING_REFERENCE.md`):**
   - Addressed client request: *"can you update all the features in the engineering reference"*.
@@ -1455,7 +1779,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - Documented Inventory Global UI & Dark Mode Standardization: `.desk-card-wrapper` and `.desk-filter-card` standard across Stock by Lot (`/inventory-reports/stock-by-lot`), Physical Count (`/stock-count`), Manual Adjustments (`/qty_adjustment`), Damage Stock Audit (`/damage-stock`), and Transfers (`/transfers`), supported by shared `inventory-workspace.css`.
     - Documented Modular Addons Specification (`documents/MODULE_ADDONS_SPECIFICATION.md`): Optical Lab (`Modules/OpticalLab`), Warranty & AMC (`Modules/WarrantyAMC`), and Subscription Billing (`Modules/SubscriptionBilling`).
   - **Section 08 (Accounting, vouchers and open items):**
-    - Documented Centralized Due Management System & Command Center (`/transactions/dues`): multi-tab architecture (`tab=sales`, `tab=purchases`, `tab=expenses`), dual operational modes (Bill-wise with pastel party tints `party-tint-0`..`party-tint-4` vs Party Grouped with 1-click `⚡ Clear All`), dual-layer view mode persistence (session + localStorage), real-time FIFO simulation panel (`#fifo-breakdown-panel`), batch settlement engine (`POST /transactions/dues/batch-settle`), historical settlement audit register (`.due-history-card`), and legacy module redirection (`/selling/payments` and `/buying/payments`).
+    - Documented Centralized Due Management System & Command Center (`/transactions/dues`): multi-tab architecture (`tab=sales`, `tab=purchases`, `tab=expenses`), dual operational modes (Bill-wise with pastel party tints `party-tint-0`..`party-tint-4` vs Party Grouped with 1-click `âš¡ Clear All`), dual-layer view mode persistence (session + localStorage), real-time FIFO simulation panel (`#fifo-breakdown-panel`), batch settlement engine (`POST /transactions/dues/batch-settle`), historical settlement audit register (`.due-history-card`), and legacy module redirection (`/selling/payments` and `/buying/payments`).
   - **Section 09 (Financial and operational reporting):**
     - Documented Audited Outstanding Dues Report (`/outstanding-due-report`): strict audit-only separation (no inline settle/pay buttons), audit banner directing clearance to Due Hub, company-level scoping, filter retention, theme navigation pills (`.dues-report-nav-toolbar`), Parties datatable action menu integrations, and printable A4 letterhead.
     - Documented Canonical Report Route Hardening: `Route::match(['get', 'post'], ...)` on customer, supplier, group, and outstanding dues reports, plus registered URL aliases for legacy report paths.
@@ -1465,7 +1789,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - **Section 13 (Delivery, validation and deployment):**
     - Updated Recorded Implementation Evidence table with recent test suites: `CentralizedDueManagementTest` (10 tests, 52 assertions), `CompanyGroupInsightTest` (3 tests, 37 assertions), `OutstandingDuesAndGstTypeTest` (8 tests, 29 assertions), `RateHistoryTest` (5 tests, 39 assertions), and `NavigationAuditResolutionTest` (6 tests, 93 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Navigation Link Audit Resolution — Route 404/405 Fixes, Filter Context Retention, Bill Payment Redirects & Addon Leak Hardening (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Navigation Link Audit Resolution â€” Route 404/405 Fixes, Filter Context Retention, Bill Payment Redirects & Addon Leak Hardening (branch ui)
 
 - **Audit Resolution & Bug Fixes (`documents/auditing/navigation-link-audit-2026-11-06.csv`):**
   - Addressed client request: *"can you use the file, to check and solve all the link mismatched and other bugs too. And give me a file to check how each link you fixed"*.
@@ -1486,7 +1810,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
        - In `DueManagementController::index`, added numeric search fallback matching `id` in addition to reference number search.
     4. **Disabled Module & Retired Link Hardening:**
        - Removed retired `/backup` route from `SettingsCatalog::sections()`, eliminating broken link from 297 source pages.
-       - In `resources/views/backend/addonlist.blade.php`, wrapped `Open Module →` in `@if($isActive && Route::has($addon['route']))`; rendered disabled "Enable to Open" indicator when inactive.
+       - In `resources/views/backend/addonlist.blade.php`, wrapped `Open Module â†’` in `@if($isActive && Route::has($addon['route']))`; rendered disabled "Enable to Open" indicator when inactive.
        - In `resources/views/backend/compliance/layout.blade.php`, wrapped "Route sheet" link in capability check `sales.route_distribution`, matching `sidebar.blade.php`.
   - **Resolution Documentation Created:**
     - Saved comprehensive report to [`documents/auditing/navigation-link-fixes-2026-11-06.md`](file:///v:/pers/Freelance/zolo-erp-pro/documents/auditing/navigation-link-fixes-2026-11-06.md).
@@ -1496,7 +1820,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - `tests/Feature/CentralizedDueManagementTest.php`: 7/7 passed (37 assertions).
     - `tests/Feature/CompanyGroupInsightTest.php`: 3/3 passed (37 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Inventory Global UI & Dark Mode Standardization across Stock, Corrections & Transfers (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Inventory Global UI & Dark Mode Standardization across Stock, Corrections & Transfers (branch ui)
 
 - **Problem Addressed:**
   - Client raised: *"is the stock respect the global ui? it does not seems to check entire section and update"* with screenshot `http://localhost:8080/inventory-reports/stock-by-lot`.
@@ -1530,7 +1854,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 
 
 
-## Navigation link audit — 2026-11-06 (branch ui)
+## Navigation link audit â€” 2026-11-06 (branch ui)
 
 - Audited rendered internal navigation using the Admin role in zoloERP Textiles (company 14). A loopback harness used read-only MySQL transactions, with a rollback-only exception to verify the stock report that takes a read lock. No business records or application code were changed.
 - Checked 692 unique GET URLs, including all 128 distinct rendered sidebar targets. Results: 668 HTTP 200, seven redirects, seven disabled-module 403s, seven 404s, two 405s, and one retired backup link returning 410. Checked three report filter POSTs separately to inspect links rendered after filtering. External links, state-changing actions, and other roles or company configurations were outside this run.
@@ -1539,7 +1863,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Verification: 19 Chrome checks (12 passed, seven navigation defects reproduced), plus two failing bill-context redirect probes. Existing targeted Laravel tests recorded 17 passes and three settlement fixture skips. The full destination inventory and browser outcomes are in scratch/navigation-link-audit-2026-11-06.csv.
 
 
-## Active Session & Follow-up — 2026-11-06: Customer Group Navigation Exposure under Parties & Customer Workspace (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Customer Group Navigation Exposure under Parties & Customer Workspace (branch ui)
 
 - **Parties Sidebar Menu Enhancement (`resources/views/backend/layout/sidebar.blade.php`):**
   - Exposed **Customer Groups** (`route('customer_group.index')`) directly under the `Parties` dropdown in the sidebar alongside Customers, Suppliers, Agents, and Areas.
@@ -1554,7 +1878,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Regression verified `tests/Feature/CentralizedDueManagementTest.php`: 10/10 passed (52 assertions).
   - Regression verified `tests/Feature/OutstandingDuesAndGstTypeTest.php`: 8/8 passed (29 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Customer Group Navigation Exposure under Parties & Customer Workspace (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Customer Group Navigation Exposure under Parties & Customer Workspace (branch ui)
 
 - **Parties Sidebar Menu Enhancement (`resources/views/backend/layout/sidebar.blade.php`):**
   - Exposed **Customer Groups** (`route('customer_group.index')`) directly under the `Parties` dropdown in the sidebar alongside Customers, Suppliers, Agents, and Areas.
@@ -1569,10 +1893,10 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Regression verified `tests/Feature/CentralizedDueManagementTest.php`: 10/10 passed (52 assertions).
   - Regression verified `tests/Feature/OutstandingDuesAndGstTypeTest.php`: 8/8 passed (29 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Outstanding Dues Theme Nav Buttons, Parties Action Menu Links, In-Window Payment Modal & Legacy Module Redirect (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Outstanding Dues Theme Nav Buttons, Parties Action Menu Links, In-Window Payment Modal & Legacy Module Redirect (branch ui)
 
 - **Outstanding Dues Sidebar Clean-up (`resources/views/backend/layout/sidebar.blade.php`):**
-  - Removed the inline wallet icon `<i class="dripicons-wallet mr-1"></i>` on line 429 under the Reports dropdown. The menu item now renders cleanly as a standard bullet link (`• Outstanding Dues`), consistent with all sibling report links.
+  - Removed the inline wallet icon `<i class="dripicons-wallet mr-1"></i>` on line 429 under the Reports dropdown. The menu item now renders cleanly as a standard bullet link (`â€¢ Outstanding Dues`), consistent with all sibling report links.
 - **Outstanding Dues Theme Navigation Pill Buttons (`resources/views/backend/report/outstanding_dues.blade.php`):**
   - Upgraded the unstyled bullet list (`.comm-nav-pills`) to a modern responsive toolbar (`.dues-report-nav-toolbar`) with branded theme pill buttons:
     - `Receivables (Customers)`: Theme purple gradient with active glow (`pill-receivables`).
@@ -1589,7 +1913,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `resources/views/backend/accounting/bill-payments.blade.php`: Added shortcut button linking directly to the Due Management Command Center.
 - **In-Window Modal Settlement on Sales & Purchase Bill Desks:**
   - `resources/views/backend/sale/index.blade.php`: Replaced redirect link on side bill card "Add payment" with `button.add-payment` triggering the `#add-payment` modal in-place.
-  - Enhanced `#add-payment` modal with bill reference badge, party name, outstanding due amount, and a prominent header button: **"Go to Payment & Due Page →"** (`route('dues.index', ['tab' => 'sales', 'search' => $ref])`).
+  - Enhanced `#add-payment` modal with bill reference badge, party name, outstanding due amount, and a prominent header button: **"Go to Payment & Due Page â†’"** (`route('dues.index', ['tab' => 'sales', 'search' => $ref])`).
   - `resources/views/backend/purchase/index.blade.php`: Applied identical in-place settlement modal and header redirect button for supplier purchase bills.
 - **Verification & Test Coverage:**
   - `tests/Feature/OutstandingDuesAndGstTypeTest.php`: 8/8 passed (29 assertions).
@@ -1597,7 +1921,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `tests/Feature/CentralizedDueManagementTest.php`: 10/10 passed (52 assertions).
   - `tests/Feature/CompanyGroupInsightTest.php`: 3/3 passed (37 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Rich Interactive Charts & Visual Graphs Workspace Dashboard (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Rich Interactive Charts & Visual Graphs Workspace Dashboard (branch ui)
 
 - **Interactive Charts & Visual Dashboard Upgrade (`/workspace`):**
   - Addressed client requirement: *"instead if full text, use the pie charts graphs etc. graph can convey each month's full insights clearly.. so use that. give a fully understandable visual workspace dashboard."*
@@ -1608,7 +1932,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
       - Aggregates multi-series monthly metrics across all member companies in `directoryInsights()`.
   - **Master Group Card Visual Suite (`.zw-master-visual-suite`):**
     - **Group 6-Month Monthly Performance & Cash Trends Multi-Series Chart (`#masterTrendChart_{groupId}`):**
-      - Displays Sales Revenue (Theme Purple `#7c3aed`), Purchases & Costs (Amber `#f59e0b`), and Net Margin (Emerald Line `#10b981`) side-by-side with exact monthly values on hover and compact `₹` formatting.
+      - Displays Sales Revenue (Theme Purple `#7c3aed`), Purchases & Costs (Amber `#f59e0b`), and Net Margin (Emerald Line `#10b981`) side-by-side with exact monthly values on hover and compact `â‚¹` formatting.
     - **Turnover Share by Company Doughnut Chart (`#masterShareDonut_{groupId}`):**
       - Displays each entity's proportional turnover contribution in distinct palette colors, paired with an interactive legend displaying exact revenue, share %, and P&L status badge.
     - **Group P&L Cost & Profit Distribution Doughnut Chart (`#masterCostDonut_{groupId}`):**
@@ -1623,7 +1947,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - **Mini Financial Doughnut & Profit Margin Meter (`#compDonut_{companyId}`):**
       - Visual ring displaying Revenue vs Cost with an embedded central Net Margin % badge.
     - **4 Metric Badges:** Compact pills for Net Revenue, Purchases, Customer Dues, and Supplier Dues.
-    - **In-Card Fast Switcher:** 1-click context switch button (`Switch to Company →`).
+    - **In-Card Fast Switcher:** 1-click context switch button (`Switch to Company â†’`).
   - **Dark Mode & Responsive Support:**
     - Integrated a `MutationObserver` on `document.body` to automatically destroy and re-render all charts with dark-mode gridlines (`rgba(255, 255, 255, 0.08)`) and ticks (`#94a3b8`) when the user switches themes.
     - Responsive mobile layout collapses seamlessly to a single column on tablets and smartphones.
@@ -1631,7 +1955,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - `tests/Feature/CompanyGroupInsightTest.php`: 3/3 passed (37 assertions).
     - `tests/Feature/WorkspaceSecurityTest.php`: 12/12 passed (73 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Master Company Group Consolidated Insight Dashboard, P&L Loss Monitoring & Expanded Company Cards with Fast Switcher (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Master Company Group Consolidated Insight Dashboard, P&L Loss Monitoring & Expanded Company Cards with Fast Switcher (branch ui)
 
 - **Git & GitHub Repository Push:**
   - Pushed all commits cleanly to both GitHub remotes on branch `ui`:
@@ -1651,26 +1975,26 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - **Master Consolidated Group Card (`.zw-group-master-card`):**
     - High-level executive banner with group badge and company count.
     - 5-KPI quick-stat strip: Consolidated Revenue, Net Profit/Loss (with colored badge and margin %), Customer Receivables, Supplier Payables, and Total Operating Purchases.
-    - **P&L Loss Warning Banner:** Dynamically alerts management if any company in the group is operating at a net loss (e.g. `⚠️ 1 Company operating at a loss: [Company Name]`), or displays `✓ All [N] companies operating profitably`.
+    - **P&L Loss Warning Banner:** Dynamically alerts management if any company in the group is operating at a net loss (e.g. `âš ï¸ 1 Company operating at a loss: [Company Name]`), or displays `âœ“ All [N] companies operating profitably`.
     - **Visual Revenue Distribution Bar:** Stacked color-coded progress bar illustrating each entity's percentage contribution to total group turnover.
   - **Expanded Company Insight Cards (`.zw-company-card-expanded`):**
     - Transformed the plain switcher list into informative executive cards:
       - Company header with logo monogram, company title, business sector, company code, and `Current Company` indicator badge.
-      - P&L Status Badge: Green `₹X.XX Net Profit (Y% Margin)` vs Red `₹X.XX Net Loss (Deficit)`.
+      - P&L Status Badge: Green `â‚¹X.XX Net Profit (Y% Margin)` vs Red `â‚¹X.XX Net Loss (Deficit)`.
       - 4-metric grid: Net Revenue, Operating Purchases, Customer Dues (Receivables), and Supplier Dues (Payables).
       - **6-Month Trajectory Mini-Chart:** Clean inline SVG sparkline bar chart visualizing monthly sales performance with month labels and hover titles.
-      - **In-Card Fast Context Switcher:** Embedded seamless 1-click `Switch to Company →` form directly within the card, switching active session context safely via `WorkspaceSecurityTest`-verified controller action.
+      - **In-Card Fast Context Switcher:** Embedded seamless 1-click `Switch to Company â†’` form directly within the card, switching active session context safely via `WorkspaceSecurityTest`-verified controller action.
   - **Single-Company Dashboard Direct Link (`/dashboard`):**
     - Added a `Master Group Insight` quick button in the top action header of `/dashboard` linking directly to `/workspace#zw-companies`.
   - **Verification & Test Coverage:**
     - Created `tests/Feature/CompanyGroupInsightTest.php` passing 3/3 tests (31 assertions):
-      - `✓ company insight computes revenue profit margin and loss status`
-      - `✓ directory insights consolidates group rollups and detects losses`
-      - `✓ workspace home renders master group card and big company cards`
+      - `âœ“ company insight computes revenue profit margin and loss status`
+      - `âœ“ directory insights consolidates group rollups and detects losses`
+      - `âœ“ workspace home renders master group card and big company cards`
     - Regression test `tests/Feature/WorkspaceSecurityTest.php` passing 12/12 tests (73 assertions).
     - Centralized due test `tests/Feature/CentralizedDueManagementTest.php` passing 10/10 tests (52 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Git Push, Sales Entry Aid Buttons Fix & Master Company Group Dashboard Architecture (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Git Push, Sales Entry Aid Buttons Fix & Master Company Group Dashboard Architecture (branch ui)
 
 - **Git & GitHub Repository Push:**
   - Pushed all 18 local commits on branch `ui` cleanly to GitHub remote `origin/ui` (`0cb7c55..45c8ba5`).
@@ -1684,7 +2008,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - **Smart Row Resolver (`getTargetRow`):** Automatically falls back to the focused row, the last row with an assigned product, or the last table row, preventing null references.
     - **Active Row Tracking:** Captures row activation on `focusin`, `click`, and `change` across the table.
     - **Operator Guidance Toast (`.commercial-aid-toast`):** Displays clear, animated guidance banners when prerequisites are missing (e.g. "Please select a Customer first to view rate history", "Please search or select a product for this row first", "Please select a Warehouse first") and automatically focuses the relevant input.
-    - **Modern Modal Dialog Layout:** Upgraded `.commercial-aid-dialog` to fixed centered layout (`transform: translate(-50%, -50%)`, `z-index: 105000`) with backdrop blur, styled header with `×` button, scrollable body, responsive tables with hover effects, and dark mode support.
+    - **Modern Modal Dialog Layout:** Upgraded `.commercial-aid-dialog` to fixed centered layout (`transform: translate(-50%, -50%)`, `z-index: 105000`) with backdrop blur, styled header with `Ã—` button, scrollable body, responsive tables with hover effects, and dark mode support.
     - **Visual Toolbar Buttons:** Added font-awesome icons (`fa-history`, `fa-clock-o`, `fa-file-text-o`, `fa-download`) with theme-styled buttons.
 - **Master Company Dashboard (Group of Companies Total Insight):**
   - Analyzed the current system architecture:
@@ -1695,13 +2019,13 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `php artisan test --filter=CentralizedDueManagementTest`: 10/10 passed (52 assertions).
   - `php artisan test --filter=RateHistoryTest`: 5/5 passed (39 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Unified Payment & Receipt System in Due Management & Brand Theme Harmonization (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Unified Payment & Receipt System in Due Management & Brand Theme Harmonization (branch ui)
 
 - **Theme Color Harmonization across all Buttons & UI Elements:**
   - Standardized all interactive buttons, tabs, toggles, and drawers to strictly follow the zoloERP brand theme variables (`var(--z-primary, #7d287e)`, `var(--z-primary-hover, #631f64)`, `var(--z-primary-soft, #fdf4ff)`, `var(--z-primary-border, #f0abfc)`):
-    - **Top Hub Navigation Tabs (`tab-sales`, `tab-purchases`, `tab-expenses`):** Replaced divergent arbitrary colors with unified theme styling — active tabs use high-contrast gradient (`linear-gradient(135deg, var(--z-primary) 0%, var(--z-primary-hover) 100%)`) with white text and icons; inactive tabs use soft theme background (`#fdf4ff`) with theme border (`#f0abfc`) and theme text (`#7d287e`).
+    - **Top Hub Navigation Tabs (`tab-sales`, `tab-purchases`, `tab-expenses`):** Replaced divergent arbitrary colors with unified theme styling â€” active tabs use high-contrast gradient (`linear-gradient(135deg, var(--z-primary) 0%, var(--z-primary-hover) 100%)`) with white text and icons; inactive tabs use soft theme background (`#fdf4ff`) with theme border (`#f0abfc`) and theme text (`#7d287e`).
     - **Outstanding Dues Report Action Link (`.btn-report-link`):** Replaced hardcoded indigo with theme styling.
-    - **View Mode Toggle Buttons (`due-btn-billwise` and `due-btn-partywise`):** Harmonized both toggle buttons to theme colors — active state uses theme gradient and white text; inactive uses soft theme background with theme border.
+    - **View Mode Toggle Buttons (`due-btn-billwise` and `due-btn-partywise`):** Harmonized both toggle buttons to theme colors â€” active state uses theme gradient and white text; inactive uses soft theme background with theme border.
     - **Drawer & Table Actions:** Settle buttons, Clear All button, submit button, and preset pills (`Full`, `50%`) all share unified theme branding.
     - Dark mode variants updated uniformly (`#2e1065`, `#e9d5ff`, `#7e22ce`).
 - **Payment & Receipt Module Unification with Due Management:**
@@ -1714,13 +2038,13 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - **Historical Payments & Receipts Register (Bottom Full-Width Card):**
   - Added historical settlement audit trail at the bottom of the Due Management Command Center:
     - `DueManagementController::index` queries recent settlement payments (`Payment::visibleIn($context)`) for the active tab (Sales customer receipts, Purchase supplier payment vouchers, or Operational expenses).
-    - Rendered in `.due-history-card` with table `#due-historical-payments-table`: Date & Time, Payment/Voucher Reference (`payment_reference`), Linked Bill/Invoice (`reference_no`), Party details with phone, Payment Method & Account (`paying_method` · `account->name`), Reference/Note, Amount Settled (`₹`), and 1-click `View / Print Voucher` button linking to `route('bill-payments.show', $hp->id)`.
+    - Rendered in `.due-history-card` with table `#due-historical-payments-table`: Date & Time, Payment/Voucher Reference (`payment_reference`), Linked Bill/Invoice (`reference_no`), Party details with phone, Payment Method & Account (`paying_method` Â· `account->name`), Reference/Note, Amount Settled (`â‚¹`), and 1-click `View / Print Voucher` button linking to `route('bill-payments.show', $hp->id)`.
 - **Verification & Test Coverage:**
   - `tests/Feature/CentralizedDueManagementTest.php` passing 10/10 tests (52 assertions).
   - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
   - `tests/Feature/BillStockPaymentWorkflowTest.php` passing 9/9 tests (114 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Due Management UI Polish — View Mode Persistence, Party Pastel Backgrounds, FIFO Partial Clearance & Real-time Bill Breakdown (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Due Management UI Polish â€” View Mode Persistence, Party Pastel Backgrounds, FIFO Partial Clearance & Real-time Bill Breakdown (branch ui)
 
 - **View Mode Persistence (Bill-wise vs Party Grouped):**
   - Whichever view mode button is clicked last becomes the default on subsequent visits.
@@ -1743,13 +2067,13 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - `party-tint-3`: Amber (`#fffbeb`, border `#fbbf24`)
     - `party-tint-4`: Rose (`#fff1f2`, border `#fb7185`)
 - **Party Grouped FIFO Pending Bills Breakdown & Real-Time Partial Simulation:**
-  - In Party Grouped mode, selecting a party row or clicking `⚡ Clear All` loads all pending bills in date-wise order (oldest first) into `#fifo-breakdown-panel` at the bottom of the Fast Settlement Drawer.
+  - In Party Grouped mode, selecting a party row or clicking `âš¡ Clear All` loads all pending bills in date-wise order (oldest first) into `#fifo-breakdown-panel` at the bottom of the Fast Settlement Drawer.
   - **Dynamic Clearance Simulation:**
-    - As the user types any paying amount (e.g. paying ₹30,000 against ₹60,900 due) or clicks `Full` / `50%`, the simulation dynamically calculates allocations in real time on every keystroke (`input`, `keyup`, `change`).
+    - As the user types any paying amount (e.g. paying â‚¹30,000 against â‚¹60,900 due) or clicks `Full` / `50%`, the simulation dynamically calculates allocations in real time on every keystroke (`input`, `keyup`, `change`).
     - Individual bill cards display:
-      - `✓ Cleared` (Green card: allocated full bill due, balance ₹0.00).
-      - `⚡ Partial` (Amber card: allocated partial amount, remaining balance displayed in red).
-      - `⏳ Due/Unpaid` (Neutral card: ₹0.00 allocated, full bill due).
+      - `âœ“ Cleared` (Green card: allocated full bill due, balance â‚¹0.00).
+      - `âš¡ Partial` (Amber card: allocated partial amount, remaining balance displayed in red).
+      - `â³ Due/Unpaid` (Neutral card: â‚¹0.00 allocated, full bill due).
     - Header chips summarize live counts (e.g. `1 Cleared`, `1 Partial`, `2 Due`).
   - **Partial FIFO Execution (`batchSettle`):**
     - `DueManagementController::batchSettle` clears oldest bills first sequentially until payment pool is exhausted, records double-entry journal entries through `PaymentService::addPayment`, and returns updated party due and open bill counts.
@@ -1760,7 +2084,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `tests/Feature/CentralizedDueManagementTest.php` passing 9/9 tests (48 assertions), including FIFO partial allocation and session view mode persistence.
   - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
 
-## Active Session & Follow-up — 2026-11-06: Due Management UI Polish — Theme Colored Top Tabs, Inline Toolbar & Button-Text Alignment (branch ui)
+## Active Session & Follow-up â€” 2026-11-06: Due Management UI Polish â€” Theme Colored Top Tabs, Inline Toolbar & Button-Text Alignment (branch ui)
 
 - **Theme Colored Top Navigation Tabs (`/transactions/dues`):**
   - Updated `.due-hub-nav` from a muted grey box to distinct, theme-coded interactive pill buttons:
@@ -1785,7 +2109,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - `tests/Feature/CentralizedDueManagementTest.php` passing 7/7 tests (31 assertions).
   - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
 
-## Active Session & Follow-up — 2026-11-05: Centralized Due Management Hub & Clean Audit Outstanding Dues Report (branch ui)
+## Active Session & Follow-up â€” 2026-11-05: Centralized Due Management Hub & Clean Audit Outstanding Dues Report (branch ui)
 
 - **Centralized Due Management System (`DueManagementController` & `/transactions/dues`):**
   - **Unified Hub Navigation & Multi-Tab Architecture:**
@@ -1794,7 +2118,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - Tab navigation (`sales`, `purchases`, `expenses`) with fast keyboard shortcuts (`Alt+1`, `Alt+2`, `Alt+3`).
   - **Dual Operational Modes (Bill-wise vs Party-wise):**
     - **Bill-wise Table:** Multi-bill batch selection checkboxes, overdue indicators, days left/overdue chips, clickable references, and quick row selection to load into the Fast Settlement Panel.
-    - **Party-wise Grouped Table:** Aggregates outstanding amounts per party, shows open bill count, total billed, total paid, and net due with a 1-click `⚡ Clear All` button that loads all unpaid bills into a batch settlement.
+    - **Party-wise Grouped Table:** Aggregates outstanding amounts per party, shows open bill count, total billed, total paid, and net due with a 1-click `âš¡ Clear All` button that loads all unpaid bills into a batch settlement.
   - **Fast Settlement Panel (Right-side 35% Drawer):**
     - Immediate due amount auto-fill, `Full` and `50%` quick amount presets.
     - Method-driven settlement account filtering (Cash vs Bank leaf accounts) via `SettlementAccountService`.
@@ -1804,7 +2128,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - Multi-bill payment across selected invoices for a single party with FIFO (oldest bill first) allocation.
     - Transactional integrity using `PaymentService::addPayment`, preserving all double-entry journal postings and voucher series.
   - **Strictly Audit Outstanding Dues Report (`/outstanding-due-report`):**
-    - Per user directive, removed all inline action buttons (`Collect`, `Pay`, `⚡ Settle`, `<th>Action</th>`) from the Outstanding Dues Report in the Reporting section.
+    - Per user directive, removed all inline action buttons (`Collect`, `Pay`, `âš¡ Settle`, `<th>Action</th>`) from the Outstanding Dues Report in the Reporting section.
     - Preserved high-fidelity printable A4 layout with letterhead, filters, and executive KPIs.
     - Added an Audit & Reconciliation notification banner directing operational clearance to the Centralized Due Management Hub.
   - **Sidebar Menu Integration:**
@@ -1819,7 +2143,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
       - Outstanding Dues report verification (zero action buttons, audit-only)
     - `tests/Feature/OutstandingDuesAndGstTypeTest.php` passing 5/5 tests (17 assertions).
 
-## Active Session & Follow-up — 2026-11-05: Voucher Search Row Re-placement, Column Dividers, Outstanding Dues Report & Mandatory Company GST Type (branch ui)
+## Active Session & Follow-up â€” 2026-11-05: Voucher Search Row Re-placement, Column Dividers, Outstanding Dues Report & Mandatory Company GST Type (branch ui)
 
 - **Voucher Search Row & Crisp Column Separation (`/sales` and `/purchases`):**
   - Relocated `#lims_productcodeSearch` and barcode scan prompt out of `<tbody>` where it previously occupied table rows and caused column misalignment.
@@ -1840,7 +2164,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
     - Print support with professional letterhead (Company legal name, trade name, GSTIN, address, audit period).
 
 - **Mandatory GST Type in Company Creation:**
-  - In `resources/views/backend/company/select.blade.php`: added mandatory red asterisk `*` to `GST type` label, added HTML5 `required` attribute to `<select name="registration_type" required>`, and added disabled placeholder option `<option value="" disabled>— Select GST type —</option>`. Updated edit modal `#dlg-company-edit` correspondingly.
+  - In `resources/views/backend/company/select.blade.php`: added mandatory red asterisk `*` to `GST type` label, added HTML5 `required` attribute to `<select name="registration_type" required>`, and added disabled placeholder option `<option value="" disabled>â€” Select GST type â€”</option>`. Updated edit modal `#dlg-company-edit` correspondingly.
   - In `app/Http/Controllers/CompanySelectorController.php`: added backend validation in `storeCompany` and `updateCompany`: `'registration_type' => 'required|in:regular,composition,unregistered'`.
   - In `app/Services/Platform/CompanyDirectoryService.php`: validated and supported safe fallback for programmatic callers.
 
@@ -1850,10 +2174,10 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 
 
 
-## Active Session & Follow-up — 2026-11-05: Modular Addon Architecture (OpticalLab, Warranty, Subscription) & Upstream Sync (branch ui)
+## Active Session & Follow-up â€” 2026-11-05: Modular Addon Architecture (OpticalLab, Warranty, Subscription) & Upstream Sync (branch ui)
 
 - **Git & Repository Sync:**
-  - Pulled latest changes from `origin/ui` (commit `9bc7b86` — "Unify Accounting UI and add guided Money Transfer") merging clean with 'ort' strategy. Branch `ui` is fully synced with remotes.
+  - Pulled latest changes from `origin/ui` (commit `9bc7b86` â€” "Unify Accounting UI and add guided Money Transfer") merging clean with 'ort' strategy. Branch `ui` is fully synced with remotes.
 - **Migration Status Check:**
   - Verified `php artisan migrate:status --pending`: returned `INFO No pending migrations.` All database migrations are completely up to date.
 - **Procedural Transaction Generation for Animazon Web Studios (Company #2):**
@@ -1869,37 +2193,37 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
   - Investigated the displayed glitch on `lenzbreeze.test/admin/sales`: in `resources/views/salepro/backend/sale/index.blade.php`, an unclosed tag/script block leaked JavaScript text directly into HTML.
 - **Modular Addons Specification Created:**
   - Created `documents/MODULE_ADDONS_SPECIFICATION.md` and corresponding UI Artifact specifying three plug-and-play Addons for Zolo-ERP-Pro:
-    1. **Addon 1: Lens & Optical Manufacturing Company Profile (`Modules/OpticalLab`)** — Optical Rx prescription parameters (SPH, CYL, AXIS, ADD, BASE, PD, Height), physical lens attributes (DIA: 65/70/75mm, Index: 1.50 to 1.74, coatings), order extras (fitting, tinting, edging), thermal lab receipts with technician routing QR codes, return rejection verification, and consolidated optician billing statements (`customer_bills`, `customer_bill_monthlies`).
-    2. **Addon 2: Universal Warranty & Serial Verification Engine (`Modules/Warranty`)** — Cross-industry warranty lifecycle covering Category-level defaults and Product-level overrides. Defines 8 universal configuration dimensions (Duration, Activation trigger, Identity tracking, Coverage scope, Registration flow, Transferability, Meter/cycle limits, Extended warranties). Features 4 warranty card generation formats (Responsive Digital Card with status badge, Official A4 Certificate, Thermal box slip, PVC plastic card), dynamic QR code generation, and an 8-stage RMA claim workflow.
-    3. **Addon 3: Recurring Subscription & Membership Management (`Modules/Subscription`)** — Designed for Gyms, Spas, Salons, Wellness Clubs, Co-working, and AMC maintenance contracts. Manages flexible plans (Recurring period vs Session credit packs, Peak/Off-peak), member profiles with digital QR passes, front-desk/turnstile attendance kiosk with session credit deduction, membership freeze/pause with auto-extension, and automated accrual accounting (Deferred Subscription Revenue liability recognized monthly into Earned Income under Ind AS 115 / IFRS 15).
+    1. **Addon 1: Lens & Optical Manufacturing Company Profile (`Modules/OpticalLab`)** â€” Optical Rx prescription parameters (SPH, CYL, AXIS, ADD, BASE, PD, Height), physical lens attributes (DIA: 65/70/75mm, Index: 1.50 to 1.74, coatings), order extras (fitting, tinting, edging), thermal lab receipts with technician routing QR codes, return rejection verification, and consolidated optician billing statements (`customer_bills`, `customer_bill_monthlies`).
+    2. **Addon 2: Universal Warranty & Serial Verification Engine (`Modules/Warranty`)** â€” Cross-industry warranty lifecycle covering Category-level defaults and Product-level overrides. Defines 8 universal configuration dimensions (Duration, Activation trigger, Identity tracking, Coverage scope, Registration flow, Transferability, Meter/cycle limits, Extended warranties). Features 4 warranty card generation formats (Responsive Digital Card with status badge, Official A4 Certificate, Thermal box slip, PVC plastic card), dynamic QR code generation, and an 8-stage RMA claim workflow.
+    3. **Addon 3: Recurring Subscription & Membership Management (`Modules/Subscription`)** â€” Designed for Gyms, Spas, Salons, Wellness Clubs, Co-working, and AMC maintenance contracts. Manages flexible plans (Recurring period vs Session credit packs, Peak/Off-peak), member profiles with digital QR passes, front-desk/turnstile attendance kiosk with session credit deduction, membership freeze/pause with auto-extension, and automated accrual accounting (Deferred Subscription Revenue liability recognized monthly into Earned Income under Ind AS 115 / IFRS 15).
 - **Status:** Specification complete; repository synced; ready for implementation upon user direction.
 - **Herd Autoload Misdirection & 503 Resolution:**
   - Diagnosed user report: `zolo-erp-pro.test/dashboard` showing HTTP 503 `Database temporarily unavailable`.
   - Root cause: In `vendor/composer/autoload_psr4.php`, `$baseDir` was previously hardcoded pointing to `D:\PROJECTS\WEBSITES\DK Enterprises`. As a result, Herd executed classes from `DK Enterprises` instead of `zolo-erp-pro`. Specifically, `DK Enterprises/app/Http/Controllers/HomeController.php` attempted to query `water_tanker_trips.excess_km` (a column only existing in the DK Enterprises project), throwing a `QueryException` caught by `Handler.php`.
   - Fix: Executed `composer dump-autoload` and `php artisan package:discover --ansi`. Verified that `vendor/composer/autoload_psr4.php` now correctly points to `zolo-erp-pro`. Tested `/dashboard` request directly: returns HTTP 200 OK.
 
-## Journal Entry Modal Expansion & Voucher Save Feedback — 2026-11-05 (branch ui)
+## Journal Entry Modal Expansion & Voucher Save Feedback â€” 2026-11-05 (branch ui)
 
 - User reported being unable to save a voucher in Express Voucher Entry, and that the Add Journal Entry modal on the Journal Entries page was too small and difficult to read.
-- Diagnosis of screenshot 1 (Express Voucher Entry): Row 1 had no account selected and Debit at ₹0.00; Row 2 had BOB with Credit at ₹15,000. Total debit was ₹0.00 and Total credit was ₹15,000.00 (`Difference: ₹15,000.00 [Unbalanced]`). The Save button is strictly disabled for unbalanced vouchers. In addition, for a positive bank opening balance, Bank (Asset) must be Debited (`Dr`), and an Equity account (`3040 Opening Balance Adjustment` or `3010 Owner's Capital`) Credited (`Cr`).
-- Enhanced Express Voucher Entry (`resources/views/backend/accounting/voucher_entry.blade.php`): Added an inline status hint (`#saveHintText`) next to the Save button showing dynamic guidance ("Awaiting amounts", "Unbalanced (Diff: ₹...)", or "Balanced — ready to save"), updated the button tooltip with the exact difference when unbalanced, and made `autoBalanceNextRow` bi-directional so typing an amount into Row 2 automatically suggests the counter-balance onto Row 1 if empty.
+- Diagnosis of screenshot 1 (Express Voucher Entry): Row 1 had no account selected and Debit at â‚¹0.00; Row 2 had BOB with Credit at â‚¹15,000. Total debit was â‚¹0.00 and Total credit was â‚¹15,000.00 (`Difference: â‚¹15,000.00 [Unbalanced]`). The Save button is strictly disabled for unbalanced vouchers. In addition, for a positive bank opening balance, Bank (Asset) must be Debited (`Dr`), and an Equity account (`3040 Opening Balance Adjustment` or `3010 Owner's Capital`) Credited (`Cr`).
+- Enhanced Express Voucher Entry (`resources/views/backend/accounting/voucher_entry.blade.php`): Added an inline status hint (`#saveHintText`) next to the Save button showing dynamic guidance ("Awaiting amounts", "Unbalanced (Diff: â‚¹...)", or "Balanced â€” ready to save"), updated the button tooltip with the exact difference when unbalanced, and made `autoBalanceNextRow` bi-directional so typing an amount into Row 2 automatically suggests the counter-balance onto Row 1 if empty.
 - Expanded New Journal Entry Voucher modal (`resources/views/backend/accounting/journal_entries.blade.php`): Upgraded `#createVoucherModal` and `#viewEntryModal` from `modal-lg` (800px) to `modal-xl` with responsive max-width up to 1080px. Re-allocated table columns to 36% Account, 28% Line Memo, 16% Debit, 16% Credit, and 4% Action with min-widths. Increased input heights to 34px with comfortable 10px padding and monospace font for numbers so values are never clipped. Aligned initial balance badge to neutral "Awaiting amounts" and disabled the submit button until a non-zero balanced entry is entered.
 - Validation: 26 JavaScript unit tests passed with 0 errors. Blade syntax linting passed. Git whitespace check clean. Existing uncommitted working tree preserved on branch `ui`.
 
-## Accounting control and link audit — 2026-11-05 (branch ui)
+## Accounting control and link audit â€” 2026-11-05 (branch ui)
 
 - Fixed the inactive party dropdown in the user's Contra screenshot. Advanced transfers hide the party column and guided fields. Voucher Hub uses native dynamic selectors. Receivable lines show customers, payable lines show suppliers, and posting requires a party on those lines. Verified receipt allocation and supplier payment payloads in browser fixtures.
 - Collections opens Voucher Hub in Receipt mode for operators with posting access. Journal detail and printable voucher links use the same company, branch and financial year scope as their lists, including legacy entries admitted by those lists. Journal pagination keeps filters. Failed journal detail requests display an error. Transfer links and reversal buttons respect the permissions and branch requirements of their destinations.
 - The audit rendered 19 entry points and followed their Accounting links in Laravel, checked form routes and HTTP methods, and checked browser navigation through all 18 command bar links. Browser also exercised the transfer and voucher controls, allocations, account add/edit/default/statement links, report filters and print buttons, journal dialogs and Express Voucher shortcuts at desktop and mobile widths. The final browser run passed. In the broader PHP run 64 tests passed and two MySQL-only checks skipped. The final targeted rerun passed 20 tests and 474 assertions.
 - Proof: scratch/accounting-transfer-advanced.png and scratch/accounting-receipt-party.png. Browser submissions were intercepted and PHP tests used isolated fixtures. Work remains uncommitted on ui.
 
-## Express Voucher Entry UI follow-up — 2026-11-05 (branch ui)
+## Express Voucher Entry UI follow-up â€” 2026-11-05 (branch ui)
 
-- Replaced the legacy Voucher Entry wrapper and collapsed table layout with the shared Accounting command bar, cards, table, form controls, and light and dark theme tokens. Both starting rows render, and the line table scrolls horizontally within its card on narrow screens. The empty balance summary reads “Awaiting amounts.” Added working Ctrl+Enter and Ctrl+F9 shortcuts to match the keyboard help.
+- Replaced the legacy Voucher Entry wrapper and collapsed table layout with the shared Accounting command bar, cards, table, form controls, and light and dark theme tokens. Both starting rows render, and the line table scrolls horizontally within its card on narrow screens. The empty balance summary reads â€œAwaiting amounts.â€ Added working Ctrl+Enter and Ctrl+F9 shortcuts to match the keyboard help.
 - Restricted the selector and next-number preview to journal series, matching the existing posting service. This prevents a Receipt series from appearing as the Journal voucher number. The form continues to submit to the same journal posting endpoint.
 - Validation: 20 Accounting feature tests passed (474 assertions), plus 12 document keyboard tests. A focused Chrome fixture verified the layout from 320 to 1440 pixels, dark mode, keyboard shortcuts, all three inline dialogs, dynamic rows, automatic balancing, and an intercepted Save. The full Accounting browser fixture also passed across 18 screens at desktop and mobile widths. Screenshots are in `scratch/voucher-entry-1440.png`, `scratch/voucher-entry-390.png`, and `scratch/accounting-voucher-entry-dark.png`. No live records were posted.
 
-## Completed Accounting UI upgrade — 2026-11-05 (branch ui)
+## Completed Accounting UI upgrade â€” 2026-11-05 (branch ui)
 
 - User approved complete Money Transfer UI improvement and a review/improvement of all Accounting options using the global UI. Preserve existing posting contracts, financial records and permission boundaries.
 - Shared Accounting command bar groups transactions, reports and setup. It respects company roles and menu switches. Accounting uses the global navy/plum tokens, shared summary cards, one vertical scroll area, and horizontal table scrolling where needed.
@@ -1908,14 +2232,14 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Validation: 51 tests passed across AccountingWorkspaceTest, AccountingSetupUiTest, CompanyAccountingWebTest, AccountingHardeningTest and BillStockPaymentWorkflowTest (598 assertions); two MySQL-only row-lock checks were skipped. PHP/JS syntax and git whitespace checks pass. Browser fixtures covered 18 screens at 1440, 390 and 320 pixels, guided transfer payload, voucher modes, account/default controls, mapping filters, navigation and dark theme without script errors or live writes.
 - Browser reproduction: export fixtures using ERP_EXPORT_ACCOUNTING_BROWSER=1 and run tests/Browser/accounting-workspace.spec.mjs with PLAYWRIGHT_CORE configured. Screenshots: scratch/accounting-transfer-1440.png, accounting-transfer-390.png, accounting-transfer-register.png, accounting-transfer-dark.png and accounting-mappings-1440.png. Work remains uncommitted on ui. No deployment or live business records changed.
 
-## Money Transfer implementation review — 2026-11-05 (branch ui)
+## Money Transfer implementation review â€” 2026-11-05 (branch ui)
 
 - User asked whether the Contra Voucher Hub screenshot correctly implements a transfer such as IOB to Cash. Reviewed the transfer link, VoucherService, AccountingPostingService, VoucherController, voucher view and JavaScript.
 - Shared Money Transfer links to Voucher Hub with Contra selected. Backend restricts Contra to at least two distinct cash/bank control accounts and enforces balanced postings. Bank-to-cash is Cash debit and IOB credit; no revenue/expense account is involved.
 - UI remains a generic voucher form: account choices are not limited to cash/bank, customer/supplier party options remain available for cash/bank lines, allocation/due-date fields remain visible, and posted history includes other journal types. These are usability shortcomings, distinct from the verified transfer posting logic. A dedicated From account, To account and Amount form would be clearer.
 - Verification: existing targeted AccountingHardeningTest Contra case passes (6 assertions), and BillStockPaymentWorkflowTest transfer/register case passes (9 assertions), using isolated test fixtures. No live transfer or application changes were made. Only session memory was updated.
 
-## Accounting explanation — 2026-11-05 (branch ui)
+## Accounting explanation â€” 2026-11-05 (branch ui)
 
 - User requested an explanation of the Accounting sidebar, account categories, examples, relationships and normal usage, using the caveman response style.
 - Reviewed the current accounting controllers, posting/report services, COA model and views. Explain automatic business-document posting versus manual vouchers, journal history versus account ledgers, linked cash/bank payment accounts and semantic posting defaults.
@@ -1924,7 +2248,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Follow-up clarified that semantic mapping assigns a fixed set of business roles, not every COA account. The screenshot shows 31 mapped roles and zero setup required. Selected linked IOB payment accounts take precedence over the BANK role default; using IOB does not require repeatedly changing semantic mapping. Mapping changes do not relocate historical postings.
 - Further explanation uses one credit sale of 10000, received as 6000 into IOB and 4000 into SBI: income is recorded once in Sales, while each receipt selects its actual bank and clears customer dues. Semantic SALES/AR roles identify automatic posting ledgers; the BANK role is not a restriction to one settlement bank.
 
-## Completed follow-up — 2026-11-05: inventory navigation and transfer theme (branch ui)
+## Completed follow-up â€” 2026-11-05: inventory navigation and transfer theme (branch ui)
 
 - User reported too many stock-related entries and an old-theme Transfers register. Reviewed the workflows: Stock by Lot already provides combined and individual-lot balances; physical count compares a count sheet with stock and proposes adjustments; manual adjustment records a reasoned correction; transfers move stock between warehouses. Existing Stock opened expiry/quantity-scheme tools rather than the normal balance report.
 - Consolidated the sidebar into Stock, Stock Corrections and Transfers using shared `InventoryNavigation` destinations and the new inventory command bar. Stock opens the balance report when enabled; its existing selector provides combined products or individual lots. Stock Corrections contains Physical count, Manual adjustments and capability-gated Damage audit. Transfers contains its register and permission-gated CSV import. Import-only and adjustment-only operators keep valid destinations; company role overrides and capability switches are respected.
@@ -1934,7 +2258,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Browser fixtures are exported with ERP_EXPORT_INVENTORY_BROWSER=1 when running InventoryWorkspaceTest; run tests/Browser/inventory-workspace.spec.mjs with PLAYWRIGHT_CORE configured. Every browser request is intercepted; no business records are written. Proof: scratch/inventory-transfers-1440.png, inventory-transfers-empty.png and inventory-transfers-390.png.
 - Complete and uncommitted on ui. No deployment or inventory/accounting data changes for this task. Preserve the user's run-erp.bat change and all earlier uncommitted work.
 
-## Completed follow-up — 2026-11-04: job work returned stock names (branch ui)
+## Completed follow-up â€” 2026-11-04: job work returned stock names (branch ui)
 
 - User confirmed that a new returned name must receive only this GRN's stock as a separate product, retaining the original product and a short cross-reference description. Diagnosis: RBM was only a supplier alias on PUR-00008, not an inventory product.
 - Added explicit `stock_names` fields on service bills and `job-stock-name/{receipt}` for existing bills. `JobWorkStockNaming` reuses a unique matching stock product or creates one with the source's base unit, classification, tax and tracking settings. Supplier-only aliases (`their_names`) retain their separate API behavior.
@@ -1946,7 +2270,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Verification passed across JobWorkStockNamingTest, ManufacturingJobWorkTest, OperationsWebTest, BillStockPaymentWorkflowTest, TextileScenarioMatrixTest, JobWorkReturnsReworkTest and IndustryFlowIntegrationTest. The new lot test initially exposed a missing nullable-expiry migration in its isolated fixture; fixed the fixture and reran successfully. Browser fixtures verify name correction, service bill fields, linked details, source/destination report notes, quantities and desktop/mobile rendering with no script errors. PHP syntax and whitespace checks pass.
 - Work remains uncommitted on ui; no deployment. Earlier task edits and the user's run-erp.bat edit are preserved. Browser proof: scratch/job-stock-name-form.png, job-stock-name-details.png, job-stock-name-report.png, job-stock-name-report-390.png. Actual corrected printable bill HTML: scratch/job-work-rbm-bill.html.
 
-## Completed follow-up — 2026-11-04: COA-first account linking (branch ui)
+## Completed follow-up â€” 2026-11-04: COA-first account linking (branch ui)
 
 - User created IOB in COA (company 14, ledger 2881, code 111) but could not select it for payments. Read-only audit confirmed asset/bank subtype, `control_type=none`, and no payment-register row. All 31 existing semantic posting mappings resolve to active company-owned leaf accounts; existing Cash/Bank register links are valid.
 - Implementing automatic payment-register linking for COA cash/bank assets, inline voucher-created ledgers and semantic cash/bank mappings. Payment account creation now reuses matching COA ledgers rather than duplicating them. Renaming a user-created COA bank propagates its matching payment label. Posting ledgers are excluded from parent/group choices.
@@ -1956,7 +2280,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Verification: 43 distinct targeted tests passed (9 workflow tests plus 34 company-accounting/hardening tests); 2 MySQL row-lock concurrency checks were skipped. Covered COA-first creation, existing-bank repair/reuse, name synchronization, protected posting-ledger parents, payment selectors, exact bank postings, account-list balances/statements, Contra transfers, and read-only legacy transfer history. Browser fixtures verify IOB in COA, payment selectors and Account List, plus no script errors. Syntax and whitespace checks pass.
 - Complete and uncommitted on `ui`. No deployment or monetary/history migration was performed. Existing user edits and prior task work are preserved. Latest proof includes `scratch/bill-payment-coa.png` and `scratch/bill-payment-accounts.png`.
 
-## Completed follow-up — 2026-11-04: payment placement and named bank accounts (branch ui)
+## Completed follow-up â€” 2026-11-04: payment placement and named bank accounts (branch ui)
 
 - User reported badly placed payment actions, confusion between method and settlement account, and inability to select a specific bank. Read-only inspection of company 14 (`zoloERP Textiles`) confirmed only Cash and a generic Bank payment account, linked to Cash on Hand and Bank Accounts respectively. No named banks exist in the user's data; none were added during this task.
 - Root UI cause: the shared table action CSS forces outline buttons into 32px icon squares. Payment actions now use an explicit text-button class, stay at the right edge of registers/card actions, and appear in the bill detail footer. Clicking a card's payment link no longer also loads the bill into the edit form. Shared-mode register dropdown actions use the same payment workspace rather than the old modal.
@@ -1966,7 +2290,7 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 - Verification: 30 targeted tests pass (251 assertions), covering bill/payment workflows, named bank creation, exact incoming/outgoing bank ledger postings, mismatched methods, commercial UI wiring and document entry. Browser proof verifies bank filtering and account creation flow, dropdown text, preview, complete button text, card action behavior, footer placement, desktop/mobile layout, separate receipt/voucher printing, and no script errors. New screenshots overwrite `scratch/bill-payment-workspace-1440.png` and `scratch/bill-payment-workspace-390.png`. PHP/JS syntax and whitespace checks pass.
 - Work remains uncommitted on `ui`; no deployment, migration, or business-data changes were performed. Earlier task edits and the user's `run-erp.bat` edit are preserved.
 
-## Completed work — 2026-11-04: stock selection and payment documents (branch ui)
+## Completed work â€” 2026-11-04: stock selection and payment documents (branch ui)
 
 - User requests: remove required markers from optional fields; changing items on GRN/bills must update the correct stock and accounts; combine available lots for a product; add sales payment access and a Selling payment menu; provide receipts and payment vouchers linked to bills.
 - Clarified: a changed name represents a different product, not a global rename. For sales, select existing stock for the new product. Preserve the old product and bill history.
@@ -1988,38 +2312,38 @@ Addressed all 6 audit priorities identified during static source-code and GitHub
 ---
 
 ## 1. Active Session Metadata
-- **Last Updated:** 2026-10-28 11:55:00 (+05:30) — Merged latest upstream origin/ui changes (commits 30a8ccb, 32dac57)
+- **Last Updated:** 2026-10-28 11:55:00 (+05:30) â€” Merged latest upstream origin/ui changes (commits 30a8ccb, 32dac57)
 - **Production:** https://erp.samuraibuiness.in (Hostinger VPS). Pushing `main` runs CI, then deploys automatically; see [deploy/README.md](deploy/README.md)
 - **Active Git Branch:** ui (synchronized with origin/main, origin/ui and nandha-origin/ui)
 - **Upstream Remotes:**
   - `nandha-origin`: https://github.com/nandha3d/zolo-erp-pro.git (`ui`, `enhanced-ui`)
   - `origin`: https://github.com/vigneshsinna/zolo-erp-pro.git (`main`, `ui`, `enhanced-ui`)
 - **Latest Commits:**
-  - `32dac57` — "Remove old HRM menu; cache MenuSwitches lookups"
-  - `30a8ccb` — "Professional report printing, developer menu switches, module cleanup"
-  - `ca39c29` — "docs: record Section 108 migration audit and legacy commercial documents repair"
-  - `840bff1` — "Add migration to repair unassigned legacy commercial documents and master entities"
-  - `8c3cde4` — "fix(dashboard): resolve blank screen by placing @extends on line 1 before @section"
-  - `1b7dba5` — "fix(tokens): use brand tokens for section box purple icon in neo css"
-  - `d301699` — "feat(ui): enlarge section-box title typography, add 10px spacing, and integrate crisp vector SVG icons"
-  - `4003731` — "One brand colour system for every page, light and dark"
-  - `54fde10` — "feat(product): unify add product into single page with template sectionized boxes and zero scroll"
-  - `fd360f7` — "Give Operations right-side action cards one shared theme"
-  - `ad16cc5` — "Expand company dialog dimensions, add color differentiation per section box, and prevent field penetration"
-  - `e97dae3` — "Render expense, income and notification modals only on their own pages"
-  - `b668ed6` — "Remove duplicate navigation: Pending Sales, old Returns lists, Add entries"
-  - `05ec2b7` — "Make every sidebar link open a real page; merge the two job work entries"
-  - `3dbf915` — "Highlight the current page in the sidebar everywhere; fix 194Q CI test"
-  - `2f7c95b` — "Split textile types; add trade and GST features"
-  - `8f76885` — "feat(auth): add professional ERP background, style ERP logo text, and apply 'BUSINESS MADE SIMPLE' slogan"
-  - `c78fd43` — "docs(session): record login redesign (section 65)"
-  - `6a1cdff` — "Redesign the admin login screen"
-  - `c8592dc` — "Bring CI back to green"
-  - `03cf15d` — "Keep storage directories in git so fresh clones boot"
-  - `1e1f2de` — "Deploy only after the acceptance suites pass on main"
-  - `51a1a74` — "Merge remote-tracking branch 'origin/ui' into ui"
-  - `341135d` — "Purchase terms and supplier defaults, field help, Sweet Soil demo"
-  - `894c7c2` — "Add GitHub Actions deploy to the production VPS"
+  - `32dac57` â€” "Remove old HRM menu; cache MenuSwitches lookups"
+  - `30a8ccb` â€” "Professional report printing, developer menu switches, module cleanup"
+  - `ca39c29` â€” "docs: record Section 108 migration audit and legacy commercial documents repair"
+  - `840bff1` â€” "Add migration to repair unassigned legacy commercial documents and master entities"
+  - `8c3cde4` â€” "fix(dashboard): resolve blank screen by placing @extends on line 1 before @section"
+  - `1b7dba5` â€” "fix(tokens): use brand tokens for section box purple icon in neo css"
+  - `d301699` â€” "feat(ui): enlarge section-box title typography, add 10px spacing, and integrate crisp vector SVG icons"
+  - `4003731` â€” "One brand colour system for every page, light and dark"
+  - `54fde10` â€” "feat(product): unify add product into single page with template sectionized boxes and zero scroll"
+  - `fd360f7` â€” "Give Operations right-side action cards one shared theme"
+  - `ad16cc5` â€” "Expand company dialog dimensions, add color differentiation per section box, and prevent field penetration"
+  - `e97dae3` â€” "Render expense, income and notification modals only on their own pages"
+  - `b668ed6` â€” "Remove duplicate navigation: Pending Sales, old Returns lists, Add entries"
+  - `05ec2b7` â€” "Make every sidebar link open a real page; merge the two job work entries"
+  - `3dbf915` â€” "Highlight the current page in the sidebar everywhere; fix 194Q CI test"
+  - `2f7c95b` â€” "Split textile types; add trade and GST features"
+  - `8f76885` â€” "feat(auth): add professional ERP background, style ERP logo text, and apply 'BUSINESS MADE SIMPLE' slogan"
+  - `c78fd43` â€” "docs(session): record login redesign (section 65)"
+  - `6a1cdff` â€” "Redesign the admin login screen"
+  - `c8592dc` â€” "Bring CI back to green"
+  - `03cf15d` â€” "Keep storage directories in git so fresh clones boot"
+  - `1e1f2de` â€” "Deploy only after the acceptance suites pass on main"
+  - `51a1a74` â€” "Merge remote-tracking branch 'origin/ui' into ui"
+  - `341135d` â€” "Purchase terms and supplier defaults, field help, Sweet Soil demo"
+  - `894c7c2` â€” "Add GitHub Actions deploy to the production VPS"
 - **Working Tree State:** Clean; all migrations applied
 - **Test Suite Status:** 100% green across all Playwright E2E test suites (FMCG & Textile) and PHPUnit feature suites
 - **Database & Server State:**
@@ -2048,11 +2372,11 @@ Addressed user feedback `"hiding the top bar"` where the top navigation bar was 
    - Aligned `#content` to `height: calc(100vh - 40px) !important;` so there is zero overlap between the header and the form card.
 
 3. **Focus / Distraction-Free Mode (Hide Top Bar Toggle):**
-   - Added `▲ Hide` toggle button (`#btn-toggle-topbar`) to the top command bar in `purchase/index.blade.php` and `sale/index.blade.php`.
+   - Added `â–² Hide` toggle button (`#btn-toggle-topbar`) to the top command bar in `purchase/index.blade.php` and `sale/index.blade.php`.
    - When clicked (or via shortcut `Ctrl + Shift + F` / `Alt + T`), applies `.topbar-hidden` to `<html>` and `<body>`:
      - Top header collapses smoothly (`display: none !important; height: 0;`).
      - `#content` expands to full `100vh`.
-     - Floating reveal strip (`#reveal-topbar-strip`) appears at top center: `▼ Show Top Bar (Ctrl+Shift+F)`.
+     - Floating reveal strip (`#reveal-topbar-strip`) appears at top center: `â–¼ Show Top Bar (Ctrl+Shift+F)`.
      - Preference persisted in `localStorage` (`zolo_topbar_hidden`).
 
 ---
@@ -2062,7 +2386,7 @@ Addressed user feedback `"hiding the top bar"` where the top navigation bar was 
 Addressed user feedback regarding vertical space occupation, bill fields height reduction by >50%, table editability, and modal activation:
 
 1. **Top Navbar Command Strip Consolidation:**
-   - Moved all page titles (`Purchase Command Center` / `Sales Command Center`, `New Purchase Bill` / `New Sales Bill`), breadcrumb mode badges, cash/credit segmented pills, product/service/mixed pills, register navigation pills (`All`, `GRN`/`DC`, `Transfers`, `Returns`), live `TOTAL: ₹ 0.00` badge, `⚙ Details`, and `📖 Bill list` buttons directly into the empty space in the main layout navbar (`resources/views/backend/layout/main.blade.php` via `@hasSection('navbar-center')`).
+   - Moved all page titles (`Purchase Command Center` / `Sales Command Center`, `New Purchase Bill` / `New Sales Bill`), breadcrumb mode badges, cash/credit segmented pills, product/service/mixed pills, register navigation pills (`All`, `GRN`/`DC`, `Transfers`, `Returns`), live `TOTAL: â‚¹ 0.00` badge, `âš™ Details`, and `ðŸ“– Bill list` buttons directly into the empty space in the main layout navbar (`resources/views/backend/layout/main.blade.php` via `@hasSection('navbar-center')`).
    - Completely eliminated the redundant `.comm-command-bar` from the page content, saving ~38px of vertical height.
 
 2. **Ultra-Compact Primary Document Fields (Height Reduced by >60%):**
@@ -2116,7 +2440,7 @@ Recovered undelivered stacked user messages from conversation storage and implem
    - Connected `#quick-create-item-form` via AJAX: automatically creates active catalog product, updates autocomplete master list, and immediately inserts the new line into the grid table.
 
 6. **Full-Width Bill List Panel Toggle:**
-   - Added `⛶` / `⧉` full-width toggle button (`#btn-panel-fullscreen`) to side panel header.
+   - Added `â›¶` / `â§‰` full-width toggle button (`#btn-panel-fullscreen`) to side panel header.
    - Toggles `.panel-fullwidth` on `.comm-split-grid`, expanding the register across the entire workspace (preserving left navigation sidebar).
    - Automatically returns to split view when editing or creating a voucher.
 
@@ -2227,11 +2551,11 @@ Implemented backend tables, models, controllers, and inline creation ([+] / Alt+
   - `tests/Feature/OptechMasterWebTest.php`
 - **Features & Visual Alignment:**
   - **Left Desk Sidebar:** Collapsible dark sidebar (`#111827`), Selling and Buying modules with purple active pill badges, fast navigation across Desk modules.
-  - **Top Desk Navigation Bar:** Breadcrumb badges (Selling / Buying), global search with ⌘K badge, company badge with pulsing status dot (`● Sri Murugan Textiles` / active entity), user profile pill.
-  - **Multi-Tab Document Strip:** Tabs for `Bills • Browse list`, `Draft 1`, and `+ New bill`.
+  - **Top Desk Navigation Bar:** Breadcrumb badges (Selling / Buying), global search with âŒ˜K badge, company badge with pulsing status dot (`â— Sri Murugan Textiles` / active entity), user profile pill.
+  - **Multi-Tab Document Strip:** Tabs for `Bills â€¢ Browse list`, `Draft 1`, and `+ New bill`.
   - **Toggleable & Dockable Side Panel ("Bill list" / "Purchase list"):**
-    - Toggleable via button (`[ 📖 Bill list ]` / `[ 📖 Purchase list ]`), top tab, or `✕` close.
-    - Dockable on **EITHER side** (arrangeable on LEFT or RIGHT via `⇄ Dock Right` / `⇄ Dock Left` button).
+    - Toggleable via button (`[ ðŸ“– Bill list ]` / `[ ðŸ“– Purchase list ]`), top tab, or `âœ•` close.
+    - Dockable on **EITHER side** (arrangeable on LEFT or RIGHT via `â‡„ Dock Right` / `â‡„ Dock Left` button).
     - Preference persisted across sessions via `localStorage` (`zolo_panel_dock` and `zolo_panel_open`).
     - Search input, bill number filter, tabs (`All`, `Draft`, `Date`, `Range`), bill card list with load-to-form capability.
   - **Header Controls & Segmented Pills:**
@@ -2244,10 +2568,10 @@ Implemented backend tables, models, controllers, and inline creation ([+] / Alt+
     - Clean empty-state placeholder rows matching the reference ERP screen.
     - Live calculation of taxable amounts, taxes, and line totals.
   - **Charges, Transport & Remarks Slide-Over Drawer:**
-    - Opens via `[ Charges & remarks  (count) ]` button or header `[ ⚙ Details ]`.
+    - Opens via `[ Charges & remarks  (count) ]` button or header `[ âš™ Details ]`.
     - Tabs for Bill Sundries, Transport & Bales (Bale No, No of Bales, LR No, LR Date, Transporter, Station To, Order No, Credit Days), Remarks & Notes, Settlement.
   - **Fixed Bottom Summary & Action Bar:**
-    - Action buttons: `[ ↺ Discard ]`, `[ 💾 Save as ]`, `[ 💾 Save ]` (primary purple), `[ Review ]`.
+    - Action buttons: `[ â†º Discard ]`, `[ ðŸ’¾ Save as ]`, `[ ðŸ’¾ Save ]` (primary purple), `[ Review ]`.
     - Summary totals: `NET`, `GST / TAX`, and `GRAND TOTAL`.
   - **Zero Regression Rule:** 100% of existing backend fields, models, migrations, and inline creation modals ([+]) are preserved intact.
  
@@ -2275,11 +2599,11 @@ Implemented backend tables, models, controllers, and inline creation ([+] / Alt+
   2. **Transformed Right Drawer into Bill List Panel:**
      - Replaced the redundant "Fast Sale Console" and "Fast Purchase Console" right drawer with the dockable **Bill list** (`desk-bill-list-panel`).
      - Directly lists recent invoices/purchases with live search (`Find a bill...` / `Find a purchase...`), series filter (`Series or edited number`), and status pills (`All`, `Draft`, `Date`, `Range`).
-     - Each card displays invoice number, customer/supplier name, transaction date, amount formatted in ₹, and color-coded status badges (`Paid`, `Due`, `Partial`, `Draft`).
-     - Cards include immediate action links: `[ ✎ Edit ]` (navigates directly to the bill edit page for instant modification), `[ 👁 View ]` (triggers modal detail review), and `[ 🖨 Print ]` (opens printable invoice).
+     - Each card displays invoice number, customer/supplier name, transaction date, amount formatted in â‚¹, and color-coded status badges (`Paid`, `Due`, `Partial`, `Draft`).
+     - Cards include immediate action links: `[ âœŽ Edit ]` (navigates directly to the bill edit page for instant modification), `[ ðŸ‘ View ]` (triggers modal detail review), and `[ ðŸ–¨ Print ]` (opens printable invoice).
   3. **Dockable to Either Side & Fully Toggleable:**
-     - Header tools include `⇄ Dock Left` / `⇄ Dock Right` button and `✕` close button.
-     - Top navigation bar includes `[ 📖 Bill list ]` / `[ 📖 Purchase list ]` button to reopen collapsed drawer.
+     - Header tools include `â‡„ Dock Left` / `â‡„ Dock Right` button and `âœ•` close button.
+     - Top navigation bar includes `[ ðŸ“– Bill list ]` / `[ ðŸ“– Purchase list ]` button to reopen collapsed drawer.
      - Docking mechanics leverage CSS Grid (`grid-template-columns: 1fr 360px` vs `360px 1fr` via `.dock-left` and flex order) for seamless positioning without DOM displacement.
      - User preferences for panel open/collapsed and dock orientation (left vs right) are automatically persisted across page reloads in `localStorage` (`zolo_bill_panel_dock` and `zolo_bill_panel_open`).
   4. **Backend Controllers:**
@@ -2293,17 +2617,17 @@ Implemented backend tables, models, controllers, and inline creation ([+] / Alt+
   - In the main content area, do NOT show the table/DataTables bills register.
   - The content area must be a voucher entry form (adding a new bill by default: `New Purchase Bill` / `New Sales Bill`) matching **Screenshot 3**.
   - All options from "add purchase" and "add sale" brought directly into this simple Optech voucher entry workspace.
-  - The side panel lists recent bills. When a bill card or `[ ✎ Edit ]` is clicked in the side panel, it loads into the main form for in-place editing (Optech software workflow).
+  - The side panel lists recent bills. When a bill card or `[ âœŽ Edit ]` is clicked in the side panel, it loads into the main form for in-place editing (Optech software workflow).
   - The toolbar filters from **Screenshot 2** (PDF, Excel, CSV, Print, Reset icon buttons) moved into the side bill list panel.
   - The filter dropdowns (`Warehouse`, `Purchase/Sale Status`, `Payment Status`) moved from the top bar into the side bill list panel itself.
   - Strictly no invented logic or UI elements not present in the background.
 - **Architectural & Implementation Details:**
   1. **Main Entry Workspace (`.comm-entry-workspace`) Matching Screenshot 3:**
-     - **Header Strip:** Breadcrumb trail (`Home / Buying / Purchase Bills / New` or `Home / Selling / Sales Bills / New`), document icon, dynamic title (`New Purchase Bill` / `New Sales Bill`), pill toggles (`Cash`/`Credit`, `Product`/`Service`/`Mixed`), due date and credit days metadata, quick tools (`[ 📖 Bill list ]`, `[ ⚙ Details ]`).
+     - **Header Strip:** Breadcrumb trail (`Home / Buying / Purchase Bills / New` or `Home / Selling / Sales Bills / New`), document icon, dynamic title (`New Purchase Bill` / `New Sales Bill`), pill toggles (`Cash`/`Credit`, `Product`/`Service`/`Mixed`), due date and credit days metadata, quick tools (`[ ðŸ“– Bill list ]`, `[ âš™ Details ]`).
      - **Primary Fields Row:** `Our bill number` (with series preview and hint), `Supplier bill no` / `Customer PO / Ref`, `Bill date`, `Entry date`, `Party *` (with `+ New Party` modal link and address hint), `Tax classification *` (`purchaseTypes` / `saleTypes`), `Series` (`documentSeries`), `Warehouse *`, and `Biller *` (for sales).
-     - **Items Grid Section:** Counter (`ITEMS 0 line(s) • 7 per page`), density selector (`Compact`, `Cozy`, `Large`), action buttons (`Multi Item`, `+ Create item`, `+ Add row`), quick barcode/item search with `F2` shortcut.
+     - **Items Grid Section:** Counter (`ITEMS 0 line(s) â€¢ 7 per page`), density selector (`Compact`, `Cozy`, `Large`), action buttons (`Multi Item`, `+ Create item`, `+ Add row`), quick barcode/item search with `F2` shortcut.
      - **10-Column Purple Header Table (`#7c3aed`):** `#`, `ITEM`, `PURCHASE/SALE TYPE`, `UNIT`, `RATE`, `QTY`, `AMOUNT`, `TAX`, `TOTAL`, `ACTIONS`. Alternating row lines, empty placeholder state matching screenshot, and `< Page 1/1 >` footer.
-     - **Fixed Bottom Summary Bar:** `Charges & remarks (count)`, inline remarks preview, actions (`[ ↺ Discard ]`, `[ 💾 Save as ]`, `[ 💾 Save ]`, `[ ✓ Submit ]`, `[ Review ]`), live financial calculations (`NET`, `GST / TAX`, `GRAND TOTAL`).
+     - **Fixed Bottom Summary Bar:** `Charges & remarks (count)`, inline remarks preview, actions (`[ â†º Discard ]`, `[ ðŸ’¾ Save as ]`, `[ ðŸ’¾ Save ]`, `[ âœ“ Submit ]`, `[ Review ]`), live financial calculations (`NET`, `GST / TAX`, `GRAND TOTAL`).
      - **Charges & Remarks Drawer:** Slide-over modal with tabs for Transport & Logistics (Bale No, No of Bales, LR No, LR Date, Transporter, Station To, Order No, Credit Days), Notes & Remarks (standard remark picker and notes textarea), and Payment/Account settlement.
   2. **Dockable Side Panel with Screenshot 2 Filters & Dropdowns:**
      - Compact toolbar with Screenshot 2 export/action icons: PDF, Excel, CSV, Print, Reset (`.side-toolbar-actions`).
@@ -2311,12 +2635,12 @@ Implemented backend tables, models, controllers, and inline creation ([+] / Alt+
      - Bill number filter (`Series or edited number`).
      - Quick filter tabs: `All`, `Draft`, `Date`, `Range` with revealable date picker.
      - Single compact box dropdown filters moved from top bar: `Warehouse`, `Purchase/Sale Status`, `Payment Status` (`.side-dropdown-filters`).
-     - Bill cards list: Displays reference number, amount in ₹, party name, transaction date, color-coded status badges (`Paid`, `Due`, `Partial`, `Draft`), and action links (`[ ✎ Edit ]`, `[ 👁 View ]`, `[ 🖨 Print ]`).
+     - Bill cards list: Displays reference number, amount in â‚¹, party name, transaction date, color-coded status badges (`Paid`, `Due`, `Partial`, `Draft`), and action links (`[ âœŽ Edit ]`, `[ ðŸ‘ View ]`, `[ ðŸ–¨ Print ]`).
   3. **Optech In-Place Editing Mechanics:**
-     - Clicking a card or `[ ✎ Edit ]` invokes `loadPurchaseToForm(id)` or `loadSaleToForm(id)` via AJAX (`/purchases/{id}` or `/sales/{id}/json`).
+     - Clicking a card or `[ âœŽ Edit ]` invokes `loadPurchaseToForm(id)` or `loadSaleToForm(id)` via AJAX (`/purchases/{id}` or `/sales/{id}/json`).
      - Form switches method to `PUT` and action to update URL; title updates to `Edit Purchase Bill: [ref]` / `Edit Sales Bill: [ref]`; breadcrumb updates to `Edit: [ref]`; header inputs and items rows are loaded with live rates and totals.
      - Active bill card in side list is highlighted with `.active-editing`.
-     - Clicking `++ New` or `[ ↺ Discard ]` calls `resetFormToNew()`, resetting method to `POST` and action to store route, clearing inputs and blanking items grid.
+     - Clicking `++ New` or `[ â†º Discard ]` calls `resetFormToNew()`, resetting method to `POST` and action to store route, clearing inputs and blanking items grid.
   4. **Backend Controllers:**
      - `PurchaseController`: Eager loads `$lims_product_list_without_variant`, `$lims_product_list_with_variant`, `$currency`, `$purchaseTypes`, `$documentSeries`, `$billSundries`, `$standardRemarks`, `$agents`, `$areas`, `$recent_bills`. Fixed `document_type` column query. `show($id)` returns JSON for in-place edit loading.
      - `SaleController`: Eager loads product lists, series, types, bill sundries, remarks, and recent bills. Added `show($id)` and `getSaleJson($id)` returning JSON for in-place edit loading. Updated `limsProductSearch` to safely accept string queries from autocomplete.
@@ -2375,9 +2699,9 @@ Addressed user feedback:
 
 4. **Full Catalog Compact "Add Product" Modal (Embedded in Purchases & Sales):**
    - Replaced basic 5-field quick modal with the full 5-section catalog product creation workflow from `backend.product.create`:
-     1. **Product Identification:** Product Type (Standard, Combo, Digital, Service), Product Name, Auto-generated Product Code with `⚡ Auto` button, Barcode Symbology (Code 128, Code 39, EAN-8, EAN-13, UPC-A, UPC-E), Brand (dynamic dropdown), and Category (dynamic dropdown).
+     1. **Product Identification:** Product Type (Standard, Combo, Digital, Service), Product Name, Auto-generated Product Code with `âš¡ Auto` button, Barcode Symbology (Code 128, Code 39, EAN-8, EAN-13, UPC-A, UPC-E), Brand (dynamic dropdown), and Category (dynamic dropdown).
      2. **Units of Measure:** Product Unit, Sale Unit, and Purchase Unit.
-     3. **Cost, Pricing & Margins:** Product Cost (₹), Profit Margin (%), Product Price (₹), Wholesale Price (₹) with reactive two-way calculation (`Price = Cost + (Cost * Margin%)`).
+     3. **Cost, Pricing & Margins:** Product Cost (â‚¹), Profit Margin (%), Product Price (â‚¹), Wholesale Price (â‚¹) with reactive two-way calculation (`Price = Cost + (Cost * Margin%)`).
      4. **Tax & Inventory:** Product Tax (dynamic tax dropdown with rates), Tax Method (Exclusive/Inclusive), Alert Quantity, Warranty Period & Type (Months/Years).
    - Styled with compact 24-26px form inputs and 9.5px uppercase labels in a neat 820px modal dialog (`.compact-add-product-modal`).
    - Connected via AJAX to `POST /products/quick-store`, validating and saving all catalog fields via `CommercialController::quickStoreProduct()`, dynamically prepending the new item to the active voucher grid and autocomplete memory.
@@ -2402,7 +2726,7 @@ Addressed user feedback:
 
 1. **Horizontal Space Reallocation & Terms Compaction:**
    - Previously in Row 2, the Terms container was set to `flex: 1`, occupying >800px of empty space across wide viewports.
-   - Constrained the Terms container into `.terms-compact-inline` (`width: 335px !important; flex-shrink: 0 !important; margin-left: auto !important; white-space: nowrap !important;`), pinning `Terms: Standard`, `Credit Days: Standard`, and `+ Transport & Remarks →` neatly to the right edge on a single clean line.
+   - Constrained the Terms container into `.terms-compact-inline` (`width: 335px !important; flex-shrink: 0 !important; margin-left: auto !important; white-space: nowrap !important;`), pinning `Terms: Standard`, `Credit Days: Standard`, and `+ Transport & Remarks â†’` neatly to the right edge on a single clean line.
    - Reallocated ~400px of reclaimed horizontal space directly into primary document input fields.
 
 2. **3px Padding & Breathing Room Enhancements:**
@@ -2415,7 +2739,7 @@ Addressed user feedback:
 
 3. **Expanded Field Widths (Sales & Purchases):**
    - **Sales Command Center (`sale/index.blade.php`):**
-     - Row 1: `Our Bill No` (140px), `Customer PO / Ref` (165px — prevents placeholder truncation), `Bill Date` (125px), `Entry Date` (125px), `Party *` (250px).
+     - Row 1: `Our Bill No` (140px), `Customer PO / Ref` (165px â€” prevents placeholder truncation), `Bill Date` (125px), `Entry Date` (125px), `Party *` (250px).
      - Row 2: `Tax Classification *` (205px), `Series` (145px), `Warehouse *` (200px), `Biller *` (200px).
    - **Purchase Command Center (`purchase/index.blade.php`):**
      - Row 1: `Our Bill No` (140px), `Supplier Bill No` (165px), `Bill Date` (125px), `Entry Date` (125px), `Party *` (250px).
@@ -2453,7 +2777,7 @@ Addressed user feedback:
      - `data-code`: Standard code (e.g., `GST18`, `GST12`, `GST_MULTI`).
      - `data-is-multi`: Flag (`1` for multi-tax / mixed, `0` for single fixed rate).
    - **Single GST Mode:** When a specific GST rate is selected (e.g. `18%-GST Inward` or `12%`), changing the dropdown immediately updates the `TAX` column across all existing table rows and locks them (`pointer-events: none; background: #f1f5f9; color: #475569;`) to maintain tax uniformity without disabling form POST serialization. New rows added default automatically to this active rate.
-   - **Multi-Tax Mode:** When `GST • Multiple rates` or `L/MultiTax` or `Interstate MultiTax` is selected (`is_multi = 1`), row tax dropdowns unlock immediately (`pointer-events: auto`), allowing per-line tax rate customization (0%, 5%, 12%, 18%, 28%).
+   - **Multi-Tax Mode:** When `GST â€¢ Multiple rates` or `L/MultiTax` or `Interstate MultiTax` is selected (`is_multi = 1`), row tax dropdowns unlock immediately (`pointer-events: auto`), allowing per-line tax rate customization (0%, 5%, 12%, 18%, 28%).
    - **Default Product Rate & Free Override:** When items are selected from autocomplete or catalog, the default product price/cost is inserted into `.row-rate`. The user can freely override Rate or Amount at any time, with two-way reactive calculation recalculating line amounts and voucher totals dynamically.
 
 ---
@@ -2472,7 +2796,7 @@ Addressed user feedback:
    - **Root Cause:** Disjointed rounded pills with mismatched borders between input and button inside `.input-group`.
    - **Fix:** Fused `.input-group` controls seamlessly:
      - Applied `border-top-right-radius: 0; border-bottom-right-radius: 0;` to input.
-     - Applied `border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none;` to adjacent buttons (e.g., `⚡ Auto` button, `+` create buttons).
+     - Applied `border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none;` to adjacent buttons (e.g., `âš¡ Auto` button, `+` create buttons).
      - Standardized uniform 34px control heights across all inputs, dropdowns, and button add-ons.
 
 3. **Inline Category & Brand Creation Direct on the Page:**
@@ -2502,15 +2826,15 @@ Addressed user feedback:
 
 5. **Full Width Initial Register & Two-Way "Split View" Navigation:**
    - Addressed user inquiry: *"once the full width enabled, there is no split view option to go back?"*
-   - **Prominent Split View Button:** Replaced ambiguous grey `⧉ Voucher Entry` button on `#fullwidth-register-view` header strip with a high-contrast purple primary button:
-     - `[ ⇄ Split View ]` (`#btn-switch-voucher-mode`) styled in `#7c3aed` with explicit tooltip *"Return to Split View (Voucher Entry + Bill List)"*.
+   - **Prominent Split View Button:** Replaced ambiguous grey `â§‰ Voucher Entry` button on `#fullwidth-register-view` header strip with a high-contrast purple primary button:
+     - `[ â‡„ Split View ]` (`#btn-switch-voucher-mode`) styled in `#7c3aed` with explicit tooltip *"Return to Split View (Voucher Entry + Bill List)"*.
    - **Top Navbar Mode Switcher:** Added `#btn-navbar-workspace-toggle` directly into the top main navbar:
-     - Displays `⛶ Full Width` in Split View mode.
-     - Dynamically changes to `⇄ Split View` (highlighted in purple `.btn-mode-split`) when in Full Width mode.
+     - Displays `â›¶ Full Width` in Split View mode.
+     - Dynamically changes to `â‡„ Split View` (highlighted in purple `.btn-mode-split`) when in Full Width mode.
    - **Intelligent Auto-Return Mechanics:**
-     - Clicking `[ 📖 Bill list ]` or `[ 📖 Purchase list ]` in the top navbar while in Full Width mode automatically switches to Split View and opens the bill list panel.
+     - Clicking `[ ðŸ“– Bill list ]` or `[ ðŸ“– Purchase list ]` in the top navbar while in Full Width mode automatically switches to Split View and opens the bill list panel.
      - Clicking `[ + New ]`, `[ + New Purchase ]`, or `[ + New Sale ]` resets the voucher form and switches to Split View.
-     - Clicking `[ ✎ Edit ]` on any row in the register table switches to Split View and loads that bill into the form for in-place editing.
+     - Clicking `[ âœŽ Edit ]` on any row in the register table switches to Split View and loads that bill into the form for in-place editing.
    - Mode preference persisted across sessions in `localStorage` (`zolo_purchase_workspace_mode`, `zolo_sale_workspace_mode`).
 
 6. **Category & Brand Inline Creation Fix:**
@@ -2568,12 +2892,12 @@ Addressed user inquiry & requirement:
      - `CommercialController::gstLookup` searches existing customers, suppliers, and historical masters for matching GSTIN or PAN.
      - Automatically loads registered company name, contact, address, city, state, postal code, phone, and email if previously recorded.
    - **1-Click Official CBIC GST Portal Verification:**
-     - `[ ↗ ]` button copies the GSTIN to the clipboard and opens official government taxpayer search (`https://services.gst.gov.in/services/searchtp`) with zero captcha friction.
+     - `[ â†— ]` button copies the GSTIN to the clipboard and opens official government taxpayer search (`https://services.gst.gov.in/services/searchtp`) with zero captcha friction.
 3. **Modal UI Enhancements (`purchase/index.blade.php` & `sale/index.blade.php`):**
    - Real-time client-side typing event: typing `33` instantly populates `State: Tamil Nadu` (0ms latency, works offline).
    - Live statutory chip strip: shows State badge (`33 - Tamil Nadu`), Constitution badge (`Proprietorship / Individual`), and Supply rule (`Local Intra-State (CGST + SGST)`).
-   - `[ ⚡ Fetch ]` button and Enter-key listener triggering `/parties/gst-lookup` AJAX.
-   - Visual status badge: Green `✔ Valid GSTIN` or Red `✖ Invalid Checksum`.
+   - `[ âš¡ Fetch ]` button and Enter-key listener triggering `/parties/gst-lookup` AJAX.
+   - Visual status badge: Green `âœ” Valid GSTIN` or Red `âœ– Invalid Checksum`.
 4. **Automated Testing Evidence:**
    - `OptechMasterWebTest.php`: Added tests `test_gst_lookup_decodes_statutory_gstin_and_state` and `test_gst_lookup_recalls_existing_party_from_database`.
    - All 14 tests passing (89 assertions, 100%).
@@ -2599,7 +2923,7 @@ Addressed user inquiry & requirement:
    - Review pending screens in documents/zolo_erp_implementation_docs/32_OPTECH_SCREENS_AUDIT_AND_BACKEND_GAP_REPORT.md.
    - Continue audit and modernization of remaining modules (Job Work, Production, GST).
 
-## 11. Completed Command Center Consolidation (2026-10-07) — SUPERSEDED by section 13 for entry modes
+## 11. Completed Command Center Consolidation (2026-10-07) â€” SUPERSEDED by section 13 for entry modes
 
 - Work on `ui`, as explicitly required by the user. Preserve all current uncommitted edits.
 - Keep `App\Services\Commercial` and its shared pricing, posting, draft, reversal, and permission services.
@@ -2633,12 +2957,12 @@ Addressed user inquiry & requirement:
 
 Decision record: `documents/DOCUMENT_ENTRY_CONSOLIDATION.md`. **There is no separate Fast Entry module.**
 
-- F2 / F12 (and Shift/Alt variants, Alt+F10) are accelerators from one registry (`DocumentShortcutRegistry` → `public/js/document-shortcuts.js`) that open the *existing* document page in new state (`?new=1`). Ctrl+F2 (Sales Order) and Ctrl+F12 (Purchase Order) stay **unassigned**: PO gaps are documented (shares the bill number series, never closes after receipts); `sale_status 2` is Pending, not an order lifecycle.
-- Removed: `commercial/entry.blade.php`, `commercial-entry.js`, `?entry=fast` hijack, `commercial/{sale,purchase}/entry` routes, `CommercialController::entry`, `Modules/OptechSpeedBilling` scaffold, capabilities `sales.fast_counter` / `purchases.fast_entry` (migration `2026_10_14_000002` deletes rows FK-safely and renames settings `fast_entry` → `entry_aids`). `commercial-entry.css` stays (normal pages use it).
+- F2 / F12 (and Shift/Alt variants, Alt+F10) are accelerators from one registry (`DocumentShortcutRegistry` â†’ `public/js/document-shortcuts.js`) that open the *existing* document page in new state (`?new=1`). Ctrl+F2 (Sales Order) and Ctrl+F12 (Purchase Order) stay **unassigned**: PO gaps are documented (shares the bill number series, never closes after receipts); `sale_status 2` is Pending, not an order lifecycle.
+- Removed: `commercial/entry.blade.php`, `commercial-entry.js`, `?entry=fast` hijack, `commercial/{sale,purchase}/entry` routes, `CommercialController::entry`, `Modules/OptechSpeedBilling` scaffold, capabilities `sales.fast_counter` / `purchases.fast_entry` (migration `2026_10_14_000002` deletes rows FK-safely and renames settings `fast_entry` â†’ `entry_aids`). `commercial-entry.css` stays (normal pages use it).
 - Normal pages now have: server draft tabs (`document-workspace.js`, `CommercialDraftService`, migration `2026_10_14_000001` adds title/party metadata), entry aids (`document-aids.js`: previous rates, outstanding/pending bills, copy bill, F6 item, extended tracking), `DocumentContextResolver` for project/exchange/order references, and still post through the legacy adapter into the shared services.
 - Proof: PHP `DocumentEntryTest`, `DocumentEntryWebTest`, `WorkspaceDraftTest`, `PurchaseOrderLifecycleTest`, `CapabilityRetirementTest`; real-browser `tests/Browser/*.spec.mjs` (48 + 31 checks on the normal pages, README there). Full company suite has the same 16 failures as before this work (pre-existing; none new).
-- Known pre-existing failures (not caused by this work): 15F+1E in `phpunit.company.xml` (CapabilityEngineTest ×3, CompanyWriterTest ×11, ErpServiceRegressionTest ×1, StockLedgerMigrationTest ×1), two stale-text tests in `OperationsWebTest`, and `DeploymentReadinessTest::test_offsite_copy…` (mysqldump on the disposable server).
-- Environment notes: WSL MariaDB (3307) may be stopped; the browser specs use a throw-away clone `zolo_browser` on the disposable MySQL (33084) — see `tests/Browser/README.md`. Never run two PHPUnit suites against `zolo_test_phase4b` at once.
+- Known pre-existing failures (not caused by this work): 15F+1E in `phpunit.company.xml` (CapabilityEngineTest Ã—3, CompanyWriterTest Ã—11, ErpServiceRegressionTest Ã—1, StockLedgerMigrationTest Ã—1), two stale-text tests in `OperationsWebTest`, and `DeploymentReadinessTest::test_offsite_copyâ€¦` (mysqldump on the disposable server).
+- Environment notes: WSL MariaDB (3307) may be stopped; the browser specs use a throw-away clone `zolo_browser` on the disposable MySQL (33084) â€” see `tests/Browser/README.md`. Never run two PHPUnit suites against `zolo_test_phase4b` at once.
 
 ## 14. Draft Tabs on Every Document Page + Shortcut Menus Removed (2026-10-08)
 
@@ -2646,9 +2970,9 @@ User request: shortcut keys must not be repeated as separate UI (sidebar), press
 
 - Sidebar `+ New Purchase Bill F12`, `+ New Sales Bill F2`, `+ Add Quotation Alt+F10` and the command-center `+ New Bill F12` button removed. Keys still listed in `?` help and in the `+` tab tooltip.
 - New engine `public/js/document-drafts.js` (tabs, autosave 1.5 s, conflicts, limit, new-document, `?new=1` / `?draft=ID`); adapters: `document-workspace.js` (sale/purchase), `material-document.js` (DC/GRN), `form-drafts.js` (returns legacy + compliance forms, quotation with page hooks). Strip partial `backend/partials/document-draft-tabs.blade.php`, config partial `backend/partials/form-drafts.blade.php`, CSS moved to `public/css/document-drafts.css`.
-- Key again on its own page: current doc saved as draft (no dialog) → new blank tab; untouched blank tab reused. Key for another page saves before navigating. Page New/Discard buttons rerouted through tabs.
+- Key again on its own page: current doc saved as draft (no dialog) â†’ new blank tab; untouched blank tab reused. Key for another page saves before navigating. Page New/Discard buttons rerouted through tabs.
 - Server: `CommercialDraftService::KINDS` (sale, purchase, sreturn, preturn, dc, grn, quotation + permissions), routes `documents/{kind}/drafts` (auth + company.context, no commercial gate), `forgetPosted()` called after successful post in DC/GRN/Return/ReturnPurchase/Quotation/Compliance createNote.
-- Side fix: `return_purchase/create.blade.php` null-safe payment account (unpaid purchase → 500 before).
+- Side fix: `return_purchase/create.blade.php` null-safe payment account (unpaid purchase â†’ 500 before).
 - Tests: commercial suite 70 OK (1 skipped), documents-web 21 OK, browser `document-entry.spec.mjs` 57/57, `document-aids.spec.mjs` 31/31, ad-hoc legacy purchase-return draft check 8/8. Compliance return form not driven end-to-end (clone has no posted bill; renders via shared adapter).
 - Not committed yet (awaiting user).
 
@@ -2731,7 +3055,7 @@ Extended the Optech Desk Command Center visual standards across all 19 views and
    - Segmented navigation pills enabling instant one-click switching across financial modules.
    - Primary action buttons (Add Account, Add Expense, Add Income, New Journal Voucher, Print/PDF).
 2. **Reactive KPI Metrics Strip (`.kpi-summary-strip`):**
-   - Clean, elevated metric cards displaying record counts, debit/credit totals in ₹, category totals, and status indicators.
+   - Clean, elevated metric cards displaying record counts, debit/credit totals in â‚¹, category totals, and status indicators.
 3. **Single-Box Filter Containers (`.desk-filter-card`):**
    - Completely eliminated Bootstrap's double-bordered nested cards. Single crisp 1px bordered filter bars for date windows, warehouses, account selectors, and party types.
 4. **Desk Card Table Wrappers (`.desk-card-wrapper`):**
@@ -2756,10 +3080,10 @@ User report: a closed draft tab came back after switching pages; every page swit
 
 - **Closed tab came back** (reproduced): closing a tab while its autosave POST was still on the way (slow server) let the POST create the draft afterwards. `document-drafts.js` now marks the tab discarded, waits for any in-flight save, then deletes what it created. An untouched blank tab closes without the confirm.
 - **Phantom blank drafts** (found while testing): pages fill hidden fields asynchronously after a form is shown, so "leave/switch tab" saw a change and saved a blank draft. The engine now saves only after a real user edit (trusted input/change/click inside the form, user-driven row changes, or the app's copy action); row changes made during restore/reset are discarded from the observer queue.
-- **Slow pages, root causes measured**: (1) every query cost ~40 ms — native prepared statements over the Windows → WSL `127.0.0.1` relay hit delayed ACK (raw query 0.2 ms). Fix: `DB_EMULATE_PREPARES` option in `config/database.php`, set `true` in local `.env` (documented in `.env.example`). (2) 30–90 `information_schema` look-ups and 40–55 repeated branch-access queries per page from company/branch scoping. Fix: `App\Support\Database\SchemaCache` + memo in `BranchAccess::authorizedBranchIds`, both singletons dropped on DDL / writes to `company_user*`/`company_branches` (AppServiceProvider listener). (3) `php -S` ran without opcache (~1 s per request just compiling). Fix: opcache flags on the `php -S` line of the user's `run-erp.bat`. (4) Debugbar adds ~40%; left on, user can set `DEBUGBAR_ENABLED=false`.
-- Server time per page on the real WSL DB: dashboard 8.7 s → 50 ms, purchases 6.0 s → 112 ms, sales 6.5 s → 95 ms. Browser load on `php -S` with opcache: purchases ~9.8 s → ~2 s (≈1 s with debugbar off).
-- Spec fix: `waitDrafts` and two 409 waits passed an async predicate to `waitForFunction` (a Promise is truthy → never waited); now polled from Node (`waitUntil`). New checks: no phantom draft on reopen, closed-during-save stays closed. Browser 59/59 + 31/31, legacy return 8/8.
-- Company suite: same pre-existing failures as section 13 plus `CompanyAccountingWebTest::test_voucher_hub…` which fails because another session's uncommitted `accounting/vouchers.blade.php` redesign removed "Period controls" (not from this work).
+- **Slow pages, root causes measured**: (1) every query cost ~40 ms â€” native prepared statements over the Windows â†’ WSL `127.0.0.1` relay hit delayed ACK (raw query 0.2 ms). Fix: `DB_EMULATE_PREPARES` option in `config/database.php`, set `true` in local `.env` (documented in `.env.example`). (2) 30â€“90 `information_schema` look-ups and 40â€“55 repeated branch-access queries per page from company/branch scoping. Fix: `App\Support\Database\SchemaCache` + memo in `BranchAccess::authorizedBranchIds`, both singletons dropped on DDL / writes to `company_user*`/`company_branches` (AppServiceProvider listener). (3) `php -S` ran without opcache (~1 s per request just compiling). Fix: opcache flags on the `php -S` line of the user's `run-erp.bat`. (4) Debugbar adds ~40%; left on, user can set `DEBUGBAR_ENABLED=false`.
+- Server time per page on the real WSL DB: dashboard 8.7 s â†’ 50 ms, purchases 6.0 s â†’ 112 ms, sales 6.5 s â†’ 95 ms. Browser load on `php -S` with opcache: purchases ~9.8 s â†’ ~2 s (â‰ˆ1 s with debugbar off).
+- Spec fix: `waitDrafts` and two 409 waits passed an async predicate to `waitForFunction` (a Promise is truthy â†’ never waited); now polled from Node (`waitUntil`). New checks: no phantom draft on reopen, closed-during-save stays closed. Browser 59/59 + 31/31, legacy return 8/8.
+- Company suite: same pre-existing failures as section 13 plus `CompanyAccountingWebTest::test_voucher_hubâ€¦` which fails because another session's uncommitted `accounting/vouchers.blade.php` redesign removed "Period controls" (not from this work).
 - Uncommitted work from another session is in the tree (compliance/accounting/customer/supplier views); do not sweep it into these commits.
 
 ---
@@ -2812,18 +3136,18 @@ Comprehensive modernization of the operating expenses subsystem and the entire 2
 - `vendor\bin\phpunit tests\Feature\CompanyAccountingWebTest.php tests\Feature\AccountingWebTest.php tests\Feature\DocumentEntryWebTest.php tests\Feature\OptechMasterWebTest.php tests\Feature\OptechVoucherWebTest.php`: **PASS (46 tests, 337 assertions, 100% GREEN)**.
 - Total zero-regression integrity preserved across all controller routes, parameters, DataTables AJAX queries, date navigation logic, and Chart.js datasets.
 
-## 16. Route Audit — No GET Route Answers a Server Error (2026-10-08)
+## 16. Route Audit â€” No GET Route Answers a Server Error (2026-10-08)
 
 User report: `Undefined variable $general_setting` on /compliance/returns and "many pages' routes are not connected".
 
-- Method: crawled every GET route as admin (fresh application per request, so `View::share` from one request cannot hide another page's missing data) on the disposable clone, plus every sidebar/menu link on the dev data. 137 routes answered 500 → **0**.
+- Method: crawled every GET route as admin (fresh application per request, so `View::share` from one request cannot hide another page's missing data) on the disposable clone, plus every sidebar/menu link on the dev data. 137 routes answered 500 â†’ **0**.
 - Causes and fixes:
-  - Compliance pages now extend the main layout (another session's redesign) but their route group lacked the `common` middleware → added `'common'` to `routes/compliance.php`.
-  - Report charts: `$color` undefined for themes other than the 4 legacy ones → default colour (`report/warehouse_stock`, `best_seller`); Product Report opened without filters → defaults (this month, all warehouses).
-  - Catalogue QR "Open menu": route pointed at missing `viewCatalogue` → `showPublicMenu`, 404 for unknown/inactive QR, new views `backend/qr/public_menu*.blade.php`. Still behind login (public access needs a company-scoping decision).
-  - `Route::resource` create/show/edit with no controller action (~90 URLs) → `Handler::map` turns "controller method does not exist" into 404.
+  - Compliance pages now extend the main layout (another session's redesign) but their route group lacked the `common` middleware â†’ added `'common'` to `routes/compliance.php`.
+  - Report charts: `$color` undefined for themes other than the 4 legacy ones â†’ default colour (`report/warehouse_stock`, `best_seller`); Product Report opened without filters â†’ defaults (this month, all warehouses).
+  - Catalogue QR "Open menu": route pointed at missing `viewCatalogue` â†’ `showPublicMenu`, 404 for unknown/inactive QR, new views `backend/qr/public_menu*.blade.php`. Still behind login (public access needs a company-scoping decision).
+  - `Route::resource` create/show/edit with no controller action (~90 URLs) â†’ `Handler::map` turns "controller method does not exist" into 404.
   - Dead route `sales/{id}/create` (`sale.draft`, view missing, unlinked) removed.
-  - Missing record → 404 instead of 500: `findOrFail` in ~65 single-record actions (edit/show/invoice/update/destroy), plus guards on autocomplete endpoints called without `data`; `deleteBySelection` loops and `store` left unchanged. Null `created_at` fallbacks in purchase/sale/transfer edit views.
+  - Missing record â†’ 404 instead of 500: `findOrFail` in ~65 single-record actions (edit/show/invoice/update/destroy), plus guards on autocomplete endpoints called without `data`; `deleteBySelection` loops and `store` left unchanged. Null `created_at` fallbacks in purchase/sale/transfer edit views.
 - Regression test: `tests/Feature/NavigationWebTest.php` (in `phpunit.documents-web.xml`): every menu link renders without 5xx (fresh app per link), and page-less routes answer 404.
 
 ## Page Load and Navigation Performance (2026-10-08)
@@ -2844,35 +3168,35 @@ User report: `Undefined variable $general_setting` on /compliance/returns and "m
 - Removed duplicate commercial New/Details/Submit controls, kept legacy-mode New fallback, moved the sales register into its workspace, preserved the item search row during reset/load/delete, and fixed new-draft return to entry. DC/GRN use the same available-height layout and retain draft-tab New.
 - `public/js/document-keyboard.js` owns Enter progression across document forms; native Tab/Shift+Tab, autocomplete/select selection, multiline text, IME and modal keys remain owned by their controls. Dialogs restore opener focus. Required fields inside collapsed optional details reveal for native validation. Alt+I captures before bootstrap-select in sales/purchase/DC/GRN.
 - Coverage includes sales/purchases, DC/GRN, quotations, transfers, adjustments, returns, accounting vouchers, quotation conversions, exchange and packing challan creation; legacy create/edit forms use the shared layout. Packing challan finalization receives the layout but has no populated browser fixture because the database contains no existing packing slip linked to a sale.
-- Fixed the inherited one-second entry animation that temporarily moved controls below the viewport. Classic tables wrap headers and fit every column. The populated purchase edit shows the complete first row and its edit button at 1280×720. Voucher tables override global minimum sizes so columns, Add Line, remarks and Save remain visible without overlapping; dates and shortcut hints fit.
-- Final proof: `document-layout.spec.mjs` passes 53 checks across 26 screens at 1366×768 and 1280×720, including growing grids, expanded optional details, Enter/Tab/Shift+Tab, dialog focus return, register placement and no JavaScript errors. A final voucher-only run passes three checks after shortcut wrapping. Screenshots and logs are under `scratch`.
+- Fixed the inherited one-second entry animation that temporarily moved controls below the viewport. Classic tables wrap headers and fit every column. The populated purchase edit shows the complete first row and its edit button at 1280Ã—720. Voucher tables override global minimum sizes so columns, Add Line, remarks and Save remain visible without overlapping; dates and shortcut hints fit.
+- Final proof: `document-layout.spec.mjs` passes 53 checks across 26 screens at 1366Ã—768 and 1280Ã—720, including growing grids, expanded optional details, Enter/Tab/Shift+Tab, dialog focus return, register placement and no JavaScript errors. A final voucher-only run passes three checks after shortcut wrapping. Screenshots and logs are under `scratch`.
 - Draft regression passes 59 checks. JavaScript keyboard tests pass nine tests. PHP document/layout tests pass nine tests/101 assertions; accounting and compliance fixture tests pass eight tests/24 assertions (17 tests/125 assertions total). Scoped diff checks and script syntax checks pass. Shell smoke checks cover expanded/icon-only/hidden sidebars, dark theme and mobile Save access.
 - Browser proof uses disposable server 8091/database 33084 and source-bound rendered fixtures. Successful live posting and populated packing-challan finalization were not exercised; no live business records were posted by this task.
 - Recovery: this request is complete. Follow the user's next request on `ui`; preserve other uncommitted work. No commit or deployment was requested or performed.
 
 ## 18. Company Groups + Post-Login Company Picker (2026-10-09)
 
-User request: sign-in is company based — after admin login, pick a group (e.g. MJ Group) then a company inside it (Motumo FMCG manufacturing, Timber, Textile); modern UI. Decisions (user): picker after login (not on login form), group = container only (separate books per company), group admins see every company in the group, full scope.
+User request: sign-in is company based â€” after admin login, pick a group (e.g. MJ Group) then a company inside it (Motumo FMCG manufacturing, Timber, Textile); modern UI. Decisions (user): picker after login (not on login form), group = container only (separate books per company), group admins see every company in the group, full scope.
 
-- **Schema:** `2026_10_13_000001_create_company_groups` — `company_groups`, `company_group_admins`, nullable `companies.company_group_id`. Applied to local dev DB.
-- **Service:** `App\Services\Platform\CompanyDirectoryService` — `directory()`, `createGroup()` (Admin/Owner only, can move own ungrouped companies in), `addGroupAdmin()` (syncs `company_user` + branches for every group company), `createCompany()` (MAIN branch, first FY, main warehouse, chart from `ChartOfAccountsSeeder::accounts()`, semantic mappings, industry profile + business type; capability presets follow the optional-activation gate, otherwise only profile defaults install; audit `company_created`).
+- **Schema:** `2026_10_13_000001_create_company_groups` â€” `company_groups`, `company_group_admins`, nullable `companies.company_group_id`. Applied to local dev DB.
+- **Service:** `App\Services\Platform\CompanyDirectoryService` â€” `directory()`, `createGroup()` (Admin/Owner only, can move own ungrouped companies in), `addGroupAdmin()` (syncs `company_user` + branches for every group company), `createCompany()` (MAIN branch, first FY, main warehouse, chart from `ChartOfAccountsSeeder::accounts()`, semantic mappings, industry profile + business type; capability presets follow the optional-activation gate, otherwise only profile defaults install; audit `company_created`).
 - **UI:** `CompanySelectorController` + `resources/views/backend/company/select.blade.php` + `public/css/company-picker.css` (neo tokens; group "holding rail" connecting group badge to company cards; industry accent per card; `/` search; New group / New company dialogs). Routes `company.select|choose|groups.store|companies.store` under `auth` only.
-- **Flow:** login → `session()->regenerate()` + clear context → `/select-company` (auto-enters when one company + one branch) → `redirect()->intended('/dashboard')`. `ResolveLegacyCompanyContext` redirects ambiguous sessions to the picker. Top bar chip (group › company · FY) in `layout/main.blade.php` links to `/select-company?manage=1`.
+- **Flow:** login â†’ `session()->regenerate()` + clear context â†’ `/select-company` (auto-enters when one company + one branch) â†’ `redirect()->intended('/dashboard')`. `ResolveLegacyCompanyContext` redirects ambiguous sessions to the picker. Top bar chip (group â€º company Â· FY) in `layout/main.blade.php` links to `/select-company?manage=1`.
 - **Tests:** `CompanyGroupDirectoryTest` (8) + `CompanyGroupIndustryTest` (1) added to `phpunit.company.xml`; CompanyContext/LegacyCompanyIsolationWeb/Navigation/CompanyAccountingWeb/Industry/OptechMaster/CommercialUiWiring/Branch/DocumentEntryWeb green. `CapabilityEngineTest` 3 failures are pre-existing: local `.env` sets `ERP_OPTIONAL_ACTIVATION_READY=true`.
 - **Committed** `b236ed1` on `ui` (only this feature; other uncommitted work left in tree). Pushed to origin.
 - **Top bar follow-up (2026-10-09, uncommitted):** company chip enlarged (32px, initials mark, `html body` selectors beat commercial screens' fixed 28px nav-anchor width that crushed it to "5-26"); POS button, cash-register list and language menu hidden via Blade comments in `layout/main.blade.php` (restore by uncommenting); global `.topbar-shortcuts` button (`data-shortcut-help`) on every main-layout page, duplicate removed from `partials/command-center-nav.blade.php`; `tests/Browser/document-aids.spec.mjs` now clicks `.topbar-shortcuts`.
-- **Dropdowns + bill header (2026-10-09, uncommitted):** bootstrap-select was 1.12 (Bootstrap 3 build) on Bootstrap 4.0 → menus stuck open, `setAttribute` JS errors. Upgraded `public/vendor/bootstrap/{js,css}/bootstrap-select.min.*` to 1.13.18 (`?v=1.13.18` on includes) + global `.bootstrap-select .dropdown-menu.inner{display:block!important}` (page "close other dropdowns" handlers strip `.show` from the open list). Verified open ~20 ms, pick closes, on sales/purchase/products/customer/expenses/transfers/quotations/reports. Purchase + sale header: two aligned rows (`doc-row-a` party details inline; `doc-row-b` Payment Cash/Credit + Items Product/Service/Mixed moved from top bar beside Tax classification), 30px controls, container-query wrap for narrow forms, no page scroll at 1920×900 and 1366×768. Fixed invisible "New" pill. Pre-existing: `/transfers/create` JS "Illegal return statement".
+- **Dropdowns + bill header (2026-10-09, uncommitted):** bootstrap-select was 1.12 (Bootstrap 3 build) on Bootstrap 4.0 â†’ menus stuck open, `setAttribute` JS errors. Upgraded `public/vendor/bootstrap/{js,css}/bootstrap-select.min.*` to 1.13.18 (`?v=1.13.18` on includes) + global `.bootstrap-select .dropdown-menu.inner{display:block!important}` (page "close other dropdowns" handlers strip `.show` from the open list). Verified open ~20 ms, pick closes, on sales/purchase/products/customer/expenses/transfers/quotations/reports. Purchase + sale header: two aligned rows (`doc-row-a` party details inline; `doc-row-b` Payment Cash/Credit + Items Product/Service/Mixed moved from top bar beside Tax classification), 30px controls, container-query wrap for narrow forms, no page scroll at 1920Ã—900 and 1366Ã—768. Fixed invisible "New" pill. Pre-existing: `/transfers/create` JS "Illegal return statement".
 
 ---
 
 ## 20. Party Details Strip Desync Fix (2026-10-09)
 
-User report (screenshot): picker shows "Select Supplier" but Party details strip shows "GSTIN: No GSTIN recorded · Test address, Test City · Credit 0 days".
+User report (screenshot): picker shows "Select Supplier" but Party details strip shows "GSTIN: No GSTIN recorded Â· Test address, Test City Â· Credit 0 days".
 
 - **Root cause 1:** `updatePartyCard()` ran at DOM ready while the native `<select>` (no empty option) implicitly selected the first party; bootstrap-select then inserted its title option and set `selectedIndex` silently (no `change`), so the strip kept the first party's data. Fix: clear `selectedIndex` to -1 before the initial `updatePartyCard()` in `purchase/index.blade.php` and `sale/index.blade.php` (also stops a never-picked form posting the first party).
 - **Root cause 2:** duplicate `id="party-gst-badge"` (strip + New Party modal). Modal GSTIN validation wrote into/hid the strip badge. Modal badge renamed `party-modal-gst-badge` in both views.
 - **Proof:** new `tests/Browser/party-details.spec.mjs` 39/39 on disposable server 8091; `document-entry` 59/59 and `document-aids` 31/31 still pass. Not committed yet.
-- **Follow-up (GSTIN not shown):** Supplier master form saves GSTIN only to `suppliers.vat_number`; purchase page selected/read only `tax_no` → "No GSTIN recorded". Fixed: `PurchaseController` supplier list selects `vat_number`; option `data-tax-no` falls back `tax_no ?: vat_number`. Spec now 40/40. Dev supplier #44 "central warehouse corporation" has both columns NULL (no GSTIN ever entered). No `GST_LOOKUP_URL` provider configured; lookup is GSTIN→details only, never name→GSTIN.
+- **Follow-up (GSTIN not shown):** Supplier master form saves GSTIN only to `suppliers.vat_number`; purchase page selected/read only `tax_no` â†’ "No GSTIN recorded". Fixed: `PurchaseController` supplier list selects `vat_number`; option `data-tax-no` falls back `tax_no ?: vat_number`. Spec now 40/40. Dev supplier #44 "central warehouse corporation" has both columns NULL (no GSTIN ever entered). No `GST_LOOKUP_URL` provider configured; lookup is GSTINâ†’details only, never nameâ†’GSTIN.
 
 ## 21. Supplier Required Fields Relaxed (2026-10-09, uncommitted)
 - Supplier create/edit now require only Name + Phone (phone kept: "also create customer" writes to `customers.phone_number`, NOT NULL).
@@ -2886,16 +3210,16 @@ User report (screenshot): picker shows "Select Supplier" but Party details strip
 
 ## 22. GST Unification + Profile/Sidebar Fixes (2026-10-11, uncommitted)
 
-- **Problem:** three tax lists. Settings › Tax (`taxes`, only "VAT 10%") set line tax; Purchase/Sale Types ("Tax Classification") only locked the browser rate; the real GST engine (`tax_categories`/`tax_rates`/`hsn_sac_codes`/`party_tax_profiles`/`tax_registrations`, TaxDeterminationService) was empty and had only an ID-based setup form.
-- **Fix:** `app/Services/Tax/GstSetupService.php` owns GST master data: `registerCompany`, `installDefaults` (slabs 0/0.25/3/5/12/18/28/40 + exempt/nil/non-GST from 2017-07-01, 8 GST ledgers 1310-1313/2050-2053 + semantic mappings, legacy `tax_id` → slab by rate, party sync), `changeRate` (dated periods), `assignProduct`, `syncParty`/`deriveParty`, `rateFor`, `currentRates`, `entryConfig`, `usesGst`.
-- **Settings › GST** (`/settings/gst`, GstSettingsController, view `backend/gst/settings.blade.php`): registration (GSTIN fetch), rates, bulk products (rate + HSN), HSN/SAC, parties, ledgers. Settings › Tax redirects there for Indian companies (`?legacy=1` keeps the VAT list). Old ID-based tax forms removed from `/compliance/setup`.
-- **Observers** (AppServiceProvider::bootGstMasterSync): supplier `vat_number` / customer `tax_no` / `state` → `party_tax_profiles`; product HSN → catalog. TaxDeterminationService derives a missing party profile and names the product in errors.
+- **Problem:** three tax lists. Settings â€º Tax (`taxes`, only "VAT 10%") set line tax; Purchase/Sale Types ("Tax Classification") only locked the browser rate; the real GST engine (`tax_categories`/`tax_rates`/`hsn_sac_codes`/`party_tax_profiles`/`tax_registrations`, TaxDeterminationService) was empty and had only an ID-based setup form.
+- **Fix:** `app/Services/Tax/GstSetupService.php` owns GST master data: `registerCompany`, `installDefaults` (slabs 0/0.25/3/5/12/18/28/40 + exempt/nil/non-GST from 2017-07-01, 8 GST ledgers 1310-1313/2050-2053 + semantic mappings, legacy `tax_id` â†’ slab by rate, party sync), `changeRate` (dated periods), `assignProduct`, `syncParty`/`deriveParty`, `rateFor`, `currentRates`, `entryConfig`, `usesGst`.
+- **Settings â€º GST** (`/settings/gst`, GstSettingsController, view `backend/gst/settings.blade.php`): registration (GSTIN fetch), rates, bulk products (rate + HSN), HSN/SAC, parties, ledgers. Settings â€º Tax redirects there for Indian companies (`?legacy=1` keeps the VAT list). Old ID-based tax forms removed from `/compliance/setup`.
+- **Observers** (AppServiceProvider::bootGstMasterSync): supplier `vat_number` / customer `tax_no` / `state` â†’ `party_tax_profiles`; product HSN â†’ catalog. TaxDeterminationService derives a missing party profile and names the product in errors.
 - **Product form + quick item:** GST rate + HSN replace "Product Tax" when `usesGst()`.
 - **Purchase/Sale pages:** `public/js/gst-entry.js` (partial `backend/partials/gst-entry.blade.php`) in GST mode hides Tax Classification, adds Place of supply + RCM, locks row rate, live server preview with CGST/SGST/IGST breakdown. Save already posts server-previewed lines (command-center-form.js). LegacyCommercialCommand drops browser tax/totals in GST mode.
-- **Other fixes:** deleted legacy tax → named error (was 404); GST lookup used hard-coded state 33.
+- **Other fixes:** deleted legacy tax â†’ named error (was 404); GST lookup used hard-coded state 33.
 - **Tests:** `tests/Feature/GstSetupTest.php` (8) in phpunit.compliance.xml.
 - **Also this session:** business profile subtype dropdown shows saved subtype + status text + dark mode (operations); sidebar scroll/open menus persist (`public/js/sidebar-state.js`).
-- **Next:** start MariaDB, open Settings › GST: save GSTIN → Install standard GST setup → set product rates/HSN.
+- **Next:** start MariaDB, open Settings â€º GST: save GSTIN â†’ Install standard GST setup â†’ set product rates/HSN.
 
 ### Blade @json ParseError Fix in gst-entry.blade.php (2026-10-12)
 - **Issue:** Accessing `/purchases` or `/sales` threw `ParseError: Unclosed '[' does not match ')'` at `resources/views/backend/partials/gst-entry.blade.php:5`.
@@ -2905,32 +3229,32 @@ User report (screenshot): picker shows "Select Supplier" but Party details strip
 ## 23. GST Round-Off + A4 Tax Invoice (2026-10-12, uncommitted)
 
 - **Trigger:** user's FMCG sample bill (MSS Native Foods INV2627-403): taxable 9,568.30 + CGST 155 + SGST 155 = 9,878.30, round off -0.30, grand 9,878, words, HSN, rate incl. GST, bank/terms/declaration.
-- **Round-off:** `CommercialPricing::calculate` rounds a GST *sale* (data has `_tax_snapshot`) to whole rupees; `round_off` returned by preview, checked if submitted, stored in `sales.attributes_json.round_off` (no migration). Purchases and non-GST sales unchanged. `SalePostingService` posts the difference to role `rounding` (ledger 6095 "Round Off", added to `GstSetupService::LEDGERS`; `ensureLedgers($companyId, ['rounding'])` auto-creates it). `ReturnService`: the credit note that returns the last of every sold quantity carries the sale round-off (posted to rounding), so notes total the invoice and AR closes. `gst-entry.js` shows "Round off ±x" in the GST breakdown.
+- **Round-off:** `CommercialPricing::calculate` rounds a GST *sale* (data has `_tax_snapshot`) to whole rupees; `round_off` returned by preview, checked if submitted, stored in `sales.attributes_json.round_off` (no migration). Purchases and non-GST sales unchanged. `SalePostingService` posts the difference to role `rounding` (ledger 6095 "Round Off", added to `GstSetupService::LEDGERS`; `ensureLedgers($companyId, ['rounding'])` auto-creates it). `ReturnService`: the credit note that returns the last of every sold quantity carries the sale round-off (posted to rounding), so notes total the invoice and AR closes. `gst-entry.js` shows "Round off Â±x" in the GST breakdown.
 - **Tax invoice print:** new `resources/views/backend/compliance/tax-invoice.blade.php` (A4, table layout, DomPDF-safe) used by `DocumentRenderingService::html` for format a4; thermal keeps `compliance/print.blade.php`. Snapshot adds unit, discount, trade name, states, party contact, ship-to, round_off, due date, paid, references, note, `print` (company letterhead/bank/terms). `dto()` falls back to live print details for older snapshots. Helpers `inr()` (Indian grouping) and `rupeesInWords()` (lakh/crore).
-- **Settings › GST › Registration:** "Invoice print details" form → `companies.settings_json.invoice_print` (action `print`).
+- **Settings â€º GST â€º Registration:** "Invoice print details" form â†’ `companies.settings_json.invoice_print` (action `print`).
 - **Sales/purchase page Print:** `command-center-form.js` opens `/compliance/documents/{kind}/{id}/print?format=a4` for posted documents with a snapshot (`printUrl` in command-center-form partial); otherwise the old modal print.
-- **Tests:** compliance suite 72/73 (+1 skipped) after updates (23.6→24, 21.24→21, partial return leaves 12.20 open, exchange leaves 0.20 due, final-return rounding nets to 0, print text assertions); IndustryFlowIntegrationTest updated (1499, 28) and green; `CommercialPricingTest` adds sample-invoice round-off. DC/GRN/Optech/DocumentEntry web tests need the MySQL dev DB (was down) — not run. Pre-existing failure before this work: `ComplianceHttpTest::test_web_and_api_note_posting_share_retry_and_approval_contracts` (500).
+- **Tests:** compliance suite 72/73 (+1 skipped) after updates (23.6â†’24, 21.24â†’21, partial return leaves 12.20 open, exchange leaves 0.20 due, final-return rounding nets to 0, print text assertions); IndustryFlowIntegrationTest updated (1499, 28) and green; `CommercialPricingTest` adds sample-invoice round-off. DC/GRN/Optech/DocumentEntry web tests need the MySQL dev DB (was down) â€” not run. Pre-existing failure before this work: `ComplianceHttpTest::test_web_and_api_note_posting_share_retry_and_approval_contracts` (500).
 
 ## 24. Sample GST Sales Bill on Dev DB + Draft Restore Fix (2026-10-12, uncommitted)
 
-- **Doc:** `documents/sample-sales-bill/SAMPLE_SALES_BILL.md` (+ screenshots, `tax-invoice-MJ-00001.pdf`) — full walkthrough done in the real UI via Playwright on `localhost:8080` (user chose dev DB).
-- **Dev DB data added (company 1):** standard COA (32 rows, tinker, same as `CompanyDirectoryService::installChart`) + `seedCompany` mappings; GST registration `33ABCDE1234F1Z7` (synthetic); invoice print details; products 36/37 → GST 18%, HSN 8542/8473; customer 1 GSTIN `33PQRSX5678K1Z5`; purchase PUR-00001 (stock 10 each); sale MJ-00001 id 56 ₹15,104 posted (journal 106).
-- **Bug fixed:** `public/js/document-workspace.js` `restoreLines()` — `setAttribute(name, null)` stored `"null"` → reopened drafts posted `product_batch_id: "null"` → "The reference must belong to the selected product." Now null removes the attribute.
-- **Also fixed earlier this day:** `resources/views/backend/partials/gst-entry.blade.php` multi-line `@json(...)` ParseError → array built in `@php`.
+- **Doc:** `documents/sample-sales-bill/SAMPLE_SALES_BILL.md` (+ screenshots, `tax-invoice-MJ-00001.pdf`) â€” full walkthrough done in the real UI via Playwright on `localhost:8080` (user chose dev DB).
+- **Dev DB data added (company 1):** standard COA (32 rows, tinker, same as `CompanyDirectoryService::installChart`) + `seedCompany` mappings; GST registration `33ABCDE1234F1Z7` (synthetic); invoice print details; products 36/37 â†’ GST 18%, HSN 8542/8473; customer 1 GSTIN `33PQRSX5678K1Z5`; purchase PUR-00001 (stock 10 each); sale MJ-00001 id 56 â‚¹15,104 posted (journal 106).
+- **Bug fixed:** `public/js/document-workspace.js` `restoreLines()` â€” `setAttribute(name, null)` stored `"null"` â†’ reopened drafts posted `product_batch_id: "null"` â†’ "The reference must belong to the selected product." Now null removes the attribute.
+- **Also fixed earlier this day:** `resources/views/backend/partials/gst-entry.blade.php` multi-line `@json(...)` ParseError â†’ array built in `@php`.
 - **Open findings:** invoice prints USD (only currency row is USD; words only for INR); register action menu lacks Print; no UI to install COA on existing company; leftover dry-run sale draft id 19.
 
 ## 25. Company Profile + INR + Logo (2026-10-12)
 
-- **User asks:** USD→INR; bills under company name (zoloERP Pro); logo upload; full company details at creation (group or independent). Chose: FMCG·Manufacturer for company 1, INR added as base (USD kept), picker dialog + Settings › Company profile, push all to origin + upstream `ui`.
-- **Code:** migration `2026_10_16_000001_add_profile_to_companies` (address, city, postal_code, phone, email, website, pan, logo + INR currency row); `App\Services\Platform\CompanyProfileService` (single save path, validates, logo → `public/images/company/` new file per upload, GSTIN → `GstSetupService::registerCompany` so registration legal/trade name + address follow the company; PAN defaults from GSTIN); `CompanyProfileController` + `settings/company` routes + `backend/company/profile.blade.php` (also currency → app default, industry change via `IndustryProfileService::apply`); picker `New company` dialog has all fields (`createCompany(..., $logo)`, default INR); `DocumentRenderingService::printSettings` merges profile contact/PAN/logo over GST print details, `logo()` data URI (HTML + DomPDF); tax-invoice letterhead shows logo/PAN; GST print form lost phone/email/website (legacy values kept as fallback); sidebar Settings › Company profile.
+- **User asks:** USDâ†’INR; bills under company name (zoloERP Pro); logo upload; full company details at creation (group or independent). Chose: FMCGÂ·Manufacturer for company 1, INR added as base (USD kept), picker dialog + Settings â€º Company profile, push all to origin + upstream `ui`.
+- **Code:** migration `2026_10_16_000001_add_profile_to_companies` (address, city, postal_code, phone, email, website, pan, logo + INR currency row); `App\Services\Platform\CompanyProfileService` (single save path, validates, logo â†’ `public/images/company/` new file per upload, GSTIN â†’ `GstSetupService::registerCompany` so registration legal/trade name + address follow the company; PAN defaults from GSTIN); `CompanyProfileController` + `settings/company` routes + `backend/company/profile.blade.php` (also currency â†’ app default, industry change via `IndustryProfileService::apply`); picker `New company` dialog has all fields (`createCompany(..., $logo)`, default INR); `DocumentRenderingService::printSettings` merges profile contact/PAN/logo over GST print details, `logo()` data URI (HTML + DomPDF); tax-invoice letterhead shows logo/PAN; GST print form lost phone/email/website (legacy values kept as fallback); sidebar Settings â€º Company profile.
 - **Tests:** `tests/Feature/CompanyProfileTest.php` (3 tests) added to `phpunit.compliance.xml`.
 - **Dev DB:** company 1 profile filled via UI, INR (id 2) base + general_settings.currency, industry fmcg/manufacturer, sale MJ-00002 printed with logo. Doc section 11 in `documents/sample-sales-bill/SAMPLE_SALES_BILL.md`.
 
 ## 26. Textile Company + Picker Logo Fix (2026-10-12)
 
-- **Bug fixed:** `CompanyDirectoryService::createCompany` type hint had lost backslashes (`?IlluminateHttpUploadedFile`) in 8b4661e → New company with logo crashed. Regression test `CompanyProfileTest::test_new_company_dialog_saves_profile_logo_and_gst_registration` (4/4).
-- **Dev DB:** company 14 `ZTEX` zoloERP Textiles (Textile · in_house_processing, GSTIN 33ZOLOT1234K1Z5 synthetic, INR, logo) created via picker UI.
-- **Doc:** `documents/textile-company/TEXTILE_COMPANY.md` — purchase/sales/GRN/DC identical across industries; textile adds Job Work + dot-matrix, attributes, process types, qty scale 3. Gaps: MTR unit not created (new company has no units), no bale/bundle/LR inputs on entry screens, receipt/warehouse labels unused, old process types linger after industry switch.
+- **Bug fixed:** `CompanyDirectoryService::createCompany` type hint had lost backslashes (`?IlluminateHttpUploadedFile`) in 8b4661e â†’ New company with logo crashed. Regression test `CompanyProfileTest::test_new_company_dialog_saves_profile_logo_and_gst_registration` (4/4).
+- **Dev DB:** company 14 `ZTEX` zoloERP Textiles (Textile Â· in_house_processing, GSTIN 33ZOLOT1234K1Z5 synthetic, INR, logo) created via picker UI.
+- **Doc:** `documents/textile-company/TEXTILE_COMPANY.md` â€” purchase/sales/GRN/DC identical across industries; textile adds Job Work + dot-matrix, attributes, process types, qty scale 3. Gaps: MTR unit not created (new company has no units), no bale/bundle/LR inputs on entry screens, receipt/warehouse labels unused, old process types linger after industry switch.
 
 ## 27. Textile Preset Gaps Fixed (2026-10-12, committed locally)
 
@@ -2943,24 +3267,24 @@ User report (screenshot): picker shows "Select Supplier" but Party details strip
 
 ## 28. Textile Job Work End-to-End Run + Fixes (2026-10-13)
 
-- **Run (dev DB, company 14 ZTEX, UI via Playwright):** purchase grey 1000 m (PUR-00001) → custom conversion process DYE-RB → job work order/dispatch (Material DC)/receipt 980 + 20 loss → service bill PUR-00002 ₹15,435 → paid PAY-00001 (bank) → sale MJ-00001 500 m ₹78,750 → REC-00001. Books balance. Doc: `documents/textile-job-work/TEXTILE_JOB_WORK_CYCLE.md`.
-- **Fixes:** `App\Support\CompanyUnique` (party uniqueness per company, blanks ignored) in Supplier/CustomerController; `CompanyDirectoryService::installStarterMasters()` (customer group, category, biller, Cash/Bank accounts, OptechMasterSeeder::seedCompany) + migration 000003; quick item `profit_margin` default; chart template adds role accounts (1150, 1250, 4040, 4050, 5030, 5040; 5020→inventory_loss, 4030→shipping_income, 6090 system) + `seedCompany` fills unmapped roles + migration 000004; OperationsController converts InvalidArgumentException to form errors; `registerCompany` calls `ensureLedgers`; register Add Payment: modals above backdrop (commercial-workspace.css), restored handlers with `data-due` (Sale/PurchaseController); register row menus pinned fixed (main.blade.php).
+- **Run (dev DB, company 14 ZTEX, UI via Playwright):** purchase grey 1000 m (PUR-00001) â†’ custom conversion process DYE-RB â†’ job work order/dispatch (Material DC)/receipt 980 + 20 loss â†’ service bill PUR-00002 â‚¹15,435 â†’ paid PAY-00001 (bank) â†’ sale MJ-00001 500 m â‚¹78,750 â†’ REC-00001. Books balance. Doc: `documents/textile-job-work/TEXTILE_JOB_WORK_CYCLE.md`.
+- **Fixes:** `App\Support\CompanyUnique` (party uniqueness per company, blanks ignored) in Supplier/CustomerController; `CompanyDirectoryService::installStarterMasters()` (customer group, category, biller, Cash/Bank accounts, OptechMasterSeeder::seedCompany) + migration 000003; quick item `profit_margin` default; chart template adds role accounts (1150, 1250, 4040, 4050, 5030, 5040; 5020â†’inventory_loss, 4030â†’shipping_income, 6090 system) + `seedCompany` fills unmapped roles + migration 000004; OperationsController converts InvalidArgumentException to form errors; `registerCompany` calls `ensureLedgers`; register Add Payment: modals above backdrop (commercial-workspace.css), restored handlers with `data-due` (Sale/PurchaseController); register row menus pinned fixed (main.blade.php).
 - **Open (user decision):** job work charge not capitalised into output cost (expensed to 6090); Material DC print not GST-compliant (job worker #id, no GSTIN/HSN/value); textile preset processes non-conversion.
 
 ## 29. Job Work Costing + GST Challan + Textile Process Route (2026-10-13)
 
-- **User decisions:** (1) capitalise job worker charge into processed stock; (2) GST-compliant job work delivery challan; (3) configurable default textile grey→dyed process with lots. Pushed 296153e before starting.
-- **Costing:** `InventoryMovementService::revalue()` (value-only lines, qty 0; reverse() negates value) + `App\Services\JobWork\JobWorkCosting::capitalise()` called from `PurchasePostingService` when `attributes_json.job_work_receipt_id` (whitelisted, set by `JobWorkService::serviceBill`). On-hand share → Dr Inventory + revaluation (source purchase, so CommercialReversalService reverses it); consumed share → Dr COGS. Receipt `details_json.processing_cost` written via DB (operation records immutable).
+- **User decisions:** (1) capitalise job worker charge into processed stock; (2) GST-compliant job work delivery challan; (3) configurable default textile greyâ†’dyed process with lots. Pushed 296153e before starting.
+- **Costing:** `InventoryMovementService::revalue()` (value-only lines, qty 0; reverse() negates value) + `App\Services\JobWork\JobWorkCosting::capitalise()` called from `PurchasePostingService` when `attributes_json.job_work_receipt_id` (whitelisted, set by `JobWorkService::serviceBill`). On-hand share â†’ Dr Inventory + revaluation (source purchase, so CommercialReversalService reverses it); consumed share â†’ Dr COGS. Receipt `details_json.processing_cost` written via DB (operation records immutable).
 - **Challan:** `OperationsController::jobWorkChallan()` + `resources/views/backend/operations/job_work_challan.blade.php` (3 copies, Rule 55(1)(c)/Sec 143) + dot-matrix; old `material_document.blade.php` removed; dispatch `details_json.transport` (vehicle, transporter, e-way, notes); series JWO-/JWDC-/JWGRN- (seeder + migration rewrites ERP-JW* defaults).
 - **Route:** migration `2026_10_16_000005` (dispatch details_json, process_types output_product_id/service_product_id/service_rate, product_batches.expired_date nullable, GREY-DYE preset for textile companies); batch expiry required only when `inventory.batch_expiry` enabled; Process Policy "Edit an existing process" + defaults; used processes allow default edits; stock lines have Lot/batch no.; receipt `details_json.lots`; sales line lot dropdown via `operations/inventory/lots` (`IndustryStockQueries::lots`).
-- **Dev DB run 2 (ZTEX):** PUR-00003 lot GREY-L02 → JWO-00002/JWDC-00002/JWGRN-00002 → PUR-00004 Dr Inventory 8,820 (₹97/m) → MJ-00002 300 m lot RB-L02. Doc section 4–5 in `documents/textile-job-work/TEXTILE_JOB_WORK_CYCLE.md`.
+- **Dev DB run 2 (ZTEX):** PUR-00003 lot GREY-L02 â†’ JWO-00002/JWDC-00002/JWGRN-00002 â†’ PUR-00004 Dr Inventory 8,820 (â‚¹97/m) â†’ MJ-00002 300 m lot RB-L02. Doc section 4â€“5 in `documents/textile-job-work/TEXTILE_JOB_WORK_CYCLE.md`.
 - **Valuation note:** weighted average per item (not per lot).
-- **Blade gotcha:** `word@endif`/`word@if` is not a directive — use `{{ '' }}@if` or a space.
+- **Blade gotcha:** `word@endif`/`word@if` is not a directive â€” use `{{ '' }}@if` or a space.
 
 ## 30. Production-Completion Test Matrix + Fixes (2026-10-15)
 
-- **Report:** `documents/PRODUCTION_TEST_MATRIX_REPORT.md` (28 gates, findings B1–B44, fix status, evidence). Real-browser harness lives outside the repo (session scratchpad `e2e/*.mjs`): fresh install on disposable MySQL `127.0.0.1:33084` (DBs `zolo_test_completion_uat`, `zolo_test_uat2`), app on `php -S :8091/:8092`, Playwright via `V:/pers/Freelance/loanapp/node_modules/playwright-core`.
-- **Critical/high fixed:** B23 journal screens/posting need `accounting.*` permissions; B21 empty-database refused with >1 company; B28 stock adjustments post Dr/Cr Inventory vs Variance (5030) and keep `erp:health` inventory value green; B29 transfer/POS lists include `is_imei=0` items; B11 quotation → unified `/sales|/purchases?from_quotation=` (legacy `quotation/create_sale|create_purchase` views removed), bill marks quotation converted; B20 accounting permissions created + on Role page; B10 tax-inclusive master price shown as pre-tax rate; B12 GRN/DC stamped with branch/FY and branch-scoped; B35 starter series replay-safe; B42 `USER_VERIFIED`/`ERP_OPTIONAL_ACTIVATION_READY` read via `config('app.*')`.
+- **Report:** `documents/PRODUCTION_TEST_MATRIX_REPORT.md` (28 gates, findings B1â€“B44, fix status, evidence). Real-browser harness lives outside the repo (session scratchpad `e2e/*.mjs`): fresh install on disposable MySQL `127.0.0.1:33084` (DBs `zolo_test_completion_uat`, `zolo_test_uat2`), app on `php -S :8091/:8092`, Playwright via `V:/pers/Freelance/loanapp/node_modules/playwright-core`.
+- **Critical/high fixed:** B23 journal screens/posting need `accounting.*` permissions; B21 empty-database refused with >1 company; B28 stock adjustments post Dr/Cr Inventory vs Variance (5030) and keep `erp:health` inventory value green; B29 transfer/POS lists include `is_imei=0` items; B11 quotation â†’ unified `/sales|/purchases?from_quotation=` (legacy `quotation/create_sale|create_purchase` views removed), bill marks quotation converted; B20 accounting permissions created + on Role page; B10 tax-inclusive master price shown as pre-tax rate; B12 GRN/DC stamped with branch/FY and branch-scoped; B35 starter series replay-safe; B42 `USER_VERIFIED`/`ERP_OPTIONAL_ACTIVATION_READY` read via `config('app.*')`.
 - **Also fixed:** B1 picker redirect on fresh install; B2 demo catalog only with `SEED_DEMO_DATA=true` (legacy suite sets it); B3 GST slabs at creation; B4 quick party uses company group; B5/B24 `OptechMasterSeeder::seedSeries()` for every branch/FY (tags MJ-CBE-, MJ-27-; called on new branch + new FY; migration 2026_10_17_000005); B6/B7/B9/B18 quotation fixes; B13 conversion links keep entry visible; B14 placeholder image shipped; B17 findOrFail; B19 branch access on user edit; B22 activity log company column; B25 `?branch_scope=all` company-wide reports; B27 ageing as of today; B30 FEFO label; B31 FMCG damage capability; B32 backups include `public/images`, `public/documents`; B33 backup errors shown/logged; B36 `/operations` lands on enabled area; B37 report/list overflow CSS; B39 root `.htaccess` deny rules; B41 phpunit pins ERP_* flags (suites no longer read dev `.env` flags); B43/B44 notification/user lists scoped to company.
 - **Second pass (user: "fix all the issues and merge it to ui"):** PO lifecycle (`PO-` series via `purchase_order` document type, receipts limited to open quantity, `attributes_json.fulfilled_at` + register shows Fulfilled); negative cash payment warning; dark-mode filter labels; missing `db.*` translations fall back to readable text (AppServiceProvider); CORS only on `api/*` (`API_CORS_ORIGIN`); StockPolicyException not reported; ComplianceHttpTest stand-in layout (`tests/Support/views`); old demo dump untracked (copy in `storage/app/private/db-backups/`).
 - **Still needs people/servers:** physical printing, real off-site backup disk, production server (HTTPS/nginx/workers), real-data reconciliation, operator/accountant sign-off, agreed p95 budgets. Ctrl+F12 purchase-order shortcut stays unassigned (user decision).
@@ -2969,7 +3293,7 @@ User report (screenshot): picker shows "Select Supplier" but Party details strip
 
 User: "workspace should be correctly managed, modern like others, linked with the companies while we switch".
 - `/workspace` and `/workspace/setup` now extend `backend.layout.main` (sidebar, company chip) instead of the bare `backend/workspace/layout.blade.php` (deleted). Routes add `common` middleware; setup resolves the shell context best-effort (`WorkspaceController::shareShellContext`) because it must open before a FY exists.
-- `home.blade.php`: company hero (logo/initials, group › code, industry accent from `CompanyDirectoryService::directory()`), branch/FY auto-submit (jQuery-delegated so bootstrap-select works), module launcher cards (icons/hints per `WorkspaceNavigation` label), "Switch company" cards per group with Current marker + "Manage companies" link. CSS `public/css/workspace-home.css` (neo tokens, dark mode via body.dark-mode).
+- `home.blade.php`: company hero (logo/initials, group â€º code, industry accent from `CompanyDirectoryService::directory()`), branch/FY auto-submit (jQuery-delegated so bootstrap-select works), module launcher cards (icons/hints per `WorkspaceNavigation` label), "Switch company" cards per group with Current marker + "Manage companies" link. CSS `public/css/workspace-home.css` (neo tokens, dark mode via body.dark-mode).
 - `POST /workspace/context`: branch/FY now optional (resolver picks single branch + today's FY), FY-missing goes to FY setup like the picker, session tuple replaced whole, flash "Switched to X.".
 - Picker: `return=workspace` (chip link adds it on workspace pages; hidden input on picker cards) -> `CompanySelectorController::enter` lands on `/workspace` instead of `/dashboard`.
 - Global: `.reveal-topbar-strip{display:none}` in zolo-erp-neo.css (strip showed raw text on every non-commercial page).
@@ -2981,7 +3305,7 @@ User: "workspace should be correctly managed, modern like others, linked with th
 User: keep Job Work; remove DC/GRN duplication; Job Work parent, Material DC outward, Job Work GRN inward; returns/rework as actions inside documents, not modules. Decisions (asked): commercial DC/GRN stay but renamed **Customer DC** / **Supplier GRN**; DC "Return material" = job worker returns unprocessed (no loss, no bill).
 - Migration `2026_10_17_000006_job_work_returns_and_rework` (dispatch `purpose` process|rework + `rework_of_receipt_id`; receipt `receipt_kind` process|material_return). Code guards columns via `JobWorkService::supports()`; ops test fixture runs it.
 - `JobWorkService`: `dispatch()`/`rework()` share `send()`; `receive()`/`returnMaterial()` share `settle()`. Rework GRN converts only if outputs entered (rejected grey re-dyed), else same item back (dyed re-finished). Returns never convert/bill. Receipt reversal blocked while an active rework DC references it. `details_json.rejected_warehouse_id` stored for rework default.
-- Routes `job-return/{dispatch}`, `job-rework/{receipt}`. UI: `operations/job_work_workspace.blade.php` (flow strip Order→DC→GRN→Bill; DC register: View/Print/Receive GRN/Return material/Reverse; GRN register: View/Service bill/Return-Send for rework/Reverse; in-place panels via `data-jw-toggle` in operations.js). Hub adds Material DC + Job Work GRN register tabs.
+- Routes `job-return/{dispatch}`, `job-rework/{receipt}`. UI: `operations/job_work_workspace.blade.php` (flow strip Orderâ†’DCâ†’GRNâ†’Bill; DC register: View/Print/Receive GRN/Return material/Reverse; GRN register: View/Service bill/Return-Send for rework/Reverse; in-place panels via `data-jw-toggle` in operations.js). Hub adds Material DC + Job Work GRN register tabs.
 - Renames: sidebar, sale/purchase nav pills, shortcut labels, draft label, DC/GRN page titles; DC/GRN pages show "Sending to / From a job worker? Job Work" pill when capability on.
 - Tests: new `JobWorkReturnsReworkTest` (4) in phpunit.operations.xml; DC/GRN web tests updated for new titles. Dev DB: only this migration applied (other 2026_10_17_00000x still pending there).
 
@@ -2991,7 +3315,7 @@ User: keep Job Work; remove DC/GRN duplication; Job Work parent, Material DC out
 - **Root cause:** Job work order detail screen was rendering 3 giant vertically stacked panels (>1300px total height), forcing continuous page scrolling. In addition, `footer.main-footer` added vertical overflow and `body` had `overflow-y: auto`.
 - **Design Architecture & UI Enhancements:**
   1. **Zero-Scroll Viewport Optimization:** Enforced `html.jw-zero-scroll-html` & `body.jw-zero-scroll-body { height: 100vh; overflow: hidden; }` and `#content { height: calc(100vh - 40px); overflow: hidden; }` with `footer.main-footer { display: none !important; }`. Tested in real browser: `scrollHeight === innerHeight === 730px`, `window.scrollY === 0`.
-  2. **Ultra-Compact Unified Header & Stepper Card:** Re-architected order reference (`JWO-00003`), status badge, 5 KPI chip cards (Job Worker, Process, Output type, Max loss, Expected return), and connected 4-step interactive pipeline stepper (`Order` → `Material DC` → `Job Work GRN` → `Service Bill`) into a single sleek card (~90px height).
+  2. **Ultra-Compact Unified Header & Stepper Card:** Re-architected order reference (`JWO-00003`), status badge, 5 KPI chip cards (Job Worker, Process, Output type, Max loss, Expected return), and connected 4-step interactive pipeline stepper (`Order` â†’ `Material DC` â†’ `Job Work GRN` â†’ `Service Bill`) into a single sleek card (~90px height).
   3. **Seamless Tabbed & Split-View Mode Switcher:** Added segmented tab toolbar (`Material DC`, `Job Work GRN`, `Split View`). Stepper steps are clickable to navigate between tabs. In Split View, both registers sit side-by-side in a 2-column grid (`1fr 1fr`) with independent scrollable tables.
   4. **Sleek Collapsible `+ New Material DC` Form:** Form card fits neatly above the register table with compact 28px inputs and grid layout, leaving table visible underneath.
   5. **Dark Theme & Aesthetics:** Modern deep slate sticky headers (`#0f172a`), alternating zebra striping, action buttons (`View`, `Print`, `Receive Job Work GRN`, `Return material`, `Reverse`), and full `body.dark-mode` compatibility.
@@ -3004,18 +3328,18 @@ User: keep Job Work; remove DC/GRN duplication; Job Work parent, Material DC out
 - Reused the earlier performance fixes in sections 15/18. Fresh baseline uses the existing development database, admin session, and company 14. Kernel profiling: Sales 140 queries, Purchases 131, Workspace 107, Dashboard 85, Customers 47, Job Work 86. Raw baseline and HTTP samples are in `scratch/speed-baseline-*.json` and `scratch/speed-http-before.jsonl`.
 - Implemented shared-shell asset versioning with file modification time and size; versioned public CSS/JS use long browser caching, while unversioned assets still revalidate. The sidebar reuses its already-loaded role permission list. Workspace permission groups use one fresh authorization evaluation. Read-only capability/GST UI helpers reuse the middleware-authorized context. Hot schema checks reuse the existing DDL-invalidated SchemaCache. Service authorization remains revalidated for writes.
 - The shell renders content immediately, without the inherited one-second animation or a wait for all scripts. Google Fonts CSS is non-blocking. The layout versions its shared CSS/JS with the new `versioned_asset()` helper.
-- Matched, warmed, alternating five-sample HTML response medians: Dashboard 946.6 → 739.1 ms, Sales 966.4 → 828.5 ms, Purchases 1005.6 → 883.5 ms, Workspace 819 → 635 ms (12–23% faster). Customers and Job Work were variable; a separate confirmation showed 711.8 → 683.8 ms and 747.8 → 670.5 ms respectively, without a claim of stable latency gains on those pages. Report: `documents/PAGE_PERFORMANCE.md`; raw samples: `scratch/speed-matched-comparison.jsonl` and `scratch/speed-matched-confirmation.jsonl`.
-- Query counts: Sales 140 → 107, Purchases 131 → 100, Customers 47 → 37, Workspace 107 → 49, Job Work 86 → 76, Dashboard 85 → 85 (capability cache warmth can vary counts slightly).
+- Matched, warmed, alternating five-sample HTML response medians: Dashboard 946.6 â†’ 739.1 ms, Sales 966.4 â†’ 828.5 ms, Purchases 1005.6 â†’ 883.5 ms, Workspace 819 â†’ 635 ms (12â€“23% faster). Customers and Job Work were variable; a separate confirmation showed 711.8 â†’ 683.8 ms and 747.8 â†’ 670.5 ms respectively, without a claim of stable latency gains on those pages. Report: `documents/PAGE_PERFORMANCE.md`; raw samples: `scratch/speed-matched-comparison.jsonl` and `scratch/speed-matched-confirmation.jsonl`.
+- Query counts: Sales 140 â†’ 107, Purchases 131 â†’ 100, Customers 47 â†’ 37, Workspace 107 â†’ 49, Job Work 86 â†’ 76, Dashboard 85 â†’ 85 (capability cache warmth can vary counts slightly).
 - Validation: 52 targeted tests pass across PageSpeedTest, VersionedAssetTest, WorkspaceSecurityTest, GstSetupTest, IndustryProfilesTest and CapabilityEngineTest. Prior capability/branch run passed 28 tests. Live headers confirm immutable current asset versions, revalidation for unversioned/stale versions, empty 304 bodies and private dynamic pages. Browser smoke passes all six measured pages plus Sales/Purchase entry controls; no console errors observed. PHP syntax and scoped whitespace checks pass.
 - Temporary comparison servers on 8094/8095 were stopped. The original server on 8080 remains running. No dependency changes, migration, commit or deployment was performed. Other-session accounting/seeder/migration edits appeared during verification and were preserved along with the existing job-work edits.
 - Recovery: this speed request is complete. Follow the user's next request on `ui`. Production datasets, optional modules, real-user Core Web Vitals and Apache runtime remain unmeasured.
 
 ## 34. Supplier GRN / Customer DC = Physical Movement First, Commercial Settlement Later (2026-10-17, uncommitted)
 
-User decision: keep GRN/DC (not Job Work duplicates), drop their sidebar entries, and post them as "physical movement first → commercial settlement later" (no move-then-reverse on billing).
-- Migration `2026_10_17_000007_post_material_documents_physically`: headers + `stock_movement_id`, `journal_entry_id`, `posting_version`, `posted_at` (DC + `purpose`); items + `batch_no`, `qty_base`, `value`, `billed_qty_base`, `returned_qty_base`; table `material_settlements` (document grn|dc + item → settled_by purchase|sale|return + line, qty_base, value, released_at); chart 1260 Goods Delivered Not Invoiced (asset) / 2060 Goods Received Not Invoiced (liability; 2050-2053 are GST output ledgers), roles `goods_delivered_not_invoiced` / `goods_received_not_invoiced` (SemanticAccountResolver::ROLES, ChartOfAccountsSeeder).
-- `App\Services\Commercial\MaterialDocumentService`: `post()` GRN receive at GRN cost → Dr Inventory / Cr GRNI; DC issue → Dr GDNI / Cr Inventory (journal ref types `goods_received_note` / `delivery_challan` added to AccountingPostingService). `unpost()` for edit/cancel (only when nothing billed/returned; edit reposts as next `posting_version`; posted docs are kept as cancelled, not deleted). `returnOpen()` returns unbilled goods (GRN issue purpose purchase_return, gap to avg cost → variance; DC receive at DC cost). `allocate()` settles bill lines FIFO by product against open items (called in CommercialApplicationService before posting). `release()` on bill reversal reopens. Statuses: pending → partially_billed → converted_to_purchase/sale, or returned/cancelled.
-- Posting: PurchasePostingService skips stock for settled qty, Dr GRNI at GRN value, bill-vs-GRN price difference → `priceVariance()` (on-hand share revalues stock, sold share to COGS). SalePostingService skips issue for settled qty, Dr COGS / Cr GDNI at DC cost. ReturnService credit/debit notes find stock lines through settlements. Orders / pending invoices cannot settle a posted GRN/DC. GRN/DC created before this migration (posted_at null) keep the old memo behaviour (bill moves stock).
+User decision: keep GRN/DC (not Job Work duplicates), drop their sidebar entries, and post them as "physical movement first â†’ commercial settlement later" (no move-then-reverse on billing).
+- Migration `2026_10_17_000007_post_material_documents_physically`: headers + `stock_movement_id`, `journal_entry_id`, `posting_version`, `posted_at` (DC + `purpose`); items + `batch_no`, `qty_base`, `value`, `billed_qty_base`, `returned_qty_base`; table `material_settlements` (document grn|dc + item â†’ settled_by purchase|sale|return + line, qty_base, value, released_at); chart 1260 Goods Delivered Not Invoiced (asset) / 2060 Goods Received Not Invoiced (liability; 2050-2053 are GST output ledgers), roles `goods_delivered_not_invoiced` / `goods_received_not_invoiced` (SemanticAccountResolver::ROLES, ChartOfAccountsSeeder).
+- `App\Services\Commercial\MaterialDocumentService`: `post()` GRN receive at GRN cost â†’ Dr Inventory / Cr GRNI; DC issue â†’ Dr GDNI / Cr Inventory (journal ref types `goods_received_note` / `delivery_challan` added to AccountingPostingService). `unpost()` for edit/cancel (only when nothing billed/returned; edit reposts as next `posting_version`; posted docs are kept as cancelled, not deleted). `returnOpen()` returns unbilled goods (GRN issue purpose purchase_return, gap to avg cost â†’ variance; DC receive at DC cost). `allocate()` settles bill lines FIFO by product against open items (called in CommercialApplicationService before posting). `release()` on bill reversal reopens. Statuses: pending â†’ partially_billed â†’ converted_to_purchase/sale, or returned/cancelled.
+- Posting: PurchasePostingService skips stock for settled qty, Dr GRNI at GRN value, bill-vs-GRN price difference â†’ `priceVariance()` (on-hand share revalues stock, sold share to COGS). SalePostingService skips issue for settled qty, Dr COGS / Cr GDNI at DC cost. ReturnService credit/debit notes find stock lines through settlements. Orders / pending invoices cannot settle a posted GRN/DC. GRN/DC created before this migration (posted_at null) keep the old memo behaviour (bill moves stock).
 - Posting only when `commercial.enabled`; serial (is_imei) and non-standard items refused on GRN/DC.
 - UI: sidebar drops "Supplier GRN" and merges Packing/Challan/Delivery/Customer DC into "Dispatch (DC, packing, delivery)" (`#dispatch-menu`); Bills pages keep the Supplier GRN / Customer DC buttons and Alt+F2/Alt+F12. DC form has Rule 55 purpose select (approval / quantity_unknown / not_supply); rows have Lot/batch input; register shows partially billed/returned, Convert while open, "Return to supplier" / "Goods came back" button. Bills load only `open_qty` from GRN/DC.
 - Tests: `MaterialDocumentPostingTest` (11, commercial suite), `MaterialDocumentReturnsTest` (1, compliance suite).
@@ -3048,12 +3372,12 @@ User decision: keep GRN/DC (not Job Work duplicates), drop their sidebar entries
      - **Left Operational Registers:**
        - Deep slate sticky table headers (`#0f172a`) with crisp white uppercase labels.
        - Alternating high-contrast zebra row striping (`#ffffff` vs `#f8fafc`).
-       - Sleek `.btn-jw-open` action pill buttons with hover slide effect (`Open →`).
+       - Sleek `.btn-jw-open` action pill buttons with hover slide effect (`Open â†’`).
        - Independent internal scroll for tables (`overflow-y: auto`) while the outer window remains locked.
      - **Right Quick Action Drawer:**
        - Sleek segmented pill toggles (`New Order` / `Process Policy`).
        - Compact 30px inputs, selects, and clean uppercase labels.
-       - Prominent gradient submit button (`#6366f1` → `#4f46e5`).
+       - Prominent gradient submit button (`#6366f1` â†’ `#4f46e5`).
      - **Full Dark Theme Support:** Complete palette mapping under `body.dark-mode`.
   4. **Verification & Tests:**
      - Real browser automated proof via `browser_subagent` confirmed:
@@ -3080,8 +3404,8 @@ User decision: keep GRN/DC (not Job Work duplicates), drop their sidebar entries
 - Shared party endpoint now scopes open items to branch, supports paginated statement movements, and excludes the current replacement document for prior-balance projection. New `commercial-assistance.js/css` adds history, balances, pending bills, statement, source selection and registry-owned Ctrl+B/Ctrl+S/Alt+Y/Ctrl+Enter actions. These UI changes still need browser proof and integration fixes.
 - Subagent `orders` owns order lifecycle service/models, migrations 000008/000009, controller/routes/orders.php, order workspace partial/script and order tests. Parent owns integration into CommercialApplicationService/ReversalService and existing sales/purchase/material UI. Do not overwrite the worker's files. Exact hooks: resolveMaterialReferences, prepareConsumer, consume after material settlement before posting; initializePurchase for status4; release on reversal. Worker is developing material-order and later-receipt contracts.
 - Remaining: complete order integration/verification, inventory/product defaults and lot report (tasks11-15), source picker/draft/print/backlinks and partial-return UI, bale/register fields, keyboard/browser verification, concurrency/migration rehearsal, final review and plan completion evidence. Do not claim the plan complete yet.
-- **Real-browser run on dev :8080 (2026-10-17, company 14 ZTEX, Grey Cotton Fabric 60s):** 43/43 workflow checks + sidebar check pass, no JS errors. GRN-00001 100 m @50 lot GL-E2E-01 → bill 60 m @52 (purchase 78; revaluation +120, no 2nd receipt) → 10 m returned to supplier (₹12 variance: avg cost 51.2 vs GRN 50) → bill 30 m (purchase 79) → GRN converted, GRNI 0. DC-00001 40 m on approval → invoice 30 m (sale 62, no sale stock movement, COGS = DC cost) → "Goods came back" 10 m → DC converted, GDNI 0. Grey stock 60 m; stock ledger = inventory account (72,900.13). Script: session scratchpad `e2e/flow.mjs` + `e2e/db.php`.
-- Fixed during the run: GRN/DC dates serialized as UTC → form loaded one day early (casts now `date:Y-m-d`); row cost/qty inputs clipped by inherited cell padding (commercial-workspace.css); amount shows 2 decimals.
+- **Real-browser run on dev :8080 (2026-10-17, company 14 ZTEX, Grey Cotton Fabric 60s):** 43/43 workflow checks + sidebar check pass, no JS errors. GRN-00001 100 m @50 lot GL-E2E-01 â†’ bill 60 m @52 (purchase 78; revaluation +120, no 2nd receipt) â†’ 10 m returned to supplier (â‚¹12 variance: avg cost 51.2 vs GRN 50) â†’ bill 30 m (purchase 79) â†’ GRN converted, GRNI 0. DC-00001 40 m on approval â†’ invoice 30 m (sale 62, no sale stock movement, COGS = DC cost) â†’ "Goods came back" 10 m â†’ DC converted, GDNI 0. Grey stock 60 m; stock ledger = inventory account (72,900.13). Script: session scratchpad `e2e/flow.mjs` + `e2e/db.php`.
+- Fixed during the run: GRN/DC dates serialized as UTC â†’ form loaded one day early (casts now `date:Y-m-d`); row cost/qty inputs clipped by inherited cell padding (commercial-workspace.css); amount shows 2 decimals.
 
 ## 39. Zero-Scroll Viewport Modernization for Accounting, Expense & Income Modules (2026-10-18)
 
@@ -3165,7 +3489,7 @@ User: Product section should match other sections' theme; why duplicate Job Work
 
 - The user explicitly authorized local migration, commit/push, then all five P2 slices and fixes for confirmed remaining bugs. This supersedes the earlier P2 deferral and no-commit boundary. Remain on `ui`.
 - Created and verified an encrypted database-only backup of local `zoloerp` (192 tables) with the existing BackupService before migration. Archive: ignored `database/backups/erp-backup-89600912-ceaf-4431-9031-90eabc4120b0.zip`; encryption key is separate in ignored `scratch/textile-local-backup-key.private`. Do not print it. Receipt is ignored `scratch/textile-local-migration-backup.private.json`.
-- Applied all nine pending additive migrations successfully, including accounting permissions/repairs and Textile000008–000011. `migrate:status` shows no pending migrations. No production database was accessed.
+- Applied all nine pending additive migrations successfully, including accounting permissions/repairs and Textile000008â€“000011. `migrate:status` shows no pending migrations. No production database was accessed.
 - Preparing the tested P0/P1/shared workspace checkpoint for origin/ui. P2 work starts after that push as requested. P2 covers ageing/receivables, collection follow-up/PDC/interest and discount previews/reminder tracking, product aliases, reviewed bulk item import, and quotation follow-up. External messages and financial interest posting are not implied by previews.
 
 ## 44. Process Guides for Operators (2026-10-19, uncommitted)
@@ -3182,7 +3506,7 @@ Findings noted in the guides: customer/supplier "Opening balance (Due)" field cr
 - Quotations retain dated follow-up audit through drafts, edits and conversion. Fixed date/staff search escaping, truncated All export, structured modal/XSS handling and stale-editor audit transitions. Added explicit conversion links so newly Sent quotes can convert once; ambiguous historical Sent records remain flagged for reconciliation. Migration replay preserves review decisions. Converted/review quotations cannot be deleted; sorted locks and preflight preserve mixed batches atomically. Quotation tests pass 12/53 and final specification/quality reviews are clear.
 - NavigationWebTest now distinguishes unsupported unit routes (404) from the disabled optional QR capability (403). Full documents-web suite passes 32 tests/404 assertions after updating its direct edit-view fixture for the new follow-up history variable.
 - Disposable browser P2 run passes 23 checks with no page errors: four workspaces, collection create/update/audit/reminder/PDC/preview, ageing/export, invalid and confirmed bulk import/retry, alias ambiguity/selection/party scope and mobile import. Independent clone proof: zero journal change, zero stock change, imported quantity zero, both imported items visible to legacy selectors. Quotation browser rerun and full commercial suite are in progress.
-- Rehearsed and locally applied P2 migrations 000012–000015 after verified encrypted backup `erp-backup-de219a91-61fb-4821-b1fc-be204c3ab543.zip` (196 tables). Applied 000016 locally after another verified encrypted backup `erp-backup-094b8eb5-dc58-4d94-a42d-faa01d80694e.zip` (201 tables, SHA256 `5fa1aa81d0201b392958104d7d6a9329685584c8bd6fa997f3a43c7dc5b0976f`). Keys/receipts remain ignored and private. Migration 000017 and concurrent accounting/opening-balance/reversal UI/process-guide edits belong to another chat; preserve and do not stage them into this P2 checkpoint without its verification.
+- Rehearsed and locally applied P2 migrations 000012â€“000015 after verified encrypted backup `erp-backup-de219a91-61fb-4821-b1fc-be204c3ab543.zip` (196 tables). Applied 000016 locally after another verified encrypted backup `erp-backup-094b8eb5-dc58-4d94-a42d-faa01d80694e.zip` (201 tables, SHA256 `5fa1aa81d0201b392958104d7d6a9329685584c8bd6fa997f3a43c7dc5b0976f`). Keys/receipts remain ignored and private. Migration 000017 and concurrent accounting/opening-balance/reversal UI/process-guide edits belong to another chat; preserve and do not stage them into this P2 checkpoint without its verification.
 - Recovery: finish integrated commercial and shared product-default checks, collect quotation browser result, update completion evidence, stage only P2-owned files/hunks, commit and push to origin/ui. Stop only this task's temporary clone server (exec49946, port8096). Do not deploy or claim physical printing, real-data reconciliation or operator/accountant/GST UAT.
 
 ### P2 final verification and handoff
@@ -3203,19 +3527,19 @@ User: "fix all three" (findings of section 44).
 - Tests: new `YearCloseAndOpeningBalanceTest` (company suite, 4 tests); `OptechMasterWebTest` quick customer asserts the opening journal. Company suite 333 pass + 1 unrelated error (LegacyInventoryCutoverTest: `no such table: categories` from uncommitted ProductMasterService work); commercial 160 OK (7 skipped); OptechMasterWebTest 19/19.
 - Guides in `documents/process-guides/` updated to the new behaviour.
 
-- Final Git receipt: P2 code/evidence commit `699d5d3` was pushed successfully to `origin/ui` after checkpoint `4767352`. All five local P2 migrations 000012–000016 report Ran. Remaining working-tree edits are the concurrent accounting/year-close/opening-balance/reversal UI/process-guide work and its section44 session entry; they were preserved and excluded. This Textile request is complete. Follow the next user instruction; do not deploy automatically.
+- Final Git receipt: P2 code/evidence commit `699d5d3` was pushed successfully to `origin/ui` after checkpoint `4767352`. All five local P2 migrations 000012â€“000016 report Ran. Remaining working-tree edits are the concurrent accounting/year-close/opening-balance/reversal UI/process-guide work and its section44 session entry; they were preserved and excluded. This Textile request is complete. Follow the next user instruction; do not deploy automatically.
 
 ## 46. Bills Open in Split View, Dashboard KPI Fit, Company/Group Edit + Delete (2026-10-20, uncommitted)
 
-- **Bills → split view**: sales/purchase `index.blade.php` no longer remember full-width register mode (`zolo_{sale,purchase}_workspace_mode` writes removed) and the bill list panel always starts open; only `?view=orders` (Pending Sales / orders register links) opens full width. Full width is a per-visit switch.
-- **Dashboard KPIs** (`backend/index.blade.php`, `app-shell.css`): amounts grouped in the currency's style (en-IN for ₹), ≥ 1,00,000 shown compact (1.33L / 2.40Cr) with the exact figure as hover title (`setKpi`/`showKpi`, also after date/warehouse filter); value font inherits the card size and `fitKpiValues()` shrinks it if still too wide; badges/labels shortened (Sales, Due in, Due out, Liquidity, Cash & Bank, Type:). Eight cards per row only ≥1440px viewport, else 4×2. Browser-checked in zoloERP Textiles at 1536/1847/1280: nothing clipped; at 1280 the content area scrolls 90px (two KPI rows).
+- **Bills â†’ split view**: sales/purchase `index.blade.php` no longer remember full-width register mode (`zolo_{sale,purchase}_workspace_mode` writes removed) and the bill list panel always starts open; only `?view=orders` (Pending Sales / orders register links) opens full width. Full width is a per-visit switch.
+- **Dashboard KPIs** (`backend/index.blade.php`, `app-shell.css`): amounts grouped in the currency's style (en-IN for â‚¹), â‰¥ 1,00,000 shown compact (1.33L / 2.40Cr) with the exact figure as hover title (`setKpi`/`showKpi`, also after date/warehouse filter); value font inherits the card size and `fitKpiValues()` shrinks it if still too wide; badges/labels shortened (Sales, Due in, Due out, Liquidity, Cash & Bank, Type:). Eight cards per row only â‰¥1440px viewport, else 4Ã—2. Browser-checked in zoloERP Textiles at 1536/1847/1280: nothing clipped; at 1280 the content area scrolls 90px (two KPI rows).
 - **Company picker edit/delete** (`CompanyDirectoryService`, `CompanySelectorController`, `company/select.blade.php`, `company-picker.css`, routes `company.companies.update|delete|restore`, `company.groups.update|delete`): company admins edit names, short code, group (target group needs group admin; its admins get access), address/contact/GST/currency/logo through `CompanyProfileService::save` (MAIN branch, latest FY context). Delete company = type short code, `status = deleted` (hidden, cannot be entered, books kept, audit row), restore from "Deleted companies" list; clears the session if it was the current company. Delete group = companies become independent, group + admins rows removed. Tests: 3 new in `CompanyGroupDirectoryTest` (11/11).
 
 ## 47. Dropdown Menus Detached From Their Field (2026-10-20, uncommitted)
 
-User screenshot: GST Settings → GST Rates "Type" select opened its list far above the field. `front.js` turns every `<select>` into bootstrap-select 1.13.18 with `container: 'body'`, so menus are Popper-placed.
-- **Cause 1** (`zolo-erp-neo.css` "Dropup animation and positioning"): `.dropdown.dropup .dropdown-menu { top:auto; bottom:100% !important }` also hit Popper menus (the body-level `.bs-container` carries `dropdown … dropup`), adding a second upward offset on top of Popper's transform. Rule now `:not([x-placement])` (static menus only).
-- **Cause 2** (`front.js` + `front_rtl.js`): Bootstrap's default dropdown `boundary: 'scrollParent'` made Popper clamp tall selectpicker menus inside the nearest scrolling card, so they slid down over their own field (Accounting → semantic account mappings). Set `$.fn.dropdown.Constructor.Default.boundary = 'viewport'` before selectpicker init.
+User screenshot: GST Settings â†’ GST Rates "Type" select opened its list far above the field. `front.js` turns every `<select>` into bootstrap-select 1.13.18 with `container: 'body'`, so menus are Popper-placed.
+- **Cause 1** (`zolo-erp-neo.css` "Dropup animation and positioning"): `.dropdown.dropup .dropdown-menu { top:auto; bottom:100% !important }` also hit Popper menus (the body-level `.bs-container` carries `dropdown â€¦ dropup`), adding a second upward offset on top of Popper's transform. Rule now `:not([x-placement])` (static menus only).
+- **Cause 2** (`front.js` + `front_rtl.js`): Bootstrap's default dropdown `boundary: 'scrollParent'` made Popper clamp tall selectpicker menus inside the nearest scrolling card, so they slid down over their own field (Accounting â†’ semantic account mappings). Set `$.fn.dropdown.Constructor.Default.boundary = 'viewport'` before selectpicker init.
 - Verified with a real-browser crawl (1536x730, company picker default) that opens every visible dropdown on all 116 sidebar pages: 154 menus, all attached to their toggle and on-screen (3 crawl-order artifacts re-checked one by one: fine). Dropdowns inside modals / hidden tabs were not opened by the crawl.
 
 ## 48. Unregistered Company Type in GST Registration (2026-10-20, uncommitted)
@@ -3236,7 +3560,7 @@ User (Sweet Soil, no GSTIN) wanted to save legal name/address without a GSTIN. F
 
 ## 50. Ctrl+F9 Voucher Series Shortcut (2026-10-20, uncommitted)
 
-Ctrl+F9 was advertised (sidebar "Voucher Series (Ctl+F9)", series page title, voucher entry hint bar) but never bound. Added `voucher-series` (Ctrl+F9 → `document-series.index`, permission `sidebar_product` like the Masters menu, group Masters) to `DocumentShortcutRegistry`, so it also lists in the `?` help. `accounting-vouchers.js` F9 handler now ignores Ctrl/Alt/Shift (it swallowed Ctrl+F9 on the voucher hub); its include in `accounting/vouchers.blade.php` is now filemtime-versioned. Browser-checked from dashboard, voucher entry, sales, voucher hub. `DocumentEntryTest` 5/5. Note: plain F9 (Voucher Entry) is only bound on the voucher hub page, not globally, though the sidebar shows "Voucher Entry · F9".
+Ctrl+F9 was advertised (sidebar "Voucher Series (Ctl+F9)", series page title, voucher entry hint bar) but never bound. Added `voucher-series` (Ctrl+F9 â†’ `document-series.index`, permission `sidebar_product` like the Masters menu, group Masters) to `DocumentShortcutRegistry`, so it also lists in the `?` help. `accounting-vouchers.js` F9 handler now ignores Ctrl/Alt/Shift (it swallowed Ctrl+F9 on the voucher hub); its include in `accounting/vouchers.blade.php` is now filemtime-versioned. Browser-checked from dashboard, voucher entry, sales, voucher hub. `DocumentEntryTest` 5/5. Note: plain F9 (Voucher Entry) is only bound on the voucher hub page, not globally, though the sidebar shows "Voucher Entry Â· F9".
 
 ## 51. Voucher Series Editable (2026-10-20, uncommitted)
 
@@ -3245,7 +3569,7 @@ Ctrl+F9 was advertised (sidebar "Voucher Series (Ctl+F9)", series page title, vo
 - `DocumentSeriesController` rewritten: requires company context; index lists the current branch + FY with a `used` flag; store validates (padding 1-18, type from `types()`, code unique per type) and calls `configure`; update calls `updateSeries`; destroy refuses used series and needs admin.
 - `master/series.blade.php`: Edit button + modal (live "prints as" preview, used series fields read-only), "Next number prints as" column, Used badge, create form limited to valid settings and all document types.
 - Tests: `DocumentNumberServiceTest::test_series_edit_changes_an_unused_series_and_keeps_a_used_one_as_printed`, `OptechMasterWebTest` series test extended (page + PUT). company config filter 21/21.
-- Guide step 7 now says where Master Registers is (sidebar › Sales, Purchases & Inventory, below Product).
+- Guide step 7 now says where Master Registers is (sidebar â€º Sales, Purchases & Inventory, below Product).
 
 ## 52. Settings Section Modernization & Zero-Scroll Viewport Containment (2026-10-20, uncommitted)
 
@@ -3315,25 +3639,25 @@ User: "same modernized theme and others are required in the settings section too
 ## 53. SweetSoil (company 17) Item Masters (2026-10-23, dev DB data only, no code change)
 - Company 17 = Phoenicle Natures Private Limited / Sweet Soil, FMCG manufacturer, GST type **unregistered** (tax_registrations id 3), branch 5, FY 5 (2026-27), warehouse 8.
 - Created via `ProductMasterService::create` (unit PCS 14, category General 48, cost 0, `tax_method` 1 because an unregistered seller charges no GST, so price = MRP = bill total; switch to 2 (inclusive) once a GSTIN is saved):
-  - 180 `PS-100` Palm Sugar 100g ₹80, HSN 17029010, GST 5% (cat 26)
-  - 181 `RNM-150` Rose Neera Mix 150g ₹239, HSN 21069059, 5%
-  - 182 `RNM-100` Rose Neera Mix 100g ₹150, HSN 21069059, 5%
-  - 183 `PC-8` Palm Chocolate 8g ₹20, HSN 18069010, 5%
-  - 184 `PSY-135` Palm Syrup 135ml ₹99, **no HSN / GST rate yet** (user gave none)
+  - 180 `PS-100` Palm Sugar 100g â‚¹80, HSN 17029010, GST 5% (cat 26)
+  - 181 `RNM-150` Rose Neera Mix 150g â‚¹239, HSN 21069059, 5%
+  - 182 `RNM-100` Rose Neera Mix 100g â‚¹150, HSN 21069059, 5%
+  - 183 `PC-8` Palm Chocolate 8g â‚¹20, HSN 18069010, 5%
+  - 184 `PSY-135` Palm Syrup 135ml â‚¹99, **no HSN / GST rate yet** (user gave none)
 - GST 5% is an assumption (GST 2.0 rates, Sept 2025) awaiting user confirmation. `is_batch` left off although batch/expiry capability is on.
 - Remaining setup gaps: PAN blank, timezone UTC (should be Asia/Kolkata), no parties, no raw materials/BOM, bank account still named "Bank", only admin user, sale series prefix `MJ-`/`MJC-`, invoice terms/declaration empty.
 
 ## 54. GST Settings Products/Codes/Rates Edit + Delete, Discount Delete (2026-10-23, uncommitted)
 User: Products tab looked empty and HSN/SAC list had no edit/delete; "check everywhere if we update there should be edit or delete option".
 - Products tab defaulted to `?products=missing`, so only incomplete products showed. Now defaults to **All products**, missing ones sorted first with a "Needs GST details" pill; the filter select submits on change; "Save products" moved to the card header (`form="gst-products-form"`) so it stays visible on long lists.
-- GST Rates: Actions column with **Edit** (modal → existing `rename` action: name + input credit) and **Delete** (`category-delete`, disabled/blocked while products use the rate; removes its `tax_rates` periods).
+- GST Rates: Actions column with **Edit** (modal â†’ existing `rename` action: name + input credit) and **Delete** (`category-delete`, disabled/blocked while products use the rate; removes its `tax_rates` periods).
 - HSN/SAC: Products count column + **Edit** (loads row into the form, code read-only, "Update code") and **Delete** (`code-delete`, blocked while products or item groups `default_hsn_code` use it). Kind cannot change on a code in use. Logic in `GstSetupService::deleteCategory/saveCode/deleteCode/codeUsage`.
 - Discount Plan + Discount lists had Edit only (`DiscountController::destroy` was empty, `DiscountPlanController` had none). Added Delete (removes pivot links too).
-- Audit of other settings lists (warehouse, customer group, currency, tax, role, printer, barcode, custom field, invoice settings, SMS templates, series) — all already had edit + delete.
+- Audit of other settings lists (warehouse, customer group, currency, tax, role, printer, barcode, custom field, invoice settings, SMS templates, series) â€” all already had edit + delete.
 - Tests: `GstSetupTest` (+ new edit/delete test; stale `GST Settings` heading assertion updated after section 52 removed the h1), new `DiscountDeleteTest`. 54/54 passing in Gst/Discount/CompanyProfile/DocumentEntry/OptechMaster/RemainingCompanyHardening. Browser-verified on :8080 for company 17.
 
-## 55. Master Registers discoverability + setup steps 7–9 guide (2026-10-23, uncommitted)
-- User could not find Master Registers. Sidebar entry exists (below Product, gated `$isAdmin || sidebar_product`) and renders for admin; Workspace › Settings (`workspace/setup.blade.php`) had no link. Added a "Master registers" panel there (series, sale/purchase types, bill sundry, agents, areas, remarks) and fixed its broken "Account mappings" link (`/accounting/semantic-mappings` → `route('accounting.semantic-mappings')`). Browser-verified, all links 200.
+## 55. Master Registers discoverability + setup steps 7â€“9 guide (2026-10-23, uncommitted)
+- User could not find Master Registers. Sidebar entry exists (below Product, gated `$isAdmin || sidebar_product`) and renders for admin; Workspace â€º Settings (`workspace/setup.blade.php`) had no link. Added a "Master registers" panel there (series, sale/purchase types, bill sundry, agents, areas, remarks) and fixed its broken "Account mappings" link (`/accounting/semantic-mappings` â†’ `route('accounting.semantic-mappings')`). Browser-verified, all links 200.
 - New doc `documents/process-guides/00A_SETUP_MASTERS_ACCOUNTS_ITEMS.md`: field-by-field steps 7 (series, types, sundry, agents, areas, remarks), 8 (COA, 31 role defaults from company 17, payment accounts, settlement links), 9 (units, product fields, alternate names, reviewed import columns, GST products tab). `00_NEW_COMPANY_SETUP.md` links it; freight role row corrected (4030 not 6050).
 - Known gaps documented, not fixed: master registers have add/delete only (no edit, hard delete); Bill Sundry list not pickable on bills (Charges tab = Freight + Bill Discount only); sale/purchase type ledger accounts, agent commission rate and remark default flag are stored but unused; Export/SEZ/Exempted types don't zero tax; customer form has no agent/area field (step 10 text says it does).
 
@@ -3341,12 +3665,12 @@ User: Products tab looked empty and HSN/SAC list had no edit/delete; "check ever
 User: Sale Type Master (and other master registers) had only a delete button; "check complete master registers, product, purchase, sales, quotation, accounting, settings ... all edit and delete option".
 - Audit: Playwright crawl of every sidebar list on company 17 and 14 (scratch script, not committed) + code grep for empty lists. Already had edit+delete: product/category/unit/brand, sales and purchase bill lists, returns, quotations (DataTable options), transfers, expenses/incomes + categories, money transfers, accounts, customers, suppliers, users, billers, settings lists (section 54), voucher series, express vouchers. Role/currency hide delete only for system rows (by design). Stock count, reports, dispatch register = no row edit by design.
 - **Master registers** (sale/purchase types, bill sundry, agents, areas, remarks): controllers already had `update`; views lacked UI. Added pencil button per row (`data-record` JSON + `data-update-url`) and shared partials `master/partials/edit-script.blade.php` (reuses `#createModal`: PUT, fills fields by name, refreshes every bootstrap-select because the layout enhances all selects, restores create mode on close) and `master/partials/active-toggle.blade.php` (Active tick box, edit mode only).
-- **Delete guard**: trait `Concerns/BlocksDeleteOfUsedMaster` refuses delete of a sale type / purchase type / agent / area used on sales, purchases, DCs, GRNs, customers or suppliers (redirect `not_permitted`, JSON 422) → user deactivates instead.
+- **Delete guard**: trait `Concerns/BlocksDeleteOfUsedMaster` refuses delete of a sale type / purchase type / agent / area used on sales, purchases, DCs, GRNs, customers or suppliers (redirect `not_permitted`, JSON 422) â†’ user deactivates instead.
 - **Chart of Accounts**: edit modal (name + description, the fields `update` allows) and new `DELETE accounting/chart-of-accounts/{id}` (`accounting.coa.destroy`), refused for system accounts, sub-accounts, postings/open items, linked payment account, role mapping, non-zero balance. System rows show no bin.
-- **Journal entries**: posted journals stay immutable (model blocks edits). Manual journals get a Reverse button (modal date + reason → existing `accounting.journal.reverse`); reversed ones show "Reversed". Bill-sourced journals are corrected from the bill.
+- **Journal entries**: posted journals stay immutable (model blocks edits). Manual journals get a Reverse button (modal date + reason â†’ existing `accounting.journal.reverse`); reversed ones show "Reversed". Bill-sourced journals are corrected from the bill.
 - Guide `00A_SETUP_MASTERS_ACCOUNTS_ITEMS.md` rules + step 8.1 updated.
 - Tests: new `MasterRegisterEditTest` (3, in `phpunit.documents-web.xml`), 2 new in `CompanyAccountingWebTest` (company suite). Browser-verified on :8080 company 17 (temp area created/edited/deleted, sale type + COA modals prefilled, no JS errors).
-- **Merge of origin/ui (8 nandha3d commits, 2026-10-08..20):** FMCG/Animazon Playwright suites + HTML reports, GSTIN lookup returns more registry fields + `provider_message`, quick-create party modal redesign (sale/purchase index). Only conflict: this file (their sections 49-54 renumbered 57-62). Review findings left for the user: (1) their section 49 had the live gstinapi.in key in plain text; redacted here but it is still in origin/ui history → rotate the key; (2) `CommercialController` GST lookup now uses `Http::withoutVerifying()` (TLS check off while sending the API key) → should be reverted once the local CA bundle is fixed.
+- **Merge of origin/ui (8 nandha3d commits, 2026-10-08..20):** FMCG/Animazon Playwright suites + HTML reports, GSTIN lookup returns more registry fields + `provider_message`, quick-create party modal redesign (sale/purchase index). Only conflict: this file (their sections 49-54 renumbered 57-62). Review findings left for the user: (1) their section 49 had the live gstinapi.in key in plain text; redacted here but it is still in origin/ui history â†’ rotate the key; (2) `CommercialController` GST lookup now uses `Http::withoutVerifying()` (TLS check off while sending the API key) â†’ should be reverted once the local CA bundle is fixed.
 
 ## 57. Live gstinapi.in Key Configuration & Payload Normalization (2026-10-12) (from origin/ui, nandha3d)
 
@@ -3374,7 +3698,7 @@ User: Sale Type Master (and other master registers) had only a delete button; "c
      - Separated GSTIN into a dedicated top hero card.
      - Extracted 10-character PAN (`gstin.substring(2, 12)`) into a dedicated read-only PAN display box.
      - Included 1-Click "Fetch Details" button and direct link to the official Government GST portal (`services.gst.gov.in`).
-     - Added full-width statutory insight badges strip displaying: State (`33 - Tamil Nadu`), Constitution (`Proprietorship / Individual`, etc.), Tax Rule (`Intra-State (CGST+SGST)` / `Inter-State (IGST)`), Status (`● Active` / `● Cancelled (date)`), Taxpayer Type (`Regular` / `Composition`), Registration Date, Filing (`GSTR-3B`), and Nature of Business.
+     - Added full-width statutory insight badges strip displaying: State (`33 - Tamil Nadu`), Constitution (`Proprietorship / Individual`, etc.), Tax Rule (`Intra-State (CGST+SGST)` / `Inter-State (IGST)`), Status (`â— Active` / `â— Cancelled (date)`), Taxpayer Type (`Regular` / `Composition`), Registration Date, Filing (`GSTR-3B`), and Nature of Business.
   3. **Logical Field Hierarchy & Grid Distribution:**
      - **Section 2 (Business):** Name / Contact Person (`col-md-6`) and Company / Trade Name (`col-md-6`).
      - **Section 3 (Contact):** Phone Number (`col-md-4`), Email (`col-md-4`), WhatsApp Number (`col-md-4`).
@@ -3409,13 +3733,13 @@ User: Sale Type Master (and other master registers) had only a delete button; "c
   - Interactive HTML Report: `tests-e2e/html_reporter.js` compiling and generating `animazon_textiles_erp_test_results.html` in workspace root.
 
 - **Verified Story Lifecycle & Financials:**
-  - **Inward Procurement:** 400 units plain grey cloth from MCR Textiles @ ₹150/pc + 5% GST (Stock: 0 -> 400).
+  - **Inward Procurement:** 400 units plain grey cloth from MCR Textiles @ â‚¹150/pc + 5% GST (Stock: 0 -> 400).
   - **Job Work Outward:** Issued Delivery Challan (`DC-JOB-2026-001`) under GST Rule 55(1)(c) for 400 pcs to Vijay Dyeing for Royal Blue dyeing.
-  - **Job Work Inward:** Converted 400 pcs plain cloth into 400 pcs finished goods ("Animazon Dyed Premium Fabric - Royal Blue") at processing cost of ₹60/pc.
-  - **Commercial B2B Sale:** Sold 350 pcs finished goods to Vogue Apparels B2B @ ₹380/pc + 5% GST (Stock: 400 -> 50).
-  - **Gross Profit Realized:** ₹59,500 (Revenue: ₹133,000, Total Cost of Goods Sold: ₹73,500, Gross Margin: 80.95%).
-  - **Closing Stock:** 50 units finished goods (Valuation: ₹10,500).
-  - **Settlement:** Cash/Bank receipt ₹139,650 from Vogue Apparels; Payment ₹63,000 to MCR Textiles.
+  - **Job Work Inward:** Converted 400 pcs plain cloth into 400 pcs finished goods ("Animazon Dyed Premium Fabric - Royal Blue") at processing cost of â‚¹60/pc.
+  - **Commercial B2B Sale:** Sold 350 pcs finished goods to Vogue Apparels B2B @ â‚¹380/pc + 5% GST (Stock: 400 -> 50).
+  - **Gross Profit Realized:** â‚¹59,500 (Revenue: â‚¹133,000, Total Cost of Goods Sold: â‚¹73,500, Gross Margin: 80.95%).
+  - **Closing Stock:** 50 units finished goods (Valuation: â‚¹10,500).
+  - **Settlement:** Cash/Bank receipt â‚¹139,650 from Vogue Apparels; Payment â‚¹63,000 to MCR Textiles.
 
 - **Testing Execution Evidence:**
   - `node tests-e2e/runner.js`: **PASS (13 / 13 milestones, 100% green; 55 / 55 ERP menus returned HTTP 200)**.
@@ -3424,7 +3748,7 @@ User: Sale Type Master (and other master registers) had only a delete button; "c
 
 ## 59. Workspace Home Layout Modernization & Neo Design Alignment (2026-10-17) (from origin/ui, nandha3d)
 
-- **Issue:** The `/workspace` landing screen ("zoloERP · Home") looked raw and unstyled compared to `/select-company` (Screenshot 2), with Times New Roman serif font, bare blue text links, and basic unstyled HTML select elements.
+- **Issue:** The `/workspace` landing screen ("zoloERP Â· Home") looked raw and unstyled compared to `/select-company` (Screenshot 2), with Times New Roman serif font, bare blue text links, and basic unstyled HTML select elements.
 - **Root Cause:**
   - `backend/workspace/layout.blade.php` did not load Google Fonts (`Plus Jakarta Sans`) or asset paths properly (`/css/...` without `asset()`).
   - `.ops-topbar` lacked the neo header branding (`zoloERP` gradient badge, ERP dashboard link, and user avatar).
@@ -3480,7 +3804,7 @@ User: Sale Type Master (and other master registers) had only a delete button; "c
   - `2026_10_20_000001_allow_unregistered_company_tax_registration`
   - Cleaned caches via `php artisan optimize:clear`.
 - **E2E Playwright Suite Execution (`node tests-e2e/runner.js`):**
-  - **13 / 13 Full Life Cycle Milestones: 100% PASS** (Authentication with Company Context selection, Profile setup, Category/Unit masters, Raw Material & Finished Good product masters, Supplier & Job Worker onboarding, Customer directory, Inward Purchase Bill, Delivery Challan for Job Work, Job Work conversion & capitalisation receipt, Commercial B2B sale with ₹59,500 profit, and Double-Entry Settlement).
+  - **13 / 13 Full Life Cycle Milestones: 100% PASS** (Authentication with Company Context selection, Profile setup, Category/Unit masters, Raw Material & Finished Good product masters, Supplier & Job Worker onboarding, Customer directory, Inward Purchase Bill, Delivery Challan for Job Work, Job Work conversion & capitalisation receipt, Commercial B2B sale with â‚¹59,500 profit, and Double-Entry Settlement).
   - **66 / 66 Primary ERP Menus Audited: 100% HTTP 200 OK** (incorporating newly added enterprise menus: Operations Job Work workspace, Sales Orders, Purchase Orders, Dispatch Register, Product Aliases, Reviewed Product Bulk Import, Stock by Lot, Collections, Ageing, Multi-Company Selector, and Company Profile).
   - **`npx playwright test`:** 12 / 12 serial specifications passed in 1.7 minutes.
 - **Generated Interactive HTML Report:**
@@ -3497,25 +3821,25 @@ User: Sale Type Master (and other master registers) had only a delete button; "c
   - `tests-e2e/fmcg_html_reporter.js`: Standalone interactive HTML report builder.
   - `tests-e2e/fmcg_runner.js`: Automated Playwright test runner executing 22 milestones and auditing 66 ERP menus.
 - **Milestones Executed & Verified (22 / 22 Passed, 100% Green in 155.6s):**
-  1. `AUTH-01`: Administrator Authentication & Company Context Switch (✔ PASS)
-  2. `ENT-01`: Setup NutriCrunch Foods Enterprise Profile & FSSAI Lic (✔ PASS)
-  3. `MST-01`: Configure FMCG Hierarchy: Food Categories & Packaging Units (Kg, Pch, Cdy, Ctn) (✔ PASS)
-  4. `PRD-01` to `PRD-03`: Create Raw Ingredient Masters: Rolled Oats (Food Grade), California Almonds (Tree Nut Allergen), Organic Wild Honey (✔ PASS)
-  5. `PRD-04`: Create Packaging Material Master: Printed Nitrogen Barrier Foil Pouches 40g (✔ PASS)
-  6. `PRD-05`: Create Finished Food Product Master: NutriCrunch Granola Bar 40g (Batch `LOT-NC-202610-A`, Exp: `2027-04-15`, MRP ₹30) (✔ PASS)
-  7. `PTY-01` & `PTY-02`: Onboard Agro & Flexible Packaging Suppliers (✔ PASS)
-  8. `PTY-03`: Onboard Certified Subcontractor / Co-Packer: FreshPack Services under GST Sec 143 (✔ PASS)
-  9. `PTY-04`: Onboard Multi-Tier Customers: Super Stockist, Wholesaler & Modern Retailer (✔ PASS)
-  10. `TXN-01`: Inward Purchase Bill: 500kg Oats, 200kg Almonds, 150kg Honey (+850 KG stock) (✔ PASS)
-  11. `TXN-02`: Inward Purchase Bill: 10,000 Nitrogen Barrier Foil Pouches (+10,000 units) (✔ PASS)
-  12. `TXN-03`: Issue GST Sec 143 Job Work Challan (`DC-JW-FMCG-001`) to FreshPack for Nitrogen Flushing & Pouch Sealing (-6,000 pouches) (✔ PASS)
-  13. `TXN-04`: Finished Goods Inward Receipt: 5,800 NutriCrunch Granola Bars (reconciled 200 machine setup scrap; capitalized ₹14,500 packaging charge into ₹16.50 unit cost) (✔ PASS)
-  14. `TXN-05`: Tier 1 Super Stockist FTL Bulk Dispatch: 3,000 Pouches @ ₹18.00 + 18% GST = ₹63,720 (✔ PASS)
-  15. `TXN-06`: Tier 2 Wholesaler Master Carton Dispatch: 1,500 Pouches @ ₹22.00 + 18% GST = ₹38,940 (✔ PASS)
-  16. `TXN-07`: Tier 3 Modern Retail Delivery: 500 Pouches @ ₹25.00 + 18% GST = ₹14,750 (✔ PASS)
-  17. `TXN-08`: Reverse Logistics: MRA Sales Return (50 Pch) & QA Inspection (20 sound restocked to FG inventory, 30 damaged quarantined; GST Credit Note ₹1,475) (✔ PASS)
-  18. `TXN-09`: Expiry / Damage Disposal: Certified Destruction of 30 Condemned Pouches under `CERT-DISP-FMCG-2026-004` & Statutory CGST Sec 17(5)(h) ITC Reversal (✔ PASS)
-  19. `TXN-10`: Double-Entry Financial Settlement: Multi-Tier Collections, Supplier Disbursements & Gross Profit Realization (Net Sales ₹115,935, COGS ₹81,675, Gross Profit ₹16,575 @ 16.87% margin, Closing FG Stock: 820 Pouches valued at ₹13,530) (✔ PASS)
+  1. `AUTH-01`: Administrator Authentication & Company Context Switch (âœ” PASS)
+  2. `ENT-01`: Setup NutriCrunch Foods Enterprise Profile & FSSAI Lic (âœ” PASS)
+  3. `MST-01`: Configure FMCG Hierarchy: Food Categories & Packaging Units (Kg, Pch, Cdy, Ctn) (âœ” PASS)
+  4. `PRD-01` to `PRD-03`: Create Raw Ingredient Masters: Rolled Oats (Food Grade), California Almonds (Tree Nut Allergen), Organic Wild Honey (âœ” PASS)
+  5. `PRD-04`: Create Packaging Material Master: Printed Nitrogen Barrier Foil Pouches 40g (âœ” PASS)
+  6. `PRD-05`: Create Finished Food Product Master: NutriCrunch Granola Bar 40g (Batch `LOT-NC-202610-A`, Exp: `2027-04-15`, MRP â‚¹30) (âœ” PASS)
+  7. `PTY-01` & `PTY-02`: Onboard Agro & Flexible Packaging Suppliers (âœ” PASS)
+  8. `PTY-03`: Onboard Certified Subcontractor / Co-Packer: FreshPack Services under GST Sec 143 (âœ” PASS)
+  9. `PTY-04`: Onboard Multi-Tier Customers: Super Stockist, Wholesaler & Modern Retailer (âœ” PASS)
+  10. `TXN-01`: Inward Purchase Bill: 500kg Oats, 200kg Almonds, 150kg Honey (+850 KG stock) (âœ” PASS)
+  11. `TXN-02`: Inward Purchase Bill: 10,000 Nitrogen Barrier Foil Pouches (+10,000 units) (âœ” PASS)
+  12. `TXN-03`: Issue GST Sec 143 Job Work Challan (`DC-JW-FMCG-001`) to FreshPack for Nitrogen Flushing & Pouch Sealing (-6,000 pouches) (âœ” PASS)
+  13. `TXN-04`: Finished Goods Inward Receipt: 5,800 NutriCrunch Granola Bars (reconciled 200 machine setup scrap; capitalized â‚¹14,500 packaging charge into â‚¹16.50 unit cost) (âœ” PASS)
+  14. `TXN-05`: Tier 1 Super Stockist FTL Bulk Dispatch: 3,000 Pouches @ â‚¹18.00 + 18% GST = â‚¹63,720 (âœ” PASS)
+  15. `TXN-06`: Tier 2 Wholesaler Master Carton Dispatch: 1,500 Pouches @ â‚¹22.00 + 18% GST = â‚¹38,940 (âœ” PASS)
+  16. `TXN-07`: Tier 3 Modern Retail Delivery: 500 Pouches @ â‚¹25.00 + 18% GST = â‚¹14,750 (âœ” PASS)
+  17. `TXN-08`: Reverse Logistics: MRA Sales Return (50 Pch) & QA Inspection (20 sound restocked to FG inventory, 30 damaged quarantined; GST Credit Note â‚¹1,475) (âœ” PASS)
+  18. `TXN-09`: Expiry / Damage Disposal: Certified Destruction of 30 Condemned Pouches under `CERT-DISP-FMCG-2026-004` & Statutory CGST Sec 17(5)(h) ITC Reversal (âœ” PASS)
+  19. `TXN-10`: Double-Entry Financial Settlement: Multi-Tier Collections, Supplier Disbursements & Gross Profit Realization (Net Sales â‚¹115,935, COGS â‚¹81,675, Gross Profit â‚¹16,575 @ 16.87% margin, Closing FG Stock: 820 Pouches valued at â‚¹13,530) (âœ” PASS)
   20. Complete Procedural Sweep: **66 / 66 primary ERP menus returned HTTP 200 OK**.
 - **Interactive HTML Report Generated:**
   - File: [`fmcg_food_erp_test_results.html`](file:///d:/PROJECTS/WEBSITES/zolo-erp-pro/fmcg_food_erp_test_results.html) with full KPI summary cards, stock ledger transitions table, channel revenue breakdowns, step logs, modal screenshots, and audited menu latencies.
@@ -3525,12 +3849,12 @@ User: Sale Type Master (and other master registers) had only a delete button; "c
 ## 63. Purchase Entry Help/Terms/Party Defaults, Dark Fixes, Clean Tables Everywhere (2026-10-24, uncommitted)
 
 User feedback items 1-9 (purchase bill screen, theme, registers, product list):
-1. **"Last ₹x × qty" hint removed** from under each rate (`document-aids.js`): now a hover `title` on the rate box ("Last rate for this party: ..."); Rate history button keeps the list. `tests/Browser/document-aids.spec.mjs` updated; `.row-prev-rate` CSS removed.
+1. **"Last â‚¹x Ã— qty" hint removed** from under each rate (`document-aids.js`): now a hover `title` on the rate box ("Last rate for this party: ..."); Rate history button keeps the list. `tests/Browser/document-aids.spec.mjs` updated; `.row-prev-rate` CSS removed.
 2. **Field help "i" icons**: `public/js/field-help.js` (loaded from `partials/command-center-form.blade.php`) turns `label[data-help="What it is.|Example"]` into an icon with a shared fixed tip. Purchase header labels carry help text; GST place of supply + RCM labels get it from `gst-entry.js`.
 3. **Terms editable**: `#header-credit-days` number input in the Terms strip, synced with `#hidden-credit-days`/`#drawer-credit-days`; blank = supplier standard (placeholder shows it). Cash/Bank/etc. hide it and post 0. Server: `CommercialApplicationService` due date now uses bill `credit_days` (validated 0-3650) before `party->credit_days`. Test `SharedCommercialTest::test_credit_days_typed_on_the_bill_set_its_due_date_over_the_supplier_standard`.
 4. **Supplier standard purchase terms**: migration `2026_10_24_000001_add_purchase_defaults_to_suppliers` (json `purchase_defaults`: payment_mode, nature, place_of_supply, reverse_charge, note), `Supplier::purchaseDefaultRules()/cleanPurchaseDefaults()`, "Purchase bill defaults" section in `supplier/partials/form.blade.php`. Purchase page reads `data-defaults` on the supplier option and applies them only on a user pick (`changed.bs.select` with numeric clickedIndex), never on bill/draft restore. Applied on dev DB.
-5. **Dark theme**: grid select chevrons tiled (dark `background:` shorthand reset repeat) — fixed; side panel search/filter inputs and bootstrap-select wrappers dark.
-6/8/9. **Tables everywhere**: `public/js/table-polish.js` (loaded in `layout/main.blade.php` after Responsive) — Responsive plugin made inert (no "+" child rows), rows one line, columns that do not fit auto-hidden (same-value-on-every-row first, then low-value, money/qty last, then greedy refill) as real DataTables visibility, labelled "Columns · N hidden" picker on every table, viewer choice saved per page in localStorage, refit via ResizeObserver. CSS in `app-shell.css` (one-line toolbar, centred). `app-shell.js fitWideTables` skips DataTables. Product list: no thumbnails (name escaped), duplicate Reviewed import button removed, nav pills wrap instead of sliding under actions, Product Details dialog redesigned (label grid, image only when real, IMEI column only when present). Sales register date drops midnight "12:00:00 am". Stock by lot rewritten: one-line filters, trimmed quantities, all-zero Custody/GDNI columns and single-godown column dropped with a caption note.
+5. **Dark theme**: grid select chevrons tiled (dark `background:` shorthand reset repeat) â€” fixed; side panel search/filter inputs and bootstrap-select wrappers dark.
+6/8/9. **Tables everywhere**: `public/js/table-polish.js` (loaded in `layout/main.blade.php` after Responsive) â€” Responsive plugin made inert (no "+" child rows), rows one line, columns that do not fit auto-hidden (same-value-on-every-row first, then low-value, money/qty last, then greedy refill) as real DataTables visibility, labelled "Columns Â· N hidden" picker on every table, viewer choice saved per page in localStorage, refit via ResizeObserver. CSS in `app-shell.css` (one-line toolbar, centred). `app-shell.js fitWideTables` skips DataTables. Product list: no thumbnails (name escaped), duplicate Reviewed import button removed, nav pills wrap instead of sliding under actions, Product Details dialog redesigned (label grid, image only when real, IMEI column only when present). Sales register date drops midnight "12:00:00 am". Stock by lot rewritten: one-line filters, trimmed quantities, all-zero Custody/GDNI columns and single-godown column dropped with a caption note.
 - Dark theme also covers the full-width register (title, KPI cards, filter bar, table toolbar buttons, pager). Verified: SharedCommercial, CommercialUiWiring, TextileInventoryDefaults, OptechMasterWeb, CommercialBoundaries suites green (69 tests); browser spec document-aids.spec.mjs updated but not re-run.
 
 ### 63b. Split view default, help everywhere (2026-10-24)
@@ -3540,7 +3864,7 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 
 ## 64. Add Account Freeze Fix + Field Help on Every Entry Field (2026-10-24, uncommitted)
 - **Freeze root cause**: `commercial-workspace.css` (loaded by 54 views) forces `.modal-backdrop` to z-index 1050 and lifted only 11 named purchase/sales dialogs to 1055. Every other dialog on those pages (Chart of Accounts "Add Account", etc.) sat at Bootstrap's 1050, so the later-appended backdrop covered it and swallowed all clicks. Fix: the rule is now `.modal { z-index: 1055 !important; }`.
-- **Field help everywhere**: `field-help.js` glossary grew from ~150 to ~520 terms (accounting, vouchers, masters, HR, production, compliance, settings, invoice/barcode setup, company picker). Label matching ignores `(₹)`, `(Optional)`, `[+]`, trailing dots, `No.` and hint text in `small`/`kbd`/`.cp-opt`. Gateway/SMS credential labels (api_key, client_secret, ...) share one pattern-based help. Icon goes next to the words when the label wraps its field (bare text is wrapped in a span so stacked labels keep icon inline).
+- **Field help everywhere**: `field-help.js` glossary grew from ~150 to ~520 terms (accounting, vouchers, masters, HR, production, compliance, settings, invoice/barcode setup, company picker). Label matching ignores `(â‚¹)`, `(Optional)`, `[+]`, trailing dots, `No.` and hint text in `small`/`kbd`/`.cp-opt`. Gateway/SMS credential labels (api_key, client_secret, ...) share one pattern-based help. Icon goes next to the words when the label wraps its field (bare text is wrapped in a span so stacked labels keep icon inline).
 - CSS moved from `app-shell.css` to new `public/css/field-help.css`, linked from `layout/main`, `layout/top-head` (POS) and `company/select`; the script is now also loaded on POS and the company picker. Picker search label has `data-no-help`.
 - Chart of Accounts Opening Balance label has its own `data-help` (ledger opening, read-only).
 - Verified with a Playwright crawl of 130 menu/create pages: 0 entry labels without help (was 439 distinct labels). Add Account dialog takes typing; screenshots of COA modal, POS and company picker checked.
@@ -3581,9 +3905,9 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
     - Parties: `Lakshmi Spinning Mills Ltd` (Mill supplier), `Sengunthar Dyeing Works` (Job worker), `Kaveri Garments & Apparel Ltd` (Wholesale customer).
     - Products: `Grey Cotton Fabric 40s (MTR)`, `Dyed Cotton Poplin 40s - Royal Navy (MTR)`, `Textile Dyeing Processing Charge (SAC 998821)`.
 - **Verified Lifecycle Execution:**
-  - **Step 1 Procurement:** Purchases 1,000 MTR Grey Cotton Fabric @ ₹45/MTR = ₹47,250 incl. 5% GST (`PUR-00001`).
-  - **Step 2 Job Work Route:** Issues Material DC (`JWDC-00001`) of 1,000 MTR Grey cloth for dyeing; receives Job Work GRN (`JWGRN-00001`) for 960 MTR dyed poplin + 40 MTR (4%) process shrinkage; capitalizes ₹11,520 dyeing service fee via value-only inventory revaluation without adding false physical meterage.
-  - **Step 3 Wholesale Sales Billing:** Sells 500 MTR @ ₹85/MTR = ₹44,625 incl. 5% GST (`MJ-00001`) with Bales (`BALE-TX-101,102`), LR No (`ARC-ERD-45129`), Transporter (`ARC Transports`), and 30 Days credit.
+  - **Step 1 Procurement:** Purchases 1,000 MTR Grey Cotton Fabric @ â‚¹45/MTR = â‚¹47,250 incl. 5% GST (`PUR-00001`).
+  - **Step 2 Job Work Route:** Issues Material DC (`JWDC-00001`) of 1,000 MTR Grey cloth for dyeing; receives Job Work GRN (`JWGRN-00001`) for 960 MTR dyed poplin + 40 MTR (4%) process shrinkage; capitalizes â‚¹11,520 dyeing service fee via value-only inventory revaluation without adding false physical meterage.
+  - **Step 3 Wholesale Sales Billing:** Sells 500 MTR @ â‚¹85/MTR = â‚¹44,625 incl. 5% GST (`MJ-00001`) with Bales (`BALE-TX-101,102`), LR No (`ARC-ERD-45129`), Transporter (`ARC Transports`), and 30 Days credit.
   - **Step 4 Settlements:** 50% Customer advance received via NEFT; Supplier settled in full via NEFT.
   - Verification: 100% green; `php artisan erp:demo-textile` verified idempotent (0.5s execution time).
 
@@ -3600,9 +3924,9 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
       - `Step 4: Inward Conversion & GRN` (Two-sided consumption reconciliation, shrinkage/process loss, dyeing charge capitalization via value-only inventory revaluation).
       - `Step 5: B2B Commercial Sale & Settlement` (Commercial invoicing `MJ-00001`, margin verification, bales packing, multi-tier treasury settlement, GSTR-3B tax offset).
     - **Sub-Tabs per Step (3 Sub-Tabs x 5 Steps = 15 Interactive Panes):**
-      - `📋 Step-by-Step UI Procedure`: Precise screen routes, field-by-field instructions, drawer tabs, keyboard shortcuts (`F2`), and approval workflow.
-      - `🔀 All Scenario Cases & Possibilities`: Comprehensive variations covering Manufacturing vs Wholesales vs Distribution vs Job Work, Intrastate (CGST+SGST) vs Interstate (IGST) vs RCM, Normal shrinkage vs Shade variations/Rework, Direct dispatches (Sec 143(1)(a)), Bales & LR, and Cash discounts.
-      - `🔍 Post-Entry Audit Checklist & Outcomes`: Stock ledger tracking (physical and WIP godowns), balanced double-entry journal vouchers (Dr/Cr table), GSTR-1 / GSTR-2B / GSTR-3B impact, Form ITC-04 statutory compliance, P&L realization (₹59,500 profit), and cash flow reconciliation (+₹49,000 cash).
+      - `ðŸ“‹ Step-by-Step UI Procedure`: Precise screen routes, field-by-field instructions, drawer tabs, keyboard shortcuts (`F2`), and approval workflow.
+      - `ðŸ”€ All Scenario Cases & Possibilities`: Comprehensive variations covering Manufacturing vs Wholesales vs Distribution vs Job Work, Intrastate (CGST+SGST) vs Interstate (IGST) vs RCM, Normal shrinkage vs Shade variations/Rework, Direct dispatches (Sec 143(1)(a)), Bales & LR, and Cash discounts.
+      - `ðŸ” Post-Entry Audit Checklist & Outcomes`: Stock ledger tracking (physical and WIP godowns), balanced double-entry journal vouchers (Dr/Cr table), GSTR-1 / GSTR-2B / GSTR-3B impact, Form ITC-04 statutory compliance, P&L realization (â‚¹59,500 profit), and cash flow reconciliation (+â‚¹49,000 cash).
   - **Interactive JavaScript Controller:**
     - `switchStepTab(stepNum)` and `switchSubTab(stepNum, subTabName)` handle instantaneous tab switching, narrative story card border highlighting, and smooth scrolling.
   - **Browser Verification:**
@@ -3613,7 +3937,7 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 ## 69. Textile Scenario Matrix with Real Test Results (2026-10-24)
 - Audit: the Playwright Animazon spec (`tests-e2e/animazon_lifecycle.spec.js`) seeds rows via tinker and bypasses posting; its 13/13 proves nothing about ledger/GST. Several studio cards claimed features that do not exist (ITC-04, LUT export, cash discount, Sec 143 alerts, direct dispatch, brokerage).
 - New `tests/Support/textile_scenario_matrix.php`: 80 textile cases (E2E/SET/PUR/JWO/JWI/SAL/RET/PAY/STK/GST/COR) x business types (MFG/WD/WS/DS), status built/partial/not_built, mapped to PHPUnit tests.
-- New `tests/Feature/TextileScenarioMatrixTest.php` (15 tests, real services): Animazon story through real posting (ledger GP ₹59,500), per-type E2E, job work refused for trading types, IGST in/out, 5%+18% invoice, ROLL->MTR, phased DCs, dyeing->printing cost chain, dyes on same DC, grade A/seconds/fents cost split, freight split, payments, lot/shade from opening. Added to `phpunit.operations.xml` (CI). Green on SQLite and disposable MySQL 8.4.
+- New `tests/Feature/TextileScenarioMatrixTest.php` (15 tests, real services): Animazon story through real posting (ledger GP â‚¹59,500), per-type E2E, job work refused for trading types, IGST in/out, 5%+18% invoice, ROLL->MTR, phased DCs, dyeing->printing cost chain, dyes on same DC, grade A/seconds/fents cost split, freight split, payments, lot/shade from opening. Added to `phpunit.operations.xml` (CI). Green on SQLite and disposable MySQL 8.4.
 - `phpunit.textile-matrix.xml` (20 files, 186 tests) + `tests/Support/render_textile_matrix.php run` -> runs suite, writes JUnit to storage/logs, injects matrix between `<!-- TEXTILE-MATRIX:START/END -->` in `animazon_textiles_erp_test_results.html` and stamps each studio card. Last run: 186/186; 64 built+pass, 6 partial, 10 not built, 0 fail.
 - Fixed SQLite-only false failure in `IndustryFlowIntegrationTest::test_job_work_charge...` (cast instead of guessing float from '.').
 - Report text fixes: ITC-04/270-330 day alert claims removed, 12% slab removed (GST 2.0), 59,500 shown as 44.7% margin, Playwright log labelled as seeded smoke run.
@@ -3625,14 +3949,14 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 ## 70. Evidence-based Results + All 16 Textile Gaps Built (2026-10-24)
 - Evidence: `tests/Support/RecordsTestEvidence.php` (used by `ErpServiceTestCase::tearDown`) writes, when `ERP_TEST_EVIDENCE_DIR` is set, per-test JSON of documents posted (input) and stock/ledger/open items/GST (result) plus A4 invoice and Material DC HTML. `render_textile_matrix.php run` sets it, screenshots prints with headless Chrome into `tests-e2e/screenshots/matrix/`, and renders a "Scenario Test Execution Log" (input / result / screenshot per case) in the HTML report.
 - Migration `2026_10_24_000003_textile_trade_compliance_features`: payments.discount/discount_reason/tds_amount, tax_rates.min_unit_value/max_unit_value, principal_job_orders/movements, agent_commissions.
-- Built: freight as service line capitalised (`capitalise_services`, LandedCostService); cash discount on payment (bill or party cd_percent/cd_days terms; ledgers discount_allowed/received); customer TDS on receipt; 194Q TDS on purchases (`Tds194qService`, Settings › GST › Exports and TDS); Sec 143 deadlines (`JobWorkService::deadlines`, hub column); direct dispatch from job worker (`direct_dispatch` on GRN, sale from external warehouse, `dispatched_from` on invoice); processing charge as expense (`charge_mode`); garment price bands (`GstSetupService::installGarmentBands`, ≤₹2,500 5% / above 18%); export/SEZ under LUT or IGST (`supply_type`, LUT in settings, GSTR-1 exp/sez); GSTR-3B + Rule 88A set-off and ITC-04 (`GstReturnsService`, /compliance/gst/returns); e-invoice 1.1 + e-way bulk JSON (`EDocumentService`, /compliance/{einvoice|ewaybill}/{sale|dispatch}/{id}); brokerage with 194H (`BrokerageService`, /trade/brokerage); route sheet (`RouteSheetService`, areas = routes, /trade/routes); job work for customers (`PrincipalJobService`, /trade/customer-jobs); roll-wise stock test.
+- Built: freight as service line capitalised (`capitalise_services`, LandedCostService); cash discount on payment (bill or party cd_percent/cd_days terms; ledgers discount_allowed/received); customer TDS on receipt; 194Q TDS on purchases (`Tds194qService`, Settings â€º GST â€º Exports and TDS); Sec 143 deadlines (`JobWorkService::deadlines`, hub column); direct dispatch from job worker (`direct_dispatch` on GRN, sale from external warehouse, `dispatched_from` on invoice); processing charge as expense (`charge_mode`); garment price bands (`GstSetupService::installGarmentBands`, â‰¤â‚¹2,500 5% / above 18%); export/SEZ under LUT or IGST (`supply_type`, LUT in settings, GSTR-1 exp/sez); GSTR-3B + Rule 88A set-off and ITC-04 (`GstReturnsService`, /compliance/gst/returns); e-invoice 1.1 + e-way bulk JSON (`EDocumentService`, /compliance/{einvoice|ewaybill}/{sale|dispatch}/{id}); brokerage with 194H (`BrokerageService`, /trade/brokerage); route sheet (`RouteSheetService`, areas = routes, /trade/routes); job work for customers (`PrincipalJobService`, /trade/customer-jobs); roll-wise stock test.
 - Matrix: all 80 cases `built`; TextileScenarioMatrixTest has 29 tests.
-- Verification (2026-10-24): `render_textile_matrix.php run` → 198/198 tests, 80/80 cases built+pass, 88 document screenshots. `phpunit.operations.xml` 74/74 green on SQLite; new matrix tests also green on disposable MySQL 8.4. Full `--testsuite Feature` (needs `-d memory_limit=-1`): 10 failures, all also failing on the original code (date-dependent LegacyStockShadowWebTest x5, DeliveryChallanWebTest x1; order-dependent timber/dimension x4 that pass alone); original code had 14.
+- Verification (2026-10-24): `render_textile_matrix.php run` â†’ 198/198 tests, 80/80 cases built+pass, 88 document screenshots. `phpunit.operations.xml` 74/74 green on SQLite; new matrix tests also green on disposable MySQL 8.4. Full `--testsuite Feature` (needs `-d memory_limit=-1`): 10 failures, all also failing on the original code (date-dependent LegacyStockShadowWebTest x5, DeliveryChallanWebTest x1; order-dependent timber/dimension x4 that pass alone); original code had 14.
 
 ---
 
 ## 71. Sidebar Active-State Fallback, Stock by Lot Look, CI Fix (2026-10-24)
-- Sidebar highlight was per-page JS (`$("ul#x #y-menu").addClass("active")`); pages without it (Stock by lot, trade pages, etc.) showed nothing selected. `backend/layout/main.blade.php` now marks the best URL match (longest path prefix, query params must match) and expands its group when the page marked nothing. Overtime and Sale Agents pages pointed at the wrong item (dept/employee) — fixed. Playwright audit of all 131 sidebar links: every page highlights its own link (POS has no sidebar; ~11 legacy links such as Add Expense and old reports redirect to /dashboard).
+- Sidebar highlight was per-page JS (`$("ul#x #y-menu").addClass("active")`); pages without it (Stock by lot, trade pages, etc.) showed nothing selected. `backend/layout/main.blade.php` now marks the best URL match (longest path prefix, query params must match) and expands its group when the page marked nothing. Overtime and Sale Agents pages pointed at the wrong item (dept/employee) â€” fixed. Playwright audit of all 131 sidebar links: every page highlights its own link (POS has no sidebar; ~11 legacy links such as Add Expense and old reports redirect to /dashboard).
 - Stock by lot now uses `product-workspace-view` card + dark table header like the other Product & Inventory pages; duplicate page h1 dropped.
 - CI `MySQL / operations` failed on 194Q test: MySQL JSON columns reorder object keys; test now compares key-sorted arrays.
 - Local dev DB was missing migration `2026_10_24_000003` (Brokerage 503, "Run the textile trade migration first" on job work); applied.
@@ -3653,7 +3977,7 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 - Returns: only "Returns & notes" (/compliance/returns, both sides; opens for returns-index or purchase-return-index). Old sidebar Returns (sale + purchase) show only when commercial+compliance are off; tab-bar Returns links on Sales/Purchase/Customer/Quotation pages point to Returns & notes.
 - Removed sidebar Add Product / Add Adjustment / Add Transfer (list pages have the Add button). Sidebar audit: 121 links, all highlight themselves.
 - Kept (not duplicates): Sale Agents (HRM staff) vs Agents & Brokers (bill brokers). Summary Report removed from sidebar (user, 2026-10-25); ledger Profit & Loss is the one P&L. Route/page still exist.
-- CI fix (same day): rendering expense/income/notification modals on every company page broke CI (test schema has no `expense_categories` → 500 on every page). With a company selected they now render only on their own list pages (`expenses.index`, `incomes.index`, `notifications.index`); sale/purchase return modals are back under `@unless($companyContext)`.
+- CI fix (same day): rendering expense/income/notification modals on every company page broke CI (test schema has no `expense_categories` â†’ 500 on every page). With a company selected they now render only on their own list pages (`expenses.index`, `incomes.index`, `notifications.index`); sale/purchase return modals are back under `@unless($companyContext)`.
 
 ---
 
@@ -3691,12 +4015,12 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
   - Eliminated multicolor ad-hoc buttons across forms and toolbars.
   - Standardized `.btn-primary`, `.zolo-btn-primary`, `.cp-btn-primary` to the signature brand gradient/solid (`#6366f1` / `#7c3aed`) with white text and subtle glow.
   - Standardized `.btn-secondary`, `.zolo-btn-secondary`, `.comm-items-btn`, `.cp-btn` to clean surface background (`#ffffff` light, `#1e293b` dark), `#cbd5e1` border, dark text, and purple icons with smooth hover states.
-  - Standardized `.input-group` attached buttons (`+` next to Brand, Category, Unit, `↻` next to code) with `flex-wrap: nowrap !important;` so buttons never drop below inputs and remain horizontally aligned.
+  - Standardized `.input-group` attached buttons (`+` next to Brand, Category, Unit, `â†»` next to code) with `flex-wrap: nowrap !important;` so buttons never drop below inputs and remain horizontally aligned.
 - **Company Dialog Overhaul (`#dlg-company` & `#dlg-company-edit`):**
   - **Zero Dual Scrollbar:** Eliminated Chromium's nested `<dialog>` + inner form double scrollbar defect by setting `overflow: hidden !important;` on `.cp-dialog`.
   - **Single-Screen Fit:** Widened `.cp-dialog-wide` to `min(1160px, calc(100vw - 32px))` with a 3-column responsive layout (`Business Identity`, `Address & Contact`, `Tax & Compliance`) fitting all fields cleanly within desktop viewport height without vertical scrolling.
   - **Sectionized with Distinct Light Background:** Added `.cp-col` section box template with soft `#f8fafc` tint in light mode and `#141c2e` in dark mode, 10px rounded corners, and semantic SVG icons (`Briefcase`, `Map-Pin`, `File-Text`, `Calendar`).
-  - **Unified Popup Header & Close Button:** Added `.cp-dialog-header` template with title, subtitle, and top-right `✕` close button across all modals (`#dlg-company`, `#dlg-company-edit`, `#dlg-company-delete`, `#dlg-group`, `#dlg-group-edit`, `#dlg-group-delete`).
+  - **Unified Popup Header & Close Button:** Added `.cp-dialog-header` template with title, subtitle, and top-right `âœ•` close button across all modals (`#dlg-company`, `#dlg-company-edit`, `#dlg-company-delete`, `#dlg-group`, `#dlg-group-edit`, `#dlg-group-delete`).
 - **Browser & Automated Verification:**
   - Automated PHPUnit tests:
     - `WorkspaceSecurityTest`: 12/12 passing (73 assertions).
@@ -3825,7 +4149,7 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 ---
 
 ## 80. No Inline Styles: Utilities, Page CSS Files, Button Roles (2026-10-25, branch ui)
-- **User request:** finish all remaining steps — no inline styles, every element from a template; keep nandha3d's per-section colours (x-ui.section-box) unchanged.
+- **User request:** finish all remaining steps â€” no inline styles, every element from a template; keep nandha3d's per-section colours (x-ui.section-box) unchanged.
 - **CSS load order now:** `zolo-tokens.css` -> `zolo-utilities.css` (head, before neo) -> neo/app-shell -> `@stack('css')` (page CSS incl. `css/pages/*.css`) -> `zolo-components.css` -> settings custom_css.
 - **Inline styles:** 2,236 `style=""` in app views became classes. KPI icon tiles -> `z-icon-tile z-tone-{primary|success|info|warning|danger|neutral}`; text tones -> `z-tone-text-*`; everything else -> generated one-declaration utilities in `public/css/zolo-utilities.css` (`u-fs-12px`, `u-c-success`, `u-bg-info-soft`...; `!important` = old inline strength; selector `:where(:not(.bootstrap-select))` because bootstrap-select copies a select's classes onto its wrapper). Blade colour ternaries became class ternaries. Data arrays now carry `'tone'` instead of hex (chart_of_accounts stats, HomeController addon list). Allowed inline (guarded): `display:none` (JS show/hide reads/writes `style.display`) and Blade-computed values (`width:{{ $pct }}%`). Emails and print/PDF templates (mail, invoice, print, receipt/reciept, pdf, label, barcode) keep inline styles.
 - **`<style>` blocks:** 112 moved to `public/css/pages/<view>.css` (`shared-*` when several views had identical blocks). Left: `qr/public_menu` (theme colours from DB) and vendor/translation.
@@ -3975,7 +4299,7 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 - **Key Architectural Solutions:**
   1. **Modern Toggle Switch Buttons (`.zolo-switch-track` & `.zolo-switch-thumb`):**
      - Transformed each toggle pill in the Inventory & Stock Control stripe into authentic modern toggle switch buttons matching the provided reference (green/blue track with white circular knob).
-     - Track: 28px × 16px capsule, neutral inactive grey (`#cbd5e1` / `#334155`), transitions smoothly to active role colors (amber `#f59e0b`, emerald `#10b981`, blue `#2563eb`, purple `var(--z-primary)`, rose `#e11d48`).
+     - Track: 28px Ã— 16px capsule, neutral inactive grey (`#cbd5e1` / `#334155`), transitions smoothly to active role colors (amber `#f59e0b`, emerald `#10b981`, blue `#2563eb`, purple `var(--z-primary)`, rose `#e11d48`).
      - Thumb: 12px white circular knob with soft elevation, slides 12px to the right (`translateX(12px)`) on checked.
   2. **Preventing "This product has variant" Hide/Reappear Glitch:**
      - Removed legacy mutual exclusion JavaScript that was forcibly hiding `#variant-option` when `is_batch` checked and hiding `#batch-option` when `is_variant` checked.
@@ -4017,8 +4341,8 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
   3. **Seamless In-Place Tab Replacement for Purchase Orders (Zero Popups):**
      - Replaced the popup modal click handler in `commercial-orders.js` and `command-center-nav.blade.php` with `switchCommercialTab(mode)`:
        - Clicking `Purchase Orders` tab highlights it with `aria-current="page"`, updates URL to `?orders=1` via pushState without reloading, updates title to `New Purchase Order [Order]`, updates labels to `Our PO No`, `Quotation / Ref #`, `PO Date`, `Delivery Date`, sets status to `4`, and changes save button to `Save Purchase Order`.
-       - Right-side drawer transforms from the bill list to the `Purchase Orders` list (`#side-order-list`), featuring order cards with status badges, remaining quantities to bill/deliver, and direct `⚡ Load to bill`, `Details`, and `Cancel` buttons.
-       - Clicking `⚡ Load to bill` on any order automatically switches the workspace back to the `Bills` tab and preloads all open lines into the bill voucher.
+       - Right-side drawer transforms from the bill list to the `Purchase Orders` list (`#side-order-list`), featuring order cards with status badges, remaining quantities to bill/deliver, and direct `âš¡ Load to bill`, `Details`, and `Cancel` buttons.
+       - Clicking `âš¡ Load to bill` on any order automatically switches the workspace back to the `Bills` tab and preloads all open lines into the bill voucher.
        - Clicking `Bills` tab returns the workspace to `New Purchase Bill [New]` with `Our Bill No`, `Bill Date`, `Entry Date`, and `Save` button.
        - Hidden `#commercial-orders` toolbar button to prevent cluttering the items row.
 - **Verification:**
@@ -4031,21 +4355,21 @@ User feedback items 1-9 (purchase bill screen, theme, registers, product list):
 ## 87. Sidebar Restructure to User's Information Architecture (2026-10-25, branch ui)
 
 User gave the left-bar structure; implemented in `resources/views/backend/layout/sidebar.blade.php` (also saved to agent memory `sidebar-structure`).
-- Sections: Dashboard · Master Data (Products / Parties / Commercial Masters groups) · Inventory · Buying · Selling · Job Work / Subcontracting · Sales Support · Scheduling · GST & Compliance · Finance & Ledger · Organization · Industry Addons (kept) · Analytics (kept, stock reports moved to Inventory Reports) · Settings (7 named links + "Other Settings" group).
+- Sections: Dashboard Â· Master Data (Products / Parties / Commercial Masters groups) Â· Inventory Â· Buying Â· Selling Â· Job Work / Subcontracting Â· Sales Support Â· Scheduling Â· GST & Compliance Â· Finance & Ledger Â· Organization Â· Industry Addons (kept) Â· Analytics (kept, stock reports moved to Inventory Reports) Â· Settings (7 named links + "Other Settings" group).
 - Deep links: job work hub opens a register from `?tab=dc|grn|outside|shrinkage` (`operations/hub.blade.php`); GST returns cards carry `#gstr3b`, `#itc04`, `#tds`; `ComplianceController@notes` accepts `?side=sale|purchase`.
 - `main.blade.php` sidebar script now opens only the groups around the active entry (page scripts still expand old ul ids like `#product`), and a matching URL hash breaks ties.
 - Not shown yet (no page exists): Rental workflows, Rework / Returns, Service Bills, Tax Reports. Voucher Series and Document Series both open `document-series.index`.
-- Verified: 160 feature tests green (CapabilityEngine, PageSpeed, OptechMaster/Voucher, Navigation, Operations, Compliance fixtures, TextileScenarioMatrix, JobWorkReturnsRework…); Playwright check of active/open state on job-work, returns, stock-count, warehouse stock, customer, warehouse pages.
+- Verified: 160 feature tests green (CapabilityEngine, PageSpeed, OptechMaster/Voucher, Navigation, Operations, Compliance fixtures, TextileScenarioMatrix, JobWorkReturnsReworkâ€¦); Playwright check of active/open state on job-work, returns, stock-count, warehouse stock, customer, warehouse pages.
 
 ---
 
 ## 88. Sidebar Rebuilt From the IA Plan Document (2026-10-25, branch ui)
 
 Source: [documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md](documents/ZOLOERP_SIDEBAR_INFORMATION_ARCHITECTURE_PLAN.md) (supersedes the section-87 flat list).
-- Sidebar: Master Data · Inventory · Transactions (Buying, Selling + Sales Tools) · Operations (capability-gated Job Work, Manufacturing, Projects / Sites, Distribution, Repair, Cafe, module menus; Booking Calendar) · Finance · Compliance · Reporting (one Reports group, category sub-labels, Brokerage moved here) · Organization · Administration (one Settings entry).
+- Sidebar: Master Data Â· Inventory Â· Transactions (Buying, Selling + Sales Tools) Â· Operations (capability-gated Job Work, Manufacturing, Projects / Sites, Distribution, Repair, Cafe, module menus; Booking Calendar) Â· Finance Â· Compliance Â· Reporting (one Reports group, category sub-labels, Brokerage moved here) Â· Organization Â· Administration (one Settings entry).
 - `App\Services\Platform\NavigationAccess` holds the role-override/permission/capability checks once (sidebar + Settings workspace). `SettingsCatalog` lists every settings page by area.
 - New `/settings` (`settings.workspace`, `SettingsWorkspaceController`, `backend/settings/workspace.blade.php`, `css/pages/settings-workspace.css`): 10 area cards, filter box, Enter/arrow keys; fits 1536x730 with no scroll.
-- `public/js/sidebar-state.js` now owns: current-page marking (settings pages mark Settings via the hidden `#side-search-index`), one top-level group open, remembered group per tab, scroll restore, and "Search menu…" (permission-filtered, includes settings pages). Inline marker script removed from `main.blade.php`. CSS for search/sub-labels appended to `zolo-erp-neo.css`.
+- `public/js/sidebar-state.js` now owns: current-page marking (settings pages mark Settings via the hidden `#side-search-index`), one top-level group open, remembered group per tab, scroll restore, and "Search menuâ€¦" (permission-filtered, includes settings pages). Inline marker script removed from `main.blade.php`. CSS for search/sub-labels appended to `zolo-erp-neo.css`.
 - Not done (needs decision): new capability keys for HRM / POS / promotions / scheduling (still permission-only), Rental (no feature), Service Bills register, Stock-by-lot gating by lot capability.
 - Verified: 91 nav/design feature+unit tests green; Playwright: active+open group correct on 8 pages, accordion one-open, search "purchase return"/"sms", settings page one-screen.
 
@@ -4058,7 +4382,7 @@ User decisions on section 88's open items:
 - Migration `2026_10_25_000001_switchable_existing_feature_capabilities`: seeds the keys, backfills every existing company ON for HRM/POS/gift cards/coupons/scheduling; stock-by-lot ON for textile/FMCG/timber profiles only. Fresh companies follow the profile preset (FMCG: POS + lot report; textile/timber: lot report; general trading/solar: none).
 - Server enforcement: `CapabilityServiceProvider` maps HRM controllers, GiftCard, Coupon, Booking, InventoryLotReport controllers and route `sale.pos` to their capability (RequireCapability).
 - Sidebar, Settings catalog (POS/HRM settings, gift cards, coupons) and dashboard POS quick button follow the capabilities; Operations heading hides when no module is on.
-- Company profile › Features card toggles the six (skipped when the industry changes in the same save, since the preset applies).
+- Company profile â€º Features card toggles the six (skipped when the industry changes in the same save, since the preset applies).
 - Rental and Service Bills: nothing added until real modules exist.
 - Tests: new `SwitchableCapabilityTest` (4) + `CompanyProfileTest::test_features_card_...`.
 
@@ -4068,10 +4392,10 @@ User decisions on section 88's open items:
 
 User: Returns should open in the same bill workspace (like the Purchase Orders tab), only the needed fields, separately for purchase and sales.
 - `/purchases?returns=1` and `/sales?returns=1` (nav tab, sidebar "Purchase Returns & Debit Notes" / "Sales Returns & Credit Notes", purchase top-bar Returns) swap the bill voucher for `backend/commercial/returns-workspace.blade.php` and the bill list for `returns-side.blade.php`; `public/js/commercial-returns.js`, `public/css/pages/commercial-returns.css`. Only when commercial + compliance are on and the user has `purchase-return-add` / `returns-add`; otherwise the old routes stay.
-- Fields: Against bill (search posted bills by number/party), party (read-only), return date, Type (Goods return / Rate difference / Discount), Reason; lines show billed, already returned, rate, return qty (or pre-tax amount), sales-only Condition (Back to stock → bill warehouse, else first quarantine warehouse), serial/piece checkboxes when the bill has identities. Saves through the existing `ReturnService` (`POST /compliance/{kind}/{id}/notes`, JSON, Idempotency-Key). Side list: recent notes with Approve / View / Print. View opens a modal on the same page (from the JSON of `/compliance/documents/{kind}_note/{id}`), not the separate document page; Print opens the A4 note in a new tab, like a bill's Print. Bill cards get a "Return" action.
+- Fields: Against bill (search posted bills by number/party), party (read-only), return date, Type (Goods return / Rate difference / Discount), Reason; lines show billed, already returned, rate, return qty (or pre-tax amount), sales-only Condition (Back to stock â†’ bill warehouse, else first quarantine warehouse), serial/piece checkboxes when the bill has identities. Saves through the existing `ReturnService` (`POST /compliance/{kind}/{id}/notes`, JSON, Idempotency-Key). Side list: recent notes with Approve / View / Print. View opens a modal on the same page (from the JSON of `/compliance/documents/{kind}_note/{id}`), not the separate document page; Print opens the A4 note in a new tab, like a bill's Print. Bill cards get a "Return" action.
 - New endpoints: `GET /compliance/{kind}/returnable` (posted unreversed bills of the branch), `GET /compliance/{kind}/{id}/return` now answers JSON (lines + posted returned qty + warehouses + identities).
 - `commercial-orders.js` drops `returns` from the URL on Bills/Orders and ignores popstate while `returns=1`.
-- Live example on company 23 (Sri Murugan Textiles Demo): PR-00001 (1 MTR against PUR-00002, ₹12.60) and SR-00001 (2 MTR against MJ-00001, ₹178.50), both saved → awaiting approval (no return policy) → approved from the side list → posted. Playwright: no page errors; Back button, Bills tab, card Return button all verified.
+- Live example on company 23 (Sri Murugan Textiles Demo): PR-00001 (1 MTR against PUR-00002, â‚¹12.60) and SR-00001 (2 MTR against MJ-00001, â‚¹178.50), both saved â†’ awaiting approval (no return policy) â†’ approved from the side list â†’ posted. Playwright: no page errors; Back button, Bills tab, card Return button all verified.
 - Not done: a feature test for the two new endpoints (needs the MySQL compliance fixtures).
 
 ---
@@ -4081,7 +4405,7 @@ User: Returns should open in the same bill workspace (like the Purchase Orders t
 Bug: every Add Product save failed with 503 "Database temporarily unavailable"; button stuck on "Saving...".
 - Cause: `create.blade.php` rendered the `tags` input outside the ecommerce/restaurant module check (edit.blade.php gates it). `products.tags` only exists with that addon, so the insert hit `Unknown column 'tags'`. The ajax error handler then crashed on `response.responseJSON.errors.name` (503 has no `errors`), so nothing showed.
 - Fix: `tags` moved inside the ecommerce/restaurant `@if`; error handler shows `message` via `alert()` and `restoreSubmit()` re-enables the button (ajax and Dropzone paths).
-- Test: `ProductCreateSmokeTest::test_product_create_form_only_posts_fields_the_products_table_has` (fails on the old view with `tags`). Verified in browser on company 14: save → /products; probe product id 953 "Bug Probe …" left in local DB.
+- Test: `ProductCreateSmokeTest::test_product_create_form_only_posts_fields_the_products_table_has` (fails on the old view with `tags`). Verified in browser on company 14: save â†’ /products; probe product id 953 "Bug Probe â€¦" left in local DB.
 
 ---
 
@@ -4097,38 +4421,38 @@ Bug (live since cb1ad4e): Save / Review on every Purchase and Sales bill/order s
 
 ## 93. Edit Product on the Single-Screen Layout (2026-10-26, branch ui)
 
-User: Edit Product still showed the old 4-step tabs (`data-shell-steps`). `edit.blade.php` markup now mirrors create: 3 section boxes, inventory stripe with toggle pills (alert qty `#alert-qty`, diff price, batch, IMEI, promotion, featured, embedded, addon pills), extended grid (diff price, variants, promotion, combo) packed by `applyDynamicGridSpans()`. All edit names/IDs/hidden `*_hidden` inputs kept, so the existing JS works. Variants stay create-only (hidden `is-variant` when the product has them). Save error handler fixed like create (`restoreSubmit`). Test: `ProductCreateSmokeTest::test_product_edit_page_uses_the_same_single_screen_layout_as_create`. Probe product 953 renamed "… (edited)" in local DB.
+User: Edit Product still showed the old 4-step tabs (`data-shell-steps`). `edit.blade.php` markup now mirrors create: 3 section boxes, inventory stripe with toggle pills (alert qty `#alert-qty`, diff price, batch, IMEI, promotion, featured, embedded, addon pills), extended grid (diff price, variants, promotion, combo) packed by `applyDynamicGridSpans()`. All edit names/IDs/hidden `*_hidden` inputs kept, so the existing JS works. Variants stay create-only (hidden `is-variant` when the product has them). Save error handler fixed like create (`restoreSubmit`). Test: `ProductCreateSmokeTest::test_product_edit_page_uses_the_same_single_screen_layout_as_create`. Probe product 953 renamed "â€¦ (edited)" in local DB.
 
-Open: PO on company 23 blocks with "Set a valid HSN code for 3200 cc" — product 954 has GST 5% but no HSN and category "General" has no default HSN. Same strict TaxDeterminationService check runs for PO preview and bills.
+Open: PO on company 23 blocks with "Set a valid HSN code for 3200 cc" â€” product 954 has GST 5% but no HSN and category "General" has no default HSN. Same strict TaxDeterminationService check runs for PO preview and bills.
 
 ---
 
 ## 94. GSTIN Validation, Purchase Order Fixes and PO Print (2026-10-26, branch ui)
 
-- 5% GST missing on PO/bill for MJApparels: its GSTIN `33BAGP6366L1ZN` was 14 chars (PAN short a letter); `GstSetupService::deriveParty` treats an invalid GSTIN as unregistered → no GST, silently. Fix: `Gstin::rule()` (only under `usesGst()`) on supplier store/update (`vat_number`), customer store/update (`tax_no`), quick party (`/parties/quick-store`). Party card on purchase/sales pages shows "invalid GSTIN: billed as unregistered" (`data-gstin-invalid`, server-side check). User since corrected it to 33ABCFS7714N1ZV. Test: `OptechMasterWebTest::test_under_gst_a_party_with_a_malformed_gstin_is_refused`.
+- 5% GST missing on PO/bill for MJApparels: its GSTIN `33BAGP6366L1ZN` was 14 chars (PAN short a letter); `GstSetupService::deriveParty` treats an invalid GSTIN as unregistered â†’ no GST, silently. Fix: `Gstin::rule()` (only under `usesGst()`) on supplier store/update (`vat_number`), customer store/update (`tax_no`), quick party (`/parties/quick-store`). Party card on purchase/sales pages shows "invalid GSTIN: billed as unregistered" (`data-gstin-invalid`, server-side check). User since corrected it to 33ABCFS7714N1ZV. Test: `OptechMasterWebTest::test_under_gst_a_party_with_a_malformed_gstin_is_refused`.
 - POs (purchases.status 4) showed in the Bills side list with bill actions and inflated Today/Paid/Due KPIs. `PurchaseController::index` excludes status 4 when commercial is on. Test: `DocumentEntryWebTest::test_purchase_orders_stay_out_of_the_bill_list`.
 - "A fulfilment cannot precede its order": orders mode labelled `created_at` (the business date) "Delivery Date" and `supplier_invoice_date` "PO Date", so POs were dated on the delivery day. `commercial-orders.js` now labels created_at "PO Date" (shown first) and supplier_invoice_date "Delivery Date". Existing PO-00001..00003 (company 23) still carry swapped dates.
-- PO register cards: "Details" renamed "Edit" (qty/rate amendment with reason); new Print button → A4 tax-invoice layout. `DocumentRenderingService` lets an unposted, unreversed purchase order print, built live by `capture()` (title "Purchase order", "PO No.", "Delivery Date", no due/paid). Test: `DocumentEntryWebTest::test_a_purchase_order_prints_on_the_a4_bill_layout`.
+- PO register cards: "Details" renamed "Edit" (qty/rate amendment with reason); new Print button â†’ A4 tax-invoice layout. `DocumentRenderingService` lets an unposted, unreversed purchase order print, built live by `capture()` (title "Purchase order", "PO No.", "Delivery Date", no due/paid). Test: `DocumentEntryWebTest::test_a_purchase_order_prints_on_the_a4_bill_layout`.
 - Not done: full PO edit (add/remove lines, change party) and delete; Cancel = cancel remainder.
 
 ## 95. Job Work DC "Batch MJApparels of product 954 does not exist" (2026-10-26, branch ui)
 
-Product 954 is not batch-tracked (200 qty in godown 16, no batches). Chrome autofilled the job-work stock line's Lot / batch input with "MJApparels"; outbound movements require an existing batch, so the DC failed. Fix: `operations/stock_line.blade.php` lot and serial inputs get `autocomplete="off"` (material-document.js already had it); `InventoryMovementService::resolveBatch` message now names the product and says to pick an existing lot or leave it blank. Open: user also reported a GRN error — message not yet seen.
+Product 954 is not batch-tracked (200 qty in godown 16, no batches). Chrome autofilled the job-work stock line's Lot / batch input with "MJApparels"; outbound movements require an existing batch, so the DC failed. Fix: `operations/stock_line.blade.php` lot and serial inputs get `autocomplete="off"` (material-document.js already had it); `InventoryMovementService::resolveBatch` message now names the product and says to pick an existing lot or leave it blank. Open: user also reported a GRN error â€” message not yet seen.
 
 ## 96. Job Work GRN Quarantine, Full PO Edit/Delete, Edit-Date Shift (2026-10-26, branch ui)
 
-- Job Work GRN "Select a company-owned record.": 1 rejected with no quarantine warehouse picked. Company 23 has only one internal warehouse (External JWO-* are job-worker locations). `JobWorkService::settle` now says "Choose a quarantine warehouse for the rejected quantity, or enter 0 rejected."; the GRN form hints to add a second warehouse under Settings › Branch / Warehouse when fewer than 2 exist. Test: `JobWorkReturnsReworkTest::test_grn_with_rejected_material_and_no_quarantine_warehouse_says_so`.
-- Full PO edit + delete (user asked): register rows carry `untouched` (no delivered/billed/cancelled qty). Untouched purchase orders show Edit (loads into the PO form via `loadPurchaseToForm`, title "Edit Purchase Order", save = replacement through `CommercialReversalService::replace` → new PO number, old reversed with reason) and Delete (POST /commercial/purchase/{id}/reverse with reason). Touched ones show "Amend qty/rate" (old modal) and "Cancel rest". Reversal before the document date now says "Reverse or edit on or after the document date (dd-mm-yyyy)" instead of the legacy-migration message. Test: `PurchaseOrderLifecycleTest::test_an_untouched_order_can_be_edited_in_full_and_deleted`. Browser-verified on company 14 (probe POs 218–222 left reversed).
-- Edit loaders shifted dates a day early: `Common` middleware sets the company timezone (IST) but JSON serialises created_at in UTC (26-10 00:00 IST → 2026-10-25T18:30Z) and the loaders sliced it. `/purchases/{id}` and `/sales/{id}/json` now return `business_date` (company-local); purchase/sale loaders and the details print heading use it.
-- Job work Service Bill GST visibility: the bill already posted GST (PUR-00005 = ₹1,200 + 5% ₹60 = ₹1,260) but nothing showed it. Receipt details now print "₹net + GST ₹tax = ₹total" (`billTotals` in OperationsController), and the service bill form shows a live server preview (`[data-bill-preview]` in job_work_workspace, `previewServiceBill` in operations.js → POST /commercial/purchase/preview). User clarified "different name" = same job worker, but their bill names the material differently. Service bill form has "<product> on their bill" per material sent (prefilled from supplier-scoped `product_aliases` of the job worker, `workerAliases`); on booking, `JobWorkService::serviceBill` saves it as the job worker's alternate name (if `product_aliases` exists and actor has products-edit) and appends "Their name: X for <product>" to the bill note (prints on A4). Test: `ManufacturingJobWorkTest::test_service_bill_keeps_the_job_workers_own_name_for_the_material`.
+- Job Work GRN "Select a company-owned record.": 1 rejected with no quarantine warehouse picked. Company 23 has only one internal warehouse (External JWO-* are job-worker locations). `JobWorkService::settle` now says "Choose a quarantine warehouse for the rejected quantity, or enter 0 rejected."; the GRN form hints to add a second warehouse under Settings â€º Branch / Warehouse when fewer than 2 exist. Test: `JobWorkReturnsReworkTest::test_grn_with_rejected_material_and_no_quarantine_warehouse_says_so`.
+- Full PO edit + delete (user asked): register rows carry `untouched` (no delivered/billed/cancelled qty). Untouched purchase orders show Edit (loads into the PO form via `loadPurchaseToForm`, title "Edit Purchase Order", save = replacement through `CommercialReversalService::replace` â†’ new PO number, old reversed with reason) and Delete (POST /commercial/purchase/{id}/reverse with reason). Touched ones show "Amend qty/rate" (old modal) and "Cancel rest". Reversal before the document date now says "Reverse or edit on or after the document date (dd-mm-yyyy)" instead of the legacy-migration message. Test: `PurchaseOrderLifecycleTest::test_an_untouched_order_can_be_edited_in_full_and_deleted`. Browser-verified on company 14 (probe POs 218â€“222 left reversed).
+- Edit loaders shifted dates a day early: `Common` middleware sets the company timezone (IST) but JSON serialises created_at in UTC (26-10 00:00 IST â†’ 2026-10-25T18:30Z) and the loaders sliced it. `/purchases/{id}` and `/sales/{id}/json` now return `business_date` (company-local); purchase/sale loaders and the details print heading use it.
+- Job work Service Bill GST visibility: the bill already posted GST (PUR-00005 = â‚¹1,200 + 5% â‚¹60 = â‚¹1,260) but nothing showed it. Receipt details now print "â‚¹net + GST â‚¹tax = â‚¹total" (`billTotals` in OperationsController), and the service bill form shows a live server preview (`[data-bill-preview]` in job_work_workspace, `previewServiceBill` in operations.js â†’ POST /commercial/purchase/preview). User clarified "different name" = same job worker, but their bill names the material differently. Service bill form has "<product> on their bill" per material sent (prefilled from supplier-scoped `product_aliases` of the job worker, `workerAliases`); on booking, `JobWorkService::serviceBill` saves it as the job worker's alternate name (if `product_aliases` exists and actor has products-edit) and appends "Their name: X for <product>" to the bill note (prints on A4). Test: `ManufacturingJobWorkTest::test_service_bill_keeps_the_job_workers_own_name_for_the_material`.
 
 ## 97. "How to fix" Help Under Every Error (2026-10-26, branch ui)
 
 User: every error must carry a small info bar explaining it and how to solve it, for all cases.
 - `public/js/error-help.js` + `public/css/error-help.css`, loaded in `layout/main.blade.php` and `layout/top-head.blade.php` next to field-help (script `data-base="{{ url('/') }}"`).
-- Catalog `H`: specific entries (regex `m`, `why`, `fix` steps or fn(match), optional `go` [label, path]) → `'categories'` sentinel → area categories (dates, limits, selections, accounting, orders, returns, job work, manufacturing, stock, GST, payments, import, projects, company, posting, technical) → safety checks; `FALLBACK` for anything else. All 562 server messages resolve; ~400 to specific or area help.
-- Watcher: MutationObserver adds a collapsed `<details class="error-help">` ("HOW TO FIX <first step> · more" → why + steps + link) under `.alert-danger`, `.auth-alert-danger`, toastr errors (fallback allowed) and, strict (specific only, so successes/required stay quiet), under `.validation-msg`, `.invalid-feedback`, `label.error`, `.text-danger`, order status lines. Bars are removed when the error goes. `alert()` is wrapped to append numbered steps (strict).
-- Job work reversal messages now name the blocker: "Reverse the job worker's service bill PUR-00005 first (Purchase Bills)", "Reverse GRN … before reversing this DC", "Reverse the rework DC … first".
+- Catalog `H`: specific entries (regex `m`, `why`, `fix` steps or fn(match), optional `go` [label, path]) â†’ `'categories'` sentinel â†’ area categories (dates, limits, selections, accounting, orders, returns, job work, manufacturing, stock, GST, payments, import, projects, company, posting, technical) â†’ safety checks; `FALLBACK` for anything else. All 562 server messages resolve; ~400 to specific or area help.
+- Watcher: MutationObserver adds a collapsed `<details class="error-help">` ("HOW TO FIX <first step> Â· more" â†’ why + steps + link) under `.alert-danger`, `.auth-alert-danger`, toastr errors (fallback allowed) and, strict (specific only, so successes/required stay quiet), under `.validation-msg`, `.invalid-feedback`, `label.error`, `.text-danger`, order status lines. Bars are removed when the error goes. `alert()` is wrapped to append numbered steps (strict).
+- Job work reversal messages now name the blocker: "Reverse the job worker's service bill PUR-00005 first (Purchase Bills)", "Reverse GRN â€¦ before reversing this DC", "Reverse the rework DC â€¦ first".
 - Tests: `tests/JavaScript/error-help.test.cjs` (4). Browser-verified on JWO-00002 reverse and empty PO Review.
 - Rule going forward: when adding a new user-facing error message, add (or confirm) its error-help.js entry.
 
@@ -4136,27 +4460,27 @@ User: every error must carry a small info bar explaining it and how to solve it,
 
 User: can job work be edited after submission, e.g. a wrongly entered service bill? Posted records stay immutable; corrections = reverse + re-enter.
 - Bug fixed: reversing a service bill left `job_work_receipts.service_purchase_id` pointing at it, so no corrected bill could ever be booked. `CommercialReversalService::reverse` now clears the link (and `details_json.processing_cost`) when the reversed purchase carries `attributes_json.job_work_receipt_id`; the processing-cost revaluation is reversed with the bill's movements.
-- `CommercialReversalService::replace` refuses job work bills ("Edit it from its job work order (Job Work GRN › Edit bill)") because a plain replacement would drop the GRN link and the cost capitalisation.
+- `CommercialReversalService::replace` refuses job work bills ("Edit it from its job work order (Job Work GRN â€º Edit bill)") because a plain replacement would drop the GRN link and the cost capitalisation.
 - New `JobWorkService::rebill` (route action `job-rebill/{receipt}`): requires `bill_id` + reason; reverses that bill and books the corrected one in one transaction; resubmits are no-ops. GRN row shows "Edit bill" when billed; the service bill panel doubles as the edit form (prefilled from `billLines`, charge mode from the bill, reason field, "Save corrected bill").
-- Error-help entries for both new messages. Test: `ManufacturingJobWorkTest::test_a_wrong_service_bill_is_corrected_by_reversal_and_rebooking` (stock value 500 → 400 after correction, 200 after plain reversal).
-- GRN/DC corrections remain reverse + re-enter (bill → GRN → DC order), now guided by error help.
-- Follow-up (same day): JWO-00003's "Dyeing" process (id 37) has no default charge item/rate, so the service bill opened on "Select service" with no GST shown. Now: `serviceProducts` = all active service items (not cut by the 200-product list); `chargeDefault` = item + rate of the last job work bill of the same process → same job worker → company, or the only service item; preview says "Pick the processing charge item and enter the rate…" when incomplete; "No service item yet. Create one" hint. Billed GRNs get "Print bill" (A4 tax bill via /compliance/documents/purchase/{id}/print?format=a4).
-- Service bill form now has read-only "GST" (rate · amount) and "Bill total (with GST)" fields after the rate (`data-bill-gst`/`data-bill-total`, filled by previewServiceBill), plus a note that the rate comes from the charge item (Products).
-- Prints (user asked why "Print bill" shows a purchase bill, expecting a GRN): two documents. New Job Work GRN print `GET /operations/receipt/{id}/print` (`OperationsController::receiptDocument`, view `operations/job_work_grn.blade.php`, challan CSS, 2 copies: sent / accepted / rejected / loss, outputs, warehouses, service bill ref, no GST) + "Print GRN" on every GRN row. Service bill print: `DocumentRenderingService::jobWorkBill` (render time, also for already-posted bills) titles it "Job work service bill", Against "GRN … · DC … · Order …", drops bale_no equal to the bill number; `CommercialApplicationService` no longer defaults bale_no for job work bills. Test assertions in `IndustryFlowIntegrationTest::test_grey_fabric_…`. Blade gotcha: `@endif@if(` does not compile — keep a space.
+- Error-help entries for both new messages. Test: `ManufacturingJobWorkTest::test_a_wrong_service_bill_is_corrected_by_reversal_and_rebooking` (stock value 500 â†’ 400 after correction, 200 after plain reversal).
+- GRN/DC corrections remain reverse + re-enter (bill â†’ GRN â†’ DC order), now guided by error help.
+- Follow-up (same day): JWO-00003's "Dyeing" process (id 37) has no default charge item/rate, so the service bill opened on "Select service" with no GST shown. Now: `serviceProducts` = all active service items (not cut by the 200-product list); `chargeDefault` = item + rate of the last job work bill of the same process â†’ same job worker â†’ company, or the only service item; preview says "Pick the processing charge item and enter the rateâ€¦" when incomplete; "No service item yet. Create one" hint. Billed GRNs get "Print bill" (A4 tax bill via /compliance/documents/purchase/{id}/print?format=a4).
+- Service bill form now has read-only "GST" (rate Â· amount) and "Bill total (with GST)" fields after the rate (`data-bill-gst`/`data-bill-total`, filled by previewServiceBill), plus a note that the rate comes from the charge item (Products).
+- Prints (user asked why "Print bill" shows a purchase bill, expecting a GRN): two documents. New Job Work GRN print `GET /operations/receipt/{id}/print` (`OperationsController::receiptDocument`, view `operations/job_work_grn.blade.php`, challan CSS, 2 copies: sent / accepted / rejected / loss, outputs, warehouses, service bill ref, no GST) + "Print GRN" on every GRN row. Service bill print: `DocumentRenderingService::jobWorkBill` (render time, also for already-posted bills) titles it "Job work service bill", Against "GRN â€¦ Â· DC â€¦ Â· Order â€¦", drops bale_no equal to the bill number; `CommercialApplicationService` no longer defaults bale_no for job work bills. Test assertions in `IndustryFlowIntegrationTest::test_grey_fabric_â€¦`. Blade gotcha: `@endif@if(` does not compile â€” keep a space.
 
 ## 99. Sales Parity With Purchase (2026-10-26, branch ui)
 
 User: "whatever we did for purchase that should go for the sales too".
-- Bug: the Sales Orders tab posted the bill form to /sales with sale_status 2 → a pending sales BILL, never a SalesOrder (company 23 has none). Now `command-center-form.js` posts orders-mode sales to `config.ordersUrl` (POST /commercial/orders/sale → `OrderLifecycleService::createSale`) with `promised_date` = Delivery Date (`entry_date`); after any order save the page returns to `?orders=1`. `commercial-orders.js` sets `form.dataset.ordersMode`, labels Order Date / Delivery Date, SO placeholder.
+- Bug: the Sales Orders tab posted the bill form to /sales with sale_status 2 â†’ a pending sales BILL, never a SalesOrder (company 23 has none). Now `command-center-form.js` posts orders-mode sales to `config.ordersUrl` (POST /commercial/orders/sale â†’ `OrderLifecycleService::createSale`) with `promised_date` = Delivery Date (`entry_date`); after any order save the page returns to `?orders=1`. `commercial-orders.js` sets `form.dataset.ordersMode`, labels Order Date / Delivery Date, SO placeholder.
 - Bug: the sales page had no `#side-order-list` panel at all, so SOs never listed. Added (copy of purchase).
-- SO cards = PO cards: untouched → Edit (`loadSalesOrderToForm`, hidden `replaces_order_id` + reason; `storeSale` cancels the old order "Replaced: reason" and creates the new one; retry-safe), Print, Delete (POST …/cancel with reason); touched → Amend qty/rate, Cancel rest.
+- SO cards = PO cards: untouched â†’ Edit (`loadSalesOrderToForm`, hidden `replaces_order_id` + reason; `storeSale` cancels the old order "Replaced: reason" and creates the new one; retry-safe), Print, Delete (POST â€¦/cancel with reason); touched â†’ Amend qty/rate, Cancel rest.
 - SO print: `DocumentRenderingService::salesOrder` (GST from `CommercialPricing::preview`, title "Sales order", "SO No.", Delivery Date); route `documents/{documentKind}` regex now includes `sales_order`; permission sales-index. `#commercial-orders` carries `data-print-url`.
 - Tests: `tests/Feature/SalesOrderLifecycleTest.php` (2). Browser E2E on company 14 (SO 1 open, SO 2/3 cancelled probes).
 
 ## 100. End-to-End Ledger Check and the Bugs It Found (2026-10-27, branch ui)
 
 User: test everything end to end (purchase, sales, GRN, DC, job work) and especially accounts; e.g. does the job worker's name "GRD" for 3200 cc leak into stock/lots/sales bills?
-- New `tests/Feature/TextileEndToEndLedgerTest.php` (167 assertions): PO → bill; supplier GRN → bill; supplier part payment; job work DC 400 → GRN 380 accepted (grey→dyed) / 10 rejected to quarantine / 10 loss; service bill with "GRD" → corrected (rebill); 6 m rework from quarantine → back dyed; 4 m debit note from quarantine; SO → invoice; customer DC → invoice; customer payment; credit note restock; edited (replaced) invoice. After every stage `assertBooksAgree`: each journal balances, stock projections = stock ledger, inventory account = stock value, AR/AP ledgers = open items, output/input GST ledgers = tax on documents in force. "GRD" stays a supplier alias + bill note only; product name, lots and the customer invoice keep "3200 cc …".
+- New `tests/Feature/TextileEndToEndLedgerTest.php` (167 assertions): PO â†’ bill; supplier GRN â†’ bill; supplier part payment; job work DC 400 â†’ GRN 380 accepted (greyâ†’dyed) / 10 rejected to quarantine / 10 loss; service bill with "GRD" â†’ corrected (rebill); 6 m rework from quarantine â†’ back dyed; 4 m debit note from quarantine; SO â†’ invoice; customer DC â†’ invoice; customer payment; credit note restock; edited (replaced) invoice. After every stage `assertBooksAgree`: each journal balances, stock projections = stock ledger, inventory account = stock value, AR/AP ledgers = open items, output/input GST ledgers = tax on documents in force. "GRD" stays a supplier alias + bill note only; product name, lots and the customer invoice keep "3200 cc â€¦".
 - Bugs found and fixed:
   1. `InventoryMovementService`: the quarantine block covered transfer destinations, so a job work GRN with rejects into a quarantine-flagged warehouse failed. Now only the source of an issue/transfer is checked.
   2. Rework DC of rejects out of quarantine was blocked: new stock purpose `rework` (StockMovementCommand allowed list + quarantine exemption); `OperationStock::command(..., $purpose)`; `JobWorkService::send` passes it for rework.
@@ -4252,18 +4576,18 @@ User: test everything end to end (purchase, sales, GRN, DC, job work) and especi
     5. `Coats India Threads & Accessories Ltd` (Tiruppur, GSTIN: `33AAACC0123L1Z9`, Sewing threads & trims, credit: 30 days)
     6. `Tirupur Knit Knots Garment Trims` (Tiruppur, GSTIN: `33AABCT7788Q1Z1`, Elastic tapes, buttons, zip fasteners, credit: 15 days)
   - **Textile Products Provisioned (Catalog & Stock):**
-    1. `TEX-YRN-40C` — Cotton Combed Yarn 40s (Auto-Coner) (Unit: KGS, HSN: 5205, Cost: ₹280, Price: ₹325, Stock: 500 KGS)
-    2. `TEX-YRN-30H` — Cotton Carded Hosiery Yarn 30s (Unit: KGS, HSN: 5205, Cost: ₹250, Price: ₹295, Stock: 400 KGS)
-    3. `TEX-KNT-180G` — Single Jersey Cotton Knit Fabric 180 GSM (Raw Grey) (Unit: KGS, HSN: 6006, Cost: ₹260, Price: ₹310, Stock: 350 KGS)
-    4. `TEX-GRY-63W` — 100% Cotton Grey Fabric 40x40 / 92x88 (63 inch Width) (Unit: MTR, HSN: 5208, Cost: ₹48, Price: ₹62, Stock: 1,200 MTR)
-    5. `TEX-PC-SHT58` — Poly-Cotton Grey Sheeting Fabric (58 inch) (Unit: MTR, HSN: 5513, Cost: ₹38, Price: ₹50, Stock: 800 MTR)
-    6. `TEX-POP-WHT` — Pure Cotton Poplin Dyed Fabric - Super White (58 inch) (Unit: MTR, HSN: 5208, Cost: ₹72, Price: ₹95, Stock: 800 MTR)
-    7. `TEX-KNT-NVY` — Bio-Washed Combed Cotton Single Jersey (Navy Blue) (Unit: KGS, HSN: 6006, Cost: ₹340, Price: ₹420, Stock: 250 KGS)
-    8. `TEX-RAY-BLK` — Rayon / Viscose Liva Fabric 30s Dyed (Jet Black) (Unit: MTR, HSN: 5408, Cost: ₹65, Price: ₹88, Stock: 600 MTR)
-    9. `TEX-DHT-GOLD8` — Classic Gold Jari Border Cotton Dhoti (Double / 8 Muzham) (Unit: PCS, HSN: 5208, Cost: ₹320, Price: ₹550, Stock: 150 PCS)
-    10. `TEX-TSH-PK3` — Men's Combed Cotton Round Neck T-Shirt (Pack of 3) (Unit: PCS, HSN: 6109, Cost: ₹290, Price: ₹499, Stock: 200 PCS)
-    11. `TEX-TWL-500G` — Premium Cotton Terry Bath Towel 500 GSM (75x150 cm) (Unit: PCS, HSN: 6302, Cost: ₹180, Price: ₹320, Stock: 180 PCS)
-    12. `TEX-THD-40C` — High Tenacity Spun Polyester Sewing Thread 40/2 (Cone 1000m) (Unit: PCS, HSN: 5401, Cost: ₹35, Price: ₹55, Stock: 300 PCS)
+    1. `TEX-YRN-40C` â€” Cotton Combed Yarn 40s (Auto-Coner) (Unit: KGS, HSN: 5205, Cost: â‚¹280, Price: â‚¹325, Stock: 500 KGS)
+    2. `TEX-YRN-30H` â€” Cotton Carded Hosiery Yarn 30s (Unit: KGS, HSN: 5205, Cost: â‚¹250, Price: â‚¹295, Stock: 400 KGS)
+    3. `TEX-KNT-180G` â€” Single Jersey Cotton Knit Fabric 180 GSM (Raw Grey) (Unit: KGS, HSN: 6006, Cost: â‚¹260, Price: â‚¹310, Stock: 350 KGS)
+    4. `TEX-GRY-63W` â€” 100% Cotton Grey Fabric 40x40 / 92x88 (63 inch Width) (Unit: MTR, HSN: 5208, Cost: â‚¹48, Price: â‚¹62, Stock: 1,200 MTR)
+    5. `TEX-PC-SHT58` â€” Poly-Cotton Grey Sheeting Fabric (58 inch) (Unit: MTR, HSN: 5513, Cost: â‚¹38, Price: â‚¹50, Stock: 800 MTR)
+    6. `TEX-POP-WHT` â€” Pure Cotton Poplin Dyed Fabric - Super White (58 inch) (Unit: MTR, HSN: 5208, Cost: â‚¹72, Price: â‚¹95, Stock: 800 MTR)
+    7. `TEX-KNT-NVY` â€” Bio-Washed Combed Cotton Single Jersey (Navy Blue) (Unit: KGS, HSN: 6006, Cost: â‚¹340, Price: â‚¹420, Stock: 250 KGS)
+    8. `TEX-RAY-BLK` â€” Rayon / Viscose Liva Fabric 30s Dyed (Jet Black) (Unit: MTR, HSN: 5408, Cost: â‚¹65, Price: â‚¹88, Stock: 600 MTR)
+    9. `TEX-DHT-GOLD8` â€” Classic Gold Jari Border Cotton Dhoti (Double / 8 Muzham) (Unit: PCS, HSN: 5208, Cost: â‚¹320, Price: â‚¹550, Stock: 150 PCS)
+    10. `TEX-TSH-PK3` â€” Men's Combed Cotton Round Neck T-Shirt (Pack of 3) (Unit: PCS, HSN: 6109, Cost: â‚¹290, Price: â‚¹499, Stock: 200 PCS)
+    11. `TEX-TWL-500G` â€” Premium Cotton Terry Bath Towel 500 GSM (75x150 cm) (Unit: PCS, HSN: 6302, Cost: â‚¹180, Price: â‚¹320, Stock: 180 PCS)
+    12. `TEX-THD-40C` â€” High Tenacity Spun Polyester Sewing Thread 40/2 (Cone 1000m) (Unit: PCS, HSN: 5401, Cost: â‚¹35, Price: â‚¹55, Stock: 300 PCS)
   - **Stock Linkage:** Each product was initialized with active inventory balances in `product_warehouse` linked to the primary active warehouse.
   - **Testing Evidence:**
     - `tests/Feature/TextileMasterSeederTest.php`: 1 passed, 154 assertions.
@@ -4279,7 +4603,7 @@ User: test everything end to end (purchase, sales, GRN, DC, job work) and especi
        `newWin.document.write('...<body onload="window.print()">'+divToPrint.innerHTML+'</body>');`
      - Laravel Herd Studio (or local development proxies) injects their debugging toolbars by doing a substring replacement before `</body>` in the HTTP response HTML (`</script><div id="herd-ai-root"></div>...</body>`).
      - Because `</body>` appeared literally inside a JavaScript `<script>` tag in `@push('scripts')`, Herd replaced that occurrence, introducing an unescaped `</script>` tag directly in the middle of JavaScript code!
-     - The browser immediately terminated parsing the `<script>` tag at line 310. All subsequent JavaScript—including `productDetails()` and `$('#product-data-table').DataTable({...})`—was dumped raw into the HTML DOM as broken attributes (`tempimage="new"`, `canvas="document.createElement..."`).
+     - The browser immediately terminated parsing the `<script>` tag at line 310. All subsequent JavaScriptâ€”including `productDetails()` and `$('#product-data-table').DataTable({...})`â€”was dumped raw into the HTML DOM as broken attributes (`tempimage="new"`, `canvas="document.createElement..."`).
      - This produced compile-time `SyntaxError: Invalid or unexpected token`, completely preventing DataTables from initializing.
   2. **Secondary API Vulnerability Guard:**
      - In `ProductController::productData()`, `$request['all_permission']` was queried via `in_array()` without checking whether it was null, which would throw a fatal PHP 8 `TypeError` if omitted in API requests.
@@ -4300,9 +4624,9 @@ User: test everything end to end (purchase, sales, GRN, DC, job work) and especi
 ## 107. Pull Latest Upstream & Merge Synchronization (2026-10-27, branch ui)
 - Synchronized branch `ui` with remote tracking `origin/ui` (commit `d68e040`: "Add error help, SO edit/print, job work GRN/rebill").
 - Cleanly resolved merge conflicts in:
-  1. `public/js/commercial-orders.js` — unified `isReturns` handling with collaborator's new Sales Order / Purchase Order field swapping, help attributes, and SO edit/print actions.
-  2. `resources/views/backend/sale/index.blade.php` — removed duplicate `#side-order-list` declaration.
-  3. `SESSION_MEMORY.md` — consolidated sections 94-100 from collaborator with sections 101-106 from local.
+  1. `public/js/commercial-orders.js` â€” unified `isReturns` handling with collaborator's new Sales Order / Purchase Order field swapping, help attributes, and SO edit/print actions.
+  2. `resources/views/backend/sale/index.blade.php` â€” removed duplicate `#side-order-list` declaration.
+  3. `SESSION_MEMORY.md` â€” consolidated sections 94-100 from collaborator with sections 101-106 from local.
 - Verified database migrations, seeders, and catalog items.
 
 ---
@@ -4349,19 +4673,19 @@ WSL (and its MariaDB on 3308) was deleted; the live dev DB was lost.
 - PHP/site: Laravel Herd free (PHP 8.5, `http://zolo-erp-pro.test`). User declined Herd Pro, so the DB is not in Herd.
 - DB: portable MySQL 8.4 dev instance `C:\Users\vigne\zolo-mysql-dev` (127.0.0.1:3306, root no password, user zolo_erp, DB zoloerp; binaries shared from `C:\Users\vigne\zolo-mysql84`). Separate from the disposable test server on 33084.
 - Restored from `database/backups/erp-backup-094b8eb5-...zip` (2026-10-19, companies 1/14/15/16) and migrated through `2026_10_25_000001`. Data entered after 2026-10-19 (incl. Sweet Soil companies 17/18) is not in it; pulling it from the VPS is pending user approval.
-- `.env` DB_PORT 3308 → 3306. `run-erp.bat` now starts the dev MySQL and Herd PHP `php -S :8080` (no WSL). `config/database.php` uses `Pdo\Mysql::ATTR_SSL_CA` on PHP ≥ 8.5 (deprecation noise), old constant on 8.3 prod.
+- `.env` DB_PORT 3308 â†’ 3306. `run-erp.bat` now starts the dev MySQL and Herd PHP `php -S :8080` (no WSL). `config/database.php` uses `Pdo\Mysql::ATTR_SSL_CA` on PHP â‰¥ 8.5 (deprecation noise), old constant on 8.3 prod.
 - Verified: `/login` 200 on :8080 and on zolo-erp-pro.test.
 
 ## 110. Draft tabs failed on http://zolo-erp-pro.test (2026-10-27, branch ui)
 
-Every draft tab click showed "Unable to complete this action." Cause: `crypto.randomUUID` exists only in secure contexts (HTTPS / localhost). Old dev URL `localhost:8080` was secure; Herd `http://*.test` is not. `grid.resetFormToNew()` → `command-center-form.js:215` threw, `openTab` catch turned the JS error into the generic message. Drafts themselves were fine.
+Every draft tab click showed "Unable to complete this action." Cause: `crypto.randomUUID` exists only in secure contexts (HTTPS / localhost). Old dev URL `localhost:8080` was secure; Herd `http://*.test` is not. `grid.resetFormToNew()` â†’ `command-center-form.js:215` threw, `openTab` catch turned the JS error into the generic message. Drafts themselves were fine.
 - Fix: `crypto.randomUUID` polyfill (via `getRandomValues`) in `<head>` of `backend/layout/main.blade.php`; covers command-center-form, commercial-orders, material-document.
 - Verified in Chrome on zolo-erp-pro.test: all 6 purchase draft tabs open with no banner.
 
 ## 111. Dashboard quick actions pointed at duplicate legacy forms (2026-10-27, branch ui)
 
-New Sale / New Purchase opened old `/sales/create` / `/purchases/create` "Add Sale" forms — second implementation of the workspaces.
-- Quick actions + topbar "+" menu now open `sales.index?new=1`, `purchases.index?new=1`, `expenses.index?new=1` (expense page auto-opens its modal on `new=1`). "Stock" quick action → `/operations/stock` (products list only when operations off).
+New Sale / New Purchase opened old `/sales/create` / `/purchases/create` "Add Sale" forms â€” second implementation of the workspaces.
+- Quick actions + topbar "+" menu now open `sales.index?new=1`, `purchases.index?new=1`, `expenses.index?new=1` (expense page auto-opens its modal on `new=1`). "Stock" quick action â†’ `/operations/stock` (products list only when operations off).
 - `SaleController::create` / `PurchaseController::create` redirect to the workspace; `backend/sale/create.blade.php` and `backend/purchase/create.blade.php` deleted; purchase store failure redirects go to the workspace. Classic rows removed from `tests/Browser/document-layout.spec.mjs`.
 - `LegacyStockShadowWebTest`: 4 failures on document-number prefix (`MJ-`/`PUR-`/`SR-`/`PR-` vs `ERP-`), unrelated.
 
@@ -4376,26 +4700,26 @@ User: service bill print showed our PUR-xxxxx as Bill No.; wanted every field ed
 ## 113. Add / Edit Product screen fixes (2026-10-27, branch ui)
 
 Found by driving /products/create in Chrome at 1536x730:
-- Service type: page hid unit + cost and ProductController store/update zeroed unit/cost, so a service made here could not be billed per unit (job work per MTR). Now service keeps unit (required) + cost (blank → 0); only digital zeroes them. Edit page on-load handler fixed too.
+- Service type: page hid unit + cost and ProductController store/update zeroed unit/cost, so a service made here could not be billed per unit (job work per MTR). Now service keeps unit (required) + cost (blank â†’ 0); only digital zeroes them. Edit page on-load handler fixed too.
 - `.zolo-toggle-pill { display:inline-flex !important }` beat jQuery .hide(): batch/IMEI/variant/initial-stock pills never hid for service/combo/digital. Added `[style*="display: none"]` override in zolo-erp-neo.css.
-- Price → margin with blank cost gave Infinity → blank required margin → save blocked. recalcMargin skips when cost ≤ 0 (percentage); margin no longer `required`; server stores blank as 0. Switching % / flat keeps price. Edit page on load recalculated price from cost+margin (overwrote saved price) — now keeps price.
+- Price â†’ margin with blank cost gave Infinity â†’ blank required margin â†’ save blocked. recalcMargin skips when cost â‰¤ 0 (percentage); margin no longer `required`; server stores blank as 0. Switching % / flat keeps price. Edit page on load recalculated price from cost+margin (overwrote saved price) â€” now keeps price.
 - Quick-add: unit added was not selected and sale/purchase units stayed empty (now selected + populated; sub-unit selects its base). Brand/category/unit errors were silent (now shown in the dialog with error-help bar); forms reset after save.
-- Category → HSN: HSN placeholder shows the category's default HSN (data-hsn on options).
+- Category â†’ HSN: HSN placeholder shows the category's default HSN (data-hsn on options).
 - One screen: duplicate bottom Cancel/Save bar removed (create + edit); inventory stripe pills flow inline (no 3rd row, no stray divider). create/edit now fit 1536x730 with no scroll.
-- Double help icons on Daily Sale Objective / Tax Method removed (field-help ⓘ stays).
+- Double help icons on Daily Sale Objective / Tax Method removed (field-help â“˜ stays).
 - Dev-only: "Invalid or unexpected token" on /products is Herd's injected toolbar script landing inside a JS '</body>' string (print code); not in production.
 - Note: another session was editing this tree in parallel (staged Modules/Optech* deletions, many controllers).
 
 ## 114. Draft tab UI + auto-draft fixes on Purchase / Sales (2026-10-27, branch ui)
 
 - Top bar broke when a draft had a long title ("New Purchase Bill (from GRN #GRN-00001)"): `.comm-navbar-center-wrap` wrapped, breadcrumb went above the viewport and TOTAL pill dropped. commercial-workspace.css: center wrap nowrap, title group `flex: 1 1 0` + overflow hidden, title ellipsis, actions never wrap.
-- Auto-draft saved junk: blank item rows (Draft 2 had 8) and phantom drafts holding only defaults (Draft 6: no party, no lines — made by a pill click). document-workspace.js: blank rows (no product id, no item name) are neither captured nor restored; adapter `empty(state)` = no party, no lines, no supplier bill no / reference. document-drafts.js: autosave, page-hide flush and "+" never create a server draft for an empty form; an unused never-saved tab is dropped when switching away. Explicit "Save draft" still saves anything.
+- Auto-draft saved junk: blank item rows (Draft 2 had 8) and phantom drafts holding only defaults (Draft 6: no party, no lines â€” made by a pill click). document-workspace.js: blank rows (no product id, no item name) are neither captured nor restored; adapter `empty(state)` = no party, no lines, no supplier bill no / reference. document-drafts.js: autosave, page-hide flush and "+" never create a server draft for an empty form; an unused never-saved tab is dropped when switching away. Explicit "Save draft" still saves anything.
 - Verified in Chrome on purchases and sales: pill clicks create no draft, Draft 2 restores 1 row, header stays one row, typing a supplier bill no still autosaves.
 - Existing junk drafts (company 14 purchase Draft 6 empty; Drafts 4/5 had one blank row) left for the user to close.
 
 ## 115. No duplicate screens, no navigation fallbacks (2026-10-27, branch ui)
 
-User rule: one page per screen; list duplicates with file:line and wait for confirmation before deleting. Full table of retired screens: ENGINEERING_REFERENCE.md §11 "One entry point per screen".
+User rule: one page per screen; list duplicates with file:line and wait for confirmation before deleting. Full table of retired screens: ENGINEERING_REFERENCE.md Â§11 "One entry point per screen".
 - Returns: `/return-sale`, `/return-purchase`, their `create`, `/compliance/returns` and `/compliance/{kind}/{id}/return` redirect to the workspace Returns tab (`?returns=1[&bill=id]`); old return views + compliance notes/return views deleted. Shift+F2/Shift+F12 open the tab. Gap: the tab has no draft tabs.
 - Removed: topbar "+" menu, legacy `/report/profit_loss` and `/balancesheet`, unused `0main_rtl` layout, `Optech*` scaffold modules, missing `create/edit` resource routes for DC/GRN.
 - Navigation links no longer branch to old pages on `ERP_*_ENABLED`; flags still hide whole sections when off. Production needs all three flags true.
@@ -4419,12 +4743,12 @@ User rule: one page per screen; list duplicates with file:line and wait for conf
 
 ## 118. Developer login, per-company section switches, People/HRM/Settings command bars (2026-10-28, branch ui)
 
-User: People, HRM and Settings did not follow the modern UI; add a developer role login that manages all admins and can switch sections / subsections off (e.g. HRM) — user chose **per company** and an **artisan command** for the login.
+User: People, HRM and Settings did not follow the modern UI; add a developer role login that manages all admins and can switch sections / subsections off (e.g. HRM) â€” user chose **per company** and an **artisan command** for the login.
 - Developer = Admin account with `users.is_developer` (migration 2026_10_27_000001, also `company_menu_switches`). `php artisan erp:developer email [--password=]` creates/updates it and grants every company + branch. Local login: developer@zoloerp.local (password printed once on 2026-10-28; reset with the command).
 - `/developer` (DeveloperController, view backend/developer/index, css/pages/developer.css): admin logins (add with companies, block/activate, set password, companies) + section/screen ticks for the ACTIVE company. Admins never see/edit developer accounts (UserController guardDeveloper + hidden from list).
 - `App\Services\Platform\MenuSwitches`: catalog = rendered sidebar (sections `a[href=#key]`, screens `li[id]`, Settings pages from the search index); OFF rows store blocked paths (+query). Enforced by sidebar DOM filter (main.blade.php), `EnforceMenuSwitches` middleware in the web group (sorted after company context: redirect /dashboard with reason, AJAX 403), SettingsCatalog and command-bar pills. Developers are exempt. Never blocked: /, /login, /dashboard, /settings, /developer, own profile/password.
 - New components: x-section-command-bar (generic), x-people-command-bar, x-hrm-command-bar. All 3 People + 10 HRM pages (+ create/edit forms, HRM settings, HRM panel) use them with btn-primary actions; old `hrm.partial.menu` + its CSS deleted (user OK 2026-10-28). Settings bar added to Gift Cards, Coupons, Tables, WhatsApp x3, Notifications, Languages, My Profile, Document Series.
-- Not changed (different shells): Financial Year setup (standalone HTML, overflows), Business Profile (operations layout), Addons; Settings › Backup Database links to a retired page (410) — reported, not removed.
+- Not changed (different shells): Financial Year setup (standalone HTML, overflows), Business Profile (operations layout), Addons; Settings â€º Backup Database links to a retired page (410) â€” reported, not removed.
 - Tests: tests/Feature/MenuSwitchesTest.php (4). DesignTokens, DocumentEntryWeb, ProductCreateSmoke, LegacyCatalogIsolation, SwitchableCapability, CompanyProfile green. NavigationWebTest passes but needs ~478 MB (same with my hooks removed: pre-existing), so it dies under the default 128M CLI limit.
 
 ## 107. Herd database availability diagnosis (2026-11-04, branch ui)
@@ -4437,14 +4761,14 @@ User: People, HRM and Settings did not follow the modern UI; add a developer rol
 - Follow-up recovery: started the existing portable MySQL 8.4 server directly with its existing `my.ini` after the user reported the same error again. MySQL completed crash recovery and is ready on port 3307 (PID 10156, tool session 69626). No database configuration, credentials, or application code changed.
 - Verification: `GET http://zolo-erp-pro.test/login` now returns HTTP 200; Laravel logs also show a successful authenticated company-selection page. Reloading the browser should now work. The portable database still requires startup after a reboot; automatic startup was not configured.
 
-## ZTEX live local data reset and four-profile sample — 2026-11-06 (branch ui)
+## ZTEX live local data reset and four-profile sample â€” 2026-11-06 (branch ui)
 
-- User explicitly requested a clean slate in zoloERP Textiles. Target verified as ZTEX, company 14, Main branch 2, FY 2026–27 (ID 2), on the running local MySQL `zoloerp` database. Backed up the full database before reset to the encrypted, checksum-verified 205-table archive `database/backups/erp-backup-10721e72-c83d-478c-983e-92e0d03ca929.zip`. The key is stored separately and privately.
+- User explicitly requested a clean slate in zoloERP Textiles. Target verified as ZTEX, company 14, Main branch 2, FY 2026â€“27 (ID 2), on the running local MySQL `zoloerp` database. Backed up the full database before reset to the encrypted, checksum-verified 205-table archive `database/backups/erp-backup-10721e72-c83d-478c-983e-92e0d03ca929.zip`. The key is stored separately and privately.
 - Rehearsed the company-scoped cleanup, seeded new data, and audited it inside a single transaction before committing the same workflow. Foreign keys stayed enabled. Before/after row fingerprints verified all shared and other-company rows. The reset removed old parties, products, operational records, accounting history, and their report projections. It reinstalled the current standard chart and default Cash and Bank. It kept the company, branch, fiscal year, and document series counters.
 - Created 3 demo customers, 3 demo suppliers, and 3 products (grey cotton, dyed poplin, and textile processing service). Manufacturing covers PO, supplier GRN, purchase, dyeing, printing, finishing, unprocessed return, processing loss, capitalized and expensed service bills, customer-owned processing, sales order, invoice, and returns. Wholesale covers a bale sale from a customer DC. Distributor covers B2B/B2C invoices. Wholesale & Distributor covers the 10+1 scheme. The original Manufacturing profile and capability settings were restored at the end.
 - A fresh process read the committed data and reproduced `scratch/textile-live-reset-audit.json`. All 56 chart accounts (20 with activity) and 37 mappings passed. General and monthly ledgers, Day Book, Cash Book, Trial Balance, P&L, Balance Sheet, AR/AP ageing, stock valuation, GST, ITC-04, GRNI/GDNI, and the wholesale dot-matrix print were checked. `erp:health` passed all 9 checks. Trial balance debit and credit each equal INR 187,489.65. Closing inventory equals INR 40,290.7678. No application code changes were needed for this task.
 
-## UI merge and production rollout — 2026-11-06
+## UI merge and production rollout â€” 2026-11-06
 
 - Reconciled local `ui` with `origin/ui` in `e53a1c1`, retaining both session histories, the Parties command bar, the Customer Returns link, and the voucher preview and product updates. Preserved concurrent uncommitted controller and report edits in the `ui` checkout.
 - Reused the existing product margin migration in the isolated cutover test fixture (`3d4d384`) to address a failure from the previous main acceptance run. The UI branch already guarded the print letterhead against a missing optional tax table.
@@ -4458,38 +4782,38 @@ User: People, HRM and Settings did not follow the modern UI; add a developer rol
 
 - Production rollout verified on 2026-11-06 at 17:47 IST. All seven suites passed in GitHub acceptance run `42214947217`. The automatic deployment `42216499752` deployed `0cca23faaced776e76149bea796bd578f04d865f`, ran the Textile company and masters migration successfully, and returned HTTP 200 for `/login`. A separate live request also returned HTTP 200 for the new ledger stylesheet. The release provisions `ZTEX` inside the existing production database with catalog and party masters and zero sample opening stock. Later edits on `ui` are outside this release snapshot.
 
-## KMTimbers purchase bill save diagnosis — 2026-11-06 (branch ui)
+## KMTimbers purchase bill save diagnosis â€” 2026-11-06 (branch ui)
 
 - Reproduced the reported `Cannot read properties of undefined (reading 'recalcTableSummary')` on both Review and Save in Chrome using the purchase view from deployed commit `0cca23f`. The fixture used bill K78, 198 units at INR 2,000, 18% GST, and an INR 467,280 total. All browser requests were intercepted; the broken form sent neither a preview nor a save request.
 - Regression `263e8b8` removed the `searchParam` declaration but kept `else if (searchParam)` in both purchase and sales index scripts. On ordinary bill entry, the undefined variable throws before `window.commandCenterGrid` is assigned. Most form handlers have already bound, so totals update while the form still cannot submit. The October Returns script ordering test passes and covers a different failure.
 - A temporary browser fixture restored parsing of `search` and `ref` and used `filterSidePurchases()` in the purchase view (its existing `filterSideBills()` call names the sales helper). Review, Save, and both search URLs then worked without browser exceptions against intercepted responses. The sales view also needs the missing declaration. This was diagnosis only; application code and production records were not changed.
 
-## KMTimbers bill save and inline error help fix — 2026-11-06 (branch ui)
+## KMTimbers bill save and inline error help fix â€” 2026-11-06 (branch ui)
 
 - Restored `search` and `ref` parsing on purchase and sales bill entry and corrected the purchase filter helper. Bill form initialization now reports a clear recovery message and blocks submission if its item grid cannot load. Rejected requests show the first server field error when available.
 - Moved the bill form's How to fix guidance inside the red error banner. The first step is always visible and the remaining steps expand in the banner. The form scrolls the banner into view when an action fails.
 - Chrome verified Review, Save, query links, and inline validation guidance on both bill pages with intercepted responses. A 390 px purchase test verified the missing grid recovery and that submission stayed blocked. Error help and script order tests passed. Broader checks exposed existing fixture, redirect, and design issues: missing `company_menu_switches` in the commercial test fixture, `/sales/create` redirect precedence, pre-existing token and inline style violations, and the Guided Tour loading before jQuery on `ui`. The bill fix was verified locally only.
 
-## Bill and UI release integration — 2026-11-06
+## Bill and UI release integration â€” 2026-11-06
 
 - Merged the bill fix, voucher previews, and global print changes into the production branch candidate. Resolved the ledger view conflicts by sharing the page stylesheet while keeping the print party card, signatures, and global letterhead.
 - Kept the production branch's existing acceptance repairs. Voucher popup text is escaped before rendering and the related user response contains only the ID and name. Design, error help, voucher popup, and ledger navigation tests passed on the merged tree.
 - The local customer ledger debug edits and generated render error capture are workspace diagnostics and remain local.
 - A second integration picked up the ledger print commit that landed during acceptance. Its print layout rules remain separate from screen styles. Ledger tables temporarily restore all columns for printing and restore the user's previous screen visibility afterward. Chrome verified all eight print columns at 794 px for both ledgers, and ledger feature and design checks passed.
 
-## Bill and UI release rollout — 2026-11-06 (branch ui)
+## Bill and UI release rollout â€” 2026-11-06 (branch ui)
 
 - Published `origin/ui` at `8534fa1` and merged it into `origin/main` at `b33d737`. Local `main` fast-forwarded. HTTPS and SSH push authentication were unavailable, so the GitHub connector mirrored the commits and verified each tree hash. Local `ui` retains its original commit IDs and the same committed file tree as `origin/ui`.
 - Resolved customer and supplier ledger conflicts in the existing release worktree, keeping the global print letterhead and party details, moving shared styles out of Blade, and preserving the prior acceptance fixes. Voucher preview fields are escaped and the user relation exposes only the ID and name. The design, voucher, ledger navigation, and error help tests passed. Chrome passed both bill flows, mobile recovery, and eight print columns at a 1440 px viewport. At 794 px, the table fitting script can hide columns that the print view does not restore.
 - Acceptance run `42225114772` started for `b33d737`. The production deployment waits for its seven suites. Concurrent local ledger edits and debugging artifacts were excluded from the release snapshot.
 
-## KMTimbers purchase bill save diagnosis — 2026-11-06 (branch ui)
+## KMTimbers purchase bill save diagnosis â€” 2026-11-06 (branch ui)
 
 - Reproduced the reported `Cannot read properties of undefined (reading 'recalcTableSummary')` on both Review and Save in Chrome using the purchase view from deployed commit `0cca23f`. The fixture used bill K78, 198 units at INR 2,000, 18% GST, and an INR 467,280 total. All browser requests were intercepted; the broken form sent neither a preview nor a save request.
 - Regression `263e8b8` removed the `searchParam` declaration but kept `else if (searchParam)` in both purchase and sales index scripts. On ordinary bill entry, the undefined variable throws before `window.commandCenterGrid` is assigned. Most form handlers have already bound, so totals update while the form still cannot submit. The October Returns script ordering test passes and covers a different failure.
 - A temporary browser fixture restored parsing of `search` and `ref` and used `filterSidePurchases()` in the purchase view (its existing `filterSideBills()` call names the sales helper). Review, Save, and both search URLs then worked without browser exceptions against intercepted responses. The sales view also needs the missing declaration. This was diagnosis only; application code and production records were not changed.
 
-## KMTimbers bill save and inline error help fix — 2026-11-06 (branch ui)
+## KMTimbers bill save and inline error help fix â€” 2026-11-06 (branch ui)
 
 - Restored `search` and `ref` parsing on purchase and sales bill entry and corrected the purchase filter helper. Bill form initialization now reports a clear recovery message and blocks submission if its item grid cannot load. Rejected requests show the first server field error when available.
 - Moved the bill form's How to fix guidance inside the red error banner. The first step is always visible and the remaining steps expand in the banner. The form scrolls the banner into view when an action fails.

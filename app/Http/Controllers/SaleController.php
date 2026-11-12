@@ -1003,6 +1003,14 @@ class SaleController extends Controller
             $tax_rate = $data['tax_rate'];
             $tax = $data['tax'];
             $total = $data['subtotal'];
+            $sph = $data['sph'] ?? [];
+            $cyl = $data['cyl'] ?? [];
+            $axis = $data['axis'] ?? [];
+            $base = $data['base'] ?? [];
+            $addition = $data['addition'] ?? [];
+            $lr = $data['lr'] ?? [];
+            $dia = $data['dia'] ?? [];
+            $prescription_json = $data['prescription_json'] ?? [];
             $product_sale = [];
             $log_data['item_description'] = '';
 
@@ -1107,6 +1115,16 @@ class SaleController extends Controller
                 $product_sale['tax_rate'] = $tax_rate[$i];
                 $product_sale['tax'] = $tax[$i];
                 $product_sale['total'] = $mail_data['total'][$i] = $total[$i];
+                $product_sale['sph'] = $sph[$i] ?? null;
+                $product_sale['cyl'] = $cyl[$i] ?? null;
+                $product_sale['axis'] = $axis[$i] ?? null;
+                $product_sale['base'] = $base[$i] ?? null;
+                $product_sale['addition'] = $addition[$i] ?? null;
+                $product_sale['lr'] = $lr[$i] ?? null;
+                $product_sale['dia'] = $dia[$i] ?? null;
+                if (!empty($prescription_json[$i])) {
+                    $product_sale['prescription_json'] = is_array($prescription_json[$i]) ? $prescription_json[$i] : json_decode($prescription_json[$i], true);
+                }
 
                 if(cache()->has('general_setting'))
                 {
@@ -3041,6 +3059,14 @@ class SaleController extends Controller
         $tax_rate = $data['tax_rate'] ?? array_fill(0, count($product_id), 0);
         $tax = $data['tax'] ?? array_fill(0, count($product_id), 0);
         $total = $data['subtotal'] ?? [];
+        $sph = $data['sph'] ?? [];
+        $cyl = $data['cyl'] ?? [];
+        $axis = $data['axis'] ?? [];
+        $base = $data['base'] ?? [];
+        $addition = $data['addition'] ?? [];
+        $lr = $data['lr'] ?? [];
+        $dia = $data['dia'] ?? [];
+        $prescription_json = $data['prescription_json'] ?? [];
         $old_product_id = [];
         $product_sale = [];
         foreach ($lims_product_sale_data as  $key => $product_sale_data) {
@@ -3155,6 +3181,16 @@ class SaleController extends Controller
             $product_sale['tax_rate'] = $tax_rate[$key];
             $product_sale['tax'] = $tax[$key];
             $product_sale['total'] = $mail_data['total'][$key] = $total[$key];
+            $product_sale['sph'] = $sph[$key] ?? null;
+            $product_sale['cyl'] = $cyl[$key] ?? null;
+            $product_sale['axis'] = $axis[$key] ?? null;
+            $product_sale['base'] = $base[$key] ?? null;
+            $product_sale['addition'] = $addition[$key] ?? null;
+            $product_sale['lr'] = $lr[$key] ?? null;
+            $product_sale['dia'] = $dia[$key] ?? null;
+            if (!empty($prescription_json[$key])) {
+                $product_sale['prescription_json'] = is_array($prescription_json[$key]) ? $prescription_json[$key] : json_decode($prescription_json[$key], true);
+            }
             //return $old_product_variant_id;
 
             if(in_array('restaurant',explode(',',$general_setting->modules))){
@@ -3532,6 +3568,54 @@ class SaleController extends Controller
         }
 
         return $data;
+    }
+
+    public function genLabReceipt($id)
+    {
+        $lims_sale_data = Sale::findOrFail($id);
+        $lims_product_sale_data = Product_Sale::with('product.category')->where('sale_id', $id)->get();
+
+        if (cache()->has('biller_list')) {
+            $lims_biller_data = cache()->get('biller_list')->find($lims_sale_data->biller_id);
+        } else {
+            $lims_biller_data = Biller::find($lims_sale_data->biller_id);
+        }
+
+        if (cache()->has('warehouse_list')) {
+            $lims_warehouse_data = cache()->get('warehouse_list')->find($lims_sale_data->warehouse_id);
+        } else {
+            $lims_warehouse_data = Warehouse::find($lims_sale_data->warehouse_id);
+        }
+
+        if (cache()->has('customer_list')) {
+            $lims_customer_data = cache()->get('customer_list')->find($lims_sale_data->customer_id);
+        } else {
+            $lims_customer_data = Customer::find($lims_sale_data->customer_id);
+        }
+
+        if (cache()->has('general_setting')) {
+            $general_setting = cache()->get('general_setting');
+        } else {
+            $general_setting = GeneralSetting::latest()->first();
+        }
+
+        return view('backend.sale.lab_receipt', compact(
+            'lims_sale_data',
+            'lims_product_sale_data',
+            'lims_biller_data',
+            'lims_warehouse_data',
+            'lims_customer_data',
+            'general_setting'
+        ));
+    }
+
+    public function packingSlip($id)
+    {
+        $sale = Sale::with(['customer', 'warehouse', 'productSales.product.category'])->findOrFail($id);
+        $general_setting = cache()->get('general_setting') ?? GeneralSetting::latest()->first();
+        $packing_slip_product_data = $sale->productSales;
+
+        return view('backend.packing_slip.invoice', compact('sale', 'packing_slip_product_data', 'general_setting'));
     }
 
     public function genInvoice($id)
