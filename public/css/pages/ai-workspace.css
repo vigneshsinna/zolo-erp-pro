@@ -451,4 +451,38 @@ body.dark-mode .ai-workspace-container .text-muted { color: var(--ai-muted) !imp
     font-size: 0.8rem;
 }
 
+/* Phase 2.3 Multimodal Media Review & Voice Recorder */
+.ai-media-review-bubble {
+    max-width: 96% !important;
+}
+.ai-media-review-card {
+    border-left: 3px solid #2563eb !important;
+}
+.ai-media-preview-img {
+    max-height: 280px;
+    object-fit: contain;
+}
+.ai-media-chip {
+    background-color: #e0f2fe;
+    color: #075985;
+    border: 1px solid #bae6fd;
+    font-weight: 500;
+}
+.ai-chip-remove {
+    font-size: 1rem;
+    line-height: 0.8;
+    color: #075985;
+}
+.ai-drop-active {
+    outline: 2px dashed #2563eb;
+    outline-offset: 2px;
+    background-color: #f0f9ff;
+}
+#btn-ai-record-audio.active {
+    background-color: #dc3545;
+    color: #ffffff;
+    border-color: #dc3545;
+}
+
+
 

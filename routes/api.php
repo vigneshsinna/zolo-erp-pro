@@ -266,6 +266,19 @@ Route::prefix('v1')->group(function () {
                 Route::post('{id}/dependent-masters/preview', 'previewDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.preview');
                 Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.approve-and-execute');
             });
+
+            // Phase 2.3: Private Multimodal Uploads, Perception & Revisioned Extractions
+            Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
+                Route::post('/', 'store')->name('api.v1.ai.media.store');
+                Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.media.show');
+                Route::get('{id}/preview', 'preview')->whereUuid('id')->name('api.v1.ai.media.preview');
+                Route::post('{id}/extract', 'extract')->whereUuid('id')->name('api.v1.ai.media.extract');
+                Route::get('{id}/extraction', 'extraction')->whereUuid('id')->name('api.v1.ai.media.extraction');
+                Route::patch('{id}/extraction', 'updateExtraction')->whereUuid('id')->name('api.v1.ai.media.extraction.update');
+                Route::post('{id}/confirm', 'confirm')->whereUuid('id')->name('api.v1.ai.media.confirm');
+                Route::post('{id}/handoff', 'handoff')->whereUuid('id')->name('api.v1.ai.media.handoff');
+                Route::delete('{id}', 'destroy')->whereUuid('id')->name('api.v1.ai.media.destroy');
+            });
         });
     });
 });

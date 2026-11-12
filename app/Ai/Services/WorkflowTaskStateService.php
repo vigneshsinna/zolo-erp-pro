@@ -42,11 +42,13 @@ final class WorkflowTaskStateService
      * Create a new workflow task.
      *
      * @param array<string, mixed> $initialSlots
+     * @param array<string, mixed> $provenance
      */
     public function createTask(
         WorkflowTaskContext $context,
         string $actionKey,
         array $initialSlots = [],
+        array $provenance = [],
     ): array {
         $taskId = (string) Str::uuid();
         $ttlMinutes = (int) config('ai_actions.proposal_ttl_minutes', 60);
@@ -67,7 +69,7 @@ final class WorkflowTaskStateService
             'slots_json' => json_encode($initialSlots, JSON_THROW_ON_ERROR),
             'resolution_json' => json_encode([], JSON_THROW_ON_ERROR),
             'issues_json' => json_encode([], JSON_THROW_ON_ERROR),
-            'provenance_json' => json_encode([], JSON_THROW_ON_ERROR),
+            'provenance_json' => json_encode($provenance, JSON_THROW_ON_ERROR),
             'linked_proposal_id' => null,
             'expires_at' => $expiresAt,
             'created_at' => now(),

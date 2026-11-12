@@ -41,11 +41,20 @@ class AiWorkspaceController extends Controller
         $isAiEnabled = $this->featureGate->isEnabledForCompany($context->companyId);
         $isReadOnly = $this->featureGate->isReadOnly($context->companyId);
         $approvedModel = $isAiEnabled ? $this->modelGateway->resolveApprovedModel() : null;
+        $isMultimodalEnabled = $isAiEnabled && $this->featureGate->isMultimodalEnabledForCompany($context->companyId);
 
         return view('backend.ai.workspace', [
             'company' => $company,
             'context' => $context,
             'isAiEnabled' => $isAiEnabled,
+            'isMultimodalEnabled' => $isMultimodalEnabled,
+            'multimodalLimits' => [
+                'max_image_bytes' => (int) config('ai_multimodal.max_input_bytes', 10_485_760),
+                'max_pdf_bytes' => (int) config('ai_multimodal.max_pdf_bytes', 20_971_520),
+                'max_pdf_pages' => (int) config('ai_multimodal.max_pdf_pages', 5),
+                'max_audio_bytes' => (int) config('ai_multimodal.max_audio_bytes', 20_971_520),
+                'max_audio_seconds' => (int) config('ai_multimodal.max_audio_seconds', 120),
+            ],
             'canUseCopilot' => $isAiEnabled && $principal->permittedToolNames !== [],
             'isReadOnly' => $isReadOnly,
             'isAdmin' => in_array((int) ($user->role_id ?? 0), [1, 2], true),

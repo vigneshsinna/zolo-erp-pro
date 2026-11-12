@@ -143,10 +143,44 @@
                     <footer class="ai-composer-footer">
                         <form id="chat-form">
                             @csrf
+                            @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+                                <input type="file" id="ai-media-file-input" class="d-none"
+                                    accept="image/jpeg,image/png,application/pdf,audio/wav,audio/webm,audio/mpeg,audio/flac,audio/ogg">
+                                <div id="ai-media-attached-bar" class="mb-2 d-none" aria-live="polite"></div>
+                                <div id="ai-voice-recorder-tray" class="border rounded p-2 mb-2 bg-light d-none" aria-live="polite">
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                                        <div class="d-flex align-items-center mb-1 mb-sm-0">
+                                            <span id="ai-voice-timer" class="badge badge-danger mr-2">00:00</span>
+                                            <small id="ai-voice-recorder-status" class="text-muted"></small>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <button type="button" id="btn-ai-voice-stop" class="btn btn-sm btn-danger mr-1 d-none">Stop</button>
+                                            <button type="button" id="btn-ai-voice-upload" class="btn btn-sm btn-success mr-1 d-none">Transcribe &amp; Review</button>
+                                            <button type="button" id="btn-ai-voice-discard" class="btn btn-sm btn-outline-secondary">Discard</button>
+                                        </div>
+                                    </div>
+                                    <audio id="ai-voice-replay" controls class="w-100 mt-2 d-none"></audio>
+                                </div>
+                            @endif
                             <div class="ai-composer">
                                 <label class="sr-only" for="chat-input">Message zoloERP Copilot</label>
                                 <textarea id="chat-input" class="ai-chat-input" rows="2"
                                     placeholder="Ask a question or describe a task…" aria-describedby="ai-composer-hint"
+                                    maxlength="4000" required></textarea>
+                                <div class="ai-composer-toolbar">
+                                    <span id="ai-response-status" role="status">Connected to your ERP</span>
+                                    @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+                                        <button id="btn-ai-attach-media" class="btn btn-sm btn-outline-secondary" type="button"
+                                            title="Attach invoice image, PDF (max {{ $multimodalLimits['max_pdf_pages'] ?? 5 }} pages), or audio"
+                                            aria-label="Attach invoice image, PDF, or audio">
+                                            <i class="dripicons-paperclip mr-1"></i> Attach
+                                        </button>
+                                        <button id="btn-ai-record-audio" class="btn btn-sm btn-outline-secondary" type="button"
+                                            title="Record voice instruction (max {{ $multimodalLimits['max_audio_seconds'] ?? 120 }}s)"
+                                            aria-label="Record voice instruction">
+                                            <i class="dripicons-microphone mr-1"></i> Record
+                                        </button>
+                                    @endif
                                     maxlength="4000" required></textarea>
                                 <div class="ai-composer-toolbar">
                                     <span id="ai-response-status" role="status">Connected to your ERP</span>
@@ -530,6 +564,7 @@
                                     '<th class="text-right">Max Overdue</th>' +
                                     '</tr></thead>');
 
+<<<<<<< HEAD
                                 const tbody = $('<tbody></tbody>');
                                 data.top_customers.forEach(function (cust) {
                                     const tr = $('<tr></tr>');
@@ -538,6 +573,368 @@
                                     tr.append($('<td class="text-center"></td>').text(cust.invoice_count));
                                     tr.append($('<td class="text-right"></td>').text(cust.max_days_overdue + ' days'));
                                     tbody.append(tr);
+=======
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        if (data.allocations && data.allocations.length > 0) {
+                            const tableWrapper = $('<div class="table-responsive"></div>');
+                            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
+                            table.append('<thead class="thead-light"><tr><th>Date</th><th>Type</th><th>Ref #</th><th class="text-right">Amount</th></tr></thead>');
+                            const tbody = $('<tbody></tbody>');
+                            data.allocations.forEach(function (al) {
+                                const tr = $('<tr></tr>');
+                                tr.append($('<td></td>').text(al.date));
+                                tr.append($('<td></td>').text(al.type));
+                                tr.append($('<td class="font-weight-bold"></td>').text(al.contra_reference));
+                                tr.append($('<td class="text-right text-success font-weight-bold"></td>').text(currencySymbol + al.allocated_amount));
+                                tbody.append(tr);
+                            });
+                            table.append(tbody);
+                            tableWrapper.append(table);
+                            cardBody.append(tableWrapper);
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'sales.summary.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-graph-bar text-primary mr-1"></i> Sales Analytics · ' + $('<div>').text(data.warehouse || 'All Branch Warehouses').html() + '</span>'));
+                        cardHeader.append($('<span class="badge badge-success px-2 py-1">' + (data.totals?.sales_count || 0) + ' Sales</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                        kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Gross Sales</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.gross_sales || '0.00') + '</div></div>'));
+                        kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Total Tax</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.totals?.total_tax || '0.00') + '</div></div>'));
+                        kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Net Invoiced</div><div class="font-weight-bold text-success">' + currencySymbol + (data.totals?.net_sales || '0.00') + '</div></div>'));
+                        cardBody.append(kpiRow);
+
+                        if (data.top_products && data.top_products.length > 0) {
+                            const tableWrapper = $('<div class="table-responsive"></div>');
+                            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table-sm"></table>');
+                            table.append('<thead class="thead-light"><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Revenue</th></tr></thead>');
+                            const tbody = $('<tbody></tbody>');
+                            data.top_products.forEach(function (p) {
+                                const tr = $('<tr></tr>');
+                                tr.append($('<td class="font-weight-bold"></td>').text(p.name + ' (' + p.code + ')'));
+                                tr.append($('<td class="text-right"></td>').text(p.total_qty + (p.unit ? ' ' + p.unit : '')));
+                                tr.append($('<td class="text-right font-weight-bold text-success"></td>').text(currencySymbol + p.total_revenue));
+                                tbody.append(tr);
+                            });
+                            table.append(tbody);
+                            tableWrapper.append(table);
+                            cardBody.append(tableWrapper);
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'payables.summary.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-user-id text-primary mr-1"></i> Supplier Payables · ' + $('<div>').text(fact.as_of).html() + '</span>'));
+                        cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Reconciled</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                        kpiRow.append($('<div class="col-6 border-right"><div class="text-muted ai-kpi-label">Total Payables</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_outstanding || '0.00') + '</div></div>'));
+                        kpiRow.append($('<div class="col-6"><div class="text-muted ai-kpi-label">Suppliers with Dues</div><div class="font-weight-bold text-dark">' + (data.supplier_count_with_dues || 0) + '</div></div>'));
+                        cardBody.append(kpiRow);
+
+                        if (data.top_suppliers && data.top_suppliers.length > 0) {
+                            const tableWrapper = $('<div class="table-responsive"></div>');
+                            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
+                            table.append('<thead class="thead-light"><tr><th>Supplier</th><th class="text-right">Balance Owed</th><th class="text-center">Bills</th><th class="text-right">Max Overdue</th></tr></thead>');
+                            const tbody = $('<tbody></tbody>');
+                            data.top_suppliers.forEach(function (sup) {
+                                const tr = $('<tr></tr>');
+                                tr.append($('<td class="font-weight-bold"></td>').text(sup.name));
+                                tr.append($('<td class="text-right text-danger font-weight-bold"></td>').text(currencySymbol + sup.open_balance));
+                                tr.append($('<td class="text-center"></td>').text(sup.invoice_count));
+                                tr.append($('<td class="text-right"></td>').text(sup.max_days_overdue + ' days'));
+                                tbody.append(tr);
+                            });
+                            table.append(tbody);
+                            tableWrapper.append(table);
+                            cardBody.append(tableWrapper);
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'accounting.statements.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const stType = data.statement_type || 'profit_and_loss';
+                        const typeLabel = stType === 'profit_and_loss' ? 'Profit & Loss Statement' : (stType === 'balance_sheet' ? 'Balance Sheet' : 'Trial Balance');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-graph-pie text-primary mr-1"></i> ' + typeLabel + '</span>'));
+                        cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Verified Statement</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                        if (stType === 'profit_and_loss') {
+                            kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Revenue</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_revenue || '0.00') + '</div></div>'));
+                            kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Gross Profit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.gross_profit || '0.00') + '</div></div>'));
+                            kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Net Income</div><div class="font-weight-bold text-success">' + currencySymbol + (data.summary?.net_income || '0.00') + '</div></div>'));
+                        } else if (stType === 'balance_sheet') {
+                            kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Assets</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_assets || '0.00') + '</div></div>'));
+                            kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Liabilities</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.summary?.total_liabilities || '0.00') + '</div></div>'));
+                            kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Equity</div><div class="font-weight-bold text-primary">' + currencySymbol + (data.summary?.total_equity || '0.00') + '</div></div>'));
+                        } else {
+                            kpiRow.append($('<div class="col-6 border-right"><div class="text-muted ai-kpi-label">Total Debit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_debit || '0.00') + '</div></div>'));
+                            kpiRow.append($('<div class="col-6"><div class="text-muted ai-kpi-label">Total Credit</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.summary?.total_credit || '0.00') + '</div></div>'));
+                        }
+                        cardBody.append(kpiRow);
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'tax.gst_summary.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-percent text-primary mr-1"></i> GST Breakdown</span>'));
+                        cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Statutory Projection</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                        kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Taxable Value</div><div class="font-weight-bold text-dark">' + currencySymbol + (data.total_taxable_value || '0.00') + '</div></div>'));
+                        kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">CGST + SGST</div><div class="font-weight-bold text-dark">' + currencySymbol + ((parseFloat(data.total_cgst || 0) + parseFloat(data.total_sgst || 0))).toFixed(2) + '</div></div>'));
+                        kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Total Tax Liability</div><div class="font-weight-bold text-danger">' + currencySymbol + (data.total_tax_liability || '0.00') + '</div></div>'));
+                        cardBody.append(kpiRow);
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'copilot.help.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-question text-primary mr-1"></i> Copilot Authorized Capabilities</span>'));
+                        cardHeader.append($('<span class="badge badge-primary px-2 py-1">' + (data.total_authorized_tools || 0) + ' Tools Active</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        if (data.suggested_questions && data.suggested_questions.length > 0) {
+                            cardBody.append('<div class="text-muted small font-weight-bold mb-2">Click any suggested question below to try:</div>');
+                            const pillContainer = $('<div class="d-flex flex-wrap"></div>');
+                            data.suggested_questions.forEach(function (q) {
+                                const btn = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-2 font-weight-normal text-left ai-chip-btn"></button>')
+                                    .text('💬 ' + q)
+                                    .click(function () { $('#chat-input').val(q).focus(); });
+                                pillContainer.append(btn);
+                            });
+                            cardBody.append(pillContainer);
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'manufacturing.boms.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-gear text-primary mr-1"></i> Bill of Materials (BOM) · ' + (data.total_boms_found || 0) + ' Found</span>'));
+                        cardHeader.append($('<span class="badge badge-info px-2 py-1">Manufacturing</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        if (data.boms && data.boms.length > 0) {
+                            data.boms.forEach(function (b) {
+                                const bomBox = $('<div class="border rounded p-2 mb-2 bg-light"></div>');
+                                bomBox.append('<div class="d-flex justify-content-between font-weight-bold text-dark ai-bom-title">' +
+                                    '<span>' + $('<div>').text(b.output_product.name).html() + ' (' + $('<div>').text(b.code).html() + ' v' + b.version + ')</span>' +
+                                    '<span class="badge badge-secondary">' + b.output_product.output_qty + ' ' + b.output_product.uom + '</span>' +
+                                    '</div>');
+
+                                if (b.components && b.components.length > 0) {
+                                    const compList = $('<div class="mt-1 ai-comp-list"></div>');
+                                    b.components.forEach(function (c) {
+                                        compList.append('<div class="text-muted d-flex justify-content-between border-top py-1">' +
+                                            '<span>• ' + $('<div>').text(c.component_name).html() + '</span>' +
+                                            '<span class="font-weight-bold text-dark">' + c.qty + ' ' + c.uom + '</span>' +
+                                            '</div>');
+                                    });
+                                    bomBox.append(compList);
+                                }
+                                cardBody.append(bomBox);
+                            });
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'jobwork.status.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-swap text-primary mr-1"></i> Job Work Processing Report</span>'));
+                        const summary = data.summary || {};
+                        const overdueBadge = (summary.overdue_count > 0)
+                            ? $('<span class="badge badge-danger px-2 py-1">Overdue: ' + summary.overdue_count + '</span>')
+                            : $('<span class="badge badge-success px-2 py-1">All Current</span>');
+                        cardHeader.append(overdueBadge);
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        const kpiRow = $('<div class="row no-gutters text-center border-bottom pb-2 mb-2"></div>');
+                        kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Orders Pending</div><div class="font-weight-bold text-dark">' + (summary.total_orders_pending || 0) + '</div></div>'));
+                        kpiRow.append($('<div class="col-4 border-right"><div class="text-muted ai-kpi-label">Pending Qty</div><div class="font-weight-bold text-dark">' + (summary.total_pending_qty ?? 'By product') + '</div></div>'));
+                        kpiRow.append($('<div class="col-4"><div class="text-muted ai-kpi-label">Pending Value</div><div class="font-weight-bold text-primary">' + currencySymbol + (summary.total_pending_value || '0.00') + '</div></div>'));
+                        cardBody.append(kpiRow);
+
+                        if (data.orders && data.orders.length > 0) {
+                            const tableWrapper = $('<div class="table-responsive"></div>');
+                            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table-sm"></table>');
+                            table.append('<thead class="thead-light"><tr><th>Order #</th><th>Processor</th><th>Product</th><th class="text-right">Qty</th><th class="text-right">Return By</th><th class="text-center">Status</th></tr></thead>');
+                            const tbody = $('<tbody></tbody>');
+                            data.orders.forEach(function (o) {
+                                const tr = $('<tr></tr>');
+                                tr.append($('<td class="font-weight-bold"></td>').text(o.reference_no));
+                                tr.append($('<td></td>').text(o.processor?.name || ''));
+                                tr.append($('<td></td>').text(o.product?.name || ''));
+                                tr.append($('<td class="text-right font-weight-bold"></td>').text(o.pending_qty));
+                                tr.append($('<td class="text-right"></td>').text(o.return_by || '-'));
+                                let stBadge = o.status === 'overdue' ? '<span class="badge badge-danger">Overdue</span>' : (o.status === 'due_soon' ? '<span class="badge badge-warning">Due Soon</span>' : '<span class="badge badge-success">OK</span>');
+                                tr.append($('<td class="text-center"></td>').html(stBadge));
+                                tbody.append(tr);
+                            });
+                            table.append(tbody);
+                            tableWrapper.append(table);
+                            cardBody.append(tableWrapper);
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'orders.open.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> Open Orders &amp; Fulfilment</span>'));
+                        cardHeader.append($('<span class="badge badge-primary px-2 py-1">' + (data.summary?.total_open_orders || 0) + ' Open</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-2 bg-white"></div>');
+                        if (data.orders && data.orders.length > 0) {
+                            const tableWrapper = $('<div class="table-responsive"></div>');
+                            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table-sm"></table>');
+                            table.append('<thead class="thead-light"><tr><th>Type</th><th>Order #</th><th>Party</th><th class="text-right">Total</th><th class="text-right">Open Due</th><th class="text-center">Status</th></tr></thead>');
+                            const tbody = $('<tbody></tbody>');
+                            data.orders.forEach(function (o) {
+                                const tr = $('<tr></tr>');
+                                tr.append($('<td></td>').html(o.order_type === 'sale' ? '<span class="badge badge-info">Sale</span>' : '<span class="badge badge-secondary">Purchase</span>'));
+                                const href = erpHref(o.source_link);
+                                const reference = $('<td class="font-weight-bold"></td>').text(o.reference_no);
+                                if (href) reference.empty().append($('<a></a>').attr('href', href).text(o.reference_no));
+                                tr.append(reference);
+                                tr.append($('<td></td>').text(o.party?.name || ''));
+                                tr.append($('<td class="text-right"></td>').text(o.grand_total == null ? '—' : currencySymbol + o.grand_total));
+                                tr.append($('<td class="text-right font-weight-bold text-danger"></td>').text(o.open_balance == null ? '—' : currencySymbol + o.open_balance));
+                                tr.append($('<td class="text-center"><span class="badge badge-warning">' + $('<div>').text(o.status).html() + '</span></td>'));
+                                tbody.append(tr);
+                            });
+                            table.append(tbody);
+                            tableWrapper.append(table);
+                            cardBody.append(tableWrapper);
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'documents.preview.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-document-edit text-primary mr-1"></i> Document Preview · ' + $('<div>').text(data.reference_no || '').html() + '</span>'));
+                        cardHeader.append($('<span class="badge badge-success px-2 py-1"></span>').text(data.status || 'Active'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+                        cardBody.append('<div class="row no-gutters mb-2 ai-diff-row">' +
+                            '<div class="col-6">Party: <strong>' + $('<div>').text(data.party?.name || '').html() + '</strong></div>' +
+                            '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
+                            '</div>');
+                        const footer = $('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-2"></div>');
+                        footer.append($('<span></span>').text('Grand Total: ' + currencySymbol + (data.grand_total || '0.00')));
+                        const href = erpHref(data.view_link);
+                        if (href) footer.append($('<a target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary py-0 px-2">Open Document ↗</a>').attr('href', href));
+                        cardBody.append(footer);
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'knowledge.query.v1') {
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-information text-primary mr-1"></i> Company Policy &amp; Terms</span>'));
+                        cardHeader.append($('<span class="badge badge-info px-2 py-1">Verified Knowledge</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-3 bg-white small"></div>');
+                        const kw = data.knowledge || {};
+                        if (kw.company) {
+                            cardBody.append($('<div class="font-weight-bold"></div>').text(kw.company.name));
+                            (kw.company.branches || []).forEach(branch => cardBody.append($('<div></div>').text(branch.name)));
+                        }
+                        if (kw.tax_policy) {
+                            cardBody.append($('<div class="text-muted"></div>').text('GST registration: ' + (kw.tax_policy.gstin || kw.tax_policy.registration_type)));
+                        }
+                        if (kw.return_policy) {
+                            cardBody.append($('<div class="text-muted"></div>').text('Return approval window: ' + kw.return_policy.approval_window_days + ' days'));
+                        }
+                        card.append(cardBody);
+                        bubble.append(card);
+                    } else if (fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1' || fact.tool === 'sales_order.create.v1') {
+                        const isSalesOrder = fact.tool === 'sales_order.create.v1';
+                        const partyLabel = isSalesOrder ? (data.customer?.name || 'Customer') : (data.supplier?.name || 'Supplier');
+                        const docTitle = isSalesOrder ? 'Sales Order Proposal' : 'Purchase Order Proposal';
+                        const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> ' + docTitle + ' · ' + $('<div>').text(partyLabel).html() + '</span>'));
+                        cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Requires Approval</span>'));
+                        card.append(cardHeader);
+
+                        const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+                        cardBody.append('<div class="row no-gutters mb-2 ai-diff-row">' +
+                            '<div class="col-6">Warehouse: <strong>' + $('<div>').text(data.warehouse?.name || '').html() + '</strong></div>' +
+                            '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
+                            '</div>');
+
+                        if (data.items && data.items.length > 0) {
+                            const tableWrapper = $('<div class="table-responsive my-2"></div>');
+                            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
+                            table.append('<thead class="thead-light"><tr>' +
+                                '<th>Item</th>' +
+                                '<th class="text-right">Qty</th>' +
+                                '<th class="text-right">' + (isSalesOrder ? 'Price' : 'Cost') + '</th>' +
+                                '<th class="text-right">Total</th>' +
+                                '</tr></thead>');
+
+                            const tbody = $('<tbody></tbody>');
+                            data.items.forEach(function (item) {
+                                const tr = $('<tr></tr>');
+                                tr.append($('<td></td>').append($('<div class="font-weight-bold"></div>').text(item.product_name || item.product_code || 'Product')).append($('<small class="text-muted"></small>').text(item.product_code || '')));
+                                tr.append($('<td class="text-right"></td>').text(item.qty));
+                                tr.append($('<td class="text-right"></td>').text(currencySymbol + (item.net_unit_cost ?? item.net_unit_price ?? '0.00')));
+                                tr.append($('<td class="text-right font-weight-bold"></td>').text(currencySymbol + (item.line_total || item.total || '0.00')));
+                                tbody.append(tr);
+                            });
+                            table.append(tbody);
+                            tableWrapper.append(table);
+                            cardBody.append(tableWrapper);
+                        }
+
+                        const totals = data.totals || {};
+                        const footer = $('<div class="border-top pt-2"></div>');
+                        const totalsRow = $('<div class="row no-gutters small text-muted mb-2">' +
+                            '<div class="col-4">Subtotal: <strong class="text-dark">' + currencySymbol + (totals.subtotal || '0.00') + '</strong></div>' +
+                            '<div class="col-4 text-center">Tax: <strong class="text-dark">' + currencySymbol + (totals.tax_total || '0.00') + '</strong></div>' +
+                            '<div class="col-4 text-right">Grand Total: <strong class="text-dark font-weight-bold">' + currencySymbol + (totals.grand_total || '0.00') + '</strong></div>' +
+                            '</div>');
+                        footer.append(totalsRow);
+
+                        if (data.proposal_id) {
+                            const actionRow = $('<div class="d-flex justify-content-end align-items-center mt-2 pt-2 border-top"></div>');
+                            const btnApprove = $('<button type="button" class="btn btn-sm btn-success mr-2 py-1 px-3"><i class="dripicons-checkmark mr-1"></i>Approve & Place Order</button>');
+                            const btnReject = $('<button type="button" class="btn btn-sm btn-outline-danger py-1 px-3"><i class="dripicons-cross mr-1"></i>Reject</button>');
+
+                            btnApprove.on('click', function () {
+                                btnApprove.prop('disabled', true).text('Approving...');
+                                btnReject.prop('disabled', true);
+                                $.ajax({
+                                    url: aiBaseUrl + '/proposals/' + data.proposal_id + '/approve',
+                                    method: 'POST',
+                                    headers: headers,
+                                    data: JSON.stringify({ expected_version: data.version || 1 }),
+                                    success: function (res) {
+                                        const docPrefix = isSalesOrder ? 'SO #' : 'PO #';
+                                        actionRow.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>Order Placed: ' + docPrefix + (res.execution?.receipt?.details?.reference_no || res.proposal_id) + '</span>');
+                                    },
+                                    error: function (xhr) {
+                                        btnApprove.prop('disabled', false).text('Approve & Place Order');
+                                        btnReject.prop('disabled', false);
+                                        alert('Approval failed: ' + (xhr.responseJSON?.error_message || 'Unexpected error'));
+                                    }
+>>>>>>> origin/feature/ai-multimodal-perception
                                 });
                                 table.append(tbody);
                                 tableWrapper.append(table);
@@ -1607,6 +2004,7 @@
                         }
                     });
 
+<<<<<<< HEAD
                     // Sources
                     if (sources && sources.length > 0) {
                         const sourcesDiv = $('<div class="mt-2 pt-2 border-top small"><strong>Verified Sources:</strong></div>');
@@ -1615,6 +2013,93 @@
                             if (href) {
                                 sourcesDiv.append($('<div></div>').append($('<a class="text-primary" target="_blank" rel="noopener"></a>')
                                     .attr('href', href).text(s.title)));
+=======
+                // Warnings
+                if (warnings && warnings.length > 0) {
+                    const warnDiv = $('<div class="alert alert-warning py-1 px-2 mt-2 mb-0 small"><i class="dripicons-warning mr-1"></i> ' + $('<div>').text(warnings.join(' ')).html() + '</div>');
+                    bubble.append(warnDiv);
+                }
+
+                container.append(bubble);
+                $('#chat-messages').append(container);
+                $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+            }
+
+            // Submit Chat
+            $('#chat-form').on('submit', function (e) {
+                e.preventDefault();
+                if (sending || loadingHistory) return;
+                const input = $('#chat-input');
+                const message = input.val().trim();
+                if (!message) return;
+                sending = true;
+
+                const mediaIds = (window.zoloAiMedia && window.zoloAiMedia.getAttachedMediaIds)
+                    ? window.zoloAiMedia.getAttachedMediaIds()
+                    : [];
+
+                appendMessage('user', message);
+                input.val('');
+                $('#char-counter').text('0 / 4000');
+
+                // Loading state
+                $('#btn-send-text').hide();
+                $('#btn-send-spinner').show();
+                $('#btn-send').prop('disabled', true);
+
+                const chatBody = {
+                    message: message,
+                    thread_id: currentThreadId
+                };
+                if (mediaIds.length > 0) {
+                    chatBody.media_ids = mediaIds;
+                }
+
+                $.ajax({
+                    url: '{{ route("ai.chat") }}',
+                    method: 'POST',
+                    headers: headers,
+                    data: JSON.stringify(chatBody),
+                    success: function (res) {
+                        if (window.zoloAiMedia && window.zoloAiMedia.clearAttachedMedia) {
+                            window.zoloAiMedia.clearAttachedMedia();
+                        }
+                        if (res.thread_id && !currentThreadId) {
+                            currentThreadId = res.thread_id;
+                            loadThreads();
+                        }
+
+                        appendMessage('assistant', res.message, res.sources, res.warnings, res.facts);
+                        loadTelemetry();
+                    },
+                    error: function (xhr) {
+                        let err = {};
+                        try {
+                            err = xhr.responseJSON || (xhr.responseText ? JSON.parse(xhr.responseText) : {});
+                        } catch (e) {
+                            err = {};
+                        }
+
+                        let errMsg = err.error_message || err.message;
+                        let errCode = err.error_code;
+
+                        if (!errMsg) {
+                            if (xhr.status === 504) {
+                                errCode = 'GATEWAY_TIMEOUT';
+                                errMsg = 'The server or AI model took too long to respond (504 Gateway Timeout). Please try again in a few moments.';
+                            } else if (xhr.status === 502) {
+                                errCode = 'BAD_GATEWAY';
+                                errMsg = 'Unable to reach the AI model provider or backend service (502 Bad Gateway). The upstream model provider may be queued or unresponsive.';
+                            } else if (xhr.status === 419) {
+                                errCode = 'SESSION_EXPIRED';
+                                errMsg = 'Your session has expired. Please refresh the page and try again.';
+                            } else if (xhr.status === 0) {
+                                errCode = 'NETWORK_ERROR';
+                                errMsg = 'Network connection failed or the request was interrupted.';
+                            } else {
+                                errCode = errCode || ('HTTP_' + (xhr.status || 'ERROR'));
+                                errMsg = xhr.statusText ? ('Request failed: ' + xhr.statusText) : 'An unexpected error occurred while processing your request.';
+>>>>>>> origin/feature/ai-multimodal-perception
                             }
                         });
                         bubble.append(sourcesDiv);
@@ -1791,9 +2276,33 @@
                     $('#ai-pdf-iframe').attr('src', '');
                 });
 
+                // Expose safe bridge for modular multimodal JS plugin
+                window.zoloAiWorkspace = {
+                    appendMessage: appendMessage,
+                    loadThreads: loadThreads,
+                    loadTelemetry: loadTelemetry,
+                    getCurrentThreadId: function () { return currentThreadId; },
+                    setCurrentThreadId: function (id) { currentThreadId = id; },
+                    aiBaseUrl: aiBaseUrl,
+                    csrfToken: csrfToken,
+                    scopeHeader: '{{ $context->companyId }}/{{ $context->branchId }}/{{ $context->financialYearId }}'
+                };
+
                 // Boot
                 loadThreads();
+                loadTelemetry();
 
             })(jQuery);
         </script>
+        <script>
+            window.zoloAiMultimodalConfig = {!! \Illuminate\Support\Js::from([
+                'enabled' => (bool) ($isMultimodalEnabled ?? false),
+                'mediaBaseUrl' => url('ai'),
+                'maxAudioSeconds' => (int) ($multimodalLimits['max_audio_seconds'] ?? 120),
+                'maxPdfPages' => (int) ($multimodalLimits['max_pdf_pages'] ?? 5),
+            ]) !!};
+        </script>
+        @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+            <script src="{{ asset('js/ai-media-input.js') }}"></script>
+        @endif
 @endpush
