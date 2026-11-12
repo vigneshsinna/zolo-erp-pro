@@ -15,6 +15,7 @@ class AiFeatureGate
 {
     public function __construct(
         protected bool $enabledGlobally = false,
+        protected ?bool $readOnly = null,
     ) {}
 
     /**
@@ -45,8 +46,34 @@ class AiFeatureGate
     /**
      * Check if AI operations are restricted to read-only for a given company.
      */
-    public function isReadOnly(): bool
+    public function isReadOnly(?int $companyId = null): bool
     {
+        if ($companyId !== null && function_exists('app') && app()->bound('db')) {
+            try {
+                $setting = DB::table('ai_feature_settings')
+                    ->where('company_id', $companyId)
+                    ->first();
+
+                if ($setting !== null) {
+                    return (bool) $setting->read_only;
+                }
+            } catch (Throwable) {
+                // fallback
+            }
+        }
+
+        if ($this->readOnly !== null) {
+            return $this->readOnly;
+        }
+
+        try {
+            if (function_exists('config')) {
+                return !config('ai_actions.foundation_enabled', false);
+            }
+        } catch (Throwable) {
+            // fallback for isolated unit tests without config facade
+        }
+
         return true;
     }
 

@@ -74,9 +74,21 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             if (!DB::table('tax_categories')->where('company_id', $context->companyId)->where('id', $taxCategoryId)->exists()) {
                 throw ValidationException::withMessages(['tax_category_id' => 'Select a GST rate of this company.']);
             }
+        } elseif (\Illuminate\Support\Facades\Schema::hasTable('tax_categories')) {
+            $taxCategoryId = DB::table('tax_categories')
+                ->where('company_id', $context->companyId)
+                ->where('supply_type', 'taxable')
+                ->orderByRaw("CASE WHEN name LIKE '%5%' THEN 1 WHEN name LIKE '%18%' THEN 2 ELSE 3 END")
+                ->value('id') ?? DB::table('tax_categories')->where('company_id', $context->companyId)->value('id');
         }
 
         $hsnCode = !empty($slots['hsn_code']) ? (string) $slots['hsn_code'] : null;
+        if (!$hsnCode && \Illuminate\Support\Facades\Schema::hasTable('hsn_sac_codes')) {
+            $hsnCode = DB::table('hsn_sac_codes')
+                ->where('company_id', $context->companyId)
+                ->where('kind', 'hsn')
+                ->value('code');
+        }
 
         $payload = [
             'name' => $name,
@@ -93,6 +105,8 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'hsn_code' => $hsnCode,
         ];
 
+        $taxCategoryName = $taxCategoryId ? DB::table('tax_categories')->where('id', $taxCategoryId)->value('name') : null;
+
         $previewData = [
             'entity' => 'Product Master',
             'name' => $name,
@@ -100,6 +114,7 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'cost' => sprintf('%.2f', $cost),
             'price' => sprintf('%.2f', $price),
             'type' => $payload['type'],
+            'tax_category' => $taxCategoryName,
             'hsn_code' => $hsnCode,
             'is_existing' => $existing !== null,
         ];

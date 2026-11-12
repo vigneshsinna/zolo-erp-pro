@@ -255,6 +255,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
 
         $previewData = [
             'document_type' => 'Purchase Order (Status: Ordered)',
+            'currency' => 'INR',
             'supplier' => [
                 'id' => (int) $supplier->id,
                 'name' => $supplier->name,

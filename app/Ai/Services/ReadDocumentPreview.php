@@ -34,8 +34,27 @@ class ReadDocumentPreview
             financialYearId: $principal->financialYearId
         );
 
-        if (($documentId === null) === ($referenceNo === null || trim($referenceNo) === '')) {
-            return ErpToolResult::denied('documents.preview.v1', 'Provide exactly one document ID or reference number.', 'AI_INPUT_VALIDATION_FAILED');
+        if ($documentId !== null && $referenceNo !== null && trim($referenceNo) !== '') {
+            return ErpToolResult::denied('documents.preview.v1', 'Provide either document ID or reference number, not both.', 'AI_INPUT_VALIDATION_FAILED');
+        }
+
+        if ($referenceNo !== null && trim($referenceNo) !== '') {
+            $ref = trim($referenceNo);
+            if (\Illuminate\Support\Str::isUuid($ref)) {
+                $execution = \Illuminate\Support\Facades\DB::table('ai_action_executions')
+                    ->where('proposal_id', $ref)
+                    ->where('company_id', $context->companyId)
+                    ->where('status', 'completed')
+                    ->first();
+                if ($execution) {
+                    $res = json_decode((string) $execution->result_json, true) ?? [];
+                    $resId = (int) ($res['resource_id'] ?? $res['details']['purchase_id'] ?? $res['details']['sale_id'] ?? 0);
+                    if ($resId > 0) {
+                        $documentId = $resId;
+                        $referenceNo = null;
+                    }
+                }
+            }
         }
 
         $permission = match ($documentType) {
@@ -54,8 +73,10 @@ class ReadDocumentPreview
                 ->whereNull('reversed_at');
             if ($documentId !== null) {
                 $query->where('id', $documentId);
-            } else {
+            } elseif ($referenceNo !== null && trim($referenceNo) !== '') {
                 $query->where('reference_no', trim($referenceNo));
+            } else {
+                $query->latest('id');
             }
 
             $sale = $query->first();
@@ -69,6 +90,7 @@ class ReadDocumentPreview
 
             $customer = Customer::forCompany($context)->find($sale->customer_id);
             $viewUrl = Route::has('sale.invoice') ? route('sale.invoice', $sale->id, absolute: false) : "/sales/{$sale->id}";
+            $pdfUrl = url("ai/documents/sale/{$sale->id}/pdf");
 
             $data = [
                 'document_type' => 'sale_invoice',
@@ -85,6 +107,7 @@ class ReadDocumentPreview
                 'paid_amount' => (string) BigDecimal::of((string) ($sale->paid_amount ?? 0))->toScale(2, RoundingMode::HalfUp),
                 'status' => $sale->sale_status == 1 ? 'completed' : 'pending',
                 'view_link' => $viewUrl,
+                'pdf_url' => $pdfUrl,
             ];
 
             return ErpToolResult::ok(
@@ -111,8 +134,10 @@ class ReadDocumentPreview
 
             if ($documentId !== null) {
                 $query->where('id', $documentId);
-            } else {
+            } elseif ($referenceNo !== null && trim($referenceNo) !== '') {
                 $query->where('reference_no', trim($referenceNo));
+            } else {
+                $query->latest('id');
             }
 
             $purchase = $query->first();
@@ -126,6 +151,7 @@ class ReadDocumentPreview
 
             $supplier = Supplier::forCompany($context)->find($purchase->supplier_id);
             $viewUrl = Route::has('purchases.index') ? route('purchases.index', absolute: false) : "/purchases/{$purchase->id}";
+            $pdfUrl = url("ai/documents/purchase/{$purchase->id}/pdf");
 
             $data = [
                 'document_type' => 'purchase_order',
@@ -141,6 +167,7 @@ class ReadDocumentPreview
                 'paid_amount' => (string) BigDecimal::of((string) ($purchase->paid_amount ?? 0))->toScale(2, RoundingMode::HalfUp),
                 'status' => $purchase->status == 1 ? 'received' : 'pending',
                 'view_link' => $viewUrl,
+                'pdf_url' => $pdfUrl,
             ];
 
             return ErpToolResult::ok(

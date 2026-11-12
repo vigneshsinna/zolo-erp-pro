@@ -226,17 +226,21 @@ Route::prefix('v1')->group(function () {
 
         // AI Operating Layer
         Route::prefix('ai')->middleware('company.context')->group(function () {
+            require __DIR__.'/ai-documents.php';
             Route::get('settings', [\App\Http\Controllers\Api\V1\AiChatController::class, 'settings'])->name('api.v1.ai.settings');
             Route::get('monitoring', [\App\Http\Controllers\Api\V1\AiChatController::class, 'monitoring'])->name('api.v1.ai.monitoring');
             Route::get('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'threads'])->name('api.v1.ai.threads.index');
             Route::post('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'createThread'])->name('api.v1.ai.threads.store');
             Route::get('threads/{id}', [\App\Http\Controllers\Api\V1\AiChatController::class, 'showThread'])->whereUuid('id')->name('api.v1.ai.threads.show');
             Route::post('chat', [\App\Http\Controllers\Api\V1\AiChatController::class, 'chat'])->name('api.v1.ai.chat');
+            Route::match(['GET', 'POST'], 'chat/stream', [\App\Http\Controllers\Api\V1\AiChatController::class, 'stream'])->name('api.v1.ai.chat.stream');
             Route::get('proposals', [\App\Http\Controllers\Api\V1\AiChatController::class, 'proposals'])->name('api.v1.ai.proposals.index');
             Route::post('proposals', [\App\Http\Controllers\Api\V1\AiChatController::class, 'propose'])->name('api.v1.ai.proposals.store');
             Route::post('proposals/{id}/change-request', [\App\Http\Controllers\Api\V1\AiChatController::class, 'changeRequest'])->whereUuid('id')->name('api.v1.ai.proposals.change-request');
             Route::post('proposals/{id}/approve', [\App\Http\Controllers\Api\V1\AiChatController::class, 'approveProposal'])->whereUuid('id')->name('api.v1.ai.proposals.approve');
             Route::post('proposals/{id}/reject', [\App\Http\Controllers\Api\V1\AiChatController::class, 'rejectProposal'])->whereUuid('id')->name('api.v1.ai.proposals.reject');
+            Route::get('documents/{type}/{id}/pdf', [\App\Http\Controllers\Api\V1\AiChatController::class, 'downloadDocumentPdf'])->name('api.v1.ai.documents.pdf');
+            Route::get('proposals/{id}/pdf', [\App\Http\Controllers\Api\V1\AiChatController::class, 'downloadProposalPdf'])->whereUuid('id')->name('api.v1.ai.proposals.pdf');
 
             // Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine
             Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {

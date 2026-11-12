@@ -548,4 +548,73 @@ final class DependentMasterResolutionTest extends TestCase
         $taskSlots = json_decode($taskRecord->slots_json, true);
         $this->assertSame($createdWhId, $taskSlots['warehouse_id']);
     }
+
+    /**
+     * Test 8: Product dependent master creation automatically defaults tax_category_id and hsn_code when omitted.
+     */
+    public function test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted(): void
+    {
+        $supplier = Supplier::create([
+            'name' => 'Apex Fabrics Supplier',
+            'company_name' => 'Apex Fabrics Pvt Ltd',
+            'phone_number' => '9888877777',
+            'is_active' => true,
+            'company_id' => $this->company->id,
+        ]);
+
+        $tool = app(PreparePurchaseOrder::class, ['principal' => $this->principal()]);
+        $task = json_decode($tool->handle(new ToolRequest([
+            'supplier_id' => $supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'items' => [['product_query' => 'Linen Shirt White', 'qty' => 5, 'net_unit_cost' => 600]],
+        ])), true);
+        $taskId = $task['task_id'];
+
+        // Preview product without tax_category_id and hsn_code
+        $resPreview = $this->actingAs($this->adminUser)
+            ->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/dependent-masters/preview", [
+                'field' => 'items[line-0].product_id',
+                'data' => [
+                    'name' => 'Linen Shirt White',
+                    'code' => 'SKU-LINENWHITE',
+                    'unit_id' => $this->unit->id,
+                    'cost' => 600,
+                    'price' => 600,
+                ],
+            ]);
+
+        $resPreview->assertStatus(200);
+        $proposal = $resPreview->json('proposal');
+        $this->assertNotNull($proposal);
+        $this->assertSame('setup.product.create.v1', $proposal['action_key']);
+        $payload = json_decode($proposal['payload_json'], true);
+        $this->assertNotNull($payload['tax_category_id']);
+        $this->assertNotNull($payload['hsn_code']);
+
+        // Execute master creation
+        $resExec = $this->actingAs($this->adminUser)
+            ->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/dependent-masters/approve-and-execute", [
+                'field' => 'items[line-0].product_id',
+                'master_proposal_id' => $proposal['id'],
+                'expected_version' => 1,
+            ]);
+
+        $resExec->assertStatus(200);
+        $createdProductId = $resExec->json('newly_created.resource_id');
+        $this->assertGreaterThan(0, $createdProductId);
+
+        $dbProduct = DB::table('products')->where('id', $createdProductId)->first();
+        $this->assertNotNull($dbProduct->tax_category_id);
+        $this->assertNotNull($dbProduct->hsn_code);
+
+        // Verify that parent task can now prepare proposal without tax errors
+        $resProp = $this->actingAs($this->adminUser)
+            ->withHeaders($this->contextHeaders())
+            ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/prepare-proposal");
+
+        $resProp->assertStatus(201);
+        $this->assertSame('proposal_created', $resProp->json('status'));
+    }
 }

@@ -25,7 +25,9 @@ final class WorkflowTaskStateService
             ->where('actor_id', $principal->actorId);
 
         if ($principal instanceof AiPrincipal) {
-            $query->where('company_id', $principal->companyId);
+            $query->where('company_id', $principal->companyId)
+                ->where('branch_id', $principal->branchId)
+                ->where('financial_year_id', $principal->financialYearId);
         }
 
         $task = $query->first();

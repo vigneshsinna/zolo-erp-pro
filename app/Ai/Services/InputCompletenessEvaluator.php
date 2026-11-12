@@ -157,7 +157,7 @@ final class InputCompletenessEvaluator
             $confirmed[] = [
                 'field' => $field,
                 'label' => $req->label,
-                'display' => (string) $slots[$field],
+                'display' => is_array($slots[$field]) ? json_encode($slots[$field], JSON_THROW_ON_ERROR) : (string) $slots[$field],
                 'source' => 'user',
             ];
             $cleanSlots[$field] = $slots[$field];

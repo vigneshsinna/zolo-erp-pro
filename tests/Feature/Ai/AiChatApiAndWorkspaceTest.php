@@ -120,6 +120,10 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $response->assertSee('ai-workspace-container');
         $response->assertSee('zoloERP Copilot');
         $response->assertSee($this->company->legal_name ?? $this->company->name);
+        $response->assertSee('Search conversations');
+        $response->assertSee('AI engine');
+        $response->assertSee('Provider requests / minute');
+        $response->assertDontSee('RPM: --/35');
     }
 
     public function test_settings_endpoint_returns_effective_company_configuration(): void
@@ -302,6 +306,45 @@ class AiChatApiAndWorkspaceTest extends TestCase
         Http::assertSent(fn (ProviderRequest $request) => !str_contains($request->body(), $protected));
     }
 
+    public function test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread(): void
+    {
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+
+        $clarificationContent = 'Please complete missing supplier information.';
+        DB::table('agent_conversation_messages')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'conversation_id' => $thread,
+            'agent' => 'erp_copilot',
+            'status' => 'completed',
+            'role' => 'assistant',
+            'content' => $clarificationContent,
+            'attachments' => '[]',
+            'steps' => '[]',
+            'usage' => '[]',
+            'meta' => json_encode([
+                'answer_status' => 'verified',
+                'facts' => [
+                    [
+                        'tool' => 'workflow.clarification.v1',
+                        'data' => [
+                            'status' => 'needs_input',
+                            'action_key' => 'purchase_order.create.v1',
+                            'task_id' => (string) \Illuminate\Support\Str::uuid(),
+                            'missing_field' => 'supplier',
+                        ],
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+        ]);
+
+        $response = $this->getJson(route('ai.threads.show', $thread))->assertOk();
+        $this->assertSame($clarificationContent, $response->json('messages.0.content'));
+        $this->assertCount(1, $response->json('messages.0.facts'));
+        $this->assertSame('workflow.clarification.v1', $response->json('messages.0.facts.0.tool'));
+    }
+
     public function test_sanctum_routes_accept_bearer_tokens_and_workspace_routes_require_sessions(): void
     {
         $token = $this->adminUser->createToken('AI fixture')->plainTextToken;
@@ -359,7 +402,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
 
     public function test_step_reservation_blocks_an_overlapping_company_call_and_releases_unused_tokens(): void
     {
-        config(['erp_ai.daily_company_tokens' => 5000]);
+        config(['erp_ai.daily_company_tokens' => 9500, 'erp_ai.max_output_tokens' => 1536]);
         $this->configureProvider();
         $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
         $date = now('UTC')->toDateString();
@@ -495,7 +538,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
                 'status',
                 'provider',
                 'model',
-                'rpm' => ['provider', 'limit', 'current', 'remaining', 'status'],
+                'rpm' => ['provider', 'limit', 'current', 'remaining', 'status', 'window_seconds', 'reset_in_seconds'],
                 'today' => [
                     'date',
                     'user_requests',
@@ -550,7 +593,31 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertSame(2, $rpmUsage['limit']);
         $this->assertSame(0, $rpmUsage['remaining']);
         $this->assertSame('limited', $rpmUsage['status']);
+        $this->assertSame(60, $rpmUsage['window_seconds']);
+        $this->assertGreaterThan(0, $rpmUsage['reset_in_seconds']);
+        $this->assertLessThanOrEqual(60, $rpmUsage['reset_in_seconds']);
 
+        RateLimiter::clear('ai:rpm:nvidia');
+    }
+
+    public function test_provider_usage_reports_disabled_limit_and_expired_window_accurately(): void
+    {
+        $gateway = app(ApprovedModelGateway::class);
+        RateLimiter::clear('ai:rpm:nvidia');
+        config(['erp_ai.nvidia_rpm_limit' => 0]);
+        $gateway->enforceProviderRateLimit('nvidia');
+        $this->assertSame('disabled', $gateway->getProviderRpmUsage('nvidia')['status']);
+        $this->assertSame(0, $gateway->getProviderRpmUsage('nvidia')['current']);
+
+        config(['erp_ai.nvidia_rpm_limit' => 35]);
+        $gateway->enforceProviderRateLimit('nvidia');
+        $this->assertSame(1, $gateway->getProviderRpmUsage('deepseek')['current']);
+        $this->travel(61)->seconds();
+        $usage = $gateway->getProviderRpmUsage('nvidia');
+        $this->assertSame(0, $usage['current']);
+        $this->assertSame(0, $usage['reset_in_seconds']);
+        $this->assertSame('healthy', $usage['status']);
+        $this->travelBack();
         RateLimiter::clear('ai:rpm:nvidia');
     }
 
@@ -691,11 +758,52 @@ class AiChatApiAndWorkspaceTest extends TestCase
     public function test_workspace_stylesheet_enforces_full_width_assistant_cards_and_no_shrink(): void
     {
         $css = file_get_contents(public_path('css/pages/ai-workspace.css'));
-        $this->assertStringContainsString('width: min(100%, 980px);', $css);
+        $this->assertStringContainsString('width: min(100%, 960px);', $css);
         $this->assertStringContainsString('.ai-workspace-container .chat-bubble.chat-assistant', $css);
         $this->assertStringContainsString('.ai-workspace-container .erp-fact-card', $css);
         $this->assertStringContainsString('width: 100%;', $css);
         $this->assertStringContainsString('flex: 0 0 auto;', $css);
+    }
+
+    public function test_download_document_pdf_endpoint_streams_pdf(): void
+    {
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $supplier = \App\Models\Supplier::create([
+            'company_id' => $this->company->id,
+            'name' => 'PDF Test Supplier',
+            'phone_number' => '9999999999',
+            'email' => 'supplier@example.com',
+            'is_active' => true,
+        ]);
+        $purchase = (new \App\Models\Purchase)->forceFill([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branchId,
+            'financial_year_id' => $this->fyId,
+            'user_id' => $this->adminUser->id,
+            'supplier_id' => $supplier->id,
+            'warehouse_id' => 1,
+            'reference_no' => 'PO-TEST-PDF',
+            'status' => 4,
+            'item' => 1,
+            'total_qty' => 1,
+            'total_discount' => 0,
+            'total_tax' => 0,
+            'total_cost' => 1000,
+            'order_tax_rate' => 0,
+            'order_tax' => 0,
+            'order_discount' => 0,
+            'shipping_cost' => 0,
+            'grand_total' => 1000,
+            'paid_amount' => 0,
+            'payment_status' => 1,
+        ]);
+        $purchase->save();
+
+        $response = $this->get(route('ai.documents.pdf', ['type' => 'purchase', 'id' => $purchase->id]));
+        $response->assertOk();
+        $this->assertEquals('application/pdf', $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('.pdf', (string) $response->headers->get('Content-Disposition'));
+        $this->assertNotEmpty($response->getContent());
     }
 
     private function providerResponse(array $output, int $inputTokens, int $outputTokens): array

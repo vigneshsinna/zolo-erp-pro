@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Ai\Services;
 
 use App\Models\Customer;
+use App\Models\GoodsReceivedNote;
 use App\Models\Product;
 use App\Models\ProductAlias;
+use App\Models\Purchase;
 use App\Models\Supplier;
 use App\Models\Unit;
 use App\Models\Warehouse;
@@ -314,5 +316,114 @@ class RecordResolutionService
         }
 
         return ['status' => 'none', 'customer' => null, 'candidates' => collect()];
+    }
+
+    /**
+     * Resolve an open Purchase Order from user query (reference_no or ID).
+     *
+     * @return array{status: 'exact'|'candidates'|'none', purchase_order: ?Purchase, candidates: Collection<int, Purchase>}
+     */
+    public function resolvePurchaseOrder(CompanyContext $context, string $query, ?int $supplierId = null): array
+    {
+        $trimmed = trim($query);
+        if ($trimmed === '') {
+            return ['status' => 'none', 'purchase_order' => null, 'candidates' => collect()];
+        }
+
+        // 1. Numeric ID lookup
+        if (is_numeric($trimmed)) {
+            $byPk = Purchase::where('company_id', $context->companyId)
+                ->where('status', 4)
+                ->whereNull('reversed_at')
+                ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+                ->find((int) $trimmed);
+            if ($byPk) {
+                return ['status' => 'exact', 'purchase_order' => $byPk, 'candidates' => collect([$byPk])];
+            }
+        }
+
+        // 2. Exact match on reference_no
+        $exact = Purchase::where('company_id', $context->companyId)
+            ->where('status', 4)
+            ->whereNull('reversed_at')
+            ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+            ->where('reference_no', $trimmed)
+            ->first();
+
+        if ($exact) {
+            return ['status' => 'exact', 'purchase_order' => $exact, 'candidates' => collect([$exact])];
+        }
+
+        // 3. Substring matching across reference_no
+        $candidates = Purchase::where('company_id', $context->companyId)
+            ->where('status', 4)
+            ->whereNull('reversed_at')
+            ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+            ->where('reference_no', 'LIKE', "%{$trimmed}%")
+            ->limit(5)
+            ->get();
+
+        if ($candidates->count() === 1) {
+            return ['status' => 'exact', 'purchase_order' => $candidates->first(), 'candidates' => $candidates];
+        }
+
+        if ($candidates->count() > 1) {
+            return ['status' => 'candidates', 'purchase_order' => null, 'candidates' => $candidates];
+        }
+
+        return ['status' => 'none', 'purchase_order' => null, 'candidates' => collect()];
+    }
+
+    /**
+     * Resolve a posted Goods Received Note from user query (grn_no or ID).
+     *
+     * @return array{status: 'exact'|'candidates'|'none', grn: ?GoodsReceivedNote, candidates: Collection<int, GoodsReceivedNote>}
+     */
+    public function resolveGoodsReceivedNote(CompanyContext $context, string $query, ?int $supplierId = null): array
+    {
+        $trimmed = trim($query);
+        if ($trimmed === '') {
+            return ['status' => 'none', 'grn' => null, 'candidates' => collect()];
+        }
+
+        // 1. Numeric ID lookup
+        if (is_numeric($trimmed)) {
+            $byPk = GoodsReceivedNote::where('company_id', $context->companyId)
+                ->whereNotNull('posted_at')
+                ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+                ->find((int) $trimmed);
+            if ($byPk) {
+                return ['status' => 'exact', 'grn' => $byPk, 'candidates' => collect([$byPk])];
+            }
+        }
+
+        // 2. Exact match on grn_no
+        $exact = GoodsReceivedNote::where('company_id', $context->companyId)
+            ->whereNotNull('posted_at')
+            ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+            ->where('grn_no', $trimmed)
+            ->first();
+
+        if ($exact) {
+            return ['status' => 'exact', 'grn' => $exact, 'candidates' => collect([$exact])];
+        }
+
+        // 3. Substring matching across grn_no
+        $candidates = GoodsReceivedNote::where('company_id', $context->companyId)
+            ->whereNotNull('posted_at')
+            ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+            ->where('grn_no', 'LIKE', "%{$trimmed}%")
+            ->limit(5)
+            ->get();
+
+        if ($candidates->count() === 1) {
+            return ['status' => 'exact', 'grn' => $candidates->first(), 'candidates' => $candidates];
+        }
+
+        if ($candidates->count() > 1) {
+            return ['status' => 'candidates', 'grn' => null, 'candidates' => $candidates];
+        }
+
+        return ['status' => 'none', 'grn' => null, 'candidates' => collect()];
     }
 }

@@ -159,6 +159,9 @@ final class ActionCapabilityRegistry
 
     public function registerCommercialCapabilities(): void
     {
+        foreach (CommercialActionCatalog::definitions() as $definition) {
+            if (!$this->has($definition->key)) $this->register($definition);
+        }
         if (!$this->has('purchase_order.create.v1')) {
             $this->register(new ActionDefinition(
                 key: 'purchase_order.create.v1',
@@ -185,6 +188,40 @@ final class ActionCapabilityRegistry
                 inputSchemaClass: \App\Ai\Schemas\CreateSalesOrderInputSchema::class,
                 previewAdapterClass: \App\Ai\Adapters\SalesOrderPreviewAdapter::class,
                 commandAdapterClass: \App\Ai\Adapters\SalesOrderCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                requiresFreshSnapshot: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+
+        if (!$this->has('grn.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'grn.create.v1',
+                businessModule: 'purchasing',
+                riskTier: 'r2_operational',
+                requiredPermissions: ['ai.use', 'purchases-add'],
+                inputSchemaClass: \App\Ai\Schemas\CreateGoodsReceivedNoteInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\GoodsReceivedNotePreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\GoodsReceivedNoteCommandAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                requiresFreshSnapshot: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
+
+        if (!$this->has('purchase_bill.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'purchase_bill.create.v1',
+                businessModule: 'commercial',
+                riskTier: 'r3_financial',
+                requiredPermissions: ['ai.use', 'purchases-add'],
+                inputSchemaClass: \App\Ai\Schemas\CreatePurchaseBillInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\PurchaseBillPreviewAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\PurchaseBillCommandAdapter::class,
                 domainOwnsTransaction: true,
                 requiresApproval: true,
                 requiresFreshSnapshot: true,

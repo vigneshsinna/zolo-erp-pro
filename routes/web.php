@@ -185,7 +185,9 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 
 // Session-authenticated endpoints used by the workspace.
 Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group(function () {
+    require __DIR__.'/ai-documents.php';
     Route::controller(\App\Http\Controllers\Api\V1\AiChatController::class)->group(function () {
+        Route::post('chat/stream', 'stream')->name('chat.stream');
         Route::get('settings', 'settings')->name('settings');
         Route::get('monitoring', 'monitoring')->name('monitoring');
         Route::get('threads', 'threads')->name('threads.index');
@@ -197,6 +199,8 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group
         Route::post('proposals/{id}/change-request', 'changeRequest')->whereUuid('id')->name('proposals.change-request');
         Route::post('proposals/{id}/approve', 'approveProposal')->whereUuid('id')->name('proposals.approve');
         Route::post('proposals/{id}/reject', 'rejectProposal')->whereUuid('id')->name('proposals.reject');
+        Route::get('documents/{type}/{id}/pdf', 'downloadDocumentPdf')->name('documents.pdf');
+        Route::get('proposals/{id}/pdf', 'downloadProposalPdf')->whereUuid('id')->name('proposals.pdf');
     });
 
     // Phase 2.1 & 2.2: Workflow Tasks & Dependent Masters (Session-authenticated workspace routes)

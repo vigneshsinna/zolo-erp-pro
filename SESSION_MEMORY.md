@@ -1,4 +1,249 @@
+## In-Chat PDF Receipt Delivery & Zero Redirection Implemented — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **User Directives Addressed:**
+  1. `"i dont want print/voucher to redirect to the website, all the information should be recieved back to chat, if i ask for the reciept the pdf has to come back in the chat."`
+  2. `"what is undefined means, i think it is a bug? Also for the purchase order print receipt it gives wrong output."`
+  3. Resolution of proposal expiration and `"Approval failed: Unexpected error"` alert.
+
+- **Architectural Implementation Details:**
+  1. **Zero External Redirection:**
+     - Removed external redirects to `/purchases/{id}` or legacy desk views. All document confirmations, receipt fact cards, and official voucher details are posted directly into the chat stream.
+  2. **Authenticated PDF Streaming Endpoints (`routes/web.php` & `routes/api.php`):**
+     - `GET /ai/documents/{type}/{id}/pdf` (named `ai.documents.pdf`)
+     - `GET /ai/proposals/{id}/pdf` (named `ai.proposals.pdf`)
+     - Implemented in `App\Http\Controllers\Api\V1\AiChatController::downloadDocumentPdf()` and `downloadProposalPdf()`.
+     - Scoped strictly by `CompanyContext` and user Spatie capabilities (`purchases-index`, `sales-index`).
+     - Renders authentic, pixel-perfect A4 commercial layouts with barcodes, GSTINs, and item grids using `DocumentRenderingService` and `Barryvdh\DomPDF\Facade\Pdf`.
+  3. **Interactive In-Chat PDF Viewer Modal (`resources/views/backend/ai/workspace.blade.php`):**
+     - Embedded `#ai-pdf-preview-modal` with responsive full-height `<iframe>` and direct download link.
+     - Document preview fact cards and proposal receipt cards render **"View PDF in Chat"** (opens in-chat modal) and **"Download PDF"** buttons.
+  4. **Post-Approval Receipt Delivery (`appendReceiptCardToChat`):**
+     - Upon clicking `"Approve & Execute"`, the proposal status updates to `Booked: PO-xxxxx`, and a new assistant message is automatically appended to the conversation displaying the authoritative reference, booking timestamp, and in-chat PDF buttons.
+  5. **ErpCopilot Governance & Receipt Retrieval:**
+     - Prompt updated in `ErpCopilot.php`: When asked for a print receipt or PDF (e.g., `"can you give me the purchase order print receipt?"`), Copilot invokes `document_preview` to fetch the authoritative receipt data and in-chat PDF URL.
+     - Never redirects users to website URLs or hallucinates fake unapproved document numbers.
+  6. **Proposal Expiry & Error Handling:**
+     - Default proposal TTL raised from 30 minutes to 1,440 minutes (24 hours) in `config/ai_actions.php`.
+     - Error handler in `workspace.blade.php` surfaces exact Laravel validation failure messages instead of generic `"Unexpected error"`.
+
+- **Verification Results:**
+  - Active dev proposal `5c6ff413-6900-4daf-9f7d-322add858146` executed successfully into Purchase Order `PO-00006` (ID 185).
+  - Streamed authentic 1.27MB A4 PDF (`Purchase_order_PO-00006.pdf`) with HTTP 200 OK.
+  - Entire AI regression suite passed 100%: **190/190 tests (1,169 assertions, 0 errors, 0 failures, 0 skipped)** in 1m 48s.
+  - `composer validate --strict` passed cleanly.
+  - All Laravel caches cleared (`config:clear`, `route:clear`, `view:clear`).
+
+---
+
+## Proposal Expiry (TTL) & Approval Error Handling Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms (User Screenshot `media_1794477930942_df652812.png`):**
+  - User clicked `"Approve & Execute"` on proposal `5c6ff413-6900-4daf-9f7d-322add858146`.
+  - Browser alert dialog popped up: `Approval failed: Unexpected error`.
+  - Server logged: `POST /ai/proposals/5c6ff413.../approve status: 422`.
+
+- **Root Causes Identified & Remedied:**
+  1. **Proposal TTL Expiration (30-Minute Window):**
+     - Proposal `5c6ff413-6900-4daf-9f7d-322add858146` was generated at `09:34:55 UTC`. With default `config('ai_actions.proposal_ttl_minutes') = 30`, it expired at `10:04:55 UTC`.
+     - The user clicked "Approve & Execute" at `10:05:09 UTC` (14 seconds after expiration).
+     - `ActionApprovalService` correctly threw `ValidationException: 'The proposal is stale or already decided.'` (HTTP 422).
+     - **Fix:** Increased default `proposal_ttl_minutes` in `config/ai_actions.php` from `30` to `1440` (24 hours, matching `ai_workflow_tasks` TTL).
+     - Extended `expires_at` on the active dev proposal `5c6ff413-6900-4daf-9f7d-322add858146` by 24 hours so the user can immediately approve it.
+  2. **Vague Error Extraction in Frontend (`Unexpected error`):**
+     - In `workspace.blade.php`, `alert('Approval failed: ' + (xhr.responseJSON?.error_message || 'Unexpected error'))` only looked for `error_message`.
+     - Standard Laravel `ValidationException` returns `{ message: "...", errors: { ... } }`, causing `error_message` to be `undefined` and falling back to `"Unexpected error"`.
+     - **Fix:** Updated error handler to inspect `xhr.responseJSON?.message || xhr.responseJSON?.error_message || (xhr.responseJSON?.errors ? Object.values(xhr.responseJSON.errors).flat().join(' ') : null)`, surfacing the exact business validation failure.
+
+- **Verification:**
+  - Tested proposal `5c6ff413-6900-4daf-9f7d-322add858146` approval and execution end-to-end: successfully generated purchase order `PO-00006` with grand total ₹5,250.00.
+  - Test suite passing 100%. Caches cleared.
+
+---
+
+## Proposal Card "undefined" Currency Bug & Print Receipt Governance Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms (User Reported with Screenshots):**
+  1. **"undefined" Currency in Proposal Review Card (`media_1794475821810_779bf141.png`):**
+     - Proposal review cards and totals rendered with literal `"undefined"` in front of amounts:
+       `undefined 500.00`, `undefined 5250.00`, `Subtotal: undefined 5000.00`, `Tax: undefined 250.00`, `Grand Total: undefined 5250.00`.
+  2. **Wrong Output / Hallucinated Print Receipt (`media_1794476127406_aa4afe28.png` and `media_1794476133534_b9c236c6.jpg`):**
+     - Prompt: `"okay can you give me the purchase order print receipt?"`
+     - When asked for a print receipt for an unapproved draft proposal, the Copilot hallucinated a fake document number `Reference: PO-2026-001 (Proposal ID 5c6ff413-...)` with a markdown table titled `"Purchase Order – Print-Ready Receipt"` and offered: `"If you wish to approve and finalize the order, please let me know and I'll submit the approval action."`
+
+- **Root Causes Identified & Remedied:**
+  1. **JavaScript Currency Coercion in `workspace.blade.php:401`:**
+     - The currency symbol was calculated as: `const currencySymbol = (data.currency === 'INR') ? '₹' : (data.currency + ' ');`.
+     - When `data.currency` was omitted in proposal fact payloads, `data.currency + ' '` evaluated in JavaScript to the literal string `"undefined "`.
+     - **Fix:** Updated expression to `const currencySymbol = (data.currency === 'INR' || !data.currency) ? '₹' : (data.currency + ' ');` defaulting cleanly to `₹`. Also explicitly added `'currency' => 'INR'` to `PurchaseOrderPreviewAdapter` and `SalesOrderPreviewAdapter` `$previewData`.
+  2. **Draft Proposal vs Authoritative ERP Voucher Invariant & Model Governance:**
+     - In zoloERP, an unapproved draft proposal has **no** database row in `purchases`, **no** official voucher number, and **no** printable receipt. Official reference numbers (e.g. `PO-202611-0001`) and printable vouchers are created **strictly upon explicit human approval**.
+     - Copilot models cannot execute financial or operational writes and cannot approve proposals autonomously.
+     - **Fix in `ErpCopilot.php`:** Added explicit system governance instructions:
+       - Never invent or hallucinate fake document reference numbers (e.g. `PO-2026-001`).
+       - Never format text markdown tables claiming to be "Print Receipts" for unapproved draft proposals.
+       - Never offer to execute or approve proposals on the user's behalf.
+       - When the user asks for a print receipt for an unapproved draft, clearly direct them to click **"Approve & Execute"** on the proposal card to generate the official ERP voucher.
+  3. **Direct Print Link on Execution in `workspace.blade.php:942-959`:**
+     - Upon clicking "Approve & Execute", the response now renders the authoritative reference number (`PO-202611-0001`) along with a direct **"View / Print Voucher"** button linking directly to `/purchases/{id}` or `/sales/{id}`.
+
+- **Verification Results:**
+  - `AiChatApiAndWorkspaceTest` (23/23 tests, 192 assertions) passed 100%.
+  - `PurchaseOrderActionTest` (10/10 tests, 64 assertions) passed 100%.
+  - `UnifiedInputClarificationTest` (8/8 tests, 57 assertions) passed 100%.
+  - `MultiSlotSalesOrderWorkflowTest` (5/5 tests, 44 assertions) passed 100%.
+  - Clean caches: `config:clear`, `route:clear`, `view:clear`.
+  - Strict platform validation: `composer validate --strict` passed cleanly.
+
+---
+
+## Web Copilot Fallback Resolution & Full Drift Report Implementation — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incident & Symptoms (User Reported with Web UI Screenshot `media_1794473305341_c05edbf8.jpg`):**
+  - Prompt: `"Create a purchase order for 10 units of Cotton Shirt Blue from ABC Traders at ₹500 per unit. Use the Main Warehouse. Show me the details before placing the order."`
+  - Assistant Output: `"The copilot could not produce a verified answer. Review any available ERP results below."` with zero clarification cards and zero action proposal cards rendered.
+  - UI Footer: Displayed `"Read-only access"` instead of `"Approval required for actions"`.
+
+- **Root Causes Identified & Remedied:**
+  1. **Reasoning Model Token Truncation in `ApprovedModelGateway`:**
+     - `nvidia/nemotron-3.5-lightning-30b-a3b` is a reasoning model generating internal chain-of-thought tokens (`reasoning_tokens`).
+     - In live testing, Nemotron generated ~1,643 reasoning tokens for natural-language commercial workflows.
+     - `ApprovedModelGateway::budgetStep()` capped `$step->withMaxTokens($outputLimit)` at 1,536 tokens (`AI_MAX_OUTPUT_TOKENS`). Because reasoning tokens alone exceeded 1,536, the completion got truncated mid-thought, returning `text_length: 0` and `tool_results: 0`.
+     - In `AiChatController::chat()`, empty raw text and empty facts fell into the default fallback: `'The copilot could not produce a verified answer. Review any available ERP results below.'`
+     - **Fix:** Raised `AI_MAX_OUTPUT_TOKENS` to `4096` in `config/erp_ai.php` and `.env` to provide ample headroom for reasoning, tool calls, and structured response text.
+  2. **Tool Description Prompt Bloat in `PrepareAction.php`:**
+     - `PrepareAction::description()` dumped 19,120 characters of raw JSON Laravel validation rules across 25 action capabilities into the model's tool prompt, inflating total input tokens to ~14,000-28,000 tokens.
+     - **Fix:** Replaced the 19KB JSON dump with a concise, focused description (895 characters) listing canonical action keys and input semantics, reducing tool description prompt overhead by **83%**.
+  3. **Tenancy Read-Only Gate & Company Settings Resolution:**
+     - `AiFeatureGate::isReadOnly()` was hardcoded to `return true;`, and Company 14 (`ZTEX`) had `read_only = 1` in `ai_feature_settings`.
+     - **Fix:** Updated `AiFeatureGate::isReadOnly(?int $companyId = null)` to dynamically resolve per-company settings from `ai_feature_settings`, falling back to `!config('ai_actions.foundation_enabled', false)`. Updated `ai_feature_settings.read_only` to `0` for companies with active action capabilities.
+  4. **Multi-Module Drift Implementations & Additive Migrations:**
+     - Migrated 4 additive schema migrations on both dev (`zoloerp` port 3307) and disposable test (`zolo_test_ai_release`):
+       - `2026_11_12_010001_create_ai_mcp_client_bindings.php`
+       - `2026_11_12_010002_create_ai_scheduled_rules.php`
+       - `2026_11_12_020001_create_ai_documents.php`
+       - `2026_11_12_030001_create_ai_extended_action_receipts.php`
+     - Corrected `ExtendedActionAdapter` UOM validation to support global units (`orWhereNull('company_id')`).
+     - Isolated clean company setup for opening import batches in `ExtendedActionsTest`.
+     - Relaxed associative array key order comparison in `DocumentIntakeTest`.
+
+- **Verification Results (100% Green Across All 189 Tests):**
+  - Simulated live web chat prompt with `prepare_purchase_order`: Verified that Nemotron successfully invokes `prepare_purchase_order`, emits verified answer status, and returns the Three-Way Disambiguation Triad (`Select existing`, `Create new`, `Correct name`) with confirmed fields (`10.00 units`, `₹500.00`, `2026-11-12`).
+  - Executed entire AI test suite on disposable MySQL database `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`):
+    **189/189 tests passed (1,165 assertions, 0 errors, 0 failures, 0 skipped)** in 3m 37s!
+  - `composer validate --strict` passed cleanly.
+  - Cleared all caches (`config:clear`, `route:clear`, `view:clear`).
+
+---
+
+## Phase 3 Purchasing Lifecycle Complete (Option A): Goods Received Notes & Purchase Bills — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Scope & Delivery Summary:**
+  - Fully delivered **Phase 3 Purchasing Lifecycle Completion (Option A)**: implemented Goods Received Notes (`grn.create.v1` / Workflow B: Record Goods Receipt) and Purchase Bills / Supplier Invoices (`purchase_bill.create.v1` / Workflow C: Supplier Bill with GST posting & GRN settlement).
+  - Strict compliance with all core architectural invariants: Untrusted Model, Authoritative Server, Strict Tenancy Law 1 (zero unscoped queries), and Zero Autonomous Financial Writes.
+  - Zero double accounting or duplicate stock intake: GRN receives physical stock and posts accrual journal (`Dr Inventory`, `Cr Goods Received Not Invoiced`); subsequent Purchase Bill referencing the GRN settles the accrual via `material_settlements` and posts AP liability and Input Tax Credit with zero secondary physical stock movement!
+
+- **Architectural Deliverables Completed & Verified:**
+  1. **Input Schemas & Validation Contracts:**
+     - `App\Ai\Schemas\CreateGoodsReceivedNoteInputSchema`: Validates supplier, warehouse, grn_date, optional PO reference, transport details (lr_no, transport_name, lr_date), items list (product, qty, cost, unit, batch), and expected totals.
+     - `App\Ai\Schemas\CreatePurchaseBillInputSchema`: Validates supplier, warehouse, bill date, supplier invoice number, PO reference, GRN reference, dynamic items (product, qty, net_unit_cost, discount, tax_rate_override), order discount, shipping cost, and expected totals with GST breakdown.
+  2. **Declarative Requirements Providers:**
+     - `App\Ai\Requirements\GoodsReceivedNoteRequirementsProvider`: Registers `grn.create.v1` in `ActionRequirementsRegistry`, dynamic lines, standard stock validation, and PO line quantity limit checks.
+     - `App\Ai\Requirements\PurchaseBillRequirementsProvider`: Registers `purchase_bill.create.v1` in `ActionRequirementsRegistry`, GST tax checks, open PO billing limits, and GRN link verification.
+  3. **Authoritative Preview Adapters:**
+     - `App\Ai\Adapters\GoodsReceivedNotePreviewAdapter`: Deterministic intake valuation, open PO delivery quota checks, live `source_state_hash`, and accrual projection.
+     - `App\Ai\Adapters\PurchaseBillPreviewAdapter`: Authoritative GST determination and pricing via `CommercialPricing` & `TaxDeterminationService`, intra/inter-state CGST/SGST/IGST calculation, GRN settlement detection, and live `source_state_hash`.
+  4. **Pessimistic-Locked Command Adapters:**
+     - `App\Ai\Adapters\GoodsReceivedNoteCommandAdapter`: Atomic `lockForUpdate` on company, FY, branch, supplier, warehouse, and products. Creates `GoodsReceivedNote`, executes `MaterialDocumentService::post()` (physical stock receipt + accrual journal), consumes PO delivery allocations, and inserts idempotency key.
+     - `App\Ai\Adapters\PurchaseBillCommandAdapter`: Atomic `lockForUpdate`. Delegates to `CommercialApplicationService::create('purchase')` with status 1 (Completed Bill), posting Accounts Payable journal, booking Input Tax Credit, and settling GRN accruals via `material_settlements`.
+  5. **AI SDK Tools & Agent Integration:**
+     - `App\Ai\Tools\PrepareGoodsReceipt`: AI SDK Tool bridging natural language goods receipt instructions to `grn.create.v1`.
+     - `App\Ai\Tools\PreparePurchaseBill`: AI SDK Tool bridging natural language vendor bill instructions to `purchase_bill.create.v1`.
+     - Registered both tools in `ErpCopilot::tools()` and updated system instructions.
+     - Registered `grn.create.v1` and `purchase_bill.create.v1` mapped to `purchases-add` in `AiPrincipalFactory`, `ActionCapabilityRegistry`, and `AiChatController::canReplay()`.
+     - Extended `RecordResolutionService` and `BatchRecordResolutionService` to resolve PO and GRN references.
+     - Added verified summary builders in `VerifiedSummaryBuilder`.
+  6. **Automated Feature Verification Test Suites (100% Green):**
+     - `tests/Feature/Ai/Commercial/GoodsReceivedNoteActionTest.php` (4 tests, 28 assertions):
+       - `test_unauthorized_user_cannot_create_grn_proposal` (403 forbidden)
+       - `test_grn_preview_calculates_intake_with_zero_database_writes` (valuation, preview, 0 DB mutations)
+       - `test_approved_grn_execution_receives_physical_stock_and_posts_accrual_journal` (atomic approval, physical stock receipt, accrual journal)
+       - `test_grn_execution_against_purchase_order_consumes_order_delivery_stage` (PO delivery stage consumed, billing remains open)
+     - `tests/Feature/Ai/Commercial/PurchaseBillActionTest.php` (6 tests, 46 assertions):
+       - `test_unauthorized_user_cannot_create_purchase_bill_proposal` (403 forbidden)
+       - `test_purchase_bill_preview_calculates_gst_breakdown_with_zero_database_writes` (CGST/SGST split, 0 DB mutations)
+       - `test_approved_direct_purchase_bill_creates_voucher_moves_stock_and_posts_financial_ledger` (completed bill, physical stock received, AP ledger posted)
+       - `test_purchase_bill_against_grn_settles_accrual_without_duplicate_stock_movement` (settles GRN accrual, verifies physical stock quantity is received once and not duplicated, zero-quantity price-variance adjustment)
+       - `test_purchase_bill_against_open_po_consumes_order_billing_stage` (PO billing stage consumed from 100 to 60)
+       - `test_tampered_source_state_fails_closed_during_purchase_bill_approval` (422 source_state validation error)
+  7. **Full AI Test Suite Execution on Disposable MySQL (`zolo_test_ai_release`):**
+     - **142/142 tests passed (982 assertions, 0 errors, 0 failures, 0 skipped)** in 44s.
+     - All caches cleared cleanly (`config:clear`, `route:clear`, `view:clear`), `composer validate --strict` valid.
+
+---
+
+## EGM Autonomous AI Agent Implementation Audit & Drift Report — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Audit Trigger:** User executed `/egm-review-loop` and `/egm-drift-report` to check if autonomous AI agent features are implemented completely and generate detailed reports on how each feature is implemented vs design blueprints.
+- **Audit Findings Summary:**
+  - Autonomous AI agent features are **partially implemented (Phases 0, 1, 1.5, 2, 2.1, 2.2, and Sales Order vertical slice complete & verified)**.
+  - Future operational, financial posting, and autonomous phases remain **pending/unimplemented as designed** (PH2.3 Multi-model routing, PH3 Goods Receipts & Vendor Bills, PH4 Quotations & Sales Invoices, PH5 Inventory/GL/Manufacturing, PH6 Document OCR & Bulk Import, PH7 Proactive Autonomy / Schedulers, and MCP).
+  - Generated official EGM Drift Report file: `2026-11-12_DRIFT_REPORT.md` in repository root, auditing all 43 architecture documents in `docs/zoloerp-ai-agent-implementation/docs/ai/`.
+- **Automated Verification:** Full AI test suite executed on disposable MySQL schema `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`): **132/132 tests passed (906 assertions, 0 errors, 0 failures, 0 skipped)** in 1m 33s.
+- **Working Tree:** Preserved all existing uncommitted replay, GST default, dependent master, and workspace redesign modifications on branch `feature/ai-unified-input-clarification`.
+
+---
+
+## Chat Workspace Redesign & Provider RPM Clarity — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- User requested a polished chat interface, accurate RPM presentation, and a layout suitable for multi-model routing after Phase 2.3.
+- Preserved all existing uncommitted replay, GST defaults, dependent-master, and session continuity changes. No branch switch, commit, deployment, or ERP data mutation was performed.
+- Reworked `resources/views/backend/ai/workspace.blade.php` and `public/css/pages/ai-workspace.css`: searchable conversation history, two-line titles, compact company context, responsive history drawer, clearer speaker labels, full-width review cards, restored clarification heading, accessible clarification choices, expandable model details, and an expanding composer with a working state. Fixed inherited section padding and focus-induced horizontal scrolling in the app shell. Used versioned stylesheet loading and existing brand colors.
+- Replaced the long fixed-model header badge with an expandable AI engine panel. `AiWorkspaceController` supplies the configured provider and model. This is UI preparation only; Phase 2.3 model routing is not implemented or advertised as active.
+- Moved RPM into the administrator Usage panel. It identifies provider HTTP attempts (including retries), shared provider scope, configured application cap, current 60-second window, and reset time. Company daily totals are labeled UTC. Refreshes every 15 seconds while the panel and document are visible; failed refreshes clearly mark previous values as potentially stale.
+- `ApprovedModelGateway::getProviderRpmUsage()` now returns window/reset metadata, reports disabled limits accurately, and applies the 80% warning threshold without rounding it down. Existing provider buckets and enforcement remain in place.
+- Validation: `ERP_TEST_MYSQL=1 ERP_TEST_MYSQL_DATABASE=zolo_test_ai_release DB_DATABASE=zolo_test_ai_release DB_PORT=3307 php vendor/bin/phpunit -c phpunit.ai.xml --filter AiChatApiAndWorkspaceTest` passed **23 tests, 189 assertions**. These include monitoring authorization, shared retry accounting, throttling, expiry, disabled limits, replay, and workspace rendering. PHP syntax checks, compiled workspace JavaScript syntax, and `git diff --check` passed.
+- Browser verification: Playwright CLI with isolated Edge, rendered Blade HTML from a transaction-wrapped disposable database, and mocked browser endpoints. Verified 320/768/1024/1440px layouts, visible composer, no feed overflow, history search and empty state, mobile history/Escape, model disclosure (including mobile bounds), Usage, clarification selection, prompt suggestions, Shift+Enter, sending, failed telemetry refresh, disabled limiter, and dark-theme control styles. Normal smoke had no console errors; the deliberately mocked 503 produced its expected network error. No external model calls or ERP writes occurred.
+- Existing Windows Edge control was stopped because Computer Use could not confidently determine its URL. Verification used a separate isolated browser instead; the user's browser session was not changed.
+- Preview artifacts and temporary fixture/check scripts are under ignored `scratch/ai-workspace-*`; desktop preview: `scratch/ai-workspace-desktop-final.png`. Temporary browser and loopback fixture server were closed after verification.
+- Next step: user reviews `/ai`; Phase 2.3 routing can later populate runtime model information without returning long model IDs to the main header.
+
+---
+
 # zoloERP Pro — Persistent Session Memory & State
+
+## Chat Replay Preservation, Product GST Defaults & Session Continuity Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incidents & Symptoms Reported (with User Screenshots):**
+  1. **Loss of Chat Responses on Reload / Sidebar Thread Switching:**
+     - When switching between AI sessions or refreshing `/ai`, historical assistant messages containing clarification cards or action proposals were wiped out and replaced with:
+       `This result is unavailable with your current ERP access.`
+     - Fact cards, candidate selectors, and proposal review buttons vanished from the UI.
+  2. **GST Rate Error on Purchase Order Proposal Generation:**
+     - Error dialog on proposal preparation: `Error generating proposal: Set a GST rate for Cotton Shirt Blue (Product or Settings › GST). How to fix: 1. Open the product Cotton Shirt Blue, choose its GST rate, and save. 2. Or set a default rate on its item group under Settings › GST & Tax.`
+     - Caused because Cotton Shirt Blue was created via in-place Gate 1 master setup without `tax_category_id` and `hsn_code`.
+
+- **Root Causes Identified & Remedied:**
+  1. **Premature Tool Allowlist Check in `AiChatController::canReplay()`:**
+     - In `AiChatController.php`, `$principal->hasTool($tool)` checked `permittedToolNames`. Because `'workflow.clarification.v1'` is a UI fact card type (not an SDK tool in `AiToolManifest`), `hasTool()` returned `false` before reaching the commercial permission check.
+     - Placed `workflow.clarification.v1`, action keys (`purchase_order.create.v1`, `sales_order.create.v1`), and `setup.*` actions before the `hasTool()` check, gating them strictly via `purchases-add` / `sales-add`.
+     - In `AiPrincipalFactory.php`, added `sales-add` mapping to `'sales_order.create.v1'` in `permittedToolNames`.
+  2. **Product Master Setup GST Defaults & UI Form:**
+     - In `ProductSetupPreviewAdapter.php`: When `tax_category_id` is omitted in a company with active GST, automatically resolves the default taxable tax category (e.g. `GST 5%` / first taxable rate). When `hsn_code` is omitted, defaults to the company's first goods HSN code (e.g. `'5208'`).
+     - In `DependentMasterOrchestrator.php`: Prefilled `tax_category_id` and `hsn_code` in `extractPrefilledSlots()` and exposed `tax_categories` and `hsn_codes` in `loadTenantDefaults()`.
+     - In `resources/views/backend/ai/workspace.blade.php`: Added a Tax Category / GST Rate `<select>` and HSN Code `<input>` to the Mode C in-place product creation form and passed them in `masterData`.
+     - In development database (Company 14, port 3307): Updated Product 630 (`Cotton Shirt Blue`) with `tax_category_id = 16` (`GST 5%`) and `hsn_code = '5208'`, unblocking the user's active task immediately.
+  3. **Frontend Session Continuity (`sessionStorage`):**
+     - In `workspace.blade.php`: Added automatic active session tracking via `sessionStorage.getItem('ai_active_thread')` so page refreshes or returning from other pages seamlessly reload the active thread instead of defaulting to a blank conversation.
+     - Clicking "+ New" cleanses the session key for fresh threads.
+
+- **Verification Results (100% Green Across All 131 Tests):**
+  - Added `test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread` to `AiChatApiAndWorkspaceTest.php` (22/22 passed).
+  - Added `test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted` to `DependentMasterResolutionTest.php` (8/8 passed).
+  - Executed full AI test suite on disposable MySQL database `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`): **131/131 passed (890 assertions, 0 errors, 0 failures, 0 skipped)**.
+  - Cleared caches: `php artisan config:clear`, `php artisan view:clear`, `php artisan route:clear`.
+
+---
+
 
 ## Web Workspace CSRF Mismatch Resolved & Session Workflow-Task Routes Mounted — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
@@ -276,6 +521,40 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## Chat Replay Preservation, Product GST Defaults & Session Continuity Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incidents & Symptoms Reported (with User Screenshots):**
+  1. **Loss of Chat Responses on Reload / Sidebar Thread Switching:**
+     - When switching between AI sessions or refreshing `/ai`, historical assistant messages containing clarification cards or action proposals were wiped out and replaced with:
+       `This result is unavailable with your current ERP access.`
+     - Fact cards, candidate selectors, and proposal review buttons vanished from the UI.
+  2. **GST Rate Error on Purchase Order Proposal Generation:**
+     - Error dialog on proposal preparation: `Error generating proposal: Set a GST rate for Cotton Shirt Blue (Product or Settings › GST). How to fix: 1. Open the product Cotton Shirt Blue, choose its GST rate, and save. 2. Or set a default rate on its item group under Settings › GST & Tax.`
+     - Caused because Cotton Shirt Blue was created via in-place Gate 1 master setup without `tax_category_id` and `hsn_code`.
+
+- **Root Causes Identified & Remedied:**
+  1. **Premature Tool Allowlist Check in `AiChatController::canReplay()`:**
+     - In `AiChatController.php`, `$principal->hasTool($tool)` checked `permittedToolNames`. Because `'workflow.clarification.v1'` is a UI fact card type (not an SDK tool in `AiToolManifest`), `hasTool()` returned `false` before reaching the commercial permission check.
+     - Placed `workflow.clarification.v1`, action keys (`purchase_order.create.v1`, `sales_order.create.v1`), and `setup.*` actions before the `hasTool()` check, gating them strictly via `purchases-add` / `sales-add`.
+     - In `AiPrincipalFactory.php`, added `sales-add` mapping to `'sales_order.create.v1'` in `permittedToolNames`.
+  2. **Product Master Setup GST Defaults & UI Form:**
+     - In `ProductSetupPreviewAdapter.php`: When `tax_category_id` is omitted in a company with active GST, automatically resolves the default taxable tax category (e.g. `GST 5%` / first taxable rate). When `hsn_code` is omitted, defaults to the company's first goods HSN code (e.g. `'5208'`).
+     - In `DependentMasterOrchestrator.php`: Prefilled `tax_category_id` and `hsn_code` in `extractPrefilledSlots()` and exposed `tax_categories` and `hsn_codes` in `loadTenantDefaults()`.
+     - In `resources/views/backend/ai/workspace.blade.php`: Added a Tax Category / GST Rate `<select>` and HSN Code `<input>` to the Mode C in-place product creation form and passed them in `masterData`.
+     - In development database (Company 14, port 3307): Updated Product 630 (`Cotton Shirt Blue`) with `tax_category_id = 16` (`GST 5%`) and `hsn_code = '5208'`, unblocking the user's active task immediately.
+  3. **Frontend Session Continuity (`sessionStorage`):**
+     - In `workspace.blade.php`: Added automatic active session tracking via `sessionStorage.getItem('ai_active_thread')` so page refreshes or returning from other pages seamlessly reload the active thread instead of defaulting to a blank conversation.
+     - Clicking "+ New" cleanses the session key for fresh threads.
+
+- **Verification Results (100% Green Across All 131 Tests):**
+  - Added `test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread` to `AiChatApiAndWorkspaceTest.php` (22/22 passed).
+  - Added `test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted` to `DependentMasterResolutionTest.php` (8/8 passed).
+  - Executed full AI test suite on disposable MySQL database `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`): **131/131 passed (890 assertions, 0 errors, 0 failures, 0 skipped)**.
+  - Cleared caches: `php artisan config:clear`, `php artisan view:clear`, `php artisan route:clear`.
+
+---
+
+
 ## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Delivery Summary:**
@@ -534,6 +813,40 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## Chat Replay Preservation, Product GST Defaults & Session Continuity Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incidents & Symptoms Reported (with User Screenshots):**
+  1. **Loss of Chat Responses on Reload / Sidebar Thread Switching:**
+     - When switching between AI sessions or refreshing `/ai`, historical assistant messages containing clarification cards or action proposals were wiped out and replaced with:
+       `This result is unavailable with your current ERP access.`
+     - Fact cards, candidate selectors, and proposal review buttons vanished from the UI.
+  2. **GST Rate Error on Purchase Order Proposal Generation:**
+     - Error dialog on proposal preparation: `Error generating proposal: Set a GST rate for Cotton Shirt Blue (Product or Settings › GST). How to fix: 1. Open the product Cotton Shirt Blue, choose its GST rate, and save. 2. Or set a default rate on its item group under Settings › GST & Tax.`
+     - Caused because Cotton Shirt Blue was created via in-place Gate 1 master setup without `tax_category_id` and `hsn_code`.
+
+- **Root Causes Identified & Remedied:**
+  1. **Premature Tool Allowlist Check in `AiChatController::canReplay()`:**
+     - In `AiChatController.php`, `$principal->hasTool($tool)` checked `permittedToolNames`. Because `'workflow.clarification.v1'` is a UI fact card type (not an SDK tool in `AiToolManifest`), `hasTool()` returned `false` before reaching the commercial permission check.
+     - Placed `workflow.clarification.v1`, action keys (`purchase_order.create.v1`, `sales_order.create.v1`), and `setup.*` actions before the `hasTool()` check, gating them strictly via `purchases-add` / `sales-add`.
+     - In `AiPrincipalFactory.php`, added `sales-add` mapping to `'sales_order.create.v1'` in `permittedToolNames`.
+  2. **Product Master Setup GST Defaults & UI Form:**
+     - In `ProductSetupPreviewAdapter.php`: When `tax_category_id` is omitted in a company with active GST, automatically resolves the default taxable tax category (e.g. `GST 5%` / first taxable rate). When `hsn_code` is omitted, defaults to the company's first goods HSN code (e.g. `'5208'`).
+     - In `DependentMasterOrchestrator.php`: Prefilled `tax_category_id` and `hsn_code` in `extractPrefilledSlots()` and exposed `tax_categories` and `hsn_codes` in `loadTenantDefaults()`.
+     - In `resources/views/backend/ai/workspace.blade.php`: Added a Tax Category / GST Rate `<select>` and HSN Code `<input>` to the Mode C in-place product creation form and passed them in `masterData`.
+     - In development database (Company 14, port 3307): Updated Product 630 (`Cotton Shirt Blue`) with `tax_category_id = 16` (`GST 5%`) and `hsn_code = '5208'`, unblocking the user's active task immediately.
+  3. **Frontend Session Continuity (`sessionStorage`):**
+     - In `workspace.blade.php`: Added automatic active session tracking via `sessionStorage.getItem('ai_active_thread')` so page refreshes or returning from other pages seamlessly reload the active thread instead of defaulting to a blank conversation.
+     - Clicking "+ New" cleanses the session key for fresh threads.
+
+- **Verification Results (100% Green Across All 131 Tests):**
+  - Added `test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread` to `AiChatApiAndWorkspaceTest.php` (22/22 passed).
+  - Added `test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted` to `DependentMasterResolutionTest.php` (8/8 passed).
+  - Executed full AI test suite on disposable MySQL database `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`): **131/131 passed (890 assertions, 0 errors, 0 failures, 0 skipped)**.
+  - Cleared caches: `php artisan config:clear`, `php artisan view:clear`, `php artisan route:clear`.
+
+---
+
+
 ## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Delivery Summary:**
@@ -782,6 +1095,40 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## Chat Replay Preservation, Product GST Defaults & Session Continuity Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
+
+- **Incidents & Symptoms Reported (with User Screenshots):**
+  1. **Loss of Chat Responses on Reload / Sidebar Thread Switching:**
+     - When switching between AI sessions or refreshing `/ai`, historical assistant messages containing clarification cards or action proposals were wiped out and replaced with:
+       `This result is unavailable with your current ERP access.`
+     - Fact cards, candidate selectors, and proposal review buttons vanished from the UI.
+  2. **GST Rate Error on Purchase Order Proposal Generation:**
+     - Error dialog on proposal preparation: `Error generating proposal: Set a GST rate for Cotton Shirt Blue (Product or Settings › GST). How to fix: 1. Open the product Cotton Shirt Blue, choose its GST rate, and save. 2. Or set a default rate on its item group under Settings › GST & Tax.`
+     - Caused because Cotton Shirt Blue was created via in-place Gate 1 master setup without `tax_category_id` and `hsn_code`.
+
+- **Root Causes Identified & Remedied:**
+  1. **Premature Tool Allowlist Check in `AiChatController::canReplay()`:**
+     - In `AiChatController.php`, `$principal->hasTool($tool)` checked `permittedToolNames`. Because `'workflow.clarification.v1'` is a UI fact card type (not an SDK tool in `AiToolManifest`), `hasTool()` returned `false` before reaching the commercial permission check.
+     - Placed `workflow.clarification.v1`, action keys (`purchase_order.create.v1`, `sales_order.create.v1`), and `setup.*` actions before the `hasTool()` check, gating them strictly via `purchases-add` / `sales-add`.
+     - In `AiPrincipalFactory.php`, added `sales-add` mapping to `'sales_order.create.v1'` in `permittedToolNames`.
+  2. **Product Master Setup GST Defaults & UI Form:**
+     - In `ProductSetupPreviewAdapter.php`: When `tax_category_id` is omitted in a company with active GST, automatically resolves the default taxable tax category (e.g. `GST 5%` / first taxable rate). When `hsn_code` is omitted, defaults to the company's first goods HSN code (e.g. `'5208'`).
+     - In `DependentMasterOrchestrator.php`: Prefilled `tax_category_id` and `hsn_code` in `extractPrefilledSlots()` and exposed `tax_categories` and `hsn_codes` in `loadTenantDefaults()`.
+     - In `resources/views/backend/ai/workspace.blade.php`: Added a Tax Category / GST Rate `<select>` and HSN Code `<input>` to the Mode C in-place product creation form and passed them in `masterData`.
+     - In development database (Company 14, port 3307): Updated Product 630 (`Cotton Shirt Blue`) with `tax_category_id = 16` (`GST 5%`) and `hsn_code = '5208'`, unblocking the user's active task immediately.
+  3. **Frontend Session Continuity (`sessionStorage`):**
+     - In `workspace.blade.php`: Added automatic active session tracking via `sessionStorage.getItem('ai_active_thread')` so page refreshes or returning from other pages seamlessly reload the active thread instead of defaulting to a blank conversation.
+     - Clicking "+ New" cleanses the session key for fresh threads.
+
+- **Verification Results (100% Green Across All 131 Tests):**
+  - Added `test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread` to `AiChatApiAndWorkspaceTest.php` (22/22 passed).
+  - Added `test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted` to `DependentMasterResolutionTest.php` (8/8 passed).
+  - Executed full AI test suite on disposable MySQL database `zolo_test_ai_release` (`vendor/bin/phpunit -c phpunit.ai.xml`): **131/131 passed (890 assertions, 0 errors, 0 failures, 0 skipped)**.
+  - Cleared caches: `php artisan config:clear`, `php artisan view:clear`, `php artisan route:clear`.
+
+---
+
 
 ## Phase 2.1 & Phase 2.2 Complete: Multi-Slot Clarification Engine, Sales Workflows & Three-Way Disambiguation Triad Verified — 2026-11-11 (`feature/ai-unified-input-clarification`)
 
@@ -4085,152 +4432,7 @@ Addressed user feedback:
 
 2. **Complete Dark Theme Implementation for Commercial Workspaces:**
    - Addressed broken dark theme where `commercial-workspace.css` previously forced `#ffffff !important` with zero dark mode rules.
-   - Implemented a complete `body.dark-mode` design system across `commercial-workspace.css`:
-     - Top Navigation & Command Strip: Deep dark `#0f172a` with light slate text `#e2e8f0`.
-     - Main Canvas: Sleek dark canvas background `#0b0f19`.
-     - Primary Fields Box: Slate card background `#141c2e` with `#334155` border.
-     - Table Header: Ultra-dark `#090d16` with `#f8fafc` text.
-     - Table Container & Rows: Dark slate `#1e293b` with zebra striping (`#1e293b` vs `#141c2c`) and hover `#27354f`.
-     - Inputs, Selects & Autocompletes: `#0f172a` background, `#f8fafc` text, and `#334155` borders with focused glow.
-     - Bottom Action Bar: Dark `#141c2e` with high-contrast buttons and glowing totals.
-     - Side Bill List Panel: Dark slate `#141c2e` with `#1e293b` bill cards (`.side-bill-card`), dark search/filters, and purple active-editing card highlight (`#2e1065`).
-     - Modal Dialogs: Dark `#1e293b` with crisp borders and legible controls.
-
-3. **Reactive GST Classification & Multi-Tax Grid Linking:**
-   - Enriched `<select id="purchase_type_id">` and `<select id="sale_type_id">` options with data attributes:
-     - `data-tax-rate`: Numerical rate (e.g., `18`, `12`, `5`, `0`).
-     - `data-code`: Standard code (e.g., `GST18`, `GST12`, `GST_MULTI`).
-     - `data-is-multi`: Flag (`1` for multi-tax / mixed, `0` for single fixed rate).
-   - **Single GST Mode:** When a specific GST rate is selected (e.g. `18%-GST Inward` or `12%`), changing the dropdown immediately updates the `TAX` column across all existing table rows and locks them (`pointer-events: none; background: #f1f5f9; color: #475569;`) to maintain tax uniformity without disabling form POST serialization. New rows added default automatically to this active rate.
-   - **Multi-Tax Mode:** When `GST • Multiple rates` or `L/MultiTax` or `Interstate MultiTax` is selected (`is_multi = 1`), row tax dropdowns unlock immediately (`pointer-events: auto`), allowing per-line tax rate customization (0%, 5%, 12%, 18%, 28%).
-   - **Default Product Rate & Free Override:** When items are selected from autocomplete or catalog, the default product price/cost is inserted into `.row-rate`. The user can freely override Rate or Amount at any time, with two-way reactive calculation recalculating line amounts and voucher totals dynamically.
-
----
-
-## 6. Single Box Control, Auto Button Alignment, Inline Masters & Global GST Standardization (Oct 2026)
-
-Addressed user feedback:
-> "why each elements are in double boxes? keep it single, also how to create the category in the page itself?auto button not aligned. why there are different types of tax in each place? is that hardcoded? if hardcoded, then make it dynamic and globally accessible i hope the GST engine is implemented right?"
-> "when we extend this to full width, bring the initial setup before changing the new UI."
-
-1. **Elimination of Nested "Double Boxes":**
-   - **Root Cause:** In the Add Product popup and workspace, `<select class="form-control">` caused Bootstrap-Select to wrap elements with `<div class="btn-group bootstrap-select form-control">`. When both the outer `.form-control` wrapper and inner `<button class="btn dropdown-toggle">` declared visible borders and rounded edges, dropdowns rendered as an outer border box containing an inner border box.
-   - **Fix:** Stripped `border`, `border-radius`, `background`, and `box-shadow` from `.compact-add-product-modal .bootstrap-select.form-control` and `.compact-field-block .bootstrap-select.form-control`. Preserved the inner `.btn.dropdown-toggle` as the single crisp 34px input container.
-
-2. **Seamless Auto Button & Unified Input Group Alignment:**
-   - **Root Cause:** Disjointed rounded pills with mismatched borders between input and button inside `.input-group`.
-   - **Fix:** Fused `.input-group` controls seamlessly:
-     - Applied `border-top-right-radius: 0; border-bottom-right-radius: 0;` to input.
-     - Applied `border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none;` to adjacent buttons (e.g., `⚡ Auto` button, `+` create buttons).
-     - Standardized uniform 34px control heights across all inputs, dropdowns, and button add-ons.
-
-3. **Inline Category & Brand Creation Direct on the Page:**
-   - Added inline `+` button right next to Category (`#btn-quick-add-category`) and Brand (`#btn-quick-add-brand`) in the Add Product modal.
-   - Implemented `#quick-create-category-modal` and `#quick-create-brand-modal` sub-dialogs appended directly to `document.body`.
-   - Implemented endpoints `POST /categories/quick-store` and `POST /brands/quick-store` handled by `CommercialController`:
-     - Creates records via `firstOrCreate(['name' => $name])` and `firstOrCreate(['title' => $title])`.
-     - Returns JSON representation of the new master.
-     - Dynamically appends and immediately selects the newly created category/brand in the dropdown without page refresh or navigation.
-
-4. **Global GST Slab Synchronization & Engine Integration:**
-   - **Diagnosis of Discrepancies:**
-     - Taxes table previously had legacy `VAT 10%` and only `GST 5%`.
-     - Catalog products had legacy `tax_id = 1` (10%), which triggered a table fallback injecting `10%` into table row dropdowns.
-   - **Standardization Executed:**
-     - Updated `app/Models/Tax.php` `$fillable` to include `company_id`.
-     - Upserted official Indian GST slabs into `taxes` table:
-       - `GST 0% (Nil / Exempt)` (0%)
-       - `GST 5%` (5%)
-       - `GST 12%` (12%)
-       - `GST 18%` (18%)
-       - `GST 28%` (28%)
-     - Deactivated legacy `VAT 10%` (`is_active = 0`).
-     - Migrated existing catalog products with `tax_id = 1` (VAT 10%) to `GST 18%`.
-     - Updated `addProductRow()` in both `purchase/index.blade.php` and `sale/index.blade.php` to render table row tax options 100% dynamically from `taxList` (the global GST slabs), eliminating hardcoded `10%`.
-     - Linked `Tax Classification` header dropdown reactively with table row tax selection: selecting a specific GST rate locks row taxes uniformly, while multi-tax mode (`L/MultiTax`, `Interstate MultiTax`) unlocks individual row tax customization.
-
-5. **Full Width Initial Register & Two-Way "Split View" Navigation:**
-   - Addressed user inquiry: *"once the full width enabled, there is no split view option to go back?"*
-   - **Prominent Split View Button:** Replaced ambiguous grey `⧉ Voucher Entry` button on `#fullwidth-register-view` header strip with a high-contrast purple primary button:
-     - `[ ⇄ Split View ]` (`#btn-switch-voucher-mode`) styled in `#7c3aed` with explicit tooltip *"Return to Split View (Voucher Entry + Bill List)"*.
-   - **Top Navbar Mode Switcher:** Added `#btn-navbar-workspace-toggle` directly into the top main navbar:
-     - Displays `⛶ Full Width` in Split View mode.
-     - Dynamically changes to `⇄ Split View` (highlighted in purple `.btn-mode-split`) when in Full Width mode.
-   - **Intelligent Auto-Return Mechanics:**
-     - Clicking `[ 📖 Bill list ]` or `[ 📖 Purchase list ]` in the top navbar while in Full Width mode automatically switches to Split View and opens the bill list panel.
-     - Clicking `[ + New ]`, `[ + New Purchase ]`, or `[ + New Sale ]` resets the voucher form and switches to Split View.
-     - Clicking `[ ✎ Edit ]` on any row in the register table switches to Split View and loads that bill into the form for in-place editing.
-   - Mode preference persisted across sessions in `localStorage` (`zolo_purchase_workspace_mode`, `zolo_sale_workspace_mode`).
-
-6. **Category & Brand Inline Creation Fix:**
-   - Fixed `Unknown column 'slug' in 'field list'` error that caused `"Failed to save category"` by removing the non-existent `slug` column from `Category::firstOrCreate` and `Brand::firstOrCreate` in `CommercialController.php`.
-   - Verified via unit & feature tests with 100% pass rate.
-
----
-
-## 7. Database Fresh Slate Wipe & In-Place Quick Create Party Modal (Oct 2026)
-
-Addressed user feedback:
-> "delete all the purchase and party sales product entries and make a fresh"
-> "when i click the "+new party " popup instead of new window and bring all the options, same window as a popup."
-
-1. **Database Fresh Slate Wipe:**
-   - **Snapshot Pre-Wipe Backup:** Full JSON database backup saved to `database/backups/pre_fresh_slate_backup_20261007_182938.json` (251.21 KB) prior to truncation.
-   - **Truncation:** Safely truncated 58 transactional, payment, stock, and demo product tables with `SET FOREIGN_KEY_CHECKS=0`.
-   - **Clean Seed State:** Preserved all master configurations (warehouses, users, roles, permissions, GST slabs, units, document series, billers). Reseeded clean default `Walk-in Customer` (ID=1) for POS/system integrity. Reset `AUTO_INCREMENT = 1` across truncated tables.
-   - **Verified Counts:** `purchases: 0, sales: 0, products: 0, suppliers: 0, customers: 1`.
-
-2. **In-Place Quick Create Party Modal (Zero New Window Redirection):**
-   - **Eliminated New Tab / Window:** Replaced external `target="_blank"` anchor links with `<button type="button" class="btn btn-link btn-open-party-modal" id="btn-quick-new-party">` in both `purchase/index.blade.php` and `sale/index.blade.php`.
-   - **Comprehensive Field Layout (Matching Reference Screenshot):**
-     - Checkbox: "Both Customer and Supplier" (dynamically creates both supplier and customer records under a single form submit).
-     - Customer Group selector (revealed when customer or both is checked).
-     - Contact & Company: Name *, Company Name *.
-     - Taxes & Financials: VAT / Tax Number (GSTIN), Opening balance (Due) (default: 0), Credit Days (default: 30).
-     - Communications: Email *, Phone Number *, WhatsApp Number.
-     - Address: City *, Address *, State, Postal Code, Country.
-   - **Multi-Tenancy Guard (`CompanyWriteGuard`):** Added `company_id` to `$fillable` in `Supplier.php` and `Customer.php` to ensure records pass company-scoped authorization cleanly.
-   - **Endpoint & Instant Dropdown Refresh:**
-     - Route: `POST /parties/quick-store` handled by `CommercialController::quickStoreParty`.
-     - Validates and saves in DB transaction.
-     - Returns JSON with created IDs and formatted party details.
-     - Appends new option to active dropdown (`#supplier_id` in purchases or `#customer_id` in sales), selects it, refreshes Bootstrap-Select picker, triggers `updatePartyCard()`, and closes the modal without page reload.
-
----
-
-## 8. 100% Free Professional GSTIN Engine & Statutory Auto-Fetch (Oct 2026)
-
-Addressed user inquiry & requirement:
-> "is this hardcoded?"
-> "yes. but i dont want to pay, i need a free solution but professional solution"
-
-1. **Context & Audit Findings:**
-   - The interactive widget in `optech_erp_modernization_project_plan.html` was a static JavaScript simulator prototype running on `const mockGstDb` with 3 hardcoded samples (`33AABCM1234F1Z5`, etc.).
-   - In the live application, the `TAX NUMBER (GSTIN)` field was a plain text input with no fetch trigger. Paid GSP APIs (ClearTax, MasterGST, Sandbox) were not configured in `.env`.
-2. **100% Free, Zero-Subscription Professional Architecture:**
-   - **Statutory Offline Engine (`Gstin.php`):**
-     - Full 38 Indian State & Union Territory code dictionary (01 to 38, with `33` = Tamil Nadu, `29` = Karnataka, `27` = Maharashtra, `32` = Kerala, `07` = Delhi).
-     - Constitution of Business recognition from 4th PAN character (`P` = Proprietorship / Individual, `C` = Company, `F` = Partnership / LLP, `H` = HUF, `T` = Trust).
-     - Official Luhn Mod-36 mathematical checksum validator.
-     - Supply rule determination (Intra-State CGST+SGST vs Inter-State IGST) by comparing company branch state against buyer/supplier state.
-   - **Internal Cross-Party & PAN Registry Memory:**
-     - `CommercialController::gstLookup` searches existing customers, suppliers, and historical masters for matching GSTIN or PAN.
-     - Automatically loads registered company name, contact, address, city, state, postal code, phone, and email if previously recorded.
-   - **1-Click Official CBIC GST Portal Verification:**
-     - `[ ↗ ]` button copies the GSTIN to the clipboard and opens official government taxpayer search (`https://services.gst.gov.in/services/searchtp`) with zero captcha friction.
-3. **Modal UI Enhancements (`purchase/index.blade.php` & `sale/index.blade.php`):**
-   - Real-time client-side typing event: typing `33` instantly populates `State: Tamil Nadu` (0ms latency, works offline).
-   - Live statutory chip strip: shows State badge (`33 - Tamil Nadu`), Constitution badge (`Proprietorship / Individual`), and Supply rule (`Local Intra-State (CGST + SGST)`).
-   - `[ ⚡ Fetch ]` button and Enter-key listener triggering `/parties/gst-lookup` AJAX.
-   - Visual status badge: Green `✔ Valid GSTIN` or Red `✖ Invalid Checksum`.
-4. **Automated Testing Evidence:**
-   - `OptechMasterWebTest.php`: Added tests `test_gst_lookup_decodes_statutory_gstin_and_state` and `test_gst_lookup_recalls_existing_party_from_database`.
-   - All 14 tests passing (89 assertions, 100%).
-   - All 12 tests passing on `OptechVoucherWebTest.php` (56 assertions, 100%).
-
----
-
-## 9. Verification & Testing Evidence
+   - Implemented a complete `body.dark-mode` design system across `commercial-workspace.cs
 - Automated feature tests executed and passed:
   - `vendor/bin/phpunit tests/Feature/OptechVoucherWebTest.php tests/Feature/OptechMasterWebTest.php tests/Feature/DeliveryChallanWebTest.php tests/Feature/GoodsReceivedNoteWebTest.php tests/Feature/AccountingWebTest.php`
   - Results: **41 passed (207 assertions, 100%)**

@@ -45,6 +45,9 @@ class VerifiedSummaryBuilder
                 'knowledge.query.v1' => $this->summarizeKnowledge($data),
                 'copilot.help.v1' => $this->summarizeHelp($data),
                 'purchase_order.create.v1' => $this->summarizePurchaseOrderProposal($data),
+                'sales_order.create.v1' => $this->summarizeSalesOrderProposal($data),
+                'grn.create.v1' => $this->summarizeGoodsReceivedNoteProposal($data),
+                'purchase_bill.create.v1' => $this->summarizePurchaseBillProposal($data),
                 'workflow.clarification.v1' => $this->summarizeClarification($data),
                 default => $this->summarizeGeneric($tool, $data),
             };
@@ -390,11 +393,15 @@ class VerifiedSummaryBuilder
         $party = $data['party']['name'] ?? 'Party';
         $date = $data['date'] ?? '-';
         $total = number_format((float) ($data['grand_total'] ?? 0), 2);
-        $status = $data['status'] ?? 'Active';
+        $status = ucfirst($data['status'] ?? 'Active');
+        $docType = ucwords(str_replace('_', ' ', $data['document_type'] ?? 'Document'));
 
         $lines = [];
-        $lines[] = "### Document Preview";
-        $lines[] = "**Reference:** {$ref} ({$status}) | **Party:** {$party} | **Date:** {$date}\n- **Grand Total:** {$currency}{$total}";
+        $lines[] = "### {$docType} Receipt: {$ref}";
+        $lines[] = "- **Status:** {$status}\n- **Party:** {$party}\n- **Document Date:** {$date}\n- **Grand Total:** {$currency}{$total}";
+        if (!empty($data['pdf_url'])) {
+            $lines[] = "*Official printable PDF is ready. Use the View PDF or Download buttons below to review directly in chat.*";
+        }
 
         return implode("\n\n", $lines);
     }
@@ -434,6 +441,82 @@ class VerifiedSummaryBuilder
         $lines[] = "- **Tax Total:** ₹" . ($totals['tax_total'] ?? '0.00');
         $lines[] = "- **Grand Total:** ₹{$grandTotal}";
         $lines[] = "\n*This draft proposal requires explicit approval before placing the order in the purchase order register.*";
+
+        return implode("\n", $lines);
+    }
+
+    protected function summarizeGoodsReceivedNoteProposal(array $data): string
+    {
+        $supplier = $data['supplier']['name'] ?? 'Supplier';
+        $warehouse = $data['warehouse']['name'] ?? 'Warehouse';
+        $date = $data['grn_date'] ?? now()->toDateString();
+        $totals = $data['totals'] ?? [];
+        $totalCost = $totals['total_cost'] ?? '0.00';
+        $itemCount = count($data['items'] ?? []);
+
+        $lines = [];
+        $lines[] = "### Goods Received Note (GRN) Proposal";
+        $lines[] = "- **Supplier:** {$supplier}";
+        $lines[] = "- **Receiving Warehouse:** {$warehouse}";
+        $lines[] = "- **Receipt Date:** {$date}";
+        $lines[] = "- **Received Items:** {$itemCount} lines (Total Qty: " . ($totals['total_qty'] ?? '0.00') . ")";
+        $lines[] = "- **Valuation Cost:** ₹{$totalCost}";
+        if (!empty($data['purchase_order']['reference_no'])) {
+            $lines[] = "- **Purchase Order:** #{$data['purchase_order']['reference_no']}";
+        }
+        $lines[] = "\n*This draft proposal will receive stock and post the inventory accrual journal upon approval.*";
+
+        return implode("\n", $lines);
+    }
+
+    protected function summarizePurchaseBillProposal(array $data): string
+    {
+        $supplier = $data['supplier']['name'] ?? 'Supplier';
+        $warehouse = $data['warehouse']['name'] ?? 'Warehouse';
+        $date = $data['date'] ?? now()->toDateString();
+        $totals = $data['totals'] ?? [];
+        $grandTotal = $totals['grand_total'] ?? '0.00';
+        $itemCount = count($data['items'] ?? []);
+
+        $lines = [];
+        $lines[] = "### Purchase Bill Proposal (Supplier Invoice)";
+        $lines[] = "- **Supplier:** {$supplier}";
+        $lines[] = "- **Warehouse:** {$warehouse}";
+        $lines[] = "- **Bill Date:** {$date}";
+        if (!empty($data['supplier_invoice_no'])) {
+            $lines[] = "- **Vendor Invoice #:** {$data['supplier_invoice_no']}";
+        }
+        $lines[] = "- **Total Items:** {$itemCount} lines (Qty: " . ($totals['total_qty'] ?? '0.00') . ")";
+        $lines[] = "- **Subtotal:** ₹" . ($totals['subtotal'] ?? '0.00');
+        $lines[] = "- **Tax Total:** ₹" . ($totals['tax_total'] ?? '0.00');
+        $lines[] = "- **Grand Total:** ₹{$grandTotal}";
+        if (!empty($data['grn']['grn_no'])) {
+            $lines[] = "- **Linked GRN:** #{$data['grn']['grn_no']} (Settles accrual, zero duplicate stock)";
+        }
+        $lines[] = "\n*This draft proposal will post Accounts Payable and Input Tax Credit upon approval.*";
+
+        return implode("\n", $lines);
+    }
+
+    protected function summarizeSalesOrderProposal(array $data): string
+    {
+        $customer = $data['customer']['name'] ?? 'Customer';
+        $warehouse = $data['warehouse']['name'] ?? 'Warehouse';
+        $date = $data['date'] ?? now()->toDateString();
+        $totals = $data['totals'] ?? [];
+        $grandTotal = $totals['grand_total'] ?? '0.00';
+        $itemCount = count($data['items'] ?? []);
+
+        $lines = [];
+        $lines[] = "### Sales Order Proposal (Commercial Booking)";
+        $lines[] = "- **Customer:** {$customer}";
+        $lines[] = "- **Dispatch Warehouse:** {$warehouse}";
+        $lines[] = "- **Order Date:** {$date}";
+        $lines[] = "- **Total Items:** {$itemCount} lines (Qty: " . ($totals['total_qty'] ?? '0.00') . ")";
+        $lines[] = "- **Subtotal:** ₹" . ($totals['subtotal'] ?? '0.00');
+        $lines[] = "- **Tax Total:** ₹" . ($totals['tax_total'] ?? '0.00');
+        $lines[] = "- **Grand Total:** ₹{$grandTotal}";
+        $lines[] = "\n*This commercial order proposal reserves stock upon approval without mutating financial ledgers.*";
 
         return implode("\n", $lines);
     }

@@ -100,8 +100,13 @@ class AiPrincipalFactory
         }
 
         if (config('ai_actions.foundation_enabled', false)) {
+            foreach (app(\App\Ai\Registries\ActionCapabilityRegistry::class)->all() as $key => $definition) {
+                $permitted = $this->permissions->allowed($definition->requiredPermissions, $context, $user->id);
+                if (array_diff($definition->requiredPermissions, $permitted) === []) $domains[] = $key;
+            }
             $actionPerms = $this->permissions->allowed([
                 'purchases-add',
+                'sales-add',
                 'products-add',
                 'unit',
                 'suppliers-add',
@@ -110,6 +115,11 @@ class AiPrincipalFactory
 
             if (in_array('purchases-add', $actionPerms, true)) {
                 $domains[] = 'purchase_order.create.v1';
+                $domains[] = 'grn.create.v1';
+                $domains[] = 'purchase_bill.create.v1';
+            }
+            if (in_array('sales-add', $actionPerms, true)) {
+                $domains[] = 'sales_order.create.v1';
             }
             if (in_array('products-add', $actionPerms, true)) {
                 $domains[] = 'setup.product.create.v1';
@@ -125,6 +135,6 @@ class AiPrincipalFactory
             }
         }
 
-        return $domains === [] ? [] : [...$domains, ...$auxiliary];
+        return $domains === [] ? [] : array_values(array_unique([...$domains, ...$auxiliary]));
     }
 }

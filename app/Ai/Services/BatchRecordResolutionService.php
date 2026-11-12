@@ -52,6 +52,16 @@ final class BatchRecordResolutionService
         // 4. Resolve Line Items (Products & Units) across every single line
         $this->resolveLineItems($context, $slots, $result);
 
+        // 5. Resolve Purchase Order (if specified)
+        if (isset($slots['purchase_order_id']) || isset($slots['order_no']) || isset($slots['purchase_order_query'])) {
+            $this->resolvePurchaseOrderField($context, $slots, $result);
+        }
+
+        // 6. Resolve GRN (if specified)
+        if (isset($slots['grn_id']) || isset($slots['grn_no']) || isset($slots['grn_query'])) {
+            $this->resolveGrnField($context, $slots, $result);
+        }
+
         return $result;
     }
 
@@ -238,6 +248,77 @@ final class BatchRecordResolutionService
         if ($unitId) {
             $unit = Unit::find($unitId);
             $result->setResolved($uomKey, (int) $unitId, $unit);
+        }
+    }
+
+    private function resolvePurchaseOrderField(CompanyContext $context, array $slots, BatchResolutionResult $result): void
+    {
+        $poId = (int) ($slots['purchase_order_id'] ?? 0);
+        if ($poId > 0) {
+            $po = \App\Models\Purchase::where('company_id', $context->companyId)
+                ->where('status', 4)
+                ->whereNull('reversed_at')
+                ->find($poId);
+
+            if ($po) {
+                $result->setResolved('purchase_order_id', (int) $po->id, $po);
+                return;
+            }
+        }
+
+        $query = trim((string) ($slots['order_no'] ?? $slots['purchase_order_query'] ?? ''));
+        if ($query !== '') {
+            $supplierId = (int) ($slots['supplier_id'] ?? 0);
+            $res = $this->resolver->resolvePurchaseOrder($context, $query, $supplierId > 0 ? $supplierId : null);
+
+            if ($res['status'] === 'exact' && $res['purchase_order']) {
+                $result->setResolved('purchase_order_id', (int) $res['purchase_order']->id, $res['purchase_order']);
+            } elseif ($res['status'] === 'candidates') {
+                $candidates = $res['candidates']->map(fn ($p) => [
+                    'id' => (int) $p->id,
+                    'label' => "PO #{$p->reference_no} (₹{$p->grand_total})",
+                    'reference_no' => $p->reference_no,
+                    'grand_total' => $p->grand_total,
+                ])->all();
+                $result->setCandidates('purchase_order_id', $candidates, $query);
+            } else {
+                $result->setNone('purchase_order_id', $query, "No open purchase order found matching '{$query}'.");
+            }
+        }
+    }
+
+    private function resolveGrnField(CompanyContext $context, array $slots, BatchResolutionResult $result): void
+    {
+        $grnId = (int) ($slots['grn_id'] ?? 0);
+        if ($grnId > 0) {
+            $grn = \App\Models\GoodsReceivedNote::where('company_id', $context->companyId)
+                ->whereNotNull('posted_at')
+                ->find($grnId);
+
+            if ($grn) {
+                $result->setResolved('grn_id', (int) $grn->id, $grn);
+                return;
+            }
+        }
+
+        $query = trim((string) ($slots['grn_no'] ?? $slots['grn_query'] ?? ''));
+        if ($query !== '') {
+            $supplierId = (int) ($slots['supplier_id'] ?? 0);
+            $res = $this->resolver->resolveGoodsReceivedNote($context, $query, $supplierId > 0 ? $supplierId : null);
+
+            if ($res['status'] === 'exact' && $res['grn']) {
+                $result->setResolved('grn_id', (int) $res['grn']->id, $res['grn']);
+            } elseif ($res['status'] === 'candidates') {
+                $candidates = $res['candidates']->map(fn ($g) => [
+                    'id' => (int) $g->id,
+                    'label' => "GRN #{$g->grn_no} (Qty: {$g->total_qty})",
+                    'grn_no' => $g->grn_no,
+                    'total_qty' => $g->total_qty,
+                ])->all();
+                $result->setCandidates('grn_id', $candidates, $query);
+            } else {
+                $result->setNone('grn_id', $query, "No posted GRN found matching '{$query}'.");
+            }
         }
     }
 }

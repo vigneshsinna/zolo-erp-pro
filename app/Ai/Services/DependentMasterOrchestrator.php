@@ -354,6 +354,27 @@ class DependentMasterOrchestrator
             if ($defaultUnit) {
                 $prefilled['unit_id'] = (int) $defaultUnit->id;
             }
+
+            // Default GST tax category and HSN code in GST-active company
+            if (Schema::hasTable('tax_categories')) {
+                $defaultTax = DB::table('tax_categories')
+                    ->where('company_id', $context->companyId)
+                    ->where('supply_type', 'taxable')
+                    ->orderByRaw("CASE WHEN name LIKE '%5%' THEN 1 WHEN name LIKE '%18%' THEN 2 ELSE 3 END")
+                    ->first();
+                if ($defaultTax) {
+                    $prefilled['tax_category_id'] = (int) $defaultTax->id;
+                }
+            }
+            if (Schema::hasTable('hsn_sac_codes')) {
+                $defaultHsn = DB::table('hsn_sac_codes')
+                    ->where('company_id', $context->companyId)
+                    ->where('kind', 'hsn')
+                    ->first();
+                if ($defaultHsn) {
+                    $prefilled['hsn_code'] = (string) $defaultHsn->code;
+                }
+            }
         } elseif ($entityMeta['entity_type'] === 'customer') {
             $query = trim((string) ($slots['customer_query'] ?? ''));
             $prefilled['name'] = $query !== '' ? $query : null;
@@ -389,6 +410,14 @@ class DependentMasterOrchestrator
                 $defaults['tax_categories'] = DB::table('tax_categories')
                     ->where('company_id', $context->companyId)
                     ->get(['id', 'name'])
+                    ->toArray();
+            }
+
+            if (Schema::hasTable('hsn_sac_codes')) {
+                $defaults['hsn_codes'] = DB::table('hsn_sac_codes')
+                    ->where('company_id', $context->companyId)
+                    ->where('kind', 'hsn')
+                    ->get(['code', 'description'])
                     ->toArray();
             }
         } elseif ($entityType === 'warehouse') {

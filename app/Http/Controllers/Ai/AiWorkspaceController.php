@@ -39,7 +39,8 @@ class AiWorkspaceController extends Controller
         );
 
         $isAiEnabled = $this->featureGate->isEnabledForCompany($context->companyId);
-        $isReadOnly = $this->featureGate->isReadOnly();
+        $isReadOnly = $this->featureGate->isReadOnly($context->companyId);
+        $approvedModel = $isAiEnabled ? $this->modelGateway->resolveApprovedModel() : null;
 
         return view('backend.ai.workspace', [
             'company' => $company,
@@ -48,7 +49,8 @@ class AiWorkspaceController extends Controller
             'canUseCopilot' => $isAiEnabled && $principal->permittedToolNames !== [],
             'isReadOnly' => $isReadOnly,
             'isAdmin' => in_array((int) ($user->role_id ?? 0), [1, 2], true),
-            'model' => $isAiEnabled ? $this->modelGateway->resolveApprovedModel()['model'] : null,
+            'model' => $approvedModel['model'] ?? null,
+            'provider' => $approvedModel['provider'] ?? null,
         ]);
     }
 }

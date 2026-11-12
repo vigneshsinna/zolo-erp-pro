@@ -56,6 +56,7 @@ class RouteServiceProvider extends ServiceProvider
         $this->mapApiRoutes();
 
         $this->mapWebRoutes();
+        require base_path('routes/ai-infrastructure.php');
 
         //
     }

@@ -247,6 +247,7 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
 
         $previewData = [
             'document_type' => 'Sales Order',
+            'currency' => 'INR',
             'customer_name' => $customer->name,
             'customer' => [
                 'id' => (int) $customer->id,

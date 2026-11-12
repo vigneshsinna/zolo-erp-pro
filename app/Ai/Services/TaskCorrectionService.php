@@ -38,9 +38,15 @@ final class TaskCorrectionService
     ): array {
         $task = $this->taskState->getTask($principal, $taskId);
         $actionKey = (string) $task['action_key'];
+        $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get($actionKey);
+        if ($principal instanceof AiPrincipal) app(ActionSecurity::class)->definition($actionKey, $principal);
+        $rules = app($definition->inputSchemaClass)->rules();
         $provider = $this->requirementsRegistry->get($actionKey);
 
         $slots = json_decode((string) $task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+        foreach ($slots['items'] ?? [] as $index => $line) {
+            $slots['items'][$index]['client_line_id'] ??= "line-{$index}";
+        }
 
         // Apply field corrections
         foreach ($corrections as $correction) {
@@ -51,6 +57,17 @@ final class TaskCorrectionService
                 continue;
             }
 
+            if (isset($rules[$field]) && !str_contains($field, '.')) {
+                $fieldRules = is_array($rules[$field]) ? implode('|', $rules[$field]) : $rules[$field];
+                if (str_contains($fieldRules, 'array') && is_string($value)) {
+                    try { $value = json_decode($value, true, 32, JSON_THROW_ON_ERROR); }
+                    catch (\JsonException) { throw ValidationException::withMessages([$field => 'Enter a valid JSON array.']); }
+                }
+                if (!in_array($field, ['supplier_id', 'customer_id', 'warehouse_id'], true)) {
+                    $slots[$field] = $value;
+                    continue;
+                }
+            }
             $this->applyFieldCorrection($slots, $field, $value);
         }
 
@@ -131,7 +148,8 @@ final class TaskCorrectionService
             return;
         }
 
-        if (in_array($field, ['date', 'note', 'order_discount', 'shipping_cost'], true)) {
+        if (in_array($field, ['date', 'note', 'order_discount', 'shipping_cost', 'biller_id', 'valid_until', 'sales_order_id',
+            'delivery_challan_id', 'purpose', 'due_date', 'open_item_id', 'amount', 'settlement_account_id'], true)) {
             $slots[$field] = $value;
             return;
         }
@@ -154,6 +172,9 @@ final class TaskCorrectionService
             }
 
             if ($lineIndex === null) {
+                if ($property === '_destroy') {
+                    throw ValidationException::withMessages(['items' => 'The selected line no longer exists. Reload the task.']);
+                }
                 // New line with this client_line_id
                 $lineIndex = count($slots['items']);
                 $slots['items'][$lineIndex] = [
@@ -161,7 +182,11 @@ final class TaskCorrectionService
                 ];
             }
 
-            if ($property === 'product_id') {
+            if ($property === '_destroy') {
+                if ($value !== true) throw ValidationException::withMessages(['items' => 'Line deletion requires an explicit true value.']);
+                unset($slots['items'][$lineIndex]);
+                $slots['items'] = array_values($slots['items']);
+            } elseif ($property === 'product_id') {
                 if (is_numeric($value) && (int) $value > 0) {
                     $slots['items'][$lineIndex]['product_id'] = (int) $value;
                     unset($slots['items'][$lineIndex]['product_query']);

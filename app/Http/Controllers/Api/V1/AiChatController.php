@@ -49,7 +49,7 @@ class AiChatController extends Controller
 
         return response()->json([
             'enabled' => $this->featureGate->isEnabledForCompany($principal->companyId),
-            'read_only' => $this->featureGate->isReadOnly(),
+            'read_only' => $this->featureGate->isReadOnly($principal->companyId),
             'allowed_tools' => $principal->permittedToolNames,
             ...$this->modelGateway->resolveApprovedModel(),
             'scope' => $this->scope($principal),
@@ -317,6 +317,9 @@ class AiChatController extends Controller
         $approval = app(\App\Ai\Services\ActionApprovalService::class)->approve($principal, $id, $expectedVersion);
 
         if (config('ai_actions.execution_enabled', false)) {
+            if (config('ai_infrastructure.async_execution_enabled', false)) {
+                return response()->json(app(\App\Ai\Infrastructure\AsyncActionDispatch::class)->dispatch($principal, $id, $expectedVersion), 202);
+            }
             $execution = app(\App\Ai\Services\ApprovedActionExecutor::class)->execute($principal, $id, $expectedVersion);
             return response()->json([
                 'status' => 'completed',
@@ -353,6 +356,184 @@ class AiChatController extends Controller
             'status' => 'cancelled',
             'proposal_id' => $id,
         ]);
+    }
+
+    public function downloadDocumentPdf(Request $request, string $type, int|string $id): \Illuminate\Http\Response|JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        $context = new CompanyContext(
+            companyId: $principal->companyId,
+            branchId: $principal->branchId,
+            financialYearId: $principal->financialYearId
+        );
+
+        $isPurchase = in_array($type, ['purchase', 'purchase_order', 'purchases'], true);
+        $isSale = in_array($type, ['sale', 'sales_order', 'sales', 'invoice'], true);
+
+        if (!$isPurchase && !$isSale) {
+            return $this->error('AI_INVALID_DOCUMENT_TYPE', "Unsupported document type [{$type}].", 422);
+        }
+
+        $permission = $isPurchase ? 'purchases-index' : 'sales-index';
+        if (!app(CommercialPermission::class)->allows($permission, $context, $principal->actorId)) {
+            return $this->error('AI_TOOL_FORBIDDEN', 'Access denied to document.', 403);
+        }
+
+        $documentId = is_numeric($id) ? (int) $id : null;
+        if ($documentId === null) {
+            if ($isPurchase) {
+                $documentId = (int) \App\Models\Purchase::where('company_id', $principal->companyId)
+                    ->where('reference_no', (string) $id)
+                    ->value('id');
+            } else {
+                $documentId = (int) \App\Models\Sale::where('company_id', $principal->companyId)
+                    ->where('reference_no', (string) $id)
+                    ->value('id');
+            }
+        }
+
+        if (!$documentId) {
+            return $this->error('AI_DOCUMENT_NOT_FOUND', 'Document not found.', 404);
+        }
+
+        try {
+            $renderer = app(\App\Services\Documents\DocumentRenderingService::class);
+            $docKind = $isPurchase ? 'purchase' : ($type === 'sales_order' ? 'sales_order' : 'sale');
+            $dto = $renderer->dto($docKind, $documentId, $context);
+            $profile = $renderer->profile($docKind, $context, null, 'a4');
+            $html = $renderer->html($dto, $profile);
+
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+            $filename = str_replace(' ', '_', ($dto['title'] ?? 'Document') . '_' . ($dto['number'] ?? $documentId)) . '.pdf';
+
+            return response($pdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error('AI_PDF_GENERATION_FAILED', 'Could not generate PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function downloadProposalPdf(Request $request, string $id): \Illuminate\Http\Response|JsonResponse
+    {
+        $principal = $this->principal($request);
+        if ($denial = $this->accessDenial($principal)) {
+            return $denial;
+        }
+
+        $proposal = DB::table('ai_action_proposals')
+            ->where('id', $id)
+            ->where('company_id', $principal->companyId)
+            ->first();
+
+        if (!$proposal) {
+            return $this->error('AI_PROPOSAL_NOT_FOUND', 'Proposal not found.', 404);
+        }
+
+        // If proposal was already approved and executed, serve the authoritative document PDF directly!
+        $execution = DB::table('ai_action_executions')
+            ->where('proposal_id', $id)
+            ->where('company_id', $principal->companyId)
+            ->where('status', 'completed')
+            ->first();
+
+        if ($execution) {
+            $result = json_decode((string) $execution->result_json, true) ?? [];
+            $resourceId = (int) ($result['resource_id'] ?? $result['details']['purchase_id'] ?? $result['details']['sale_id'] ?? 0);
+            if ($resourceId > 0) {
+                $type = str_contains($proposal->action_key, 'purchase') ? 'purchase' : 'sale';
+                return $this->downloadDocumentPdf($request, $type, $resourceId);
+            }
+        }
+
+        $context = new CompanyContext(
+            companyId: $principal->companyId,
+            branchId: (int) $proposal->branch_id,
+            financialYearId: (int) $proposal->financial_year_id
+        );
+
+        try {
+            $preview = json_decode((string) $proposal->preview_json, true) ?? [];
+            $company = \App\Models\Company::findOrFail($context->companyId);
+            $renderer = app(\App\Services\Documents\DocumentRenderingService::class);
+            $print = $renderer->printSettings($context);
+
+            $lines = [];
+            foreach ($preview['items'] ?? [] as $item) {
+                $taxBreakdown = $item['tax_breakdown'] ?? [];
+                $lines[] = [
+                    'name' => $item['product_name'] ?? 'Product',
+                    'code' => $item['product_code'] ?? '',
+                    'unit' => $item['unit'] ?? 'units',
+                    'discount' => (float) ($item['discount'] ?? 0),
+                    'qty' => (float) ($item['qty'] ?? 1),
+                    'price' => (float) ($item['net_unit_cost'] ?? $item['net_unit_price'] ?? $item['cost'] ?? 0),
+                    'taxable_value' => (float) ($item['line_total'] ?? 0) - (float) ($item['tax_amount'] ?? 0),
+                    'tax_rate' => (float) ($item['tax_rate'] ?? 5),
+                    'cess_rate' => 0,
+                    'tax' => (float) ($item['tax_amount'] ?? 0),
+                    'total' => (float) ($item['line_total'] ?? 0),
+                    'hsn_sac' => $item['hsn_code'] ?? '5208',
+                    'cgst' => (float) ($taxBreakdown['cgst'] ?? 0),
+                    'sgst' => (float) ($taxBreakdown['sgst'] ?? 0),
+                    'igst' => (float) ($taxBreakdown['igst'] ?? 0),
+                    'cess' => 0,
+                ];
+            }
+
+            $party = $preview['supplier'] ?? $preview['customer'] ?? [];
+            $isPurchase = str_contains($proposal->action_key, 'purchase');
+            $totals = $preview['totals'] ?? $preview['summary'] ?? [];
+
+            $docDto = [
+                'kind' => $isPurchase ? 'purchase' : 'sale',
+                'order' => true,
+                'title' => ($preview['document_type'] ?? 'ERP Action') . ' (Draft Proposal)',
+                'number' => 'DRAFT-' . substr($proposal->id, 0, 8),
+                'date' => $preview['date'] ?? $preview['order_date'] ?? now()->toDateString(),
+                'company_name' => $company->legal_name ?? $company->name,
+                'company_trade_name' => $company->trade_name,
+                'company_address' => app(\App\Services\Platform\CompanyProfileService::class)->fullAddress($company),
+                'company_gstin' => $company->vat_number ?? '',
+                'company_state' => $company->state_code ?? '',
+                'party_name' => $party['name'] ?? 'Party',
+                'party_address' => $party['address'] ?? '',
+                'party_gstin' => $party['gst_number'] ?? $party['tax_no'] ?? '',
+                'party_state' => '',
+                'party_contact' => ['phone' => $party['phone'] ?? null, 'email' => $party['email'] ?? null],
+                'currency' => $preview['currency'] ?? 'INR',
+                'lines' => $lines,
+                'total_tax' => (float) ($totals['tax_total'] ?? $totals['total_tax'] ?? 0),
+                'discount' => (float) ($totals['discount_total'] ?? $totals['order_discount'] ?? 0),
+                'shipping' => (float) ($totals['shipping_cost'] ?? 0),
+                'grand_total' => (float) ($totals['grand_total'] ?? 0),
+                'round_off' => (float) ($totals['round_off'] ?? 0),
+                'print' => $print,
+                'note' => 'DRAFT PROPOSAL — Requires human approval before booking into the ERP register.',
+                'reversed_at' => null,
+                'transport' => [],
+                'material_documents' => [],
+                'references' => [],
+                'ship_to' => null,
+                'source_number' => null,
+            ];
+
+            $profile = ['format' => 'a4', 'width' => 210, 'lines' => 68, 'columns' => 80, 'copies' => ['Draft Copy']];
+            $html = view('backend.compliance.tax-invoice', ['document' => $docDto, 'profile' => $profile])->render();
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+
+            return response($pdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="Proposal_' . substr($proposal->id, 0, 8) . '.pdf"',
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error('AI_PDF_GENERATION_FAILED', 'Could not generate proposal PDF: ' . $e->getMessage(), 500);
+        }
     }
 
     public function createThread(Request $request): JsonResponse
@@ -405,6 +586,32 @@ class AiChatController extends Controller
     }
 
     public function chat(Request $request): JsonResponse
+    {
+        return $this->runChat($request);
+    }
+
+    public function stream(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $request->validate(['message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
+            'thread_id' => 'nullable|uuid']);
+        if ($denial = $this->accessDenial($this->principal($request))) return $denial;
+        return response()->stream(function () use ($request): void {
+            $emit = static function (string $event, array $data): void {
+                echo 'event: '.$event."\n".'data: '.json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)."\n\n";
+                if (ob_get_level() > 0) @ob_flush();
+                flush();
+            };
+            $emit('start', ['status' => 'running']);
+            try {
+                $result = $this->runChat($request, static fn (string $delta) => $emit('delta', ['text' => $delta]));
+                $emit($result->isSuccessful() ? 'complete' : 'error', $result->getData(true));
+            } catch (\Throwable) {
+                $emit('error', ['error_code' => 'AI_STREAM_FAILED', 'error_message' => 'The response stream ended. Reload the conversation before retrying.']);
+            }
+        }, 200, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'no-cache, no-store, no-transform', 'X-Accel-Buffering' => 'no']);
+    }
+
+    private function runChat(Request $request, ?Closure $onDelta = null): JsonResponse
     {
         $validated = $request->validate([
             'message' => 'required|string|max:' . (int) config('erp_ai.max_input_chars', 4000),
@@ -504,7 +711,17 @@ class AiChatController extends Controller
                 fn(PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
                 $activeEntities
             );
-            $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
+            if ($onDelta === null) {
+                $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
+            } else {
+                $response = null;
+                $stream = $copilot->stream($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
+                $stream->then(function (\Laravel\Ai\Responses\StreamedAgentResponse $completed) use (&$response): void { $response = $completed; });
+                foreach ($stream as $event) {
+                    if ($event instanceof \Laravel\Ai\Streaming\Events\TextDelta) $onDelta($event->delta);
+                }
+                if (!$response instanceof AgentResponse) throw new \RuntimeException('The model stream did not complete.');
+            }
 
             Log::info('ERP Copilot response diagnostics', [
                 'run_id' => $principal->requestId,
@@ -581,7 +798,7 @@ class AiChatController extends Controller
     {
         abort_if($request->query->has('branch_scope'), 422, 'Copilot uses the selected branch.');
         $actor = $request->user()->id;
-        $context = $this->contextResolver->forActor(userId: $actor);
+        $context = $this->contextResolver->forActor($request->attributes->get(CompanyContext::class), $actor);
         $workspaceScope = $request->header('X-AI-Scope');
         abort_if($workspaceScope !== null && $workspaceScope !== implode('/', [
             $context->companyId,
@@ -652,6 +869,34 @@ class AiChatController extends Controller
         $required = [];
         foreach ($metadata['facts'] ?? [] as $fact) {
             $tool = $fact['tool'] ?? '';
+            $data = $fact['data'] ?? [];
+            $registeredAction = $data['action_key'] ?? $tool;
+            $registry = app(\App\Ai\Registries\ActionCapabilityRegistry::class);
+            if ($registry->has($registeredAction)) {
+                $required = array_merge($required, $registry->get($registeredAction)->requiredPermissions);
+                continue;
+            }
+
+            if (
+                in_array($tool, [
+                    'workflow.clarification.v1',
+                    'purchase_order.create.v1',
+                    'sales_order.create.v1',
+                    'grn.create.v1',
+                    'purchase_bill.create.v1',
+                    'action.purchase_order.v1',
+                    'action.sales_order.v1',
+                ], true) || str_starts_with($tool, 'setup.')
+            ) {
+                $actionKey = $data['action_key'] ?? $tool;
+                if (str_contains($actionKey, 'sales') || str_contains($tool, 'sales') || str_contains($tool, 'customer')) {
+                    $required[] = 'sales-add';
+                } else {
+                    $required[] = 'purchases-add';
+                }
+                continue;
+            }
+
             if (!$principal->hasTool($tool)) {
                 return false;
             }
@@ -669,7 +914,6 @@ class AiChatController extends Controller
                 return false;
             }
 
-            $data = $fact['data'] ?? [];
             if ($tool === 'documents.preview.v1') {
                 $required[] = ($data['document_type'] ?? null) === 'purchase_order' ? 'purchases-index' : 'sales-index';
             }
@@ -680,9 +924,6 @@ class AiChatController extends Controller
             }
             if ($tool === 'inventory.stock_summary.v1' && ($data['valuation_visible'] ?? true)) {
                 $required[] = 'purchases-index';
-            }
-            if ($tool === 'purchase_order.create.v1' || $tool === 'workflow.clarification.v1') {
-                $required[] = 'purchases-add';
             }
         }
 

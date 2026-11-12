@@ -250,7 +250,7 @@ class ApprovedModelGateway
     }
 
     /**
-     * @return array{provider: string, limit: int, current: int, remaining: int, status: string}
+     * @return array{provider: string, limit: int, current: int, remaining: int, status: string, window_seconds: int, reset_in_seconds: int}
      */
     public function getProviderRpmUsage(?string $provider = null): array
     {
@@ -265,7 +265,9 @@ class ApprovedModelGateway
             'limit' => $limit,
             'current' => $attempts,
             'remaining' => $remaining,
-            'status' => $attempts >= $limit ? 'limited' : ($attempts >= (int) ($limit * 0.8) ? 'warning' : 'healthy'),
+            'status' => $limit <= 0 ? 'disabled' : ($attempts >= $limit ? 'limited' : ($attempts >= $limit * 0.8 ? 'warning' : 'healthy')),
+            'window_seconds' => 60,
+            'reset_in_seconds' => RateLimiter::availableIn($key),
         ];
     }
 
@@ -303,6 +305,9 @@ class ApprovedModelGateway
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            app(\App\Ai\Telemetry\TelemetryDispatcher::class)->recordModel(
+                $principal, $stepNumber, $provider, $model, $status, $inputTokens, $outputTokens, $durationMs, $httpAttempts,
+            );
         } catch (Throwable $e) {
             Log::warning('Failed to record AI model invocation telemetry', [
                 'run_id' => $principal->requestId,

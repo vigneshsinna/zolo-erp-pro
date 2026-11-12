@@ -1,177 +1,168 @@
 @extends('backend.layout.main')
 
 @section('content')
-    <div class="container-fluid py-3 ai-workspace-container">
-        <div class="row">
-            <!-- Sidebar: Conversation Threads & Context -->
-            <div class="col-md-3 col-lg-3 mb-3">
-                <div class="card shadow-sm border-0 ai-sidebar-card">
-                    <div
-                        class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2 flex-shrink-0">
-                        <span class="font-weight-bold text-dark"><i class="dripicons-conversation mr-1"></i> AI
-                            Sessions</span>
-                        <button id="btn-new-thread" class="btn btn-sm btn-outline-primary" title="Start new conversation">
-                            <i class="dripicons-plus"></i> New
+    <div class="container-fluid ai-workspace-container">
+        <div class="ai-workspace-grid">
+            <aside class="ai-sidebar-column" id="ai-history" aria-label="Conversation history">
+                <div class="card ai-sidebar-card">
+                    <div class="ai-panel-heading">
+                        <h2>Conversations <span id="thread-count" class="ai-count"></span></h2>
+                        <button id="btn-new-thread" class="btn btn-sm btn-primary" type="button">
+                            <i class="dripicons-plus" aria-hidden="true"></i> New chat
                         </button>
                     </div>
-                    <div class="card-body p-2 d-flex flex-column ai-sidebar-body">
-                        <!-- Active Scope Badge -->
-                        <div class="p-2 mb-2 rounded bg-light border flex-shrink-0 ai-scope-badge">
-                            <div class="text-muted small text-uppercase font-weight-bold">Active Tenancy</div>
-                            <div class="font-weight-bold text-truncate">{{ $company->legal_name ?? $company->name }}</div>
-                            <div class="text-secondary small">FY ID: {{ $context->financialYearId }} &bull; Branch:
-                                {{ $context->branchId }}</div>
+                    <div class="ai-sidebar-body">
+                        <div class="ai-scope-badge">
+                            <span class="ai-eyebrow">Company workspace</span>
+                            <strong>{{ $company->legal_name ?? $company->name }}</strong>
+                            <span>Branch {{ $context->branchId }} &middot; FY ID {{ $context->financialYearId }}</span>
                         </div>
-
-                        <!-- Threads List -->
-                        <div id="thread-list" class="list-group list-group-flush flex-grow-1">
-                            <div class="text-center text-muted py-4 small" id="thread-loading">
-                                <span class="spinner-border spinner-border-sm text-primary mr-1"></span> Loading sessions...
+                        <label class="ai-history-search" for="thread-search">
+                            <i class="dripicons-search" aria-hidden="true"></i>
+                            <input id="thread-search" type="search" placeholder="Search conversations" autocomplete="off">
+                        </label>
+                        <div id="thread-list" aria-label="Saved conversations">
+                            <div class="text-center text-muted py-4 small" id="thread-loading" role="status">
+                                <span class="spinner-border spinner-border-sm mr-1"></span> Loading conversations…
                             </div>
                         </div>
-
-                        <!-- Guardrail Status & Privacy Notice -->
-                        <div class="mt-auto pt-2 border-top flex-shrink-0 ai-guardrail-status">
-                            <div class="d-flex align-items-center mb-1">
-                                <span class="badge {{ $isAiEnabled ? 'badge-success' : 'badge-danger' }} mr-1">
-                                    {{ $isAiEnabled ? 'Active' : 'Disabled' }}
-                                </span>
-                                <span class="badge {{ $isReadOnly ? 'badge-info' : 'badge-warning' }}">
-                                    {{ $isReadOnly ? 'Read-Only Policy' : 'Proposals Active' }}
-                                </span>
-                            </div>
-                            <div class="text-muted">
-                                <i class="dripicons-shield mr-1"></i> Tenant-isolated execution. Server authoritative.
-                            </div>
+                        <p id="thread-search-empty" class="small text-muted text-center py-3" hidden>No matching conversations.</p>
+                        <div class="ai-guardrail-status">
+                            <span class="ai-policy"><i class="dripicons-lock" aria-hidden="true"></i>
+                                {{ $isReadOnly ? 'Read-only access' : 'Approval required for actions' }}</span>
+                            <span>Scoped to your company and permissions.</span>
                         </div>
                     </div>
                 </div>
-            </div>
+            </aside>
 
-            <!-- Main Chat Area -->
-            <div class="col-md-9 col-lg-9 mb-3">
-                <div class="card shadow-sm border-0 ai-chat-card">
-                    <!-- Header -->
-                    <div
-                        class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2 flex-shrink-0">
-                        <div>
-                            <h5 class="mb-0 font-weight-bold text-dark">
-                                <i class="dripicons-sparkles text-primary mr-1"></i> zoloERP Copilot
-                            </h5>
-                            <small class="text-muted" id="active-thread-title">New Conversation</small>
+            <section class="ai-chat-column" aria-label="zoloERP Copilot">
+                <div class="card ai-chat-card">
+                    <header class="ai-chat-header">
+                        <button id="btn-toggle-history" class="btn ai-history-toggle" type="button"
+                            aria-controls="ai-history" aria-expanded="false" aria-label="Show conversations">
+                            <i class="dripicons-menu" aria-hidden="true"></i>
+                        </button>
+                        <span class="ai-copilot-mark" aria-hidden="true"><i class="dripicons-conversation"></i></span>
+                        <div class="ai-chat-heading">
+                            <h1>zoloERP Copilot <span class="ai-availability {{ $isAiEnabled ? '' : 'is-disabled' }}">{{ $isAiEnabled ? 'Available' : 'Disabled' }}</span></h1>
+                            <p id="active-thread-title">New conversation</p>
                         </div>
-                        <div class="d-flex align-items-center">
+                        <div class="ai-header-actions">
+                            @if($model)
+                                <details class="ai-engine-details">
+                                    <summary><i class="dripicons-stack" aria-hidden="true"></i> AI engine <span aria-hidden="true">⌄</span></summary>
+                                    <div class="ai-engine-popover">
+                                        <strong>Server-managed models</strong>
+                                        <p>Model selection follows your ERP configuration.</p>
+                                        <span class="ai-eyebrow">Configured default · {{ $provider }}</span>
+                                        <code>{{ $model }}</code>
+                                    </div>
+                                </details>
+                            @endif
                             @if($isAdmin ?? false)
-                                <button id="btn-toggle-telemetry"
-                                    class="btn btn-xs btn-outline-info mr-2 py-1 px-2 ai-telemetry-toggle-btn"
-                                    title="View AI telemetry & rate limits">
-                                    <i class="dripicons-meter mr-1"></i> <span id="header-rpm-badge"
-                                        class="badge badge-success ai-rpm-badge">RPM: --/35</span>
+                                <button id="btn-toggle-telemetry" class="btn ai-telemetry-toggle-btn" type="button"
+                                    aria-controls="ai-telemetry-panel" aria-expanded="false">
+                                    <i class="dripicons-meter" aria-hidden="true"></i> Usage
                                 </button>
                             @endif
-                            @if($model)
-                                <div>
-                                    <span class="badge badge-light border text-muted ai-status-badge">
-                                        Model: {{ $model }}
-                                    </span>
-                                </div>
-                            @endif
                         </div>
-                    </div>
+                    </header>
 
                     @if($isAdmin ?? false)
-                        <!-- Admin Telemetry Panel -->
-                        <div id="ai-telemetry-panel" class="border-bottom bg-light px-3 py-2 flex-shrink-0"
-                            style="display: none;">
-                            <div class="d-flex flex-wrap justify-content-between align-items-center">
-                                <div class="d-flex align-items-center mr-3 my-1">
-                                    <span class="text-muted mr-1">Provider RPM:</span>
-                                    <span id="telemetry-rpm-badge" class="badge badge-success mr-2 font-weight-bold">-- /
-                                        35</span>
-                                    <span id="telemetry-rpm-status" class="small text-muted font-italic">Healthy</span>
+                        <section id="ai-telemetry-panel" class="ai-telemetry-panel" aria-label="AI usage and provider limits" hidden>
+                            <div class="ai-telemetry-heading">
+                                <div><strong>AI usage</strong><span id="telemetry-updated" role="status">Loading usage…</span></div>
+                                <button id="btn-refresh-telemetry" class="btn btn-sm btn-outline-secondary" type="button">Refresh</button>
+                            </div>
+                            <div class="ai-telemetry-grid">
+                                <div class="ai-usage-stat">
+                                    <span>Provider requests / minute</span>
+                                    <strong id="telemetry-rpm-badge">—</strong>
+                                    <span id="telemetry-rpm-status">Checking provider limit…</span>
+                                    <div class="ai-usage-track"><span id="telemetry-rpm-fill"></span></div>
                                 </div>
-                                <div class="d-flex align-items-center mr-3 my-1">
-                                    <span class="text-muted mr-1">Today's Invocations:</span>
-                                    <span class="badge badge-light border mr-1"><strong id="telemetry-model-calls">0</strong>
-                                        Model Calls</span>
-                                    <span class="badge badge-light border"><strong id="telemetry-tool-calls">0</strong> ERP
-                                        Tools</span>
+                                <div class="ai-usage-stat">
+                                    <span>Company model calls today (UTC)</span><strong id="telemetry-model-calls">—</strong>
+                                    <span><span id="telemetry-tool-calls">—</span> ERP tool calls</span>
                                 </div>
-                                <div class="d-flex align-items-center mr-3 my-1">
-                                    <span class="text-muted mr-1">Tokens Today:</span>
-                                    <span id="telemetry-tokens-used" class="font-weight-bold text-dark">0</span>
-                                    <span class="text-muted small ml-1">/ <span id="telemetry-token-limit">100,000</span></span>
-                                </div>
-                                <div class="my-1">
-                                    <button id="btn-refresh-telemetry"
-                                        class="btn btn-xs btn-outline-secondary py-0 px-2 ai-telemetry-refresh-btn"
-                                        title="Refresh metrics">
-                                        <i class="dripicons-clockwise"></i> Refresh
-                                    </button>
+                                <div class="ai-usage-stat">
+                                    <span>Company tokens today (UTC)</span><strong id="telemetry-tokens-used">—</strong>
+                                    <span>Daily limit: <span id="telemetry-token-limit">—</span></span>
                                 </div>
                             </div>
-                        </div>
+                            <p class="ai-usage-explainer"><span id="telemetry-provider">Provider</span>: shared provider limit across workspaces.
+                                Counts HTTP attempts, including retries. One chat may use several requests.
+                                <span id="telemetry-reset"></span></p>
+                        </section>
                     @endif
 
-                    <!-- Messages Feed -->
-                    <div id="chat-messages" class="card-body p-3 flex-grow-1">
-                        <!-- Welcome Hero / Default Message -->
-                        <div class="ai-welcome-box p-4 text-center my-auto">
-                            <div class="mb-3">
-                                <span class="badge-pill p-3 ai-welcome-badge">
-                                    <i class="dripicons-sparkles"></i>
-                                </span>
-                            </div>
-                            <h5 class="font-weight-bold">How can I assist your business operations today?</h5>
-                            <p class="text-muted small mx-auto ai-welcome-desc">
-                                I query real-time customer outstanding dues, general ledgers, and warehouse inventory stock
-                                with strict accounting accuracy.
-                            </p>
-                            <div class="d-flex justify-content-center flex-wrap mt-3">
-                                <button class="btn btn-sm btn-outline-secondary m-1 prompt-suggestion"
-                                    data-prompt="Show customer outstanding breakdown">
-                                    "Customer outstanding breakdown"
+                    <div id="chat-messages" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions" aria-busy="false">
+                        <div class="ai-welcome-box">
+                            <span class="ai-eyebrow">Your business, in focus</span>
+                            <h2>What would you like<br>to work on?</h2>
+                            <p>Explore your numbers, check stock, or prepare your next order. All in your company workspace.</p>
+                            <div class="ai-prompt-grid">
+                                <button class="prompt-suggestion" type="button" data-prompt="Show customer outstanding breakdown">
+                                    <i class="dripicons-wallet" aria-hidden="true"></i><strong>Who owes us?</strong><span>Review customer outstanding balances</span>
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary m-1 prompt-suggestion"
-                                    data-prompt="How much stock for all the products are there?">
-                                    "Total stock for all products"
+                                <button class="prompt-suggestion" type="button" data-prompt="How much stock for all the products are there?">
+                                    <i class="dripicons-box" aria-hidden="true"></i><strong>Check stock</strong><span>See what's available across products</span>
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary m-1 prompt-suggestion"
-                                    data-prompt="Show my top 5 customers by outstanding balance">
-                                    "Top 5 customers with dues"
+                                <button class="prompt-suggestion" type="button" data-prompt="Show my top 5 customers by outstanding balance">
+                                    <i class="dripicons-graph-bar" aria-hidden="true"></i><strong>Prioritize collections</strong><span>Find the top five outstanding balances</span>
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary m-1 prompt-suggestion"
-                                    data-prompt="Check control account reconciliation status">
-                                    "AR reconciliation status"
+                                <button class="prompt-suggestion" type="button" data-prompt="Help me prepare a purchase order. Show me the details before placing the order.">
+                                    <i class="dripicons-document-edit" aria-hidden="true"></i><strong>Prepare an order</strong><span>Start a purchase order for review</span>
                                 </button>
                             </div>
+                            <div class="ai-welcome-note"><i class="dripicons-shield" aria-hidden="true"></i> ERP records power your answers. You review proposed actions.</div>
                         </div>
                     </div>
 
-                    <!-- Input Footer -->
-                    <div class="card-footer bg-white border-top p-2 flex-shrink-0">
-                        <form id="chat-form" class="m-0">
+                    <footer class="ai-composer-footer">
+                        <form id="chat-form">
                             @csrf
-                            <div class="input-group">
-                                <textarea id="chat-input" class="form-control border-right-0 ai-chat-input" rows="1"
-                                    placeholder="Ask about outstanding dues, customer aging, or financial balances..."
+                            <div class="ai-composer">
+                                <label class="sr-only" for="chat-input">Message zoloERP Copilot</label>
+                                <textarea id="chat-input" class="ai-chat-input" rows="2"
+                                    placeholder="Ask a question or describe a task…" aria-describedby="ai-composer-hint"
                                     maxlength="4000" required></textarea>
-                                <div class="input-group-append">
-                                    <button id="btn-send" class="btn btn-primary px-3" type="submit">
-                                        <span id="btn-send-text"><i class="dripicons-direction mr-1"></i> Send</span>
-                                        <span id="btn-send-spinner" class="spinner-border spinner-border-sm"
-                                            style="display:none;" role="status"></span>
+                                <div class="ai-composer-toolbar">
+                                    <span id="ai-response-status" role="status">Connected to your ERP</span>
+                                    <button id="btn-dictate" class="btn btn-sm btn-outline-secondary" type="button" hidden
+                                        aria-label="Start voice input" aria-pressed="false" title="Dictation uses your browser speech service. Review before sending.">Dictate</button>
+                                    <button id="btn-send" class="btn btn-primary" type="submit" aria-label="Send message">
+                                        <span id="btn-send-text">Send <i class="dripicons-direction ml-1" aria-hidden="true"></i></span>
+                                        <span id="btn-send-spinner" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Working…</span>
                                     </button>
                                 </div>
                             </div>
-                            <div class="d-flex justify-content-between align-items-center mt-1 px-1">
-                                <small class="text-muted ai-footer-hint">
-                                    Press <kbd>Enter</kbd> to send, <kbd>Shift + Enter</kbd> for line break
-                                </small>
-                                <small id="char-counter" class="text-muted ai-char-counter">0 / 4000</small>
+                            <div class="ai-composer-hint" id="ai-composer-hint">
+                                <span>Enter to send <span class="ai-hint-separator">·</span> Shift + Enter for a new line</span>
+                                <span id="char-counter">0 / 4000</span>
                             </div>
                         </form>
+                    </footer>
+                </div>
+            </section>
+        </div>
+    </div>
+    <!-- In-Chat PDF Preview Modal -->
+    <div class="modal fade" id="ai-pdf-preview-modal" tabindex="-1" role="dialog" aria-labelledby="ai-pdf-modal-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered" role="document" style="max-width: 950px; height: 90vh;">
+            <div class="modal-content h-100 shadow border-0">
+                <div class="modal-header py-2 bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title font-weight-bold" id="ai-pdf-modal-title"><i class="dripicons-document mr-1 text-primary"></i> Document PDF</h5>
+                    <div class="d-flex align-items-center">
+                        <a id="ai-pdf-download-btn" href="#" target="_blank" download class="btn btn-sm btn-primary mr-2"><i class="dripicons-download mr-1"></i> Download PDF</a>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
                     </div>
+                </div>
+                <div class="modal-body p-0 bg-secondary" style="height: calc(100% - 55px);">
+                    <iframe id="ai-pdf-iframe" src="" style="width: 100%; height: 100%; border: none;"></iframe>
                 </div>
             </div>
         </div>
@@ -179,7 +170,7 @@
 @endsection
 
 @push('css')
-    <link rel="stylesheet" href="{{ asset('css/pages/ai-workspace.css') }}" type="text/css">
+    <link rel="stylesheet" href="{{ versioned_asset('css/pages/ai-workspace.css') }}" type="text/css">
 @endpush
 
 @push('scripts')
@@ -189,8 +180,42 @@
         (function ($) {
             'use strict';
 
+            const workspace = $('.ai-workspace-container');
+            const welcomeMarkup = $('.ai-welcome-box').prop('outerHTML');
+            function fitWorkspace() {
+                workspace[0].style.setProperty('--ai-workspace-top', Math.ceil(workspace[0].getBoundingClientRect().top + parseFloat(workspace.css('padding-top'))) + 'px');
+            }
+            fitWorkspace();
+            $(window).on('resize', fitWorkspace);
+            window.visualViewport?.addEventListener('resize', fitWorkspace);
+
+            $('#btn-toggle-history').on('click', function () {
+                const open = !workspace.hasClass('is-history-open');
+                workspace.toggleClass('is-history-open', open);
+                $(this).attr({ 'aria-expanded': String(open), 'aria-label': open ? 'Hide conversations' : 'Show conversations' });
+                if (open) $('#thread-search')[0].focus({ preventScroll: true });
+            });
+            function closeHistory() {
+                workspace.removeClass('is-history-open');
+                $('#btn-toggle-history').attr({ 'aria-expanded': 'false', 'aria-label': 'Show conversations' });
+            }
+            $(document).on('keydown.aiWorkspace', function (event) {
+                if (event.key === 'Escape') {
+                    if (workspace.hasClass('is-history-open')) {
+                        closeHistory();
+                        $('#btn-toggle-history')[0].focus({ preventScroll: true });
+                    }
+                    $('.ai-engine-details').prop('open', false);
+                }
+            });
+            $(document).on('click.aiWorkspace', function (event) {
+                if (!$(event.target).closest('.ai-engine-details').length) $('.ai-engine-details').prop('open', false);
+                if (!$(event.target).closest('#ai-history, #btn-toggle-history').length) closeHistory();
+            });
+
             if (!@json($canUseCopilot)) {
                 $('#thread-list').text('Copilot access is unavailable in this context.');
+                $('#ai-response-status').text('Copilot access unavailable');
                 $('#btn-new-thread, #chat-input, #btn-send, .prompt-suggestion').prop('disabled', true);
                 return;
             }
@@ -216,6 +241,19 @@
                 'X-AI-Scope': '{{ $context->companyId }}/{{ $context->branchId }}/{{ $context->financialYearId }}'
             };
 
+            function filterThreads() {
+                const query = $('#thread-search').val().trim().toLocaleLowerCase();
+                let visible = 0;
+                $('#thread-list .thread-item').each(function () {
+                    const match = $(this).find('.ai-thread-item-title').text().toLocaleLowerCase().includes(query);
+                    $(this).prop('hidden', !match);
+                    if (match) visible++;
+                });
+                $('#thread-search-empty').prop('hidden', !query || visible > 0);
+            }
+            $('#thread-search').on('input', filterThreads);
+            $(document).on('click', '#btn-retry-threads', loadThreads);
+
             // Load available threads on boot
             function loadThreads() {
                 $.ajax({
@@ -225,21 +263,33 @@
                     success: function (res) {
                         const list = $('#thread-list');
                         list.empty();
+                        $('#thread-count').text(res.threads?.length || '');
+                        $('#thread-search-empty').prop('hidden', true);
                         if (!res.threads || res.threads.length === 0) {
-                            list.html('<div class="text-center text-muted py-3 small">No previous sessions.</div>');
+                            list.html('<div class="text-center text-muted py-3 small">Your conversations will appear here.</div>');
                             return;
                         }
+                        $('#thread-count').text(res.threads.length);
                         res.threads.forEach(function (th) {
-                            const activeClass = (th.id === currentThreadId) ? 'active' : '';
-                            const item = $('<a href="#" class="list-group-item list-group-item-action py-2 px-2 thread-item ' + activeClass + '" data-id="' + th.id + '">' +
-                                '<div class="font-weight-bold text-truncate ai-thread-item-title">' + $('<div>').text(th.title).html() + '</div>' +
-                                '<small class="text-muted ai-thread-item-time">' + th.updated_at + '</small>' +
-                                '</a>');
+                            const active = th.id === currentThreadId;
+                            const item = $('<button type="button" class="thread-item"></button>')
+                                .attr({ 'data-id': th.id, 'aria-current': active ? 'true' : 'false', title: th.title })
+                                .toggleClass('active', active)
+                                .append($('<span class="ai-thread-item-title"></span>').text(th.title))
+                                .append($('<span class="ai-thread-item-time"></span>').text(th.updated_at));
                             list.append(item);
                         });
+                        filterThreads();
+
+                        // Auto-restore active session across refreshes
+                        const savedThreadId = sessionStorage.getItem('ai_active_thread');
+                        if (!currentThreadId && res.threads.length > 0) {
+                            const targetId = (savedThreadId && res.threads.some(function(t) { return t.id === savedThreadId; })) ? savedThreadId : res.threads[0].id;
+                            $('#thread-list .thread-item[data-id="' + targetId + '"]').trigger('click');
+                        }
                     },
                     error: function () {
-                        $('#thread-list').html('<div class="text-center text-danger py-2 small">Failed to load sessions.</div>');
+                        $('#thread-list').html('<div class="ai-history-error" role="status">Could not load conversations.<br><button id="btn-retry-threads" class="btn btn-sm btn-outline-secondary" type="button">Try again</button></div>');
                     }
                 });
             }
@@ -248,24 +298,27 @@
             $('#btn-new-thread').on('click', function () {
                 if (sending || loadingHistory) return;
                 currentThreadId = null;
-                $('#active-thread-title').text('New Conversation');
-                $('#thread-list .thread-item').removeClass('active');
-                $('#chat-messages').html('<div class="ai-welcome-box p-4 text-center my-auto">' +
-                    '<h5 class="font-weight-bold">New Session Started</h5>' +
-                    '<p class="text-muted small">Ask an authoritative accounting or receivables question.</p>' +
-                    '</div>');
+                sessionStorage.removeItem('ai_active_thread');
+                $('#active-thread-title').text('New conversation');
+                $('#thread-list .thread-item').removeClass('active').attr('aria-current', 'false');
+                $('#chat-messages').html(welcomeMarkup);
+                closeHistory();
+                $('#chat-input')[0].focus({ preventScroll: true });
             });
 
             $(document).on('click', '.thread-item', function (e) {
                 e.preventDefault();
                 if (sending || loadingHistory) return;
                 loadingHistory = true;
+                closeHistory();
+                $('#chat-messages').attr('aria-busy', 'true');
                 const id = $(this).data('id');
                 currentThreadId = id;
-                $('#thread-list .thread-item').removeClass('active');
-                $(this).addClass('active');
+                sessionStorage.setItem('ai_active_thread', id);
+                $('#thread-list .thread-item').removeClass('active').attr('aria-current', 'false');
+                $(this).addClass('active').attr('aria-current', 'true');
 
-                $('#active-thread-title').text($(this).find('.font-weight-bold').text());
+                $('#active-thread-title').text($(this).find('.ai-thread-item-title').text());
                 $('#chat-messages').html('<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm"></span> Loading history...</div>');
 
                 $.ajax({
@@ -279,7 +332,7 @@
                                 appendMessage(msg.role, msg.content, msg.sources, msg.warnings, msg.facts);
                             });
                         } else {
-                            $('#chat-messages').html('<div class="text-center text-muted py-3 small">No messages in this session.</div>');
+                            $('#chat-messages').html(welcomeMarkup);
                         }
                     },
                     error: function () {
@@ -287,6 +340,7 @@
                     },
                     complete: function () {
                         loadingHistory = false;
+                        $('#chat-messages').attr('aria-busy', 'false');
                     }
                 });
             });
@@ -294,19 +348,22 @@
             // Prompt Suggestions
             $(document).on('click', '.prompt-suggestion', function () {
                 const text = $(this).data('prompt');
-                $('#chat-input').val(text).focus();
-                $('#char-counter').text(text.length + ' / 4000');
+                $('#chat-input').val(text);
+                $('#chat-input')[0].focus({ preventScroll: true });
+                $('#chat-input').trigger('input');
             });
 
             // Char counter
             $('#chat-input').on('input', function () {
                 const len = $(this).val().length;
                 $('#char-counter').text(len + ' / 4000');
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 144) + 'px';
             });
 
             // Send on Enter
             $('#chat-input').on('keydown', function (e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.originalEvent?.isComposing) {
                     e.preventDefault();
                     $('#chat-form').submit();
                 }
@@ -342,12 +399,58 @@
                 }
             }
 
+            function appendReceiptCardToChat(refNo, details, pdfUrl, resType, currencySymbol) {
+                $('.ai-welcome-box').remove();
+                const container = $('<div class="ai-message ai-message-assistant mt-3"></div>');
+                container.append($('<div class="ai-message-label">zoloERP Copilot</div>'));
+                const bubble = $('<div class="chat-bubble chat-assistant"></div>');
+
+                const isPurchase = (resType === 'purchase_order' || resType === 'purchase');
+                const titleText = isPurchase ? 'Purchase Order Receipt' : 'Sales Order Receipt';
+                const textDiv = $('<div class="markdown-body"></div>').html(
+                    '<p><i class="dripicons-checkmark text-success mr-1"></i> <strong>' + titleText + ' (' + $('<div>').text(refNo).html() + ')</strong> has been successfully booked in the ERP register. Your official print receipt is ready below.</p>'
+                );
+                bubble.append(textDiv);
+
+                const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
+                cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-document text-primary mr-1"></i> Official Receipt · ' + $('<div>').text(refNo).html() + '</span>'));
+                cardHeader.append($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Booked in ERP</span>'));
+                card.append(cardHeader);
+
+                const cardBody = $('<div class="card-body p-3 bg-white"></div>');
+                const partyName = details?.supplier_name || details?.customer_name || 'Authorized Party';
+                const grandTotal = details?.grand_total || '0.00';
+                cardBody.append('<div class="row no-gutters mb-2 ai-diff-row">' +
+                    '<div class="col-6">Party: <strong>' + $('<div>').text(partyName).html() + '</strong></div>' +
+                    '<div class="col-6 text-right">Status: <strong class="text-success">Booked &amp; Allocated</strong></div>' +
+                    '</div>');
+
+                const cardFooter = $('<div class="d-flex justify-content-between align-items-center font-weight-bold text-dark border-top pt-2"></div>');
+                cardFooter.append($('<span></span>').text('Grand Total: ' + currencySymbol + grandTotal));
+
+                const actions = $('<div class="d-flex align-items-center"></div>');
+                if (pdfUrl) {
+                    actions.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
+                    actions.append($('<a class="btn btn-sm btn-primary py-1 px-2" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
+                }
+                cardFooter.append(actions);
+                cardBody.append(cardFooter);
+                card.append(cardBody);
+                bubble.append(card);
+
+                container.append(bubble);
+                $('#chat-messages').append(container);
+                scrollToBottom();
+            }
+
             // Append Message helper
             function appendMessage(role, text, sources, warnings, facts) {
                 $('.ai-welcome-box').remove();
                 const isUser = (role === 'user');
-                const container = $('<div class="d-flex mb-3 ' + (isUser ? 'justify-content-end' : 'justify-content-start') + '"></div>');
-                const bubble = $('<div class="chat-bubble ' + (isUser ? 'chat-user' : 'chat-assistant shadow-sm') + '"></div>');
+                const container = $('<div class="ai-message ' + (isUser ? 'ai-message-user' : 'ai-message-assistant') + '"></div>');
+                container.append($('<div class="ai-message-label"></div>').text(isUser ? 'You' : 'zoloERP Copilot'));
+                const bubble = $('<div class="chat-bubble ' + (isUser ? 'chat-user' : 'chat-assistant') + '"></div>');
 
                 if (isUser) {
                     const textDiv = $('<div></div>').text(text);
@@ -359,7 +462,7 @@
 
                 (facts || []).forEach(function (fact) {
                     const data = fact.data || {};
-                    const currencySymbol = (data.currency === 'INR') ? '₹' : (data.currency + ' ');
+                    const currencySymbol = (data.currency === 'INR' || !data.currency) ? '₹' : (data.currency + ' ');
 
                     if (fact.tool === 'receivables.outstanding.v1') {
                         const isReconciled = data.reconciliation?.is_reconciled;
@@ -812,10 +915,15 @@
                             '<div class="col-6">Party: <strong>' + $('<div>').text(data.party?.name || '').html() + '</strong></div>' +
                             '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
                             '</div>');
-                        const footer = $('<div class="d-flex justify-content-between font-weight-bold text-dark border-top pt-2"></div>');
+                        const footer = $('<div class="d-flex justify-content-between align-items-center font-weight-bold text-dark border-top pt-2"></div>');
                         footer.append($('<span></span>').text('Grand Total: ' + currencySymbol + (data.grand_total || '0.00')));
-                        const href = erpHref(data.view_link);
-                        if (href) footer.append($('<a target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary py-0 px-2">Open Document ↗</a>').attr('href', href));
+                        const docPdfUrl = data.pdf_url || (data.id ? aiBaseUrl + '/documents/' + (data.document_type === 'purchase_order' ? 'purchase' : 'sale') + '/' + data.id + '/pdf' : null);
+                        const actionGroup = $('<div class="d-flex align-items-center"></div>');
+                        if (docPdfUrl) {
+                            actionGroup.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', docPdfUrl).attr('data-title', data.reference_no || 'Document'));
+                            actionGroup.append($('<a class="btn btn-sm btn-primary py-1 px-2" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF</a>').attr('href', docPdfUrl));
+                        }
+                        footer.append(actionGroup);
                         cardBody.append(footer);
                         card.append(cardBody);
                         bubble.append(card);
@@ -840,10 +948,10 @@
                         }
                         card.append(cardBody);
                         bubble.append(card);
-                    } else if (fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1') {
+                    } else if (data.proposal_id || fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1') {
                         const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
                         const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
-                        cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-cart text-primary mr-1"></i> Purchase Order Proposal · ' + $('<div>').text(data.supplier?.name || 'Supplier').html() + '</span>'));
+                        cardHeader.append($('<span class="font-weight-bold text-dark small"></span>').text((data.document_type || 'ERP Action') + ' Proposal · ' + (data.supplier?.name || data.customer?.name || data.customer_name || data.action_key || 'Review')));
                         cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Requires Approval</span>'));
                         card.append(cardHeader);
 
@@ -868,7 +976,7 @@
                                 const tr = $('<tr></tr>');
                                 tr.append($('<td></td>').append($('<div class="font-weight-bold"></div>').text(item.product_name || item.product_code || 'Product')).append($('<small class="text-muted"></small>').text(item.product_code || '')));
                                 tr.append($('<td class="text-right"></td>').text(item.qty));
-                                tr.append($('<td class="text-right"></td>').text(currencySymbol + item.net_unit_cost));
+                                tr.append($('<td class="text-right"></td>').text(currencySymbol + (item.net_unit_cost ?? item.net_unit_price ?? item.cost ?? '')));
                                 tr.append($('<td class="text-right font-weight-bold"></td>').text(currencySymbol + (item.line_total || item.total || '0.00')));
                                 tbody.append(tr);
                             });
@@ -887,8 +995,11 @@
                         footer.append(totalsRow);
 
                         if (data.proposal_id) {
-                            const actionRow = $('<div class="d-flex justify-content-end align-items-center mt-2 pt-2 border-top"></div>');
-                            const btnApprove = $('<button type="button" class="btn btn-sm btn-success mr-2 py-1 px-3"><i class="dripicons-checkmark mr-1"></i>Approve & Place Order</button>');
+                            const actionRow = $('<div class="d-flex justify-content-end align-items-center mt-2 pt-2 border-top flex-wrap"></div>');
+                            const btnDraftPdf = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-2 btn-preview-pdf" title="View draft receipt PDF in chat"><i class="dripicons-document mr-1"></i>Draft PDF</button>')
+                                .attr('data-pdf-url', aiBaseUrl + '/proposals/' + data.proposal_id + '/pdf')
+                                .attr('data-title', (data.document_type || 'Draft') + ' - ' + data.proposal_id.substring(0, 8));
+                            const btnApprove = $('<button type="button" class="btn btn-sm btn-success mr-2 py-1 px-3">Approve & Execute</button>');
                             const btnReject = $('<button type="button" class="btn btn-sm btn-outline-danger py-1 px-3"><i class="dripicons-cross mr-1"></i>Reject</button>');
 
                             btnApprove.on('click', function () {
@@ -900,12 +1011,43 @@
                                     headers: headers,
                                     data: JSON.stringify({ expected_version: data.version || 1 }),
                                     success: function (res) {
-                                        actionRow.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>Order Placed: PO #' + (res.execution?.receipt?.details?.reference_no || res.proposal_id) + '</span>');
+                                        if (res.status === 'queued') {
+                                            actionRow.empty().append($('<span role="status" class="badge badge-info p-2"></span>').text('Approved. Execution queued. View Action Review for progress.'));
+                                        } else if (res.status === 'completed') {
+                                            const receipt = res.execution?.receipt || {};
+                                            const refNo = receipt.details?.reference_no || receipt.resource_id || res.proposal_id;
+                                            const resType = receipt.resource_type;
+                                            const resId = receipt.resource_id || receipt.details?.purchase_id || receipt.details?.sale_id;
+                                            let pdfUrl = null;
+                                            if (resId && (resType === 'purchase_order' || resType === 'purchase')) {
+                                                pdfUrl = aiBaseUrl + '/documents/purchase/' + resId + '/pdf';
+                                            } else if (resId && (resType === 'sales_order' || resType === 'sale')) {
+                                                pdfUrl = aiBaseUrl + '/documents/sale/' + resId + '/pdf';
+                                            } else if (data.proposal_id) {
+                                                pdfUrl = aiBaseUrl + '/proposals/' + data.proposal_id + '/pdf';
+                                            }
+                                            const successContainer = $('<div class="d-flex align-items-center flex-wrap"></div>');
+                                            successContainer.append($('<span role="status" class="badge badge-success p-2 mr-2 mb-1"></span>').html('<i class="dripicons-checkmark mr-1"></i>Booked: <strong>' + $('<div>').text(refNo).html() + '</strong>'));
+                                            if (pdfUrl) {
+                                                successContainer.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 mb-1 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
+                                                successContainer.append($('<a class="btn btn-sm btn-primary py-1 px-2 mb-1" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
+                                            }
+                                            actionRow.empty().append(successContainer);
+
+                                            // Append authoritative receipt directly back into the conversation!
+                                            appendReceiptCardToChat(refNo, receipt.details, pdfUrl, resType, currencySymbol);
+                                        } else {
+                                            actionRow.empty().append($('<span role="status" class="badge badge-success p-2"></span>').text('Approved. Execution is disabled.'));
+                                        }
                                     },
                                     error: function (xhr) {
-                                        btnApprove.prop('disabled', false).text('Approve & Place Order');
+                                        btnApprove.prop('disabled', false).text('Approve & Execute');
                                         btnReject.prop('disabled', false);
-                                        alert('Approval failed: ' + (xhr.responseJSON?.error_message || 'Unexpected error'));
+                                        const errMsg = xhr.responseJSON?.message 
+                                            || xhr.responseJSON?.error_message 
+                                            || (xhr.responseJSON?.errors ? Object.values(xhr.responseJSON.errors).flat().join(' ') : null)
+                                            || 'Unexpected error';
+                                        alert('Approval failed: ' + errMsg);
                                     }
                                 });
                             });
@@ -924,12 +1066,16 @@
                                     error: function (xhr) {
                                         btnApprove.prop('disabled', false);
                                         btnReject.prop('disabled', false).text('Reject');
-                                        alert('Rejection failed: ' + (xhr.responseJSON?.error_message || 'Unexpected error'));
+                                        const errMsg = xhr.responseJSON?.message 
+                                            || xhr.responseJSON?.error_message 
+                                            || (xhr.responseJSON?.errors ? Object.values(xhr.responseJSON.errors).flat().join(' ') : null)
+                                            || 'Unexpected error';
+                                        alert('Rejection failed: ' + errMsg);
                                     }
                                 });
                             });
 
-                            actionRow.append(btnApprove).append(btnReject);
+                            actionRow.append(btnDraftPdf).append(btnApprove).append(btnReject);
                             footer.append(actionRow);
                         }
 
@@ -944,6 +1090,7 @@
                         cardHeader.append($('<span class="font-weight-bold text-dark small"><i class="dripicons-question text-warning mr-1"></i> Details Required for Proposal · Task #' + $('<div>').text(taskIdShort).html() + '</span>'));
                         const revBadge = $('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Collecting Inputs (Rev <span class="ai-rev-badge">' + currentTaskRevision + '</span>)</span>');
                         cardHeader.append(revBadge);
+                        card.append(cardHeader);
 
                         function updateTaskRevision(newRev) {
                             currentTaskRevision = parseInt(newRev, 10);
@@ -994,9 +1141,9 @@
                                     const optCreate = issue.resolution_options.find(function (o) { return o.key === 'create_new'; });
                                     const optCorrect = issue.resolution_options.find(function (o) { return o.key === 'correct_name'; });
 
-                                    const btnSelect = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-1 mb-1 ai-triad-btn"><i class="dripicons-search mr-1"></i>' + $('<div>').text(optSelect ? optSelect.label : 'Select existing').html() + '</button>');
-                                    const btnCreate = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-1 mb-1 ai-triad-btn"><i class="dripicons-plus mr-1"></i>' + $('<div>').text(optCreate ? optCreate.label : 'Create new').html() + '</button>');
-                                    const btnCorrect = $('<button type="button" class="btn btn-sm btn-outline-secondary mb-1 ai-triad-btn"><i class="dripicons-pencil mr-1"></i>' + $('<div>').text(optCorrect ? optCorrect.label : 'Correct name').html() + '</button>');
+                                    const btnSelect = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-1 mb-1 ai-triad-btn"><i class="dripicons-search mr-1" aria-hidden="true"></i>' + $('<div>').text(optSelect?.label || 'Select existing').html() + '</button>');
+                                    const btnCreate = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-1 mb-1 ai-triad-btn"><i class="dripicons-plus mr-1" aria-hidden="true"></i>' + $('<div>').text(optCreate?.label || 'Create new').html() + '</button>');
+                                    const btnCorrect = $('<button type="button" class="btn btn-sm btn-outline-secondary mb-1 ai-triad-btn"><i class="dripicons-pencil mr-1" aria-hidden="true"></i>' + $('<div>').text(optCorrect?.label || 'Correct name').html() + '</button>');
 
                                     if (optCreate && !optCreate.can_create) {
                                         btnCreate.prop('disabled', true).addClass('disabled').attr('title', optCreate.disabled_reason || 'Permission denied');
@@ -1006,7 +1153,8 @@
                                     issueBox.append(triadContainer).append(triadPanel);
 
                                     function switchTriadMode(mode) {
-                                        triadContainer.find('.ai-triad-btn').removeClass('active btn-dark text-white').addClass('btn-outline-secondary');
+                                        triadContainer.find('.ai-triad-btn').removeClass('active btn-dark text-white').addClass('btn-outline-secondary').attr('aria-pressed', 'false');
+                                        ({ select_existing: btnSelect, create_new: btnCreate, correct_name: btnCorrect })[mode]?.attr('aria-pressed', 'true');
                                         triadPanel.empty();
 
                                         if (mode === 'select_existing') {
@@ -1093,6 +1241,17 @@
                                                             });
                                                             formBody.append($('<div class="form-group mb-1"><label>Category</label></div>').append(catSelect));
                                                         }
+
+                                                        if (defs.tax_categories && defs.tax_categories.length > 0) {
+                                                            const taxSelect = $('<select class="form-control form-control-sm mf-tax-category"></select>');
+                                                            defs.tax_categories.forEach(function (tc) {
+                                                                const isSel = (pre.tax_category_id && pre.tax_category_id === tc.id) ? ' selected' : '';
+                                                                taxSelect.append('<option value="' + tc.id + '"' + isSel + '>' + $('<div>').text(tc.name).html() + '</option>');
+                                                            });
+                                                            formBody.append($('<div class="form-group mb-1"><label>GST Rate / Tax Category *</label></div>').append(taxSelect));
+                                                        }
+
+                                                        formBody.append('<div class="form-group mb-1"><label>HSN Code</label><input type="text" class="form-control form-control-sm mf-hsn" value="' + $('<div>').text(pre.hsn_code || '').html() + '" placeholder="e.g. 5208"></div>');
                                                     } else if (spawnRes.entity_type === 'warehouse') {
                                                         formBody.append('<div class="form-group mb-1"><label>Warehouse Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Warehouse Name"></div>');
                                                         formBody.append('<div class="form-group mb-1"><label>Phone</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
@@ -1128,6 +1287,12 @@
                                                             masterData.price = formBody.find('.mf-price').val() ? parseFloat(formBody.find('.mf-price').val()) : 0;
                                                             if (formBody.find('.mf-category').val()) {
                                                                 masterData.category_id = parseInt(formBody.find('.mf-category').val(), 10);
+                                                            }
+                                                            if (formBody.find('.mf-tax-category').val()) {
+                                                                masterData.tax_category_id = parseInt(formBody.find('.mf-tax-category').val(), 10);
+                                                            }
+                                                            if (formBody.find('.mf-hsn').val()) {
+                                                                masterData.hsn_code = formBody.find('.mf-hsn').val().trim();
                                                             }
                                                         } else if (spawnRes.entity_type === 'warehouse') {
                                                             masterData.phone = formBody.find('.mf-phone').val() || null;
@@ -1449,12 +1614,15 @@
                 sending = true;
 
                 appendMessage('user', message);
-                input.val('');
+                input.val('').trigger('input');
                 $('#char-counter').text('0 / 4000');
 
                 // Loading state
                 $('#btn-send-text').hide();
-                $('#btn-send-spinner').show();
+                $('#btn-send-spinner').prop('hidden', false);
+                $('#ai-response-status').text('Checking your request…');
+                $('#chat-messages').attr('aria-busy', 'true').append('<div id="ai-thinking" class="ai-message ai-thinking"><span><span class="spinner-border spinner-border-sm mr-2" aria-hidden="true"></span>Working on your request…</span></div>');
+                $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
                 $('#btn-send').prop('disabled', true);
 
                 $.ajax({
@@ -1468,11 +1636,12 @@
                     success: function (res) {
                         if (res.thread_id && !currentThreadId) {
                             currentThreadId = res.thread_id;
+                            sessionStorage.setItem('ai_active_thread', currentThreadId);
                             loadThreads();
                         }
 
+                        $('#ai-thinking').remove();
                         appendMessage('assistant', res.message, res.sources, res.warnings, res.facts);
-                        loadTelemetry();
                     },
                     error: function (xhr) {
                         let err = {};
@@ -1506,75 +1675,97 @@
                             errCode = 'AI_ERROR';
                         }
 
+                        $('#ai-thinking').remove();
                         appendMessage('assistant', '[' + errCode + '] ' + errMsg);
                     },
                     complete: function () {
                         sending = false;
                         $('#btn-send-text').show();
-                        $('#btn-send-spinner').hide();
+                        $('#btn-send-spinner').prop('hidden', true);
+                        $('#ai-thinking').remove();
+                        $('#chat-messages').attr('aria-busy', 'false');
+                        $('#ai-response-status').text('Connected to your ERP');
+                        if (!$('#ai-telemetry-panel').prop('hidden')) loadTelemetry();
                         $('#btn-send').prop('disabled', false);
                     }
                 });
             });
 
-            // Admin Telemetry & Monitoring
+            // Provider limits describe a shared HTTP dispatch bucket, not chat messages.
+            let telemetryLoading = false;
             function loadTelemetry() {
-                if (!@json($isAdmin ?? false)) return;
+                if (!@json($isAdmin ?? false) || telemetryLoading) return;
+                telemetryLoading = true;
+                $('#btn-refresh-telemetry').prop('disabled', true);
+                $('#telemetry-updated').text('Refreshing…');
                 $.ajax({
                     url: '{{ route("ai.monitoring") }}',
                     method: 'GET',
                     headers: headers,
                     success: function (res) {
-                        if (!res || !res.rpm) return;
+                        if (!res?.rpm) {
+                            $('#telemetry-updated').text('Usage unavailable. Try refreshing.');
+                            return;
+                        }
                         const rpm = res.rpm;
-                        const badge = $('#telemetry-rpm-badge');
-                        const headerBadge = $('#header-rpm-badge');
-                        const text = rpm.current + ' / ' + rpm.limit;
-                        badge.text(text);
-                        if (headerBadge.length) {
-                            headerBadge.text('RPM: ' + text);
-                        }
-
-                        badge.removeClass('badge-success badge-warning badge-danger');
-                        if (headerBadge.length) {
-                            headerBadge.removeClass('badge-success badge-warning badge-danger');
-                        }
-                        if (rpm.status === 'limited') {
-                            badge.addClass('badge-danger');
-                            if (headerBadge.length) headerBadge.addClass('badge-danger');
-                            $('#telemetry-rpm-status').text('Rate Limited!').addClass('text-danger').removeClass('text-muted');
-                        } else if (rpm.status === 'warning') {
-                            badge.addClass('badge-warning');
-                            if (headerBadge.length) headerBadge.addClass('badge-warning');
-                            $('#telemetry-rpm-status').text('High Usage').addClass('text-warning').removeClass('text-muted');
-                        } else {
-                            badge.addClass('badge-success');
-                            if (headerBadge.length) headerBadge.addClass('badge-success');
-                            $('#telemetry-rpm-status').text('Healthy').addClass('text-muted').removeClass('text-danger text-warning');
-                        }
-
+                        const limited = rpm.limit > 0;
+                        $('#telemetry-rpm-badge').text(limited ? rpm.current + ' / ' + rpm.limit : 'No limit');
+                        $('#telemetry-provider').text(rpm.provider);
+                        $('#telemetry-rpm-status').text(!limited ? 'Provider limiter disabled' : {
+                            limited: 'Limit reached', warning: 'Approaching limit', healthy: 'Within limit'
+                        }[rpm.status] || 'Status unavailable');
+                        $('#telemetry-rpm-fill').css('width', (limited ? Math.min(100, Math.max(0, rpm.current / rpm.limit * 100)) : 0) + '%')
+                            .toggleClass('is-warning', rpm.status === 'warning').toggleClass('is-limited', rpm.status === 'limited');
+                        $('#telemetry-reset').text(limited ? 'Current ' + (rpm.window_seconds || 60) + '-second window. ' +
+                            (rpm.reset_in_seconds > 0 ? 'Resets in ' + rpm.reset_in_seconds + 's at this refresh.' : 'No active window.') : '');
                         if (res.today) {
-                            $('#telemetry-model-calls').text(res.today.model_invocations || 0);
-                            $('#telemetry-tool-calls').text(res.today.erp_tool_calls || 0);
-                            $('#telemetry-tokens-used').text((res.today.total_tokens || 0).toLocaleString());
-                            $('#telemetry-token-limit').text((res.today.daily_token_limit || 100000).toLocaleString());
+                            $('#telemetry-model-calls').text(res.today.model_invocations.toLocaleString());
+                            $('#telemetry-tool-calls').text(res.today.erp_tool_calls.toLocaleString());
+                            $('#telemetry-tokens-used').text(res.today.total_tokens.toLocaleString());
+                            $('#telemetry-token-limit').text(res.today.daily_token_limit.toLocaleString());
                         }
+                        $('#telemetry-updated').text('Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+                    },
+                    error: function () {
+                        $('#telemetry-updated').text('Refresh failed. Previous values may be out of date.');
+                    },
+                    complete: function () {
+                        telemetryLoading = false;
+                        $('#btn-refresh-telemetry').prop('disabled', false);
                     }
                 });
             }
-
             $('#btn-toggle-telemetry').on('click', function () {
-                $('#ai-telemetry-panel').slideToggle(150);
-                loadTelemetry();
+                const open = $('#ai-telemetry-panel').prop('hidden');
+                $('#ai-telemetry-panel').prop('hidden', !open);
+                $(this).attr('aria-expanded', String(open));
+                if (open) loadTelemetry();
+            });
+            $('#btn-refresh-telemetry').on('click', loadTelemetry);
+            if (@json($isAdmin ?? false)) {
+                window.setInterval(function () {
+                    if (!document.hidden && !$('#ai-telemetry-panel').prop('hidden')) loadTelemetry();
+                }, 15000);
+            }
+
+            // In-Chat PDF Preview modal handler
+            $(document).on('click', '.btn-preview-pdf', function (e) {
+                e.preventDefault();
+                const pdfUrl = $(this).attr('data-pdf-url') || $(this).data('pdf-url');
+                const title = $(this).attr('data-title') || $(this).data('title') || 'Receipt';
+                if (!pdfUrl) return;
+                $('#ai-pdf-modal-title').html('<i class="dripicons-document mr-1 text-primary"></i> Receipt / Voucher: <strong>' + $('<div>').text(title).html() + '</strong>');
+                $('#ai-pdf-download-btn').attr('href', pdfUrl);
+                $('#ai-pdf-iframe').attr('src', pdfUrl);
+                $('#ai-pdf-preview-modal').modal('show');
             });
 
-            $('#btn-refresh-telemetry').on('click', function () {
-                loadTelemetry();
+            $('#ai-pdf-preview-modal').on('hidden.bs.modal', function () {
+                $('#ai-pdf-iframe').attr('src', '');
             });
 
             // Boot
             loadThreads();
-            loadTelemetry();
 
         })(jQuery);
     </script>
