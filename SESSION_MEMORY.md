@@ -1,3 +1,67 @@
+## AI Workspace Extraction UI & Form Submission Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Issues Resolved:**
+  1. **Critical — Unresolved Merge-Conflict Remnants & Blade BOM:**
+     - Verified and confirmed zero merge conflict remnants (`<<<<<<<`, `=======`, `>>>>>>>`) across all Blade views and client scripts.
+     - Stripped UTF-8 Byte Order Mark (`\xef\xbb\xbf`) from `resources/views/backend/ai/workspace.blade.php`.
+     - Validated all `<script>` blocks in `workspace.blade.php` with Node VM (100% valid JS execution).
+  2. **Critical — Duplicate Chat Submission Handlers:**
+     - Established a single, authoritative submit handler: `$('#chat-form').off('submit').on('submit', ...)`.
+     - Keydown listener on `#chat-input` uses `$('#chat-input').off('keydown').on('keydown', ...)` ensuring Enter dispatches only via `#chat-form.submit()`.
+     - Routes cleanly between staged multimodal attachments (`submitStagedAttachment`) and standard text chat (`POST /ai/chat`).
+  3. **Critical — `_token` in Browser URL:**
+     - Form declared with `method="POST" action="javascript:void(0);" onsubmit="return false;"` to eliminate native GET submissions.
+     - Ensured all ancillary buttons (`btn-ai-attach-media`, `btn-ai-record-audio`, `btn-dictate`) have explicit `type="button"`.
+     - Added client JS startup sanitizer to strip any existing `?_token=...` query parameters from the address bar via `window.history.replaceState`.
+  4. **UI — Raw HTML Visible in User Messages:**
+     - Refactored `appendMessage` in `workspace.blade.php`: strips any accidental HTML tags from `text` before `.text()`.
+     - Added structured `attachments` parameter in `appendMessage`, rendering clean `.ai-attachment-chip` components with file icon, name, and formatted file size.
+     - Updated `submitStagedAttachment()` to pass `targetStaged` as a structured attachment object instead of concatenating raw HTML strings.
+  5. & 6. **UI — Clipped Product Names/Numbers & Large Unused Card Space:**
+     - Completely redesigned `renderExtractionCard` and `renderInvoiceEditor` in `public/js/ai-media-input.js` to match the target mockup (`media_1794636475790_42e57597.png`).
+     - Removed the rigid 2-column layout (`col-md-4` preview / `col-md-8` form) that cramped table columns into 330px and left massive dead whitespace.
+     - Document/audio preview is now housed in a collapsible drawer (`[Preview Document]`), giving 100% card width to the data table and fields.
+     - Added 3 compact KPI summary cards: `Subtotal`, `GST`, and `Total`.
+     - Clean View Mode table with right-aligned numbers and non-clipped product names; Edit Mode toggled on demand without horizontal clipping.
+     - Styled inline warning callout (`.ai-warning-callout`) for company mismatch and ERP checks.
+  7. **Workflow — Direct Purchase Bill Posting Restriction & PO Guidance:**
+     - Proactively renders the warning banner matching `media_1794636696414_5ae79b72.png`: *"Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (`purchase_order.create.v1`) instead."*
+     - For purchase bills, the primary action button is dynamically set to `Prepare Purchase Order`, which explicitly passes `action_key: 'purchase_order.create.v1'` to `handoff`, staging a draft PO proposal.
+     - Updated Copilot's contextual message to guide the user to prepare a Purchase Order.
+- **Verification Results:**
+  - `php artisan view:clear; php artisan optimize:clear`: clean.
+  - PHPUnit test suites (`tests/Feature/Ai/AiChatApiAndWorkspaceTest.php tests/Feature/Ai/Multimodal tests/Unit/Ai/Multimodal`): **53/53 tests passed (400 assertions, 0 errors, 0 failures)**.
+
+---
+
+## AI Workspace UI Cleanup & JavaScript Syntax Error Resolution (Merge Conflict Fix) — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Visual Glitch (`maxlength="4000" required>` rendered on screen):**
+     - In `resources/views/backend/ai/workspace.blade.php`, an old merge artifact had duplicated lines in the composer HTML (lines 184-188), leaving `maxlength="4000" required></textarea>` outside of any valid `<textarea>` element and duplicating `<div class="ai-composer-toolbar">` and `<span id="ai-response-status">`.
+     - The browser rendered `maxlength="4000" required>` as raw visible text right in the toolbar.
+  2. **Conversations Not Loading & Messages Not Sending:**
+     - The template had unresolved merge conflict markers (`<<<<<<< HEAD`, `=======`, and `>>>>>>> origin/feature/ai-multimodal-perception`) inside the client `<script>` block at lines 570, 579, 940, 2010, 2019, and 2105.
+     - In JavaScript, `=======` caused an unrecoverable `SyntaxError` on page load, completely preventing the workspace JavaScript from executing.
+     - As a result:
+       - `loadThreads()` was never called or failed immediately, leaving the sidebar stuck at *"Loading conversations..."*.
+       - The form submit handler for `#chat-form` was never bound, preventing messages from sending.
+  3. **File Encoding Issue:**
+     - The Blade view had inadvertently been saved with a UTF-16LE Byte Order Mark (BOM), which prevented Laravel Blade from properly evaluating and rendering the template.
+- **Fixes Delivered:**
+  1. Cleaned up `resources/views/backend/ai/workspace.blade.php` HTML structure:
+     - Removed the stray `maxlength="4000" required></textarea>` and duplicate toolbar elements.
+     - Removed `required` attribute from `#chat-input` textarea to cleanly support staged media attachments.
+  2. Stripped all merge conflict markers and restored clean, valid JavaScript execution across all tool card renderers (`receivables.outstanding.v1`, `customer.invoice_allocations.v1`, `sales.summary.v1`, `inventory.stock_summary.v1`).
+  3. Restored `window.zoloAiMedia.submitStagedAttachment()` integration inside the `#chat-form` submit handler so staged file uploads with user instructions dispatch seamlessly.
+  4. Converted `workspace.blade.php` to clean UTF-8 without BOM.
+  5. Cleared compiled views and caches via `php artisan view:clear; php artisan optimize:clear`.
+- **Verification Results:**
+  - `AiChatApiAndWorkspaceTest`: **24/24 tests passed (200 assertions)**.
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions)**.
+
+---
+
 ## Multimodal Document Classification, Model Attribution & Staged Attachment Workflow — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Issues Addressed:**
@@ -46,6 +110,70 @@
     - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
 - **Verification Results:**
   - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
+## AI Workspace Extraction UI & Form Submission Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Issues Resolved:**
+  1. **Critical — Unresolved Merge-Conflict Remnants & Blade BOM:**
+     - Verified and confirmed zero merge conflict remnants (`<<<<<<<`, `=======`, `>>>>>>>`) across all Blade views and client scripts.
+     - Stripped UTF-8 Byte Order Mark (`\xef\xbb\xbf`) from `resources/views/backend/ai/workspace.blade.php`.
+     - Validated all `<script>` blocks in `workspace.blade.php` with Node VM (100% valid JS execution).
+  2. **Critical — Duplicate Chat Submission Handlers:**
+     - Established a single, authoritative submit handler: `$('#chat-form').off('submit').on('submit', ...)`.
+     - Keydown listener on `#chat-input` uses `$('#chat-input').off('keydown').on('keydown', ...)` ensuring Enter dispatches only via `#chat-form.submit()`.
+     - Routes cleanly between staged multimodal attachments (`submitStagedAttachment`) and standard text chat (`POST /ai/chat`).
+  3. **Critical — `_token` in Browser URL:**
+     - Form declared with `method="POST" action="javascript:void(0);" onsubmit="return false;"` to eliminate native GET submissions.
+     - Ensured all ancillary buttons (`btn-ai-attach-media`, `btn-ai-record-audio`, `btn-dictate`) have explicit `type="button"`.
+     - Added client JS startup sanitizer to strip any existing `?_token=...` query parameters from the address bar via `window.history.replaceState`.
+  4. **UI — Raw HTML Visible in User Messages:**
+     - Refactored `appendMessage` in `workspace.blade.php`: strips any accidental HTML tags from `text` before `.text()`.
+     - Added structured `attachments` parameter in `appendMessage`, rendering clean `.ai-attachment-chip` components with file icon, name, and formatted file size.
+     - Updated `submitStagedAttachment()` to pass `targetStaged` as a structured attachment object instead of concatenating raw HTML strings.
+  5. & 6. **UI — Clipped Product Names/Numbers & Large Unused Card Space:**
+     - Completely redesigned `renderExtractionCard` and `renderInvoiceEditor` in `public/js/ai-media-input.js` to match the target mockup (`media_1794636475790_42e57597.png`).
+     - Removed the rigid 2-column layout (`col-md-4` preview / `col-md-8` form) that cramped table columns into 330px and left massive dead whitespace.
+     - Document/audio preview is now housed in a collapsible drawer (`[Preview Document]`), giving 100% card width to the data table and fields.
+     - Added 3 compact KPI summary cards: `Subtotal`, `GST`, and `Total`.
+     - Clean View Mode table with right-aligned numbers and non-clipped product names; Edit Mode toggled on demand without horizontal clipping.
+     - Styled inline warning callout (`.ai-warning-callout`) for company mismatch and ERP checks.
+  7. **Workflow — Direct Purchase Bill Posting Restriction & PO Guidance:**
+     - Proactively renders the warning banner matching `media_1794636696414_5ae79b72.png`: *"Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (`purchase_order.create.v1`) instead."*
+     - For purchase bills, the primary action button is dynamically set to `Prepare Purchase Order`, which explicitly passes `action_key: 'purchase_order.create.v1'` to `handoff`, staging a draft PO proposal.
+     - Updated Copilot's contextual message to guide the user to prepare a Purchase Order.
+- **Verification Results:**
+  - `php artisan view:clear; php artisan optimize:clear`: clean.
+  - PHPUnit test suites (`tests/Feature/Ai/AiChatApiAndWorkspaceTest.php tests/Feature/Ai/Multimodal tests/Unit/Ai/Multimodal`): **53/53 tests passed (400 assertions, 0 errors, 0 failures)**.
+
+---
+
+## AI Workspace UI Cleanup & JavaScript Syntax Error Resolution (Merge Conflict Fix) — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Visual Glitch (`maxlength="4000" required>` rendered on screen):**
+     - In `resources/views/backend/ai/workspace.blade.php`, an old merge artifact had duplicated lines in the composer HTML (lines 184-188), leaving `maxlength="4000" required></textarea>` outside of any valid `<textarea>` element and duplicating `<div class="ai-composer-toolbar">` and `<span id="ai-response-status">`.
+     - The browser rendered `maxlength="4000" required>` as raw visible text right in the toolbar.
+  2. **Conversations Not Loading & Messages Not Sending:**
+     - The template had unresolved merge conflict markers (`<<<<<<< HEAD`, `=======`, and `>>>>>>> origin/feature/ai-multimodal-perception`) inside the client `<script>` block at lines 570, 579, 940, 2010, 2019, and 2105.
+     - In JavaScript, `=======` caused an unrecoverable `SyntaxError` on page load, completely preventing the workspace JavaScript from executing.
+     - As a result:
+       - `loadThreads()` was never called or failed immediately, leaving the sidebar stuck at *"Loading conversations..."*.
+       - The form submit handler for `#chat-form` was never bound, preventing messages from sending.
+  3. **File Encoding Issue:**
+     - The Blade view had inadvertently been saved with a UTF-16LE Byte Order Mark (BOM), which prevented Laravel Blade from properly evaluating and rendering the template.
+- **Fixes Delivered:**
+  1. Cleaned up `resources/views/backend/ai/workspace.blade.php` HTML structure:
+     - Removed the stray `maxlength="4000" required></textarea>` and duplicate toolbar elements.
+     - Removed `required` attribute from `#chat-input` textarea to cleanly support staged media attachments.
+  2. Stripped all merge conflict markers and restored clean, valid JavaScript execution across all tool card renderers (`receivables.outstanding.v1`, `customer.invoice_allocations.v1`, `sales.summary.v1`, `inventory.stock_summary.v1`).
+  3. Restored `window.zoloAiMedia.submitStagedAttachment()` integration inside the `#chat-form` submit handler so staged file uploads with user instructions dispatch seamlessly.
+  4. Converted `workspace.blade.php` to clean UTF-8 without BOM.
+  5. Cleared compiled views and caches via `php artisan view:clear; php artisan optimize:clear`.
+- **Verification Results:**
+  - `AiChatApiAndWorkspaceTest`: **24/24 tests passed (200 assertions)**.
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions)**.
 
 ---
 
@@ -225,6 +353,70 @@
 
 ---
 
+## AI Workspace Extraction UI & Form Submission Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Issues Resolved:**
+  1. **Critical — Unresolved Merge-Conflict Remnants & Blade BOM:**
+     - Verified and confirmed zero merge conflict remnants (`<<<<<<<`, `=======`, `>>>>>>>`) across all Blade views and client scripts.
+     - Stripped UTF-8 Byte Order Mark (`\xef\xbb\xbf`) from `resources/views/backend/ai/workspace.blade.php`.
+     - Validated all `<script>` blocks in `workspace.blade.php` with Node VM (100% valid JS execution).
+  2. **Critical — Duplicate Chat Submission Handlers:**
+     - Established a single, authoritative submit handler: `$('#chat-form').off('submit').on('submit', ...)`.
+     - Keydown listener on `#chat-input` uses `$('#chat-input').off('keydown').on('keydown', ...)` ensuring Enter dispatches only via `#chat-form.submit()`.
+     - Routes cleanly between staged multimodal attachments (`submitStagedAttachment`) and standard text chat (`POST /ai/chat`).
+  3. **Critical — `_token` in Browser URL:**
+     - Form declared with `method="POST" action="javascript:void(0);" onsubmit="return false;"` to eliminate native GET submissions.
+     - Ensured all ancillary buttons (`btn-ai-attach-media`, `btn-ai-record-audio`, `btn-dictate`) have explicit `type="button"`.
+     - Added client JS startup sanitizer to strip any existing `?_token=...` query parameters from the address bar via `window.history.replaceState`.
+  4. **UI — Raw HTML Visible in User Messages:**
+     - Refactored `appendMessage` in `workspace.blade.php`: strips any accidental HTML tags from `text` before `.text()`.
+     - Added structured `attachments` parameter in `appendMessage`, rendering clean `.ai-attachment-chip` components with file icon, name, and formatted file size.
+     - Updated `submitStagedAttachment()` to pass `targetStaged` as a structured attachment object instead of concatenating raw HTML strings.
+  5. & 6. **UI — Clipped Product Names/Numbers & Large Unused Card Space:**
+     - Completely redesigned `renderExtractionCard` and `renderInvoiceEditor` in `public/js/ai-media-input.js` to match the target mockup (`media_1794636475790_42e57597.png`).
+     - Removed the rigid 2-column layout (`col-md-4` preview / `col-md-8` form) that cramped table columns into 330px and left massive dead whitespace.
+     - Document/audio preview is now housed in a collapsible drawer (`[Preview Document]`), giving 100% card width to the data table and fields.
+     - Added 3 compact KPI summary cards: `Subtotal`, `GST`, and `Total`.
+     - Clean View Mode table with right-aligned numbers and non-clipped product names; Edit Mode toggled on demand without horizontal clipping.
+     - Styled inline warning callout (`.ai-warning-callout`) for company mismatch and ERP checks.
+  7. **Workflow — Direct Purchase Bill Posting Restriction & PO Guidance:**
+     - Proactively renders the warning banner matching `media_1794636696414_5ae79b72.png`: *"Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (`purchase_order.create.v1`) instead."*
+     - For purchase bills, the primary action button is dynamically set to `Prepare Purchase Order`, which explicitly passes `action_key: 'purchase_order.create.v1'` to `handoff`, staging a draft PO proposal.
+     - Updated Copilot's contextual message to guide the user to prepare a Purchase Order.
+- **Verification Results:**
+  - `php artisan view:clear; php artisan optimize:clear`: clean.
+  - PHPUnit test suites (`tests/Feature/Ai/AiChatApiAndWorkspaceTest.php tests/Feature/Ai/Multimodal tests/Unit/Ai/Multimodal`): **53/53 tests passed (400 assertions, 0 errors, 0 failures)**.
+
+---
+
+## AI Workspace UI Cleanup & JavaScript Syntax Error Resolution (Merge Conflict Fix) — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Visual Glitch (`maxlength="4000" required>` rendered on screen):**
+     - In `resources/views/backend/ai/workspace.blade.php`, an old merge artifact had duplicated lines in the composer HTML (lines 184-188), leaving `maxlength="4000" required></textarea>` outside of any valid `<textarea>` element and duplicating `<div class="ai-composer-toolbar">` and `<span id="ai-response-status">`.
+     - The browser rendered `maxlength="4000" required>` as raw visible text right in the toolbar.
+  2. **Conversations Not Loading & Messages Not Sending:**
+     - The template had unresolved merge conflict markers (`<<<<<<< HEAD`, `=======`, and `>>>>>>> origin/feature/ai-multimodal-perception`) inside the client `<script>` block at lines 570, 579, 940, 2010, 2019, and 2105.
+     - In JavaScript, `=======` caused an unrecoverable `SyntaxError` on page load, completely preventing the workspace JavaScript from executing.
+     - As a result:
+       - `loadThreads()` was never called or failed immediately, leaving the sidebar stuck at *"Loading conversations..."*.
+       - The form submit handler for `#chat-form` was never bound, preventing messages from sending.
+  3. **File Encoding Issue:**
+     - The Blade view had inadvertently been saved with a UTF-16LE Byte Order Mark (BOM), which prevented Laravel Blade from properly evaluating and rendering the template.
+- **Fixes Delivered:**
+  1. Cleaned up `resources/views/backend/ai/workspace.blade.php` HTML structure:
+     - Removed the stray `maxlength="4000" required></textarea>` and duplicate toolbar elements.
+     - Removed `required` attribute from `#chat-input` textarea to cleanly support staged media attachments.
+  2. Stripped all merge conflict markers and restored clean, valid JavaScript execution across all tool card renderers (`receivables.outstanding.v1`, `customer.invoice_allocations.v1`, `sales.summary.v1`, `inventory.stock_summary.v1`).
+  3. Restored `window.zoloAiMedia.submitStagedAttachment()` integration inside the `#chat-form` submit handler so staged file uploads with user instructions dispatch seamlessly.
+  4. Converted `workspace.blade.php` to clean UTF-8 without BOM.
+  5. Cleared compiled views and caches via `php artisan view:clear; php artisan optimize:clear`.
+- **Verification Results:**
+  - `AiChatApiAndWorkspaceTest`: **24/24 tests passed (200 assertions)**.
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions)**.
+
+---
+
 ## Multimodal Document Classification, Model Attribution & Staged Attachment Workflow — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
 - **Scope & Issues Addressed:**
@@ -273,6 +465,70 @@
     - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
 - **Verification Results:**
   - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
+## AI Workspace Extraction UI & Form Submission Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Issues Resolved:**
+  1. **Critical — Unresolved Merge-Conflict Remnants & Blade BOM:**
+     - Verified and confirmed zero merge conflict remnants (`<<<<<<<`, `=======`, `>>>>>>>`) across all Blade views and client scripts.
+     - Stripped UTF-8 Byte Order Mark (`\xef\xbb\xbf`) from `resources/views/backend/ai/workspace.blade.php`.
+     - Validated all `<script>` blocks in `workspace.blade.php` with Node VM (100% valid JS execution).
+  2. **Critical — Duplicate Chat Submission Handlers:**
+     - Established a single, authoritative submit handler: `$('#chat-form').off('submit').on('submit', ...)`.
+     - Keydown listener on `#chat-input` uses `$('#chat-input').off('keydown').on('keydown', ...)` ensuring Enter dispatches only via `#chat-form.submit()`.
+     - Routes cleanly between staged multimodal attachments (`submitStagedAttachment`) and standard text chat (`POST /ai/chat`).
+  3. **Critical — `_token` in Browser URL:**
+     - Form declared with `method="POST" action="javascript:void(0);" onsubmit="return false;"` to eliminate native GET submissions.
+     - Ensured all ancillary buttons (`btn-ai-attach-media`, `btn-ai-record-audio`, `btn-dictate`) have explicit `type="button"`.
+     - Added client JS startup sanitizer to strip any existing `?_token=...` query parameters from the address bar via `window.history.replaceState`.
+  4. **UI — Raw HTML Visible in User Messages:**
+     - Refactored `appendMessage` in `workspace.blade.php`: strips any accidental HTML tags from `text` before `.text()`.
+     - Added structured `attachments` parameter in `appendMessage`, rendering clean `.ai-attachment-chip` components with file icon, name, and formatted file size.
+     - Updated `submitStagedAttachment()` to pass `targetStaged` as a structured attachment object instead of concatenating raw HTML strings.
+  5. & 6. **UI — Clipped Product Names/Numbers & Large Unused Card Space:**
+     - Completely redesigned `renderExtractionCard` and `renderInvoiceEditor` in `public/js/ai-media-input.js` to match the target mockup (`media_1794636475790_42e57597.png`).
+     - Removed the rigid 2-column layout (`col-md-4` preview / `col-md-8` form) that cramped table columns into 330px and left massive dead whitespace.
+     - Document/audio preview is now housed in a collapsible drawer (`[Preview Document]`), giving 100% card width to the data table and fields.
+     - Added 3 compact KPI summary cards: `Subtotal`, `GST`, and `Total`.
+     - Clean View Mode table with right-aligned numbers and non-clipped product names; Edit Mode toggled on demand without horizontal clipping.
+     - Styled inline warning callout (`.ai-warning-callout`) for company mismatch and ERP checks.
+  7. **Workflow — Direct Purchase Bill Posting Restriction & PO Guidance:**
+     - Proactively renders the warning banner matching `media_1794636696414_5ae79b72.png`: *"Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (`purchase_order.create.v1`) instead."*
+     - For purchase bills, the primary action button is dynamically set to `Prepare Purchase Order`, which explicitly passes `action_key: 'purchase_order.create.v1'` to `handoff`, staging a draft PO proposal.
+     - Updated Copilot's contextual message to guide the user to prepare a Purchase Order.
+- **Verification Results:**
+  - `php artisan view:clear; php artisan optimize:clear`: clean.
+  - PHPUnit test suites (`tests/Feature/Ai/AiChatApiAndWorkspaceTest.php tests/Feature/Ai/Multimodal tests/Unit/Ai/Multimodal`): **53/53 tests passed (400 assertions, 0 errors, 0 failures)**.
+
+---
+
+## AI Workspace UI Cleanup & JavaScript Syntax Error Resolution (Merge Conflict Fix) — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Visual Glitch (`maxlength="4000" required>` rendered on screen):**
+     - In `resources/views/backend/ai/workspace.blade.php`, an old merge artifact had duplicated lines in the composer HTML (lines 184-188), leaving `maxlength="4000" required></textarea>` outside of any valid `<textarea>` element and duplicating `<div class="ai-composer-toolbar">` and `<span id="ai-response-status">`.
+     - The browser rendered `maxlength="4000" required>` as raw visible text right in the toolbar.
+  2. **Conversations Not Loading & Messages Not Sending:**
+     - The template had unresolved merge conflict markers (`<<<<<<< HEAD`, `=======`, and `>>>>>>> origin/feature/ai-multimodal-perception`) inside the client `<script>` block at lines 570, 579, 940, 2010, 2019, and 2105.
+     - In JavaScript, `=======` caused an unrecoverable `SyntaxError` on page load, completely preventing the workspace JavaScript from executing.
+     - As a result:
+       - `loadThreads()` was never called or failed immediately, leaving the sidebar stuck at *"Loading conversations..."*.
+       - The form submit handler for `#chat-form` was never bound, preventing messages from sending.
+  3. **File Encoding Issue:**
+     - The Blade view had inadvertently been saved with a UTF-16LE Byte Order Mark (BOM), which prevented Laravel Blade from properly evaluating and rendering the template.
+- **Fixes Delivered:**
+  1. Cleaned up `resources/views/backend/ai/workspace.blade.php` HTML structure:
+     - Removed the stray `maxlength="4000" required></textarea>` and duplicate toolbar elements.
+     - Removed `required` attribute from `#chat-input` textarea to cleanly support staged media attachments.
+  2. Stripped all merge conflict markers and restored clean, valid JavaScript execution across all tool card renderers (`receivables.outstanding.v1`, `customer.invoice_allocations.v1`, `sales.summary.v1`, `inventory.stock_summary.v1`).
+  3. Restored `window.zoloAiMedia.submitStagedAttachment()` integration inside the `#chat-form` submit handler so staged file uploads with user instructions dispatch seamlessly.
+  4. Converted `workspace.blade.php` to clean UTF-8 without BOM.
+  5. Cleared compiled views and caches via `php artisan view:clear; php artisan optimize:clear`.
+- **Verification Results:**
+  - `AiChatApiAndWorkspaceTest`: **24/24 tests passed (200 assertions)**.
+  - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **29/29 tests passed (200 assertions)**.
 
 ---
 

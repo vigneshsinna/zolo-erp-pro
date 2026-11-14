@@ -48,3 +48,4 @@ final class CreateSalesOrderInputSchema implements ActionInputSchemaInterface
         ];
     }
 }
+

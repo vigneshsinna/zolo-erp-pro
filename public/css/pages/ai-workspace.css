@@ -484,5 +484,123 @@ body.dark-mode .ai-workspace-container .text-muted { color: var(--ai-muted) !imp
     border-color: #dc3545;
 }
 
+/* Compact Content-Driven Extraction Review Card */
+.ai-media-review-card {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+.ai-status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 9999px;
+    line-height: 1.2;
+}
+
+.ai-status-pill-awaiting {
+    background-color: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+.ai-status-pill-confirmed {
+    background-color: #d1fae5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+
+.ai-kpi-summary-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 0.85rem;
+    margin-bottom: 0.85rem;
+    flex-wrap: wrap;
+}
+
+.ai-kpi-card {
+    flex: 1 1 calc(33.333% - 8px);
+    min-width: 120px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.ai-kpi-label {
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.ai-kpi-val {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.ai-extraction-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.ai-extraction-table {
+    width: 100% !important;
+    margin-bottom: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.ai-extraction-table thead th {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px 12px;
+}
+
+.ai-extraction-table tbody td {
+    font-size: 0.875rem;
+    color: #1e293b;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 8px 12px;
+    vertical-align: middle;
+}
+
+.ai-extraction-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.ai-warning-callout {
+    background-color: #fffbeb;
+    border: 1px solid #fef3c7;
+    color: #b45309;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.ai-attachment-chip {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    color: #1e293b;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+
+
 
 

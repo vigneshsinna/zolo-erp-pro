@@ -50,7 +50,7 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                     }
                     $wh = Warehouse::where('company_id', $ctx->companyId())
                         ->where('is_active', true)
-                        ->when($ctx->branchId(), fn ($q) => $q->where('branch_id', $ctx->branchId()))
+                        ->when($ctx->branchId(), fn($q) => $q->where('branch_id', $ctx->branchId()))
                         ->first();
                     return $wh ? (int) $wh->id : null;
                 },
@@ -61,7 +61,7 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                 dataType: 'date',
                 inputControl: 'date',
                 helpText: 'Date of the sales order.',
-                defaultPolicy: fn (): string => now()->toDateString(),
+                defaultPolicy: fn(): string => now()->toDateString(),
             ),
             new ActionFieldRequirement(
                 fieldPath: 'delivery_date',
@@ -69,7 +69,7 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                 dataType: 'date',
                 inputControl: 'date',
                 helpText: 'Promised delivery date for the customer.',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'customer_reference_no',
@@ -77,7 +77,7 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                 dataType: 'string',
                 inputControl: 'text',
                 helpText: 'Customer PO number or reference.',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'items',
@@ -108,7 +108,7 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                         inputControl: 'number',
                         helpText: 'Agreed unit selling price or product master price.',
                         dependencies: ['product_id'],
-                        requiredWhen: fn (): bool => false, // Can default from product master price
+                        requiredWhen: fn(): bool => false, // Can default from product master price
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'sale_unit_id',
@@ -117,28 +117,28 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                         entityType: 'unit',
                         inputControl: 'entity_select',
                         dependencies: ['product_id'],
-                        requiredWhen: fn (): bool => false, // Can default from product sale_unit_id
+                        requiredWhen: fn(): bool => false, // Can default from product sale_unit_id
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'discount',
                         label: 'Line Discount',
                         dataType: 'decimal_string',
                         inputControl: 'number',
-                        requiredWhen: fn (): bool => false,
+                        requiredWhen: fn(): bool => false,
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'tax_rate',
                         label: 'Tax Rate Override',
                         dataType: 'decimal_string',
                         inputControl: 'number',
-                        requiredWhen: fn (): bool => false,
+                        requiredWhen: fn(): bool => false,
                     ),
                     new ActionFieldRequirement(
                         fieldPath: 'note',
                         label: 'Line Note',
                         dataType: 'string',
                         inputControl: 'text',
-                        requiredWhen: fn (): bool => false,
+                        requiredWhen: fn(): bool => false,
                     ),
                 ],
             ),
@@ -147,21 +147,21 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                 label: 'Order Discount',
                 dataType: 'decimal_string',
                 inputControl: 'number',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'shipping_cost',
                 label: 'Shipping / Freight Cost',
                 dataType: 'decimal_string',
                 inputControl: 'number',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'note',
                 label: 'Order Note / Reference',
                 dataType: 'string',
                 inputControl: 'text',
-                requiredWhen: fn (): bool => false,
+                requiredWhen: fn(): bool => false,
             ),
         ];
     }
@@ -222,3 +222,4 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
         return $errors;
     }
 }
+

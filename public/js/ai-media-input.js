@@ -258,8 +258,7 @@
         const promptText = companionText || (targetStaged.isAudio ? 'Analyze this voice instruction' : 'Extract and analyze ' + targetStaged.fileName);
 
         if (ws && ws.appendMessage) {
-            const badgeHtml = '<div class="mt-1 small text-muted"><i class="' + (targetStaged.isAudio ? 'dripicons-microphone' : 'dripicons-document') + ' mr-1"></i>Attached: <strong>' + escapeText(targetStaged.fileName) + '</strong> (' + formatFileSize(targetStaged.fileSize) + ')</div>';
-            ws.appendMessage('user', promptText + '\n' + badgeHtml);
+            ws.appendMessage('user', promptText, null, null, null, [targetStaged]);
         }
 
         const placeholderId = 'ai-media-loading-' + Date.now();
@@ -307,7 +306,12 @@
                     if (totalAmt) {
                         summaryMsg += ' totaling **' + escapeText(totalAmt) + '**';
                     }
-                    summaryMsg += ' using **' + escapeText(modelBadge) + '**.\n\nPlease review the extracted fields and line items above. Click **Confirm Extraction** to verify the data, then proceed to **Stage ERP Proposal**.';
+                    summaryMsg += ' using **' + escapeText(modelBadge) + '**.\n\n';
+                    if (ext.document_type === 'purchase_bill') {
+                        summaryMsg += '> **Notice:** Direct Purchase Bill posting from AI is restricted in zoloERP to safeguard accounting integrity. Please review the extracted bill above, then click **Prepare Purchase Order** to stage a draft Purchase Order (`purchase_order.create.v1`) for this vendor.';
+                    } else {
+                        summaryMsg += 'Please review the extracted fields and line items above. Click **Confirm Extraction** to verify the data, then proceed to **Stage ERP Proposal**.';
+                    }
 
                     if (ws && ws.appendMessage) {
                         ws.appendMessage('assistant', summaryMsg);
@@ -334,6 +338,13 @@
         });
     }
 
+    function formatCurrencyVal(val) {
+        if (val == null || val === '') return '—';
+        const num = Number(val);
+        if (isNaN(num)) return String(val);
+        return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
     function renderExtractionCard(media, extraction, companionText) {
         const ws = getWs();
         const container = $('<div class="d-flex mb-3 justify-content-start"></div>');
@@ -341,7 +352,7 @@
         const card = $('<div class="card border shadow-none ai-media-review-card" data-media-id="' + escapeText(media.id) + '"></div>');
 
         const isAudio = media.source_kind === 'audio';
-        const data = extraction.extracted || {};
+        let data = extraction.extracted || {};
         let currentRevision = Number(extraction.revision || 1);
         let confirmationStatus = extraction.confirmation_status || 'needs_review';
 
@@ -349,55 +360,74 @@
         const perceptionProvider = extraction.model_provider || 'nvidia';
         const perceptionDisplayName = formatModelDisplayName(perceptionModelKey, perceptionProvider);
 
-        const copilotModelKey = cfg.copilotModel || 'Nemotron 3.5 Lightning';
-        const copilotDisplayName = formatModelDisplayName(copilotModelKey, 'nvidia');
+        // Dynamic Document Title based on extraction classification
+        let docTypeTitle = 'Document Extraction Review';
+        if (isAudio) {
+            docTypeTitle = 'Voice Instruction Review';
+        } else if (data.document_type === 'purchase_bill') {
+            docTypeTitle = 'Purchase Bill Review';
+        } else if (data.document_type === 'purchase_order') {
+            docTypeTitle = 'Purchase Order Review';
+        } else if (data.document_type === 'sales_invoice') {
+            docTypeTitle = 'Sales Invoice Review';
+        } else if (data.document_type === 'sales_order') {
+            docTypeTitle = 'Sales Order Review';
+        }
 
-        const header = $('<div class="card-header bg-light py-2 px-3"></div>');
-        const topRow = $('<div class="d-flex justify-content-between align-items-center flex-wrap"></div>');
-        const titleSpan = $('<span class="font-weight-bold text-dark small"></span>')
-            .append($('<i></i>').addClass(isAudio ? 'dripicons-microphone text-primary mr-1' : 'dripicons-document text-primary mr-1'))
-            .append(document.createTextNode((isAudio ? 'Voice Transcript Review · ' : 'Document Extraction Review · ') + (media.file_name || 'Media')));
-        topRow.append(titleSpan);
+        const subtitleText = [
+            data.invoice_number,
+            data.supplier_name || data.buyer_name || data.party_name || media.file_name || 'Document'
+        ].filter(Boolean).join(' · ');
 
-        const badgeWrap = $('<div class="d-flex align-items-center"></div>');
-        const revBadge = $('<span class="badge badge-secondary mr-2 ai-rev-badge"></span>').text('Rev ' + currentRevision);
-        const statusBadge = $('<span class="badge ai-confirm-badge"></span>')
-            .addClass(confirmationStatus === 'confirmed' ? 'badge-success' : 'badge-warning')
-            .text(confirmationStatus === 'confirmed' ? 'User Confirmed (Draft Data)' : 'Needs Review · Unverified AI Claim');
-        badgeWrap.append(revBadge).append(statusBadge);
-        topRow.append(badgeWrap);
+        // Card Header (Title, Subtitle, Status Pill, Model Attribution)
+        const header = $('<div class="card-header bg-white py-3 px-3 border-bottom"></div>');
+        const topRow = $('<div class="d-flex justify-content-between align-items-start flex-wrap"></div>');
+        const titleWrap = $('<div></div>');
+        titleWrap.append($('<h5 class="font-weight-bold mb-1 text-dark"></h5>').text(docTypeTitle));
+        if (subtitleText) {
+            titleWrap.append($('<div class="text-muted small ai-card-subtitle"></div>').text(subtitleText));
+        }
+        topRow.append(titleWrap);
+
+        const statusBadge = $('<span class="ai-status-pill"></span>')
+            .addClass(confirmationStatus === 'confirmed' ? 'ai-status-pill-confirmed' : 'ai-status-pill-awaiting')
+            .text(confirmationStatus === 'confirmed' ? 'Confirmed' : 'Awaiting Review');
+        topRow.append(statusBadge);
         header.append(topRow);
 
-        // Actual models attribution (UI Requirement A)
-        const modelRow = $('<div class="ai-model-attribution small text-muted mt-1 d-flex flex-wrap align-items-center"></div>');
-        modelRow.append(
-            $('<span class="mr-3"></span>')
-                .append('<i class="dripicons-view-thumb mr-1 text-info" aria-hidden="true"></i>')
-                .append('<strong>Perception:</strong> ')
-                .append($('<span></span>').text(perceptionDisplayName))
-        );
-        modelRow.append(
-            $('<span></span>')
-                .append('<i class="dripicons-cpu mr-1 text-primary" aria-hidden="true"></i>')
-                .append('<strong>ERP Copilot:</strong> ')
-                .append($('<span></span>').text(copilotDisplayName))
-        );
-        header.append(modelRow);
+        const modelLine = $('<div class="small text-muted mt-2 d-flex align-items-center"></div>');
+        modelLine.append('<i class="dripicons-view-thumb mr-1 text-primary" aria-hidden="true"></i>');
+        modelLine.append(document.createTextNode('Extracted by ' + perceptionDisplayName));
+        header.append(modelLine);
         card.append(header);
 
         const body = $('<div class="card-body p-3 bg-white"></div>');
-        body.append('<div class="alert alert-info py-1 px-2 mb-3 small"><strong>Trust Notice:</strong> Extracted figures come from perception OCR/STT (<code>is_verified_by_erp = false</code>). Verify against the preview before confirming or staging an ERP order.</div>');
 
-        // Warnings section (including company mismatch & duplicate checks)
-        const warnContainer = $('<div class="ai-media-warnings mb-2"></div>');
-        renderWarnings(warnContainer, data.warnings || []);
-        body.append(warnContainer);
+        // KPI Summary Tiles (Subtotal, GST, Total)
+        let kpiRow = null;
+        if (!isAudio) {
+            kpiRow = $('<div class="ai-kpi-summary-row"></div>');
+            kpiRow.append($('<div class="ai-kpi-card"></div>')
+                .append('<div class="ai-kpi-label">Subtotal</div>')
+                .append($('<div class="ai-kpi-val ai-kpi-subtotal"></div>').text(formatCurrencyVal(data.subtotal))));
 
-        const row = $('<div class="row"></div>');
-        // Left: private authenticated preview (never public disk or localStorage)
-        const previewCol = $('<div class="col-md-4 mb-3 mb-md-0"></div>');
-        const previewBox = $('<div class="border rounded p-2 bg-light text-center ai-media-preview-pane"></div>');
+            kpiRow.append($('<div class="ai-kpi-card"></div>')
+                .append('<div class="ai-kpi-label">GST</div>')
+                .append($('<div class="ai-kpi-val ai-kpi-gst"></div>').text(formatCurrencyVal(data.tax_amount))));
+
+            kpiRow.append($('<div class="ai-kpi-card"></div>')
+                .append('<div class="ai-kpi-label">Total</div>')
+                .append($('<div class="ai-kpi-val ai-kpi-total"></div>').text(formatCurrencyVal(data.total_amount))));
+
+            body.append(kpiRow);
+        }
+
+        // Collapsible Document / Audio Preview
+        const previewWrap = $('<div class="mb-2"></div>');
+        const btnTogglePreview = $('<button type="button" class="btn btn-xs btn-outline-secondary py-1 px-2 mb-2 ai-btn-toggle-preview"><i class="dripicons-preview mr-1"></i><span>Preview Document</span></button>');
+        const previewBox = $('<div class="border rounded p-2 bg-light text-center ai-media-preview-collapsible mb-3 d-none"></div>');
         if (isAudio) {
+            btnTogglePreview.html('<i class="dripicons-microphone mr-1"></i><span>Listen to Voice Note</span>');
             const audioEl = $('<audio controls class="w-100"></audio>').attr('src', media.preview_url);
             previewBox.append(audioEl);
             previewBox.append($('<div class="small text-muted mt-1"></div>').text('Normalized 16kHz Mono WAV · ' + (media.duration_seconds || '?') + 's'));
@@ -420,20 +450,29 @@
                 previewBox.append(pager);
             }
         }
-        previewCol.append(previewBox);
-        row.append(previewCol);
+        btnTogglePreview.on('click', function () {
+            previewBox.toggleClass('d-none');
+            const isShown = !previewBox.hasClass('d-none');
+            $(this).find('span').text(isShown ? 'Hide Preview' : (isAudio ? 'Listen to Voice Note' : 'Preview Document'));
+        });
+        previewWrap.append(btnTogglePreview).append(previewBox);
+        body.append(previewWrap);
 
-        // Right: editable extraction fields
-        const formCol = $('<div class="col-md-8"></div>');
+        // Content Area (Full-Width View Table + Hidden Edit Pane)
+        const formCol = $('<div class="w-100"></div>');
         if (isAudio) {
             renderAudioEditor(formCol, data);
         } else {
             renderInvoiceEditor(formCol, data);
         }
-        row.append(formCol);
-        body.append(row);
+        body.append(formCol);
 
-        // Companion instruction input (pre-filled if instruction was entered)
+        // Warnings Section (Company Mismatch, Unverified Checks)
+        const warnContainer = $('<div class="ai-media-warnings mt-2 mb-2"></div>');
+        renderWarnings(warnContainer, data.warnings || []);
+        body.append(warnContainer);
+
+        // Companion Instruction Input
         const companionGroup = $('<div class="form-group mt-3 mb-2"></div>');
         companionGroup.append('<label class="small font-weight-bold text-muted mb-1">Optional Instruction / Warehouse Note</label>');
         const initialCompanion = companionText || (data.companion_text || '');
@@ -442,22 +481,49 @@
         companionGroup.append(companionInput);
         body.append(companionGroup);
 
-        // Feedback area & action buttons
+        // Direct Purchase Bill Posting Restriction Notice
+        const restrictionAlert = $('<div class="alert alert-warning py-2 px-3 small border-warning mt-2 mb-2" style="background-color: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 6px;"></div>')
+            .html('Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (<code>purchase_order.create.v1</code>) instead.');
+        if (data.document_type === 'purchase_bill') {
+            restrictionAlert.removeClass('d-none');
+        } else {
+            restrictionAlert.addClass('d-none');
+        }
+        body.append(restrictionAlert);
+
+        // Action Feedback Area
         const actionFeedback = $('<div class="ai-media-action-feedback small mb-2"></div>');
         body.append(actionFeedback);
 
-        const footer = $('<div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top"></div>');
-        const leftBtns = $('<div class="d-flex flex-wrap"></div>');
-        const rightBtns = $('<div class="d-flex flex-wrap"></div>');
+        // Footer Actions
+        const footer = $('<div class="d-flex flex-wrap justify-content-between align-items-center pt-3 border-top mt-2"></div>');
+        const leftBtns = $('<div class="d-flex flex-wrap align-items-center"></div>');
+        const rightBtns = $('<div class="d-flex flex-wrap align-items-center"></div>');
 
-        const btnSave = $('<button type="button" class="btn btn-sm btn-outline-primary mr-2 mb-1 ai-btn-media-save">Save Edits</button>');
-        const btnConfirm = $('<button type="button" class="btn btn-sm btn-primary mr-2 mb-1 ai-btn-media-confirm">Confirm Extraction</button>');
+        const btnConfirm = $('<button type="button" class="btn btn-sm btn-primary mr-2 mb-1 ai-btn-media-confirm">Confirm Extraction</button>')
+            .prop('disabled', confirmationStatus === 'confirmed');
+
+        const isPurchaseBill = (data.document_type === 'purchase_bill');
+        const btnPreparePo = $('<button type="button" class="btn btn-sm btn-primary mr-2 mb-1 ai-btn-media-prepare-po">Prepare Purchase Order</button>')
+            .prop('disabled', confirmationStatus !== 'confirmed')
+            .toggleClass('d-none', !isPurchaseBill);
+
         const btnHandoff = $('<button type="button" class="btn btn-sm btn-success mr-2 mb-1 ai-btn-media-handoff">Stage ERP Proposal</button>')
-            .prop('disabled', confirmationStatus !== 'confirmed');
+            .prop('disabled', confirmationStatus !== 'confirmed')
+            .toggleClass('d-none', isPurchaseBill);
+
+        const btnToggleEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-1 ai-btn-media-toggle-edit">Edit Details</button>');
+        const btnSave = $('<button type="button" class="btn btn-sm btn-outline-primary mr-2 mb-1 ai-btn-media-save d-none">Save Edits</button>');
         const btnAttach = $('<button type="button" class="btn btn-sm btn-outline-info mr-2 mb-1 ai-btn-media-attach">Attach to Chat</button>');
         const btnDiscard = $('<button type="button" class="btn btn-sm btn-outline-danger mb-1 ai-btn-media-discard">Discard Media</button>');
 
-        leftBtns.append(btnSave).append(btnConfirm).append(btnHandoff);
+        leftBtns.append(btnConfirm);
+        if (isPurchaseBill) {
+            leftBtns.append(btnPreparePo);
+        } else {
+            leftBtns.append(btnHandoff);
+        }
+        leftBtns.append(btnToggleEdit).append(btnSave);
         rightBtns.append(btnAttach).append(btnDiscard);
         footer.append(leftBtns).append(rightBtns);
         body.append(footer);
@@ -472,14 +538,48 @@
         function refreshCardState(updatedMedia, updatedExtraction) {
             currentRevision = Number(updatedExtraction.revision || currentRevision);
             confirmationStatus = updatedExtraction.confirmation_status || confirmationStatus;
-            revBadge.text('Rev ' + currentRevision);
+            data = updatedExtraction.extracted || data;
+
             statusBadge
-                .removeClass('badge-warning badge-success')
-                .addClass(confirmationStatus === 'confirmed' ? 'badge-success' : 'badge-warning')
-                .text(confirmationStatus === 'confirmed' ? 'User Confirmed (Draft Data)' : 'Needs Review · Unverified AI Claim');
-            btnHandoff.prop('disabled', confirmationStatus !== 'confirmed');
-            renderWarnings(warnContainer, (updatedExtraction.extracted || {}).warnings || []);
+                .removeClass('ai-status-pill-awaiting ai-status-pill-confirmed')
+                .addClass(confirmationStatus === 'confirmed' ? 'ai-status-pill-confirmed' : 'ai-status-pill-awaiting')
+                .text(confirmationStatus === 'confirmed' ? 'Confirmed' : 'Awaiting Review');
+
+            btnConfirm.prop('disabled', confirmationStatus === 'confirmed');
+
+            const isPb = (data.document_type === 'purchase_bill');
+            btnPreparePo.prop('disabled', confirmationStatus !== 'confirmed').toggleClass('d-none', !isPb);
+            btnHandoff.prop('disabled', confirmationStatus !== 'confirmed').toggleClass('d-none', isPb);
+
+            if (isPb) {
+                restrictionAlert.removeClass('d-none');
+            } else {
+                restrictionAlert.addClass('d-none');
+            }
+
+            // Refresh KPI Tiles
+            card.find('.ai-kpi-subtotal').text(formatCurrencyVal(data.subtotal));
+            card.find('.ai-kpi-gst').text(formatCurrencyVal(data.tax_amount));
+            card.find('.ai-kpi-total').text(formatCurrencyVal(data.total_amount));
+
+            renderWarnings(warnContainer, data.warnings || []);
         }
+
+        btnToggleEdit.on('click', function () {
+            const editPane = formCol.find('.ai-extraction-edit-pane');
+            const viewPane = formCol.find('.ai-extraction-view-pane');
+            editPane.toggleClass('d-none');
+            viewPane.toggleClass('d-none');
+            const isEditing = !editPane.hasClass('d-none');
+            btnToggleEdit.text(isEditing ? 'Done Editing' : 'Edit Details');
+            btnSave.toggleClass('d-none', !isEditing);
+        });
+
+        // Inline link in view table to open editor
+        formCol.on('click', '.ai-btn-inline-toggle-edit', function (e) {
+            e.preventDefault();
+            btnToggleEdit.trigger('click');
+        });
 
         btnSave.on('click', function () {
             const payload = collectEditorPatch(formCol, isAudio);
@@ -496,7 +596,12 @@
                 data: JSON.stringify(payload),
                 success: function (res) {
                     refreshCardState(res.media, res.extraction);
-                    actionFeedback.html('<span class="text-success">Saved Revision ' + currentRevision + '.</span>');
+                    if (isAudio) {
+                        renderAudioEditor(formCol, res.extraction.extracted || {});
+                    } else {
+                        renderInvoiceEditor(formCol, res.extraction.extracted || {});
+                    }
+                    actionFeedback.html('<span class="text-success font-weight-medium">Saved Revision ' + currentRevision + '.</span>');
                 },
                 error: function (xhr) {
                     handleMediaActionError(xhr, actionFeedback, media.id, refreshCardState, formCol, isAudio);
@@ -523,25 +628,36 @@
                 success: function (res) {
                     refreshCardState(res.media, res.extraction);
                     attachMediaForChat(res.media, res.extraction);
-                    actionFeedback.html('<span class="text-success font-weight-bold">Confirmed at Revision ' + currentRevision + '. You can now Stage ERP Proposal or ask Copilot below.</span>');
+                    if (isAudio) {
+                        renderAudioEditor(formCol, res.extraction.extracted || {});
+                    } else {
+                        renderInvoiceEditor(formCol, res.extraction.extracted || {});
+                    }
+                    const nextAction = (data.document_type === 'purchase_bill') ? 'Prepare Purchase Order' : 'Stage ERP Proposal';
+                    actionFeedback.html('<span class="text-success font-weight-bold">Confirmed at Revision ' + currentRevision + '. You can now click "' + nextAction + '" or ask Copilot below.</span>');
                 },
                 error: function (xhr) {
                     handleMediaActionError(xhr, actionFeedback, media.id, refreshCardState, formCol, isAudio);
                 },
                 complete: function () {
-                    btnConfirm.prop('disabled', false).text('Confirm Extraction');
+                    btnConfirm.prop('disabled', confirmationStatus === 'confirmed').text('Confirm Extraction');
                 }
             });
         });
 
-        btnHandoff.on('click', function () {
-            btnHandoff.prop('disabled', true).text('Staging...');
+        function executeHandoff(actionKey) {
+            const isPO = (actionKey === 'purchase_order.create.v1');
+            const activeBtn = isPO ? btnPreparePo : btnHandoff;
+            activeBtn.prop('disabled', true).text('Staging...');
             actionFeedback.empty();
 
             const bodyPayload = {
                 companion_text: companionInput.val().trim() || null,
                 thread_id: (ws && ws.getCurrentThreadId && ws.getCurrentThreadId()) || null,
             };
+            if (actionKey) {
+                bodyPayload.action_key = actionKey;
+            }
 
             $.ajax({
                 url: mediaUrl('/' + encodeURIComponent(media.id) + '/handoff'),
@@ -584,9 +700,17 @@
                     actionFeedback.empty().append($('<div class="alert alert-warning py-1 px-2 mb-0"></div>').text(msg));
                 },
                 complete: function () {
-                    btnHandoff.prop('disabled', confirmationStatus !== 'confirmed').text('Stage ERP Proposal');
+                    activeBtn.prop('disabled', confirmationStatus !== 'confirmed').text(isPO ? 'Prepare Purchase Order' : 'Stage ERP Proposal');
                 }
             });
+        }
+
+        btnPreparePo.on('click', function () {
+            executeHandoff('purchase_order.create.v1');
+        });
+
+        btnHandoff.on('click', function () {
+            executeHandoff(null);
         });
 
         btnAttach.on('click', function () {
@@ -648,11 +772,48 @@
             return;
         }
         warnings.forEach(function (w) {
-            container.append($('<div class="alert alert-warning py-1 px-2 mb-1 small"></div>').text(w));
+            const callout = $('<div class="ai-warning-callout d-flex align-items-center mb-2"></div>');
+            callout.append('<i class="dripicons-warning mr-2 text-warning" aria-hidden="true"></i>');
+            callout.append($('<span></span>').text(w));
+            container.append(callout);
         });
     }
 
     function renderInvoiceEditor(formCol, data) {
+        formCol.empty();
+
+        // 1. Clean View Table (matching mockup media_1794636475790_42e57597.png)
+        const viewPane = $('<div class="ai-extraction-view-pane"></div>');
+        const viewTableWrap = $('<div class="ai-extraction-table-wrapper"></div>');
+        const viewTable = $('<table class="table table-borderless table-sm ai-extraction-table mb-0"></table>');
+        viewTable.append('<thead><tr><th style="min-width: 180px;">Product</th><th class="text-right" style="width: 80px;">Qty</th><th class="text-right" style="width: 110px;">Rate</th></tr></thead>');
+        const viewTbody = $('<tbody></tbody>');
+
+        const lines = Array.isArray(data.lines) ? data.lines : [];
+        if (lines.length > 0) {
+            lines.forEach(function (line) {
+                const tr = $('<tr></tr>');
+                tr.append($('<td class="font-weight-medium"></td>').text(line.description || 'Unnamed item'));
+                tr.append($('<td class="text-right"></td>').text(line.quantity == null ? '—' : String(line.quantity)));
+                tr.append($('<td class="text-right"></td>').text(line.unit_price == null ? '—' : formatCurrencyVal(line.unit_price)));
+                viewTbody.append(tr);
+            });
+        } else {
+            viewTbody.append('<tr><td colspan="3" class="text-center text-muted small py-2">No product lines detected in document.</td></tr>');
+        }
+        viewTable.append(viewTbody);
+        viewTableWrap.append(viewTable);
+        viewPane.append(viewTableWrap);
+
+        const editLinkWrap = $('<div class="text-right mb-2"></div>');
+        editLinkWrap.append('<a href="javascript:void(0);" class="small text-muted ai-btn-inline-toggle-edit"><i class="dripicons-pencil mr-1"></i> Edit extracted fields and lines</a>');
+        viewPane.append(editLinkWrap);
+        formCol.append(viewPane);
+
+        // 2. Full Edit Pane (initially hidden, revealed on Edit Details)
+        const editPane = $('<div class="ai-extraction-edit-pane border rounded p-3 bg-light mb-3 d-none"></div>');
+        editPane.append('<h6 class="font-weight-bold text-dark small mb-2"><i class="dripicons-pencil mr-1 text-primary"></i> Edit Document Details</h6>');
+
         const grid = $('<div class="form-row"></div>');
         const fields = [
             { key: 'document_type', label: 'Document Type', col: 'col-sm-4' },
@@ -667,7 +828,7 @@
 
         fields.forEach(function (f) {
             const grp = $('<div class="form-group mb-2"></div>').addClass(f.col);
-            grp.append($('<label class="small text-muted mb-0"></label>').text(f.label));
+            grp.append($('<label class="small text-muted mb-1 font-weight-bold"></label>').text(f.label));
 
             if (f.key === 'document_type') {
                 const sel = $('<select class="form-control form-control-sm ai-ext-scalar" data-field="document_type"></select>');
@@ -695,14 +856,14 @@
             }
             grid.append(grp);
         });
-        formCol.append(grid);
+        editPane.append(grid);
 
-        const tableWrap = $('<div class="table-responsive mt-2"></div>');
-        const table = $('<table class="table table-sm table-bordered mb-0 ai-fact-table"></table>');
-        table.append('<thead class="thead-light"><tr><th>Description</th><th style="width:75px;">Qty</th><th style="width:70px;">UOM</th><th style="width:90px;">Unit Price</th><th style="width:95px;">Line Total</th></tr></thead>');
-        const tbody = $('<tbody></tbody>');
+        const editTableWrap = $('<div class="table-responsive mt-2"></div>');
+        const editTable = $('<table class="table table-sm table-bordered bg-white mb-0 ai-fact-table"></table>');
+        editTable.append('<thead class="thead-light"><tr><th style="min-width: 180px;">Description</th><th style="width:80px;">Qty</th><th style="width:75px;">UOM</th><th style="width:105px;">Unit Price</th><th style="width:110px;">Line Total</th></tr></thead>');
+        const editTbody = $('<tbody></tbody>');
 
-        (data.lines || []).forEach(function (line, idx) {
+        lines.forEach(function (line, idx) {
             const lineId = line.client_line_id || ('line_' + (idx + 1));
             const tr = $('<tr class="ai-ext-line-row"></tr>').attr('data-line-id', lineId);
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-desc">').val(line.description || '')));
@@ -710,23 +871,63 @@
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-uom">').val(line.uom || '')));
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-price">').val(line.unit_price == null ? '' : String(line.unit_price))));
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-total">').val(line.line_total == null ? '' : String(line.line_total))));
-            tbody.append(tr);
+            editTbody.append(tr);
         });
 
-        if ((data.lines || []).length === 0) {
-            tbody.append('<tr><td colspan="5" class="text-center text-muted small">No line items detected.</td></tr>');
+        if (lines.length === 0) {
+            editTbody.append('<tr><td colspan="5" class="text-center text-muted small py-2">No line items detected.</td></tr>');
         }
 
-        table.append(tbody);
-        tableWrap.append(table);
-        formCol.append(tableWrap);
+        editTable.append(editTbody);
+        editTableWrap.append(editTable);
+        editPane.append(editTableWrap);
+        formCol.append(editPane);
     }
 
     function renderAudioEditor(formCol, data) {
+        formCol.empty();
+
+        const viewPane = $('<div class="ai-extraction-view-pane"></div>');
+        if (data.transcript_text) {
+            viewPane.append($('<div class="p-2 mb-2 rounded bg-light border text-dark font-italic small"></div>')
+                .append('<i class="dripicons-quote mr-1 text-muted"></i>')
+                .append(document.createTextNode(data.transcript_text)));
+        }
+
+        const items = Array.isArray(data.items) ? data.items : [];
+        const viewTableWrap = $('<div class="ai-extraction-table-wrapper"></div>');
+        const viewTable = $('<table class="table table-borderless table-sm ai-extraction-table mb-0"></table>');
+        viewTable.append('<thead><tr><th style="min-width: 180px;">Product</th><th class="text-right" style="width: 80px;">Qty</th><th class="text-right" style="width: 110px;">Rate</th></tr></thead>');
+        const viewTbody = $('<tbody></tbody>');
+
+        if (items.length > 0) {
+            items.forEach(function (item) {
+                const tr = $('<tr></tr>');
+                tr.append($('<td class="font-weight-medium"></td>').text(item.product_name || 'Unnamed item'));
+                tr.append($('<td class="text-right"></td>').text(item.quantity == null ? '—' : String(item.quantity)));
+                tr.append($('<td class="text-right"></td>').text(item.unit_price == null ? '—' : formatCurrencyVal(item.unit_price)));
+                viewTbody.append(tr);
+            });
+        } else {
+            viewTbody.append('<tr><td colspan="3" class="text-center text-muted small py-2">No product items detected in audio.</td></tr>');
+        }
+        viewTable.append(viewTbody);
+        viewTableWrap.append(viewTable);
+        viewPane.append(viewTableWrap);
+
+        const editLinkWrap = $('<div class="text-right mb-2"></div>');
+        editLinkWrap.append('<a href="javascript:void(0);" class="small text-muted ai-btn-inline-toggle-edit"><i class="dripicons-pencil mr-1"></i> Edit transcript &amp; items</a>');
+        viewPane.append(editLinkWrap);
+        formCol.append(viewPane);
+
+        // Edit pane for audio
+        const editPane = $('<div class="ai-extraction-edit-pane border rounded p-3 bg-light mb-3 d-none"></div>');
+        editPane.append('<h6 class="font-weight-bold text-dark small mb-2"><i class="dripicons-pencil mr-1 text-primary"></i> Edit Voice Transcript &amp; Items</h6>');
+
         const txtGrp = $('<div class="form-group mb-2"></div>');
-        txtGrp.append('<label class="small text-muted mb-0">Transcript Text (edit if any word or number is misheard)</label>');
+        txtGrp.append('<label class="small text-muted mb-1 font-weight-bold">Transcript Text (edit if misheard)</label>');
         txtGrp.append($('<textarea rows="3" class="form-control form-control-sm ai-ext-scalar" data-field="transcript_text"></textarea>').val(data.transcript_text || ''));
-        formCol.append(txtGrp);
+        editPane.append(txtGrp);
 
         const grid = $('<div class="form-row"></div>');
         [
@@ -735,28 +936,32 @@
             { key: 'warehouse_name', label: 'Warehouse', col: 'col-sm-4' },
         ].forEach(function (f) {
             const grp = $('<div class="form-group mb-2"></div>').addClass(f.col);
-            grp.append($('<label class="small text-muted mb-0"></label>').text(f.label));
+            grp.append($('<label class="small text-muted mb-1 font-weight-bold"></label>').text(f.label));
             grp.append($('<input type="text" class="form-control form-control-sm ai-ext-scalar">').attr('data-field', f.key).val(data[f.key] == null ? '' : String(data[f.key])));
             grid.append(grp);
         });
-        formCol.append(grid);
+        editPane.append(grid);
 
-        const tableWrap = $('<div class="table-responsive mt-2"></div>');
-        const table = $('<table class="table table-sm table-bordered mb-0 ai-fact-table"></table>');
-        table.append('<thead class="thead-light"><tr><th>Product</th><th style="width:85px;">Qty</th><th style="width:75px;">UOM</th><th style="width:95px;">Rate</th></tr></thead>');
-        const tbody = $('<tbody></tbody>');
-        (data.items || []).forEach(function (item, idx) {
+        const editTableWrap = $('<div class="table-responsive mt-2"></div>');
+        const editTable = $('<table class="table table-sm table-bordered bg-white mb-0 ai-fact-table"></table>');
+        editTable.append('<thead class="thead-light"><tr><th style="min-width: 180px;">Product</th><th style="width:85px;">Qty</th><th style="width:75px;">UOM</th><th style="width:105px;">Rate</th></tr></thead>');
+        const editTbody = $('<tbody></tbody>');
+        items.forEach(function (item, idx) {
             const lineId = item.client_line_id || ('line_' + (idx + 1));
             const tr = $('<tr class="ai-ext-item-row"></tr>').attr('data-line-id', lineId);
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-item-name">').val(item.product_name || '')));
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-item-qty">').val(item.quantity == null ? '' : String(item.quantity))));
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-item-uom">').val(item.uom || '')));
             tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-item-price">').val(item.unit_price == null ? '' : String(item.unit_price))));
-            tbody.append(tr);
+            editTbody.append(tr);
         });
-        table.append(tbody);
-        tableWrap.append(table);
-        formCol.append(tableWrap);
+        if (items.length === 0) {
+            editTbody.append('<tr><td colspan="4" class="text-center text-muted small py-2">No items detected.</td></tr>');
+        }
+        editTable.append(editTbody);
+        editTableWrap.append(editTable);
+        editPane.append(editTableWrap);
+        formCol.append(editPane);
     }
 
     function collectEditorPatch(formCol, isAudio) {
