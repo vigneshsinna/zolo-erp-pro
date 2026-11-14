@@ -22,6 +22,7 @@ use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class AiWorkflowTaskController extends Controller
@@ -210,6 +211,31 @@ final class AiWorkflowTaskController extends Controller
                 'message' => 'Cannot prepare proposal; task has unresolved blockers.',
                 'clarification' => $this->clarificationBuilder->build($task, $evaluation),
             ], 422);
+        }
+
+        $proposalId = $task['linked_proposal_id'] ?? $task['proposal_id'] ?? null;
+        if (!empty($proposalId)) {
+            $existingProposal = DB::table('ai_action_proposals')
+                ->where('id', $proposalId)
+                ->where('company_id', $principal->companyId)
+                ->where('branch_id', $principal->branchId)
+                ->where('financial_year_id', $principal->financialYearId)
+                ->first();
+
+            if ($existingProposal && in_array($existingProposal->status, ['pending', 'approved'], true)) {
+                $proposal = $this->proposalService->applyChangeRequest(
+                    principal: $principal,
+                    id: (string) $proposalId,
+                    changes: $evaluation->validatedSlots,
+                    expectedVersion: (int) $existingProposal->version,
+                );
+
+                return response()->json([
+                    'status' => 'proposal_created',
+                    'proposal' => $proposal,
+                    'task_id' => $id,
+                ], 200);
+            }
         }
 
         $proposal = $this->proposalService->create(

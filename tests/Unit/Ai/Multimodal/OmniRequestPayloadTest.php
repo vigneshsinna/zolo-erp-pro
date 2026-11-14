@@ -129,6 +129,148 @@ final class OmniRequestPayloadTest extends TestCase
         $this->assertArrayNotHasKey('tool_choice', $audioPayload);
         $this->assertSame('audio_url', $audioPayload['messages'][1]['content'][1]['type']);
         $this->assertSame('data:audio/wav;base64,UklGRg==', $audioPayload['messages'][1]['content'][1]['audio_url']['url']);
+        $this->assertSame(['enable_thinking' => false], $imagePayload['chat_template_kwargs']);
+    }
+
+    public function test_omni_payload_allows_custom_chat_template_kwargs(): void
+    {
+        $client = new NvidiaOmniPerceptionClient(
+            app(ApprovedModelGateway::class),
+            app(AiFeatureGate::class),
+        );
+
+        $payload = $client->buildPayload(
+            model: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+            systemPrompt: 'Extract JSON only.',
+            userContent: [['type' => 'text', 'text' => 'Read invoice']],
+            options: ['chat_template_kwargs' => ['custom_key' => 'custom_val']],
+        );
+
+        $this->assertSame(['custom_key' => 'custom_val'], $payload['chat_template_kwargs']);
+    }
+
+    public function test_provider_rejection_http_400_is_classified_as_provider_http_400(): void
+    {
+        config()->set('ai_multimodal.enabled', true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        config()->set('ai.providers.nvidia.key', 'nv-test-key');
+
+        Http::fake([
+            'integrate.api.nvidia.com/*' => Http::response(['error' => 'invalid_request_parameter'], 400),
+        ]);
+
+        $gate = $this->createStub(AiFeatureGate::class);
+        $gate->method('isMultimodalEnabledForCompany')->willReturn(true);
+
+        $gateway = $this->createStub(ApprovedModelGateway::class);
+        $gateway->method('admitPerceptionDispatch')->willReturnCallback(function ($principal, $date, $purpose, $bytes, $cb, $mediaId = null) {
+            return $cb('nvidia', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        });
+
+        $client = new NvidiaOmniPerceptionClient($gateway, $gate);
+
+        try {
+            $client->extractStructuredFromImages(
+                $this->principal(),
+                '33333333-3333-3333-3333-333333333333',
+                [['mime' => 'image/jpeg', 'base64' => base64_encode('fake-img')]],
+                'system prompt',
+                'user prompt',
+            );
+            $this->fail('Expected MultimodalException for HTTP 400.');
+        } catch (MultimodalException $e) {
+            $this->assertSame('PROVIDER_HTTP_400', $e->errorCode);
+            $this->assertSame(422, $e->httpStatus);
+        }
+    }
+
+    public function test_truncated_perception_response_is_classified(): void
+    {
+        config()->set('ai_multimodal.enabled', true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        config()->set('ai.providers.nvidia.key', 'nv-test-key');
+
+        Http::fake([
+            'integrate.api.nvidia.com/*' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => '{"document_type": "purchase_bill", "lines": [',
+                    ],
+                    'finish_reason' => 'length',
+                ]],
+            ], 200),
+        ]);
+
+        $gate = $this->createStub(AiFeatureGate::class);
+        $gate->method('isMultimodalEnabledForCompany')->willReturn(true);
+
+        $gateway = $this->createStub(ApprovedModelGateway::class);
+        $gateway->method('admitPerceptionDispatch')->willReturnCallback(function ($principal, $date, $purpose, $bytes, $cb, $mediaId = null) {
+            return $cb('nvidia', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        });
+
+        $client = new NvidiaOmniPerceptionClient($gateway, $gate);
+
+        try {
+            $client->extractStructuredFromImages(
+                $this->principal(),
+                '44444444-4444-4444-4444-444444444444',
+                [['mime' => 'image/jpeg', 'base64' => base64_encode('fake-img')]],
+                'system prompt',
+                'user prompt',
+            );
+            $this->fail('Expected MultimodalException for truncated length.');
+        } catch (MultimodalException $e) {
+            $this->assertSame('TRUNCATED_PERCEPTION_RESPONSE', $e->errorCode);
+            $this->assertSame(422, $e->httpStatus);
+        }
+    }
+
+    public function test_empty_perception_response_is_classified(): void
+    {
+        config()->set('ai_multimodal.enabled', true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        config()->set('ai.providers.nvidia.key', 'nv-test-key');
+
+        Http::fake([
+            'integrate.api.nvidia.com/*' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => '',
+                    ],
+                    'finish_reason' => 'stop',
+                ]],
+            ], 200),
+        ]);
+
+        $gate = $this->createStub(AiFeatureGate::class);
+        $gate->method('isMultimodalEnabledForCompany')->willReturn(true);
+
+        $gateway = $this->createStub(ApprovedModelGateway::class);
+        $gateway->method('admitPerceptionDispatch')->willReturnCallback(function ($principal, $date, $purpose, $bytes, $cb, $mediaId = null) {
+            return $cb('nvidia', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        });
+
+        $client = new NvidiaOmniPerceptionClient($gateway, $gate);
+
+        try {
+            $client->extractStructuredFromImages(
+                $this->principal(),
+                '55555555-5555-5555-5555-555555555555',
+                [['mime' => 'image/jpeg', 'base64' => base64_encode('fake-img')]],
+                'system prompt',
+                'user prompt',
+            );
+            $this->fail('Expected MultimodalException for empty response.');
+        } catch (MultimodalException $e) {
+            $this->assertSame('EMPTY_PERCEPTION_RESPONSE', $e->errorCode);
+            $this->assertSame(422, $e->httpStatus);
+        }
     }
 }
 

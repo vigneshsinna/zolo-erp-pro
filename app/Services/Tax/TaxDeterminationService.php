@@ -58,7 +58,7 @@ class TaxDeterminationService
         // A party without a saved profile gets one from its master GSTIN/state, as the party form would.
         $profile ??= $export ? (object) ['gstin' => null, 'state_code' => '96', 'registration_type' => 'overseas']
             : app(GstSetupService::class)->syncParty($kind === 'sale' ? 'customer' : 'supplier', $party);
-        if (!$profile) $this->invalid('party', 'Enter the GSTIN or state of '.$party->name.' before GST billing.');
+        if (!$profile || empty($profile->state_code)) $this->invalid('party', 'Enter the GSTIN or state of '.$party->name.' before GST billing.');
         // An overseas buyer has no Indian state (code 96, Other Country) and no GSTIN.
         $partyState = $export ? '96' : Gstin::state($profile->state_code);
         if (!$export && $profile->gstin && substr(Gstin::normalize($profile->gstin), 0, 2) !== $partyState) {
@@ -75,6 +75,9 @@ class TaxDeterminationService
             $this->invalid('place_of_supply', 'Union-territory intra-state supply requires a reviewed UTGST posting adapter.');
         }
         $reverse = (bool) ($gst['reverse_charge'] ?? false);
+        if ($reverse) {
+            $this->validateReverseChargeEligibility($kind, $registration, $profile, $data['items'], $products);
+        }
         $pricing = app(CommercialPricing::class);
         $basis = [];
         $priceField = $kind === 'sale' ? 'net_unit_price' : 'net_unit_cost';
@@ -159,6 +162,51 @@ class TaxDeterminationService
         // Distribute subunit residuals without putting more discount than value on a tiny final line.
         for ($i = 0; $remaining > 0; $i++, $remaining--) $result[$eligible[$i % count($eligible)]]++;
         return $result;
+    }
+
+    /**
+     * Rule-driven RCM eligibility check under Section 9(3) and 9(4) of CGST / SGST Act.
+     */
+    protected function validateReverseChargeEligibility(string $kind, object $registration, object $profile, array $items, array $products): void
+    {
+        // 1. Recipient must hold an active Regular GST registration to transact under RCM
+        if ($kind === 'purchase' && $registration->registration_type !== 'regular') {
+            $this->invalid('reverse_charge', 'Reverse charge on inward supply requires your company to hold an active Regular GST registration.');
+        }
+
+        // 2. Outward supply under RCM requires a registered recipient
+        if ($kind === 'sale') {
+            if ($registration->registration_type !== 'regular') {
+                $this->invalid('reverse_charge', 'Outward supply under reverse charge requires an active Regular GST registration.');
+            }
+            if ($profile->registration_type !== 'regular' || empty($profile->gstin)) {
+                $this->invalid('reverse_charge', 'Outward supply under reverse charge requires a recipient registered under Regular GST with a valid GSTIN.');
+            }
+        }
+
+        // 3. Notified categories check
+        // Eligible RCM SAC codes under Notification 13/2017:
+        // GTA freight (9965, 9967), Legal services (9982), Sponsorship (9983), Security/Manpower/Rent-a-cab (9985), Director (9971)
+        // Eligible RCM HSN codes under Notification 4/2017:
+        // Cashew (0801), Bidi wrapper (1404), Tobacco (2401), Silk yarn (5004-5006), Raw cotton (5201)
+        $rcmSacPrefixes = ['9965', '9967', '9982', '9983', '9985', '9971'];
+        $rcmHsnPrefixes = ['0801', '1404', '2401', '5004', '5005', '5006', '5201'];
+
+        $hasEligibleLine = false;
+        foreach ($items as $item) {
+            $prod = $products[$item['product_id']] ?? null;
+            if (!$prod) continue;
+            $code = (string) ($prod->hsn_code ?? '');
+            if (in_array(substr($code, 0, 4), $rcmSacPrefixes, true) || in_array(substr($code, 0, 4), $rcmHsnPrefixes, true) || $prod->type === 'service') {
+                $hasEligibleLine = true;
+                break;
+            }
+        }
+
+        // When purchasing from a registered supplier, RCM is strictly restricted to notified categories
+        if ($kind === 'purchase' && $profile->registration_type === 'regular' && !$hasEligibleLine) {
+            $this->invalid('reverse_charge', 'Reverse charge from a registered supplier is restricted to notified categories (such as GTA freight, legal, or sponsorship services). For standard supplies, supplier must charge forward GST.');
+        }
     }
 
     private function invalid(string $field, string $message): never

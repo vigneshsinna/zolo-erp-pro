@@ -1325,15 +1325,15 @@ class ProductController extends Controller
             $companyId = app(\App\Services\Platform\CompanyContextResolver::class)->forActor()?->companyId ?? session('company_id');
             $lims_product_type_list = ProductType::forCompany($companyId)->where('is_active', true)->orderBy('name')->get();
 
-            $general_setting = DB::table('general_settings')->select('modules')->first();
-            if(in_array('ecommerce', explode(',',$general_setting->modules))) {
+            $general_setting = DB::table('general_settings')->first();
+            $modules = explode(',', $general_setting->modules ?? '');
+            if(in_array('ecommerce', $modules)) {
                 $product_arr = explode(',',$lims_product_data->related_products);
                 $related_products = DB::table('products')->whereIn('id',$product_arr)->get();
-                return view('backend.product.edit',compact('related_products','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
+                return view('backend.product.edit',compact('general_setting', 'related_products','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
             }
 
-            $general_setting = DB::table('general_settings')->select('modules')->first();
-            if(in_array('restaurant',explode(',',$general_setting->modules))){
+            if(in_array('restaurant', $modules)){
                 $kitchen_list = DB::table('kitchens')->where('is_active',1)->get();
                 $menu_type_list = DB::table('menu_type')->where('is_active',1)->get();
 
@@ -1343,9 +1343,9 @@ class ProductController extends Controller
                 $extra_arr = explode(',',$lims_product_data->extras);
                 $extras = DB::table('products')->whereIn('id',$extra_arr)->get();
 
-                return view('backend.product.edit',compact('kitchen_list','menu_type_list','related_products','extras','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
+                return view('backend.product.edit',compact('general_setting', 'kitchen_list','menu_type_list','related_products','extras','lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
             }
-            return view('backend.product.edit',compact('lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
+            return view('backend.product.edit',compact('general_setting', 'lims_product_list_without_variant', 'lims_product_list_with_variant', 'lims_brand_list', 'lims_category_list', 'lims_unit_list', 'lims_tax_list', 'lims_product_data', 'lims_product_variant_data', 'lims_warehouse_list', 'noOfVariantValue', 'custom_fields', 'lims_product_type_list'));
         }
         else
             return redirect()->back()->with('not_permitted', __('db.Sorry! You are not allowed to access this module'));
@@ -1368,34 +1368,85 @@ class ProductController extends Controller
         $this->validateMasterFields($request);
 
         if(!config('app.user_verified')) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => __('db.This feature is disable for demo!')], 403);
+            }
             return redirect()->back()->with('not_permitted', __('db.This feature is disable for demo!'));
         }
 
         DB::beginTransaction();
         try {
-            // Share the create/import lock so an edit cannot claim a code while a reviewed import creates it.
             $masterContext = app(\App\Services\Platform\CompanyContextResolver::class)->forActor();
             \App\Models\Company::whereKey($masterContext->companyId)->lockForUpdate()->firstOrFail();
+            $lims_product_data = Product::forCompany($masterContext)->whereKey($request->input('id'))->lockForUpdate()->firstOrFail();
+
             $this->validate($request, [
+                'name' => 'required|string|max:255',
                 'code' => [
+                    'required',
+                    'string',
                     'max:255',
-                    Rule::unique('products')->ignore($request->input('id'))->where(function ($query) {
-                        return $query->where('is_active', 1);
+                    'not_regex:/[<>]/',
+                    Rule::unique('products')->ignore($lims_product_data->id)->where(function ($query) use ($masterContext) {
+                        return $query->where('company_id', $masterContext->companyId)->where('is_active', 1);
                     }),
-                ]
+                ],
+                'barcode_symbology' => 'required|string|in:C128,C39,UPCA,UPCE,EAN8,EAN13',
+                'type' => 'required|in:standard,service,digital,combo',
             ]);
 
-            $lims_product_data = Product::whereKey($request->input('id'))->lockForUpdate()->firstOrFail();
-            $data = $request->except('image', 'file', 'prev_img', 'qty');
+            // Synchronize with shared authoritative ProductMasterService
+            $masterAttributes = [
+                'name' => $request->input('name'),
+                'code' => $request->input('code'),
+                'type' => $request->input('type'),
+                'barcode_symbology' => $request->input('barcode_symbology'),
+                'cost' => $request->input('product_usage') === 'sale' ? ($request->input('cost') ?? 0) : $request->input('cost'),
+                'price' => $request->input('product_usage') === 'purchase' ? ($request->input('price') ?? 0) : $request->input('price'),
+                'profit_margin' => $request->input('profit_margin') ?? 0,
+                'profit_margin_type' => $request->input('profit_margin_type', 'percentage'),
+                'brand_id' => $request->filled('brand_id') ? (int) $request->input('brand_id') : null,
+                'category_id' => $request->filled('category_id') ? (int) $request->input('category_id') : null,
+                'unit_id' => $request->filled('unit_id') ? (int) $request->input('unit_id') : null,
+                'sale_unit_id' => $request->filled('sale_unit_id') ? (int) $request->input('sale_unit_id') : ($request->input('unit_id') ?: null),
+                'purchase_unit_id' => $request->filled('purchase_unit_id') ? (int) $request->input('purchase_unit_id') : ($request->input('unit_id') ?: null),
+                'tax_id' => $request->filled('tax_id') ? (int) $request->input('tax_id') : null,
+            ];
+
+            if ($request->filled('is_optical') && $request->input('is_optical')) {
+                $masterAttributes['base'] = $request->input('base') ?: null;
+                $masterAttributes['addition'] = $request->input('addition') ?: null;
+                $masterAttributes['lr'] = $request->input('lr') ?: null;
+                $masterAttributes['dia'] = $request->input('dia') ?: null;
+            } else {
+                $masterAttributes['base'] = null;
+                $masterAttributes['addition'] = null;
+                $masterAttributes['lr'] = null;
+                $masterAttributes['dia'] = null;
+            }
+
+            app(\App\Services\ERP\ProductMasterService::class)->update($lims_product_data, $masterAttributes, $request->all(), $masterContext);
+
+            $data = $request->except('image', 'file', 'prev_img', 'qty', 'code', 'name', 'type', 'barcode_symbology', 'cost', 'price', 'profit_margin', 'profit_margin_type', 'brand_id', 'category_id', 'unit_id', 'sale_unit_id', 'purchase_unit_id', 'tax_id');
             if ($request->input('product_usage') === 'sale') {
                 $data['cost'] = $request->input('cost') ?? 0;
             }
-            $data['name'] = htmlspecialchars(trim($data['name']), ENT_QUOTES);
+            $data['name'] = htmlspecialchars(trim($request->input('name')), ENT_QUOTES);
+            $data['type'] = $request->input('type');
+            $data['barcode_symbology'] = $request->input('barcode_symbology');
             $data['profit_margin_type'] = $request->input('profit_margin_type', 'percentage');
             $data['profit_margin'] = $request->input('profit_margin') ?? 0;
+            $data['cost'] = $masterAttributes['cost'];
+            $data['price'] = $masterAttributes['price'];
+            $data['unit_id'] = $masterAttributes['unit_id'];
+            $data['sale_unit_id'] = $masterAttributes['sale_unit_id'];
+            $data['purchase_unit_id'] = $masterAttributes['purchase_unit_id'];
+            $data['category_id'] = $masterAttributes['category_id'] ?? $lims_product_data->category_id;
+            $data['brand_id'] = $masterAttributes['brand_id'];
+            $data['tax_id'] = $masterAttributes['tax_id'];
 
-            $general_setting = DB::table('general_settings')->select('modules')->first();
-            if(in_array('ecommerce', explode(',',$general_setting->modules))) {
+            $general_setting = DB::table('general_settings')->first();
+            if(in_array('ecommerce', explode(',', $general_setting->modules ?? ''))) {
                 $data['slug'] = Str::slug($data['name'], '-');
                 $data['slug'] = preg_replace('/[^A-Za-z0-9\-]/', '', $data['slug']);
                 $data['slug'] = str_replace( '\/', '/', $data['slug'] );
@@ -1663,7 +1714,31 @@ class ProductController extends Controller
                 $data['guarantee_type'] = null;
             }
             $lims_product_data->update($data);
-            $this->applyMasterFields($lims_product_data, $request);
+
+            // Optical specifications: ensure clean un-set if toggled off
+            if (empty($request->input('is_optical'))) {
+                $lims_product_data->base = null;
+                $lims_product_data->addition = null;
+                $lims_product_data->lr = null;
+                $lims_product_data->dia = null;
+                $lims_product_data->product_type_id = null;
+                $lims_product_data->save();
+            }
+
+            // Dealing with initial stock on edit
+            if(isset($data['is_initial_stock']) && !isset($data['is_variant']) && !isset($data['is_batch']) && !empty($data['stock_warehouse_id'])) {
+                foreach ($data['stock_warehouse_id'] as $key => $warehouse_id) {
+                    $stock = (float) ($data['stock'][$key] ?? 0);
+                    if($stock > 0) {
+                        $existingPw = Product_Warehouse::where('product_id', $lims_product_data->id)
+                            ->where('warehouse_id', $warehouse_id)->first();
+                        if(!$existingPw || (float) $existingPw->qty <= 0) {
+                            $this->autoPurchase($lims_product_data, $warehouse_id, $stock);
+                        }
+                    }
+                }
+            }
+
             //inserting data for custom fields
             $custom_field_data = [];
             $custom_fields = CustomField::where('belongs_to', 'product')->select('name', 'type')->get();
@@ -1683,10 +1758,40 @@ class ProductController extends Controller
 
             DB::commit();
 
-            \Session::flash('edit_message', 'Product updated successfully');
-        } catch (\Exception $e) {
+            \Session::flash('edit_message', __('db.Product updated successfully'));
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => __('db.Product updated successfully'),
+                    'redirect_url' => route('products.index'),
+                    'product' => [
+                        'id' => $lims_product_data->id,
+                        'name' => $lims_product_data->name,
+                        'code' => $lims_product_data->code,
+                    ]
+                ]);
+            }
+            return redirect()->route('products.index')->with('edit_message', __('db.Product updated successfully'));
+        } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            return redirect()->back()->with('not_permitted', __('db.Failed to update product Please try again'));
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+            return redirect()->back()->withErrors($e->errors())->withInput();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage() ?: __('db.Failed to update product Please try again'),
+                    'errors' => ['general' => [$e->getMessage() ?: __('db.Failed to update product Please try again')]],
+                ], 500);
+            }
+            return redirect()->back()->with('not_permitted', __('db.Failed to update product Please try again'))->withInput();
         }
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Ai\Multimodal;
 
+use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Multimodal\Clients\NullMultilingualSpeechProvider;
 use App\Ai\Multimodal\Contracts\AudioTranscoderInterface;
 use App\Ai\Multimodal\Contracts\PdfRasterizerInterface;
@@ -13,6 +14,9 @@ use App\Ai\Multimodal\Schemas\InvoiceExtractionV1;
 use App\Ai\Multimodal\Schemas\TranscriptExtractionV1;
 use App\Ai\Multimodal\Services\MediaPreprocessingService;
 use App\Ai\Multimodal\Services\MediaValidationService;
+use App\Ai\Multimodal\Services\NormalizedInputBuilder;
+use App\Ai\Registries\ActionCapabilityRegistry;
+use App\Models\AiMediaAsset;
 use Tests\TestCase;
 
 final class ExtractionSchemaTest extends TestCase
@@ -263,6 +267,81 @@ final class ExtractionSchemaTest extends TestCase
         $this->assertSame('ABC Traders', $normalized['supplier_name']);
         $this->assertSame('Lenz Private Limited', $normalized['buyer_name']);
         $this->assertTrue($normalized['arithmetic_check']['is_consistent']);
+    }
+
+    public function test_normalized_input_builder_handles_direct_purchase_bill_toggle(): void
+    {
+        $registry = new ActionCapabilityRegistry();
+        $registry->registerCommercialCapabilities();
+        $builder = new NormalizedInputBuilder($registry);
+
+        $principal = new AiPrincipal(
+            actorId: 1,
+            companyId: 1,
+            branchId: 1,
+            financialYearId: 1,
+            permittedToolNames: ['purchase_order.create.v1', 'purchase_bill.create.v1']
+        );
+
+        $asset = new AiMediaAsset();
+        $asset->id = '00000000-0000-0000-0000-000000000001';
+        $asset->source_kind = 'document';
+        $asset->company_id = 1;
+
+        $extracted = [
+            'document_type' => 'purchase_bill',
+            'supplier_name' => 'ABC Traders',
+            'invoice_number' => 'DEMO-INV-1045',
+            'invoice_date' => '2026-11-12',
+            'subtotal' => 8000,
+            'tax_amount' => 1440,
+            'total_amount' => 9440,
+            'lines' => [
+                ['description' => 'Cotton Shirt Blue', 'quantity' => 10, 'unit_price' => 500, 'line_total' => 5000],
+            ],
+        ];
+
+        // 1. By default, direct Purchase Bill is restricted
+        config(['ai_multimodal.allow_direct_purchase_bill' => false]);
+        $normDefault = $builder->build(
+            principal: $principal,
+            asset: $asset,
+            extracted: $extracted,
+            extractionId: 'ext-1',
+            extractionRevision: 1,
+            modelKey: 'test-model'
+        );
+        $this->assertSame('purchase_bill.create.v1', $normDefault->intentKey);
+        $this->assertFalse($normDefault->isActionable);
+        $this->assertStringContainsString('Direct Purchase Bill posting from AI is not enabled yet', (string) $normDefault->capabilityUnavailableReason);
+
+        // 2. Explicit PO companion instruction routes safely to PO even when direct PB is restricted
+        $normPo = $builder->build(
+            principal: $principal,
+            asset: $asset,
+            extracted: $extracted,
+            extractionId: 'ext-1',
+            extractionRevision: 1,
+            modelKey: 'test-model',
+            companionText: 'Create a purchase order from this bill'
+        );
+        $this->assertSame('purchase_order.create.v1', $normPo->intentKey);
+        $this->assertTrue($normPo->isActionable);
+        $this->assertNull($normPo->capabilityUnavailableReason);
+
+        // 3. When allow_direct_purchase_bill is true, direct Purchase Bill is actionable
+        config(['ai_multimodal.allow_direct_purchase_bill' => true]);
+        $normEnabled = $builder->build(
+            principal: $principal,
+            asset: $asset,
+            extracted: $extracted,
+            extractionId: 'ext-1',
+            extractionRevision: 1,
+            modelKey: 'test-model'
+        );
+        $this->assertSame('purchase_bill.create.v1', $normEnabled->intentKey);
+        $this->assertTrue($normEnabled->isActionable);
+        $this->assertNull($normEnabled->capabilityUnavailableReason);
     }
 
     private function buildWavHeader(int $dataSize, int $sampleRate): string

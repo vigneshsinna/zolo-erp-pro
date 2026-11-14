@@ -221,12 +221,14 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group
     // Phase 2.3: Multimodal Uploads, Preview & Extractions (Session-authenticated workspace routes)
     Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
         Route::post('/', 'store')->name('media.store');
+        Route::post('prepare', 'prepare')->name('media.prepare');
         Route::get('{id}', 'show')->whereUuid('id')->name('media.show');
         Route::get('{id}/preview', 'preview')->whereUuid('id')->name('media.preview');
         Route::post('{id}/extract', 'extract')->whereUuid('id')->name('media.extract');
         Route::get('{id}/extraction', 'extraction')->whereUuid('id')->name('media.extraction');
         Route::patch('{id}/extraction', 'updateExtraction')->whereUuid('id')->name('media.extraction.update');
         Route::post('{id}/confirm', 'confirm')->whereUuid('id')->name('media.confirm');
+        Route::post('{id}/prepare', 'prepareExisting')->whereUuid('id')->name('media.prepare-existing');
         Route::post('{id}/handoff', 'handoff')->whereUuid('id')->name('media.handoff');
         Route::delete('{id}', 'destroy')->whereUuid('id')->name('media.destroy');
     });

@@ -49,12 +49,19 @@ final class NormalizedInputWorkflowBridge
         ?string $threadId = null,
         ?AiMediaAsset $companionAsset = null,
         ?AiMediaExtraction $companionExtraction = null,
+        bool $allowTrustedPreparation = false,
     ): array {
         if (! $this->policy->canAccessPrincipal($principal, $asset)) {
             throw MultimodalException::crossTenantForbidden();
         }
+        if (! $this->policy->canStageWriteAction($principal, $asset)) {
+            throw MultimodalException::crossTenantForbidden('Cross-branch or cross-financial-year document reuse is forbidden for write actions.');
+        }
         if ($companionAsset !== null && ! $this->policy->canAccessPrincipal($principal, $companionAsset)) {
             throw MultimodalException::crossTenantForbidden();
+        }
+        if ($companionAsset !== null && ! $this->policy->canStageWriteAction($principal, $companionAsset)) {
+            throw MultimodalException::crossTenantForbidden('Cross-branch or cross-financial-year document reuse is forbidden for write actions.');
         }
         if ($asset->isPurged()) {
             throw MultimodalException::mediaNotFound();
@@ -62,17 +69,33 @@ final class NormalizedInputWorkflowBridge
         if ($asset->isExpired()) {
             throw MultimodalException::mediaExpired();
         }
-        if (! $extraction->isConfirmed()) {
-            throw MultimodalException::extractionFailed(
-                'EXTRACTION_CONFIRMATION_REQUIRED',
-                'Review and confirm extracted fields before staging an ERP workflow proposal.'
-            );
+        if (! $extraction->isPreparedOrConfirmed()) {
+            if ($allowTrustedPreparation) {
+                $extraction->update([
+                    'confirmation_status' => 'prepared',
+                    'confirmed_by' => $principal->actorId,
+                    'confirmed_at' => now('UTC'),
+                ]);
+            } else {
+                throw MultimodalException::extractionFailed(
+                    'EXTRACTION_CONFIRMATION_REQUIRED',
+                    'Review and confirm extracted fields before staging an ERP workflow proposal.'
+                );
+            }
         }
-        if ($companionExtraction !== null && ! $companionExtraction->isConfirmed()) {
-            throw MultimodalException::extractionFailed(
-                'EXTRACTION_CONFIRMATION_REQUIRED',
-                'Companion media extraction must be confirmed before cross-modal handoff.'
-            );
+        if ($companionExtraction !== null && ! $companionExtraction->isPreparedOrConfirmed()) {
+            if ($allowTrustedPreparation) {
+                $companionExtraction->update([
+                    'confirmation_status' => 'prepared',
+                    'confirmed_by' => $principal->actorId,
+                    'confirmed_at' => now('UTC'),
+                ]);
+            } else {
+                throw MultimodalException::extractionFailed(
+                    'EXTRACTION_CONFIRMATION_REQUIRED',
+                    'Companion media extraction must be confirmed before cross-modal handoff.'
+                );
+            }
         }
 
         $companionExtracted = $companionExtraction !== null

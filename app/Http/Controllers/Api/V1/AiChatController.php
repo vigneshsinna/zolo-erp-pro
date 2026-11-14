@@ -724,6 +724,20 @@ class AiChatController extends Controller
         }
 
         $mediaIds = array_values(array_unique((array) ($validated['media_ids'] ?? [])));
+
+        if (filled($validated['image'] ?? null)) {
+            $imageVal = trim((string) $validated['image']);
+            if (str_starts_with($imageVal, 'http://') || str_starts_with($imageVal, 'https://') || str_starts_with($imageVal, 'data:')) {
+                return $this->error('REMOTE_URL_FORBIDDEN', 'Raw image URLs and unverified image payloads are forbidden in chat. Upload files through the authenticated media pipeline.', 422);
+            }
+            if (! Str::isUuid($imageVal)) {
+                return $this->error('REMOTE_URL_FORBIDDEN', 'Raw image payloads are forbidden. Provide a valid media UUID or upload via the authenticated media pipeline.', 422);
+            }
+            if (! in_array($imageVal, $mediaIds, true)) {
+                $mediaIds[] = $imageVal;
+            }
+        }
+
         $normalizedMediaContext = [];
         if ($mediaIds !== []) {
             if (! $this->featureGate->isMultimodalEnabledForCompany($principal->companyId)) {
@@ -747,8 +761,8 @@ class AiChatController extends Controller
                     return $this->error('MEDIA_EXPIRED', 'Attached media asset has expired.', 410);
                 }
                 $latest = $asset->latestExtraction;
-                if ($latest === null || ! $latest->isConfirmed()) {
-                    return $this->error('EXTRACTION_CONFIRMATION_REQUIRED', 'Attached media extraction must be reviewed and confirmed before use in chat context.', 422);
+                if ($latest === null || ! $latest->isPreparedOrConfirmed()) {
+                    return $this->error('EXTRACTION_CONFIRMATION_REQUIRED', 'Attached media extraction must be reviewed or prepared before use in chat context.', 422);
                 }
                 $extractionsByAssetId[$asset->id] = $latest;
             }
@@ -777,10 +791,20 @@ class AiChatController extends Controller
                     companionText: $validated['message'],
                     companionExtracted: $companionExtracted,
                 );
+
+                if (! empty($normalized->conflicts)) {
+                    return response()->json([
+                        'error_code' => 'NORMALIZED_INPUT_CONFLICT',
+                        'error_message' => 'Attached media contains unresolved conflicting data. Please resolve conflicts before proceeding.',
+                        'conflicts' => $normalized->conflicts,
+                    ], 422);
+                }
+
                 $normalizedMediaContext[] = [
                     'media_id' => $asset->id,
                     'source_kind' => $asset->source_kind,
                     'confirmation_status' => $latest->confirmation_status,
+                    'workflow_task_id' => $asset->workflow_task_id,
                     'normalized_input' => $normalized->toArray(),
                 ];
             }
@@ -844,13 +868,6 @@ class AiChatController extends Controller
                 ->values()->all();
 
             $attachments = [];
-            if (filled($imageInput)) {
-                try {
-                    $attachments[] = DeepSeekAgent::createImageAttachment($imageInput);
-                } catch (Throwable) {
-                    // Fall back gracefully if image payload is unparseable
-                }
-            }
 
             $activeEntities = DB::table('ai_thread_entities')
                 ->where('thread_id', $threadId)

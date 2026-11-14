@@ -305,17 +305,36 @@ final class MediaValidationService
 
     private function inspectPdfSecurity(string $path, string $head): void
     {
-        $contents = @file_get_contents($path, false, null, 0, min(524288, (int) filesize($path)));
-        if (! is_string($contents)) {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
             throw MultimodalException::corruptedMedia('Uploaded PDF could not be read.');
         }
 
-        if (preg_match('/\/Encrypt\b/', $contents)) {
-            throw MultimodalException::encryptedPdf();
-        }
+        $chunkSize = 65536; // 64 KiB
+        $overlapSize = 256;
+        $carry = $head;
 
-        if (preg_match('/\/(?:JavaScript|JS|Launch|OpenAction|RichMedia)\b/', $head . $contents)) {
-            throw MultimodalException::invalidMagicBytes('Active scripts, launch actions, or embedded JavaScript are forbidden in uploaded PDFs.');
+        try {
+            while (! feof($handle)) {
+                $buffer = fread($handle, $chunkSize);
+                if ($buffer === false) {
+                    break;
+                }
+
+                $scanTarget = $carry . $buffer;
+
+                if (preg_match('/\/Encrypt\b/', $scanTarget)) {
+                    throw MultimodalException::encryptedPdf();
+                }
+
+                if (preg_match('/\/(?:JavaScript|JS|Launch|OpenAction|RichMedia|SubmitForm|ImportData)\b/', $scanTarget)) {
+                    throw MultimodalException::invalidMagicBytes('Active scripts, launch actions, or embedded JavaScript are forbidden in uploaded PDFs.');
+                }
+
+                $carry = strlen($buffer) >= $overlapSize ? substr($buffer, -$overlapSize) : $buffer;
+            }
+        } finally {
+            fclose($handle);
         }
     }
 }

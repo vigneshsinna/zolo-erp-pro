@@ -77,11 +77,16 @@ final class ProductSetupCommandAdapter implements ActionCommandAdapterInterface
                 throw ValidationException::withMessages(['unit_id' => 'No active units configured for this company.']);
             }
 
+            $symbology = strtoupper((string) ($payload['barcode_symbology'] ?? 'C128'));
+            if ($symbology === 'CODE128') {
+                $symbology = 'C128';
+            }
+
             $attributes = [
                 'name' => $payload['name'],
                 'code' => $payload['code'],
                 'type' => $payload['type'] ?? 'standard',
-                'barcode_symbology' => $payload['barcode_symbology'] ?? 'code128',
+                'barcode_symbology' => in_array($symbology, ['C128', 'C39', 'UPCA', 'UPCE', 'EAN8', 'EAN13'], true) ? $symbology : 'C128',
                 'unit_id' => $resolvedUnitId,
                 'purchase_unit_id' => !empty($payload['purchase_unit_id']) ? (int) $payload['purchase_unit_id'] : $resolvedUnitId,
                 'sale_unit_id' => !empty($payload['sale_unit_id']) ? (int) $payload['sale_unit_id'] : $resolvedUnitId,
@@ -90,9 +95,38 @@ final class ProductSetupCommandAdapter implements ActionCommandAdapterInterface
                 'price' => $payload['price'] ?? '0.00',
             ];
 
+            $hsnCode = !empty($payload['hsn_code']) ? trim((string) $payload['hsn_code']) : null;
+            if (!$hsnCode && \Illuminate\Support\Facades\Schema::hasTable('hsn_sac_codes')) {
+                $hsnCode = DB::table('hsn_sac_codes')
+                    ->where('company_id', $context->companyId)
+                    ->where('kind', 'hsn')
+                    ->value('code');
+            }
+            if (!$hsnCode && \Illuminate\Support\Facades\Schema::hasTable('products')) {
+                $hsnCode = DB::table('products')
+                    ->where('company_id', $context->companyId)
+                    ->whereNotNull('hsn_code')
+                    ->where('hsn_code', '!=', '')
+                    ->value('hsn_code');
+            }
+
+            if ($hsnCode !== null && preg_match('/^[0-9]{4}(?:[0-9]{2})?(?:[0-9]{2})?$/', $hsnCode) && \Illuminate\Support\Facades\Schema::hasTable('hsn_sac_codes')) {
+                DB::table('hsn_sac_codes')->updateOrInsert(
+                    [
+                        'company_id' => $context->companyId,
+                        'code' => $hsnCode,
+                        'kind' => 'hsn',
+                    ],
+                    [
+                        'description' => $payload['name'] ?? ('Goods HSN ' . $hsnCode),
+                        'updated_at' => now(),
+                    ]
+                );
+            }
+
             $metadata = [
                 'tax_category_id' => $taxCategoryId,
-                'hsn_code' => $payload['hsn_code'] ?? null,
+                'hsn_code' => $hsnCode,
                 'negative_stock_policy' => $payload['negative_stock_policy'] ?? 'warn',
             ];
 

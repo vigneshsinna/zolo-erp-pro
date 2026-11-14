@@ -320,7 +320,7 @@ trait TenantInfo
         });
     }
 
-    public function changePermission($tenant, $abandoned_permission_ids, $permission_ids, int $package_id, string $modules = null, $expiry_date = null, $subscription_type = null)
+    public function changePermission($tenant, $abandoned_permission_ids, $permission_ids, int $package_id, ?string $modules = null, $expiry_date = null, $subscription_type = null)
     {
         $abandoned_permission_ids = json_decode($abandoned_permission_ids);
         $permission_ids = json_decode($permission_ids);

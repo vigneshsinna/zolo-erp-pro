@@ -129,18 +129,36 @@ final class MediaExtractionService
             // Unbound in isolated unit tests
         }
 
+        if (empty($derivatives)) {
+            $asset->update(['state' => 'failed', 'last_error_code' => 'NO_DERIVATIVES_FOUND']);
+            throw MultimodalException::extractionFailed('NO_DERIVATIVES_FOUND', 'No valid stored page derivatives found for document.');
+        }
+
+        $pageFailures = [];
         foreach ($derivatives as $index => $deriv) {
             $pageNum = (int) ($deriv['page'] ?? ($index + 1));
             $key = (string) ($deriv['key'] ?? '');
             $mime = (string) ($deriv['mime'] ?? 'image/jpeg');
 
             if ($key === '' || ! $disk->exists($key)) {
+                $pageFailures[] = [
+                    'page' => $pageNum,
+                    'error_code' => 'MISSING_DERIVATIVE',
+                    'error_category' => 'storage',
+                    'retryable' => false,
+                ];
                 $pageWarnings[] = "Page {$pageNum} file could not be located on private storage.";
                 continue;
             }
 
             $binary = $disk->get($key);
             if (! is_string($binary) || $binary === '') {
+                $pageFailures[] = [
+                    'page' => $pageNum,
+                    'error_code' => 'EMPTY_DERIVATIVE',
+                    'error_category' => 'storage',
+                    'retryable' => false,
+                ];
                 $pageWarnings[] = "Page {$pageNum} was empty during extraction.";
                 continue;
             }
@@ -190,19 +208,37 @@ final class MediaExtractionService
                     }
                 }
             } catch (Throwable $e) {
+                $errorCode = $e instanceof MultimodalException ? $e->errorCode : 'EXTRACTION_ERROR';
+                $isRetryable = ! in_array($errorCode, ['INVALID_PERCEPTION_RESPONSE', 'MISSING_DERIVATIVE', 'EMPTY_DERIVATIVE'], true);
+                $pageFailures[] = [
+                    'page' => $pageNum,
+                    'error_code' => $errorCode,
+                    'error_category' => $e instanceof MultimodalException ? ($e->httpStatus >= 500 ? 'provider' : 'client') : 'system',
+                    'retryable' => $isRetryable,
+                ];
                 $sourceEvidence[] = [
                     'page' => $pageNum,
                     'mime' => $mime,
                     'status' => 'failed',
-                    'error' => $e instanceof MultimodalException ? $e->errorCode : class_basename($e),
+                    'error' => $errorCode,
                 ];
-                $pageWarnings[] = "Page {$pageNum} extraction failed (" . ($e instanceof MultimodalException ? $e->errorCode : 'EXTRACTION_ERROR') . '). Review this page manually.';
+                $pageWarnings[] = "Page {$pageNum} extraction failed ({$errorCode}). Review this page manually.";
             }
         }
 
         if ($succeededPages === 0 || $mergedRaw === null) {
-            $asset->update(['state' => 'failed', 'last_error_code' => 'ALL_PAGES_FAILED']);
-            throw MultimodalException::extractionFailed('ALL_PAGES_FAILED', 'Document extraction failed across all pages.');
+            $distinctErrors = array_values(array_unique(array_column($pageFailures, 'error_code')));
+            $primaryError = count($distinctErrors) === 1 ? reset($distinctErrors) : 'ALL_PAGES_FAILED';
+            $asset->update(['state' => 'failed', 'last_error_code' => $primaryError]);
+
+            $isRetryable = ! empty($pageFailures) && ! in_array(false, array_column($pageFailures, 'retryable'), true);
+
+            throw MultimodalException::allPagesFailed(
+                pageCount: $totalPages,
+                failures: $pageFailures,
+                isRetryable: $isRetryable,
+                mediaId: $asset->id,
+            );
         }
 
         $mergedRaw['lines'] = $mergedLines;
@@ -211,7 +247,12 @@ final class MediaExtractionService
             $mergedRaw['warnings'][] = "Partial extraction: {$succeededPages} of {$totalPages} pages extracted.";
         }
 
-        $normalizedExtraction = $this->invoiceSchema->validateAndNormalize($principal->companyId, $mergedRaw, $sourceEvidence);
+        try {
+            $normalizedExtraction = $this->invoiceSchema->validateAndNormalize($principal->companyId, $mergedRaw, $sourceEvidence);
+        } catch (Throwable $e) {
+            $asset->update(['state' => 'failed', 'last_error_code' => 'EXTRACTION_SCHEMA_REJECTED']);
+            throw MultimodalException::extractionFailed('EXTRACTION_SCHEMA_REJECTED', 'Schema validation rejected extraction output: ' . $e->getMessage());
+        }
 
         return $this->persistExtraction(
             principal: $principal,

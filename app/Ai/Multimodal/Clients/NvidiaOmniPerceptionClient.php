@@ -128,6 +128,9 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
             'temperature' => (float) ($options['temperature'] ?? 0.0),
             'max_tokens' => max(256, (int) ($options['max_tokens'] ?? config('ai_multimodal.max_extraction_tokens', 4096))),
             'stream' => false,
+            'chat_template_kwargs' => $options['chat_template_kwargs'] ?? [
+                'enable_thinking' => false,
+            ],
         ];
 
         // Non-negotiable invariant: Omni perception calls never declare ERP write tools.
@@ -207,12 +210,24 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
                             throw MultimodalException::rateLimited($retryAfter);
                         }
 
-                        if (! in_array($status, [408, 502, 503, 504], true) || $attempts > $maxRetries) {
+                        if ($status === 400 || $status === 422) {
+                            throw MultimodalException::extractionFailed('PROVIDER_HTTP_400', "Perception provider rejected request (HTTP {$status}).", 422);
+                        }
+
+                        if ($status === 401 || $status === 403) {
+                            throw MultimodalException::extractionFailed('PROVIDER_AUTH_FAILED', 'Perception provider authentication or permission failed.', 503);
+                        }
+
+                        if ($status === 408 || $status === 504) {
+                            if ($attempts > $maxRetries) {
+                                throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider timed out.', 504);
+                            }
+                        } elseif (! in_array($status, [500, 502, 503], true) || $attempts > $maxRetries) {
                             throw MultimodalException::providerUnavailable("Perception provider returned HTTP {$status}.");
                         }
                     } catch (ConnectionException $e) {
                         if ($attempts > $maxRetries) {
-                            throw MultimodalException::providerUnavailable('Perception provider connection timed out.');
+                            throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider connection timed out.', 504);
                         }
                     }
                 }
@@ -224,7 +239,17 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
                     throw MultimodalException::extractionFailed('INVALID_PERCEPTION_RESPONSE', 'Perception provider returned a non-JSON payload.');
                 }
 
+                $finishReason = isset($body['choices'][0]['finish_reason']) ? (string) $body['choices'][0]['finish_reason'] : null;
                 $rawText = $this->extractMessageText($body['choices'][0]['message']['content'] ?? '');
+
+                if ($rawText === '') {
+                    throw MultimodalException::extractionFailed('EMPTY_PERCEPTION_RESPONSE', 'Perception provider returned an empty response.');
+                }
+
+                if ($finishReason === 'length') {
+                    throw MultimodalException::extractionFailed('TRUNCATED_PERCEPTION_RESPONSE', 'Perception model response exceeded maximum token limit and was truncated.');
+                }
+
                 $parsed = $this->parseStrictJson($rawText);
                 $usage = is_array($body['usage'] ?? null) ? $body['usage'] : [];
 
@@ -237,7 +262,7 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
                     inputTokens: (int) ($usage['prompt_tokens'] ?? 0),
                     outputTokens: (int) ($usage['completion_tokens'] ?? 0),
                     durationMs: $durationMs,
-                    finishReason: isset($body['choices'][0]['finish_reason']) ? (string) $body['choices'][0]['finish_reason'] : null,
+                    finishReason: $finishReason,
                     warnings: [],
                     httpAttempts: $attempts,
                 );

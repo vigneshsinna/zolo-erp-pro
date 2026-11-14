@@ -403,6 +403,152 @@ final class MediaUploadSecurityTest extends TestCase
         $res3->release();
     }
 
+    public function test_idempotency_key_with_different_file_content_is_rejected_with_409_conflict(): void
+    {
+        app(AiFeatureGate::class)->setCompanyMultimodal($this->companyA->id, true, 10);
+        Http::fake();
+
+        $jpg1 = $this->makeTempJpeg('CONTENT_ORIGINAL');
+        $idemKey = 'idem-conflict-' . Str::uuid();
+
+        // 1. Upload original content
+        $r1 = $this->actingAs($this->adminA)
+            ->withSession(['company_id' => $this->companyA->id, 'branch_id' => $this->branchA, 'financial_year_id' => $this->fyA])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpg1, 'doc1.jpg', 'image/jpeg', null, true),
+                'extract_now' => false,
+            ], ['X-Idempotency-Key' => $idemKey])
+            ->assertStatus(201);
+
+        // 2. Replay with DIFFERENT content under SAME idempotency key must reject with 409
+        $jpg2 = $this->makeTempJpeg('CONTENT_DIFFERENT_PAYLOAD');
+        $this->actingAs($this->adminA)
+            ->withSession(['company_id' => $this->companyA->id, 'branch_id' => $this->branchA, 'financial_year_id' => $this->fyA])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpg2, 'doc1.jpg', 'image/jpeg', null, true),
+                'extract_now' => false,
+            ], ['X-Idempotency-Key' => $idemKey])
+            ->assertStatus(409)
+            ->assertJsonPath('error_code', 'IDEMPOTENCY_CONFLICT');
+
+        @unlink($jpg1);
+        @unlink($jpg2);
+    }
+
+    public function test_pdf_with_active_content_beyond_512_kib_is_rejected(): void
+    {
+        app(AiFeatureGate::class)->setCompanyMultimodal($this->companyA->id, true);
+        Http::fake();
+
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_deep_sec_' . uniqid() . '.pdf';
+        // Build valid minimal PDF header
+        $header = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+        // Pad 550 KiB with comments
+        $padding = str_repeat("% DUMMY COMMENT LINE FOR PADDING BUFFER\n", 15000);
+        // Inject /JavaScript after 550 KiB
+        $malicious = "\n3 0 obj\n<< /Type /Page /Parent 2 0 R /AA << /O << /S /JavaScript /JS (app.alert(1)) >> >> >>\nendobj\nxref\n0 4\n0000000000 65535 f \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n500\n%%EOF";
+
+        file_put_contents($path, $header . $padding . $malicious);
+        $this->assertGreaterThan(524288, filesize($path));
+
+        $this->actingAs($this->adminA)
+            ->withSession(['company_id' => $this->companyA->id, 'branch_id' => $this->branchA, 'financial_year_id' => $this->fyA])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($path, 'deep_script.pdf', 'application/pdf', null, true),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'INVALID_MAGIC_BYTES');
+
+        @unlink($path);
+    }
+
+    public function test_raw_image_url_and_base64_on_chat_are_rejected_with_422(): void
+    {
+        $sessA = ['company_id' => $this->companyA->id, 'branch_id' => $this->branchA, 'financial_year_id' => $this->fyA];
+
+        // 1. Remote HTTP URL
+        $this->actingAs($this->adminA)
+            ->withSession($sessA)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'Analyze this invoice',
+                'image' => 'https://evil.example.com/invoice.png',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'REMOTE_URL_FORBIDDEN');
+
+        // 2. Raw base64 data URI
+        $this->actingAs($this->adminA)
+            ->withSession($sessA)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'Analyze this invoice',
+                'image' => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'REMOTE_URL_FORBIDDEN');
+
+        // 3. Arbitrary non-UUID string
+        $this->actingAs($this->adminA)
+            ->withSession($sessA)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'Analyze this invoice',
+                'image' => '../../etc/passwd',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'REMOTE_URL_FORBIDDEN');
+    }
+
+    public function test_gateway_rate_limit_settles_reserved_tokens_without_stranding(): void
+    {
+        app(AiFeatureGate::class)->setCompanyMultimodal($this->companyA->id, true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+
+        $principal = new \App\Ai\DTOs\AiPrincipal(
+            actorId: $this->adminA->id,
+            companyId: $this->companyA->id,
+            branchId: $this->branchA,
+            financialYearId: $this->fyA,
+            permittedToolNames: ['ai.use'],
+            requestId: 'test-gw-rate-req',
+            isActive: true,
+        );
+
+        $gateway = app(\App\Ai\Gateway\ApprovedModelGateway::class);
+        $date = now('UTC')->toDateString();
+
+        // Exhaust provider rate limit bucket so enforceProviderRateLimit() throws TooManyRequestsHttpException
+        $rpmLimit = $gateway->getProviderRpmLimit('nvidia');
+        for ($i = 0; $i < $rpmLimit + 5; $i++) {
+            \Illuminate\Support\Facades\RateLimiter::hit('ai:rpm:nvidia', 60);
+        }
+
+        try {
+            $gateway->admitPerceptionDispatch(
+                principal: $principal,
+                date: $date,
+                purpose: \App\Ai\Multimodal\Enums\ModelPurpose::PerceptionVision,
+                estimatedInputBytes: 1000,
+                mediaId: (string) Str::uuid(),
+                callback: function () {
+                    $this->fail('Callback should never execute when rate limit is exceeded.');
+                },
+            );
+            $this->fail('Expected TooManyRequestsHttpException when provider RPM is exhausted.');
+        } catch (\Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException $e) {
+            $this->assertStringContainsString('AI provider request limit reached', $e->getMessage());
+        }
+
+        // Verify reserved_tokens counter was settled back to 0 (never stranded)
+        $counter = DB::table('ai_usage_counters')
+            ->where('company_id', $this->companyA->id)
+            ->where('user_id', $this->adminA->id)
+            ->where('date', $date)
+            ->first();
+
+        $this->assertNotNull($counter);
+        $this->assertSame(0, (int) $counter->reserved_tokens);
+    }
+
     private function makeTempJpeg(?string $injectExifPayload = null): string
     {
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_f_img_' . uniqid() . '.jpg';

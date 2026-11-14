@@ -56,6 +56,80 @@ class ProductApiController extends BaseApiController
         return $this->sendResponse((new \App\Http\Resources\ProductResource($product))->resolve($request), 'Product retrieved successfully');
     }
 
+    public function metadata(Request $request): JsonResponse
+    {
+        $context = $this->companyContext($request);
+        $scope = ['company_id' => $context->companyId];
+
+        $brands = \App\Models\Brand::where('is_active', true)->get(['id', 'title as name']);
+        $categories = \App\Models\Category::forCompany($context)->where('is_active', true)->get(['id', 'name', 'parent_id']);
+        $units = \App\Models\Unit::where('is_active', true)->get(['id', 'unit_name as name', 'unit_code as code', 'base_unit']);
+        $taxes = \App\Models\Tax::where('is_active', true)->get(['id', 'name', 'rate']);
+        $taxCategories = \Illuminate\Support\Facades\DB::table('tax_categories')->where($scope)->get(['id', 'name', 'supply_type']);
+        $productTypes = \Illuminate\Support\Facades\Schema::hasTable('product_types')
+            ? \App\Models\ProductType::forCompany($context->companyId)->where('is_active', true)->get(['id', 'name'])
+            : collect();
+        $warehouses = \App\Models\Warehouse::forCompany($context)->where('is_active', true)->get(['id', 'name', 'address']);
+
+        return $this->sendResponse([
+            'brands' => $brands,
+            'categories' => $categories,
+            'units' => $units,
+            'taxes' => $taxes,
+            'tax_categories' => $taxCategories,
+            'product_types' => $productTypes,
+            'warehouses' => $warehouses,
+            'barcode_symbologies' => ['C128', 'C39', 'UPCA', 'UPCE', 'EAN8', 'EAN13'],
+            'product_types_allowed' => ['standard', 'combo', 'digital', 'service'],
+        ], 'Product metadata retrieved successfully');
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $context = $this->companyContext($request);
+        $service = app(\App\Services\ERP\ProductMasterService::class);
+
+        $data = $request->all();
+        if ($request->input('product_usage') === 'purchase') {
+            $data['price'] = $request->input('price') ?? 0;
+        } elseif ($request->input('product_usage') === 'sale') {
+            $data['cost'] = $request->input('cost') ?? 0;
+        }
+
+        $product = $service->create($data, $data, $context);
+
+        return $this->sendResponse(
+            (new \App\Http\Resources\ProductResource($product->fresh()))->resolve($request),
+            'Product created successfully',
+            201
+        );
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $context = $this->companyContext($request);
+        $product = Product::forCompany($context)->whereKey($id)->lockForUpdate()->first();
+        if (!$product) {
+            return $this->sendError('Product not found', [], 404);
+        }
+
+        $service = app(\App\Services\ERP\ProductMasterService::class);
+        $data = $request->all();
+        if ($request->input('product_usage') === 'purchase') {
+            $data['price'] = $request->input('price') ?? 0;
+        } elseif ($request->input('product_usage') === 'sale') {
+            $data['cost'] = $request->input('cost') ?? 0;
+        }
+
+        $updated = $service->update($product, $data, $data, $context);
+
+        return $this->sendResponse(
+            (new \App\Http\Resources\ProductResource($updated->fresh()))->resolve($request),
+            'Product updated successfully',
+            200
+        );
+    }
+
     public function search(Request $request, string $term): JsonResponse
     {
         validator(['term' => $term], ['term' => 'required|string|max:100'])->validate();

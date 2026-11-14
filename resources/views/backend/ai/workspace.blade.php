@@ -1047,27 +1047,35 @@
                             }
                             card.append(cardBody);
                             bubble.append(card);
-                        } else if (data.proposal_id || fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1') {
-                            const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card"></div>');
+                        } else if (data.proposal_id || fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1' || fact.tool === 'purchase_bill.create.v1' || fact.tool === 'action.purchase_bill.v1') {
+                            const isPb = (fact.tool === 'purchase_bill.create.v1' || fact.tool === 'action.purchase_bill.v1' || data.action_key === 'purchase_bill.create.v1');
+                            const docTitle = isPb ? 'Purchase Bill Review' : ((data.document_type || 'ERP Action') + ' Proposal');
+                            const partyLabel = isPb ? 'Supplier' : (data.customer?.name ? 'Customer' : 'Party');
+                            const partyVal = data.supplier?.name || data.customer?.name || data.customer_name || '—';
+                            const invoiceNo = data.supplier_invoice_no || data.invoice_no || data.invoice_number || '—';
+
+                            const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card ai-proposal-review-card"></div>');
                             const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
-                            cardHeader.append($('<span class="font-weight-bold text-dark small"></span>').text((data.document_type || 'ERP Action') + ' Proposal · ' + (data.supplier?.name || data.customer?.name || data.customer_name || data.action_key || 'Review')));
-                            cardHeader.append($('<span class="badge badge-warning px-2 py-1"><i class="dripicons-hourglass mr-1"></i>Requires Approval</span>'));
+                            cardHeader.append($('<span class="font-weight-bold text-dark small"></span>').html('<i class="dripicons-document mr-1 text-primary"></i>' + docTitle + ' · ' + $('<div>').text(partyVal).html()));
+                            cardHeader.append($('<span class="badge badge-success px-2 py-1 ai-proposal-status-badge"><i class="dripicons-checkmark mr-1"></i>Validation passed</span>'));
                             card.append(cardHeader);
 
                             const cardBody = $('<div class="card-body p-3 bg-white"></div>');
-                            cardBody.append('<div class="row no-gutters mb-2 ai-diff-row">' +
-                                '<div class="col-6">Warehouse: <strong>' + $('<div>').text(data.warehouse?.name || '').html() + '</strong></div>' +
-                                '<div class="col-6 text-right">Date: <strong>' + $('<div>').text(data.date || '').html() + '</strong></div>' +
+                            cardBody.append('<div class="row no-gutters ai-meta-grid p-2 mb-3 border rounded bg-light">' +
+                                '<div class="col-6 mb-2"><small class="text-muted d-block">' + partyLabel + '</small><strong class="text-dark">' + $('<div>').text(partyVal).html() + '</strong></div>' +
+                                '<div class="col-6 mb-2 text-right"><small class="text-muted d-block">Invoice number</small><strong class="text-dark">' + $('<div>').text(invoiceNo).html() + '</strong></div>' +
+                                '<div class="col-6"><small class="text-muted d-block">Invoice date</small><strong class="text-dark">' + $('<div>').text(data.date || '—').html() + '</strong></div>' +
+                                '<div class="col-6 text-right"><small class="text-muted d-block">Warehouse</small><strong class="text-dark">' + $('<div>').text(data.warehouse?.name || '—').html() + '</strong></div>' +
                                 '</div>');
 
                             if (data.items && data.items.length > 0) {
                                 const tableWrapper = $('<div class="table-responsive my-2"></div>');
                                 const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
                                 table.append('<thead class="thead-light"><tr>' +
-                                    '<th>Item</th>' +
+                                    '<th>Product</th>' +
                                     '<th class="text-right">Qty</th>' +
-                                    '<th class="text-right">Cost</th>' +
-                                    '<th class="text-right">Total</th>' +
+                                    '<th class="text-right">Rate</th>' +
+                                    '<th class="text-right">Amount</th>' +
                                     '</tr></thead>');
 
                                 const tbody = $('<tbody></tbody>');
@@ -1088,8 +1096,8 @@
                             const footer = $('<div class="border-top pt-2"></div>');
                             const totalsRow = $('<div class="row no-gutters small text-muted mb-2">' +
                                 '<div class="col-4">Subtotal: <strong class="text-dark">' + currencySymbol + (totals.subtotal || '0.00') + '</strong></div>' +
-                                '<div class="col-4 text-center">Tax: <strong class="text-dark">' + currencySymbol + (totals.tax_total || '0.00') + '</strong></div>' +
-                                '<div class="col-4 text-right">Grand Total: <strong class="text-dark font-weight-bold">' + currencySymbol + (totals.grand_total || '0.00') + '</strong></div>' +
+                                '<div class="col-4 text-center">GST: <strong class="text-dark">' + currencySymbol + (totals.tax_total || '0.00') + '</strong></div>' +
+                                '<div class="col-4 text-right">Total: <strong class="text-dark font-weight-bold">' + currencySymbol + (totals.grand_total || '0.00') + '</strong></div>' +
                                 '</div>');
                             footer.append(totalsRow);
 
@@ -1098,11 +1106,11 @@
                                 const btnDraftPdf = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-2 btn-preview-pdf" title="View draft receipt PDF in chat"><i class="dripicons-document mr-1"></i>Draft PDF</button>')
                                     .attr('data-pdf-url', aiBaseUrl + '/proposals/' + data.proposal_id + '/pdf')
                                     .attr('data-title', (data.document_type || 'Draft') + ' - ' + data.proposal_id.substring(0, 8));
-                                const btnApprove = $('<button type="button" class="btn btn-sm btn-success mr-2 py-1 px-3">Approve & Execute</button>');
+                                const btnApprove = $('<button type="button" class="btn btn-sm btn-success mr-2 py-1 px-3"><i class="dripicons-checkmark mr-1"></i>Approve & Create</button>');
                                 const btnReject = $('<button type="button" class="btn btn-sm btn-outline-danger py-1 px-3"><i class="dripicons-cross mr-1"></i>Reject</button>');
 
                                 btnApprove.on('click', function () {
-                                    btnApprove.prop('disabled', true).text('Approving...');
+                                    btnApprove.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Approving...');
                                     btnReject.prop('disabled', true);
                                     $.ajax({
                                         url: aiBaseUrl + '/proposals/' + data.proposal_id + '/approve',
@@ -1125,22 +1133,23 @@
                                                 } else if (data.proposal_id) {
                                                     pdfUrl = aiBaseUrl + '/proposals/' + data.proposal_id + '/pdf';
                                                 }
-                                                const successContainer = $('<div class="d-flex align-items-center flex-wrap"></div>');
-                                                successContainer.append($('<span role="status" class="badge badge-success p-2 mr-2 mb-1"></span>').html('<i class="dripicons-checkmark mr-1"></i>Booked: <strong>' + $('<div>').text(refNo).html() + '</strong>'));
+                                                cardHeader.find('.ai-proposal-status-badge').replaceWith($('<span class="badge badge-success px-2 py-1"><i class="dripicons-checkmark mr-1"></i>Booked</span>'));
+                                                const successBox = $('<div class="alert alert-success mt-2 mb-0 p-3 border-success w-100"></div>');
+                                                successBox.append('<h6 class="font-weight-bold text-success mb-1"><i class="dripicons-checkmark mr-1"></i>ERP ' + (isPb ? 'Purchase Bill' : 'Voucher') + ' Created</h6>');
+                                                successBox.append('<div class="small mb-2">Voucher Number: <strong>' + $('<div>').text(refNo).html() + '</strong> · Status: Successfully posted to ledger and inventory updated.</div>');
+                                                const successBtns = $('<div class="d-flex align-items-center flex-wrap mt-2"></div>');
                                                 if (pdfUrl) {
-                                                    successContainer.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 mb-1 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
-                                                    successContainer.append($('<a class="btn btn-sm btn-primary py-1 px-2 mb-1" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
+                                                    successBtns.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 mb-1 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
+                                                    successBtns.append($('<a class="btn btn-sm btn-primary py-1 px-2 mb-1" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
                                                 }
-                                                actionRow.empty().append(successContainer);
-
-                                                // Append authoritative receipt directly back into the conversation!
-                                                appendReceiptCardToChat(refNo, receipt.details, pdfUrl, resType, currencySymbol);
+                                                successBox.append(successBtns);
+                                                actionRow.empty().append(successBox);
                                             } else {
                                                 actionRow.empty().append($('<span role="status" class="badge badge-success p-2"></span>').text('Approved. Execution is disabled.'));
                                             }
                                         },
                                         error: function (xhr) {
-                                            btnApprove.prop('disabled', false).text('Approve & Execute');
+                                            btnApprove.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Approve & Create');
                                             btnReject.prop('disabled', false);
                                             const errMsg = xhr.responseJSON?.message 
                                                 || xhr.responseJSON?.error_message 
@@ -1350,7 +1359,25 @@
                                                                 formBody.append($('<div class="form-group mb-1"><label>GST Rate / Tax Category *</label></div>').append(taxSelect));
                                                             }
 
-                                                            formBody.append('<div class="form-group mb-1"><label>HSN Code</label><input type="text" class="form-control form-control-sm mf-hsn" value="' + $('<div>').text(pre.hsn_code || '').html() + '" placeholder="e.g. 5208"></div>');
+                                                            const hsnGroup = $('<div class="form-group mb-1"><label class="small font-weight-bold text-dark">HSN / SAC Code * <small class="text-muted font-weight-normal">(4, 6 or 8 digits, e.g. 5208, 6205)</small></label></div>');
+                                                            const hsnInput = $('<input type="text" class="form-control form-control-sm mf-hsn" placeholder="e.g. 5208">').val(pre.hsn_code || '');
+                                                            hsnGroup.append(hsnInput);
+
+                                                            if (defs.hsn_codes && defs.hsn_codes.length > 0) {
+                                                                const hsnPills = $('<div class="d-flex flex-wrap mt-1"></div>');
+                                                                defs.hsn_codes.forEach(function (h) {
+                                                                    const pCode = h.code || h;
+                                                                    const pDesc = h.description || ('HSN ' + pCode);
+                                                                    const pill = $('<button type="button" class="btn btn-xs btn-outline-info mr-1 mb-1 py-0 px-2 small" style="font-size: 11px;">' + $('<div>').text(pCode + (pDesc ? ' (' + pDesc + ')' : '')).html() + '</button>');
+                                                                    pill.on('click', function () {
+                                                                        formBody.find('.mf-hsn').val(pCode).removeClass('is-invalid');
+                                                                        formBody.find('.mf-hsn-feedback').remove();
+                                                                    });
+                                                                    hsnPills.append(pill);
+                                                                });
+                                                                hsnGroup.append(hsnPills);
+                                                            }
+                                                            formBody.append(hsnGroup);
                                                         } else if (spawnRes.entity_type === 'warehouse') {
                                                             formBody.append('<div class="form-group mb-1"><label>Warehouse Name *</label><input type="text" class="form-control form-control-sm mf-name" value="' + $('<div>').text(pre.name || '').html() + '" placeholder="Warehouse Name"></div>');
                                                             formBody.append('<div class="form-group mb-1"><label>Phone</label><input type="text" class="form-control form-control-sm mf-phone" placeholder="Phone"></div>');
@@ -1380,6 +1407,26 @@
                                                                 masterData.phone_number = formBody.find('.mf-phone').val() || null;
                                                                 masterData.city = formBody.find('.mf-city').val() || null;
                                                             } else if (spawnRes.entity_type === 'product') {
+                                                                const hsnVal = formBody.find('.mf-hsn').val() ? formBody.find('.mf-hsn').val().trim() : '';
+                                                                if (!hsnVal) {
+                                                                    btnPreview.prop('disabled', false).html('<i class="dripicons-preview mr-1"></i>Preview Master Proposal');
+                                                                    formBody.find('.mf-hsn').addClass('is-invalid');
+                                                                    if (formBody.find('.mf-hsn-feedback').length === 0) {
+                                                                        formBody.find('.mf-hsn').after('<div class="invalid-feedback mf-hsn-feedback d-block">HSN Code is required for GST compliance (e.g. 5208, 6205).</div>');
+                                                                    }
+                                                                    return;
+                                                                }
+                                                                if (!/^[0-9]{4}(?:[0-9]{2})?(?:[0-9]{2})?$/.test(hsnVal)) {
+                                                                    btnPreview.prop('disabled', false).html('<i class="dripicons-preview mr-1"></i>Preview Master Proposal');
+                                                                    formBody.find('.mf-hsn').addClass('is-invalid');
+                                                                    if (formBody.find('.mf-hsn-feedback').length === 0) {
+                                                                        formBody.find('.mf-hsn').after('<div class="invalid-feedback mf-hsn-feedback d-block">HSN Code must be 4, 6, or 8 digits.</div>');
+                                                                    }
+                                                                    return;
+                                                                }
+                                                                formBody.find('.mf-hsn').removeClass('is-invalid');
+                                                                formBody.find('.mf-hsn-feedback').remove();
+
                                                                 masterData.code = formBody.find('.mf-code').val();
                                                                 masterData.unit_id = formBody.find('.mf-unit').val() ? parseInt(formBody.find('.mf-unit').val(), 10) : null;
                                                                 masterData.cost = formBody.find('.mf-cost').val() ? parseFloat(formBody.find('.mf-cost').val()) : 0;
@@ -1390,9 +1437,7 @@
                                                                 if (formBody.find('.mf-tax-category').val()) {
                                                                     masterData.tax_category_id = parseInt(formBody.find('.mf-tax-category').val(), 10);
                                                                 }
-                                                                if (formBody.find('.mf-hsn').val()) {
-                                                                    masterData.hsn_code = formBody.find('.mf-hsn').val().trim();
-                                                                }
+                                                                masterData.hsn_code = hsnVal;
                                                             } else if (spawnRes.entity_type === 'warehouse') {
                                                                 masterData.phone = formBody.find('.mf-phone').val() || null;
                                                                 masterData.address = formBody.find('.mf-address').val() || '-';
@@ -1446,21 +1491,38 @@
                                                                                 issueBox.append(successBadge);
 
                                                                                 if (resExec.can_prepare_proposal) {
-                                                                                    const readyBanner = $('<div class="alert alert-success mt-2 mb-0 p-2 d-flex justify-content-between align-items-center">' +
-                                                                                        '<span class="small font-weight-bold"><i class="dripicons-checkmark mr-1"></i>All details ready! Purchase Order proposal can now be generated.</span>' +
-                                                                                        '<button type="button" class="btn btn-sm btn-success ai-btn-prepare-final-po py-1 px-3"><i class="dripicons-document mr-1"></i>Generate Purchase Order Proposal</button>' +
+                                                                                    const isBill = (data.action_key === 'purchase_bill.create.v1' || data.action_key === 'action.purchase_bill.v1');
+                                                                                    const docLabel = isBill ? 'Purchase Bill' : 'Purchase Order';
+                                                                                    const readyBanner = $('<div class="alert alert-success mt-2 mb-0 p-2 d-flex justify-content-between align-items-center flex-wrap">' +
+                                                                                        '<span class="small font-weight-bold mb-1"><i class="dripicons-checkmark mr-1"></i>All details ready! ' + docLabel + ' proposal can now be generated.</span>' +
+                                                                                        '<button type="button" class="btn btn-sm btn-success ai-btn-prepare-final-po py-1 px-3 mb-1"><i class="dripicons-document mr-1"></i>Generate ' + docLabel + ' Proposal</button>' +
                                                                                         '</div>');
                                                                                     readyBanner.find('.ai-btn-prepare-final-po').on('click', function () {
-                                                                                        $(this).prop('disabled', true).text('Preparing Proposal...');
+                                                                                        const $btn = $(this);
+                                                                                        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span>Preparing Proposal...');
                                                                                         $.ajax({
                                                                                             url: aiBaseUrl + '/workflow-tasks/' + data.task_id + '/prepare-proposal',
                                                                                             method: 'POST',
                                                                                             headers: headers,
-                                                                                            success: function () {
-                                                                                                readyBanner.html('<span class="small font-weight-bold text-success"><i class="dripicons-checkmark mr-1"></i>Purchase Order Proposal generated successfully! Review & approve in chat or Review Center.</span>');
+                                                                                            success: function (prepRes) {
+                                                                                                readyBanner.html('<span class="small font-weight-bold text-success"><i class="dripicons-checkmark mr-1"></i>' + docLabel + ' Proposal generated successfully! Review & approve in chat or Review Center.</span>');
+                                                                                                if (prepRes && prepRes.proposal) {
+                                                                                                    const factData = Object.assign({}, prepRes.proposal.preview || {}, {
+                                                                                                        proposal_id: prepRes.proposal.id,
+                                                                                                        action_key: prepRes.proposal.action_key,
+                                                                                                        version: prepRes.proposal.version,
+                                                                                                        document_type: prepRes.proposal.preview?.document_type || docLabel
+                                                                                                    });
+                                                                                                    appendMessage('assistant', 'I have prepared the ' + docLabel + ' proposal for your review. Please verify the quantities, pricing, and tax lines below before approving.', [], [], [{
+                                                                                                        tool: prepRes.proposal.action_key,
+                                                                                                        data: factData
+                                                                                                    }]);
+                                                                                                }
                                                                                             },
                                                                                             error: function (e) {
-                                                                                                alert('Error generating proposal: ' + (e.responseJSON?.message || 'Failed'));
+                                                                                                $btn.prop('disabled', false).html('<i class="dripicons-document mr-1"></i>Generate ' + docLabel + ' Proposal');
+                                                                                                const errMsg = e.responseJSON?.message || (e.responseJSON?.errors ? Object.values(e.responseJSON.errors).flat().join(' ') : 'Failed to generate proposal');
+                                                                                                alert('Error generating proposal: ' + errMsg);
                                                                                             }
                                                                                         });
                                                                                     });
@@ -1604,7 +1666,21 @@
                                                         method: 'POST',
                                                         headers: headers,
                                                         success: function (prepRes) {
-                                                            footer.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>All details confirmed! Proposal ready. Send message or refresh to review.</span>');
+                                                            const isBill = (data.action_key === 'purchase_bill.create.v1' || data.action_key === 'action.purchase_bill.v1');
+                                                            const docLabel = isBill ? 'Purchase Bill' : 'Purchase Order';
+                                                            footer.html('<span class="badge badge-success p-2"><i class="dripicons-checkmark mr-1"></i>All details confirmed! ' + docLabel + ' proposal ready.</span>');
+                                                            if (prepRes && prepRes.proposal) {
+                                                                const factData = Object.assign({}, prepRes.proposal.preview || {}, {
+                                                                    proposal_id: prepRes.proposal.id,
+                                                                    action_key: prepRes.proposal.action_key,
+                                                                    version: prepRes.proposal.version,
+                                                                    document_type: prepRes.proposal.preview?.document_type || docLabel
+                                                                });
+                                                                appendMessage('assistant', 'I have prepared the ' + docLabel + ' proposal for your review. Please verify the quantities, pricing, and tax lines below before approving.', [], [], [{
+                                                                    tool: prepRes.proposal.action_key,
+                                                                    data: factData
+                                                                }]);
+                                                            }
                                                         },
                                                         error: function (prepXhr) {
                                                             btnSubmit.prop('disabled', false).text('Submit Details');
@@ -1912,6 +1988,7 @@
         <script>
             window.zoloAiMultimodalConfig = {!! \Illuminate\Support\Js::from([
                 'enabled' => (bool) ($isMultimodalEnabled ?? false),
+                'allowDirectPurchaseBill' => (bool) config('ai_multimodal.allow_direct_purchase_bill', false),
                 'mediaBaseUrl' => url('ai'),
                 'maxAudioSeconds' => (int) ($multimodalLimits['max_audio_seconds'] ?? 120),
                 'maxPdfPages' => (int) ($multimodalLimits['max_pdf_pages'] ?? 5),

@@ -73,7 +73,9 @@ class AiMediaController extends Controller
             $extraction = null;
             $async = filter_var($request->input('async', false), FILTER_VALIDATE_BOOLEAN);
             $extractNow = filter_var($request->input('extract_now', true), FILTER_VALIDATE_BOOLEAN);
+            $prepareNow = filter_var($request->input('prepare_now', false), FILTER_VALIDATE_BOOLEAN);
             $companionText = $request->input('companion_text');
+            $actionKey = $request->input('action_key');
 
             if ($async) {
                 ExtractMediaJob::dispatch(
@@ -85,13 +87,62 @@ class AiMediaController extends Controller
                     $idempotencyKey,
                     $companionText,
                 );
-            } elseif ($extractNow) {
-                $extraction = $this->extractionService->extract(
+            } elseif ($prepareNow) {
+                try {
+                    $extraction = $this->extractionService->extract(
+                        principal: $principal,
+                        asset: $asset->fresh(),
+                        idempotencyKey: $idempotencyKey,
+                        companionText: $companionText,
+                    );
+                } catch (MultimodalException $me) {
+                    $details = $me->details;
+                    $details['media_id'] = $asset->id;
+                    if (! isset($details['is_retryable'])) {
+                        $details['is_retryable'] = true;
+                    }
+                    throw new MultimodalException($me->errorCode, $me->getMessage(), $me->httpStatus, $details);
+                }
+
+                $result = $this->workflowBridge->handoff(
                     principal: $principal,
                     asset: $asset->fresh(),
-                    idempotencyKey: $idempotencyKey,
+                    extraction: $extraction->fresh(),
                     companionText: $companionText,
+                    overrideActionKey: $actionKey,
+                    threadId: $request->input('thread_id'),
+                    allowTrustedPreparation: true,
                 );
+
+                return response()->json([
+                    'status' => $result['status'] ?? 'ok',
+                    'idempotent_replay' => $alreadyExisted,
+                    'media' => $this->presentAsset($asset->fresh()),
+                    'extraction' => $this->presentExtraction($extraction->fresh()),
+                    'action_key' => $result['action_key'] ?? null,
+                    'task_id' => $result['task_id'] ?? ($result['task']['id'] ?? null),
+                    'proposal' => $result['proposal'] ?? null,
+                    'task' => $result['task'] ?? null,
+                    'clarification' => $result['clarification'] ?? null,
+                    'normalized_input' => $result['normalized_input'] ?? null,
+                    'message' => $result['message'] ?? null,
+                ], $alreadyExisted ? 200 : 201);
+            } elseif ($extractNow) {
+                try {
+                    $extraction = $this->extractionService->extract(
+                        principal: $principal,
+                        asset: $asset->fresh(),
+                        idempotencyKey: $idempotencyKey,
+                        companionText: $companionText,
+                    );
+                } catch (MultimodalException $me) {
+                    $details = $me->details;
+                    $details['media_id'] = $asset->id;
+                    if (! isset($details['is_retryable'])) {
+                        $details['is_retryable'] = true;
+                    }
+                    throw new MultimodalException($me->errorCode, $me->getMessage(), $me->httpStatus, $details);
+                }
             } else {
                 $extraction = $asset->latestExtraction;
             }
@@ -369,6 +420,77 @@ class AiMediaController extends Controller
         } catch (Throwable $e) {
             return $this->handleException($e);
         }
+    }
+
+    public function prepare(Request $request): JsonResponse
+    {
+        try {
+            $principal = $this->resolveAuthorizedPrincipal($request);
+            $idempotencyKey = $this->resolveIdempotencyKey($request);
+            $companionText = $request->input('companion_text');
+            $actionKey = $request->input('action_key');
+            $threadId = $request->input('thread_id');
+
+            $asset = null;
+            if ($request->hasFile('file')) {
+                $asset = $this->ingestionService->ingest(
+                    principal: $principal,
+                    file: $request->file('file'),
+                    declaredMime: $request->file('file')?->getClientMimeType(),
+                    originalName: $request->file('file')?->getClientOriginalName(),
+                    idempotencyKey: $idempotencyKey,
+                    threadId: $threadId,
+                    workflowTaskId: $request->input('workflow_task_id'),
+                );
+            } elseif ($request->filled('media_id')) {
+                $asset = $this->loadOwnedAsset($principal, (string) $request->input('media_id'));
+            } else {
+                throw MultimodalException::mediaNotFound('Provide either an uploaded file or a valid media_id to prepare.');
+            }
+
+            $extraction = $asset->latestExtraction;
+            if ($extraction === null || filter_var($request->input('force', false), FILTER_VALIDATE_BOOLEAN)) {
+                $extraction = $this->extractionService->extract(
+                    principal: $principal,
+                    asset: $asset->fresh(),
+                    idempotencyKey: $idempotencyKey,
+                    companionText: $companionText,
+                );
+            }
+
+            // Orchestrate automatic preparation into workflow proposal
+            $result = $this->workflowBridge->handoff(
+                principal: $principal,
+                asset: $asset->fresh(),
+                extraction: $extraction->fresh(),
+                companionText: $companionText,
+                overrideActionKey: $actionKey,
+                threadId: $threadId,
+                allowTrustedPreparation: true,
+            );
+
+            return response()->json([
+                'status' => $result['status'] ?? 'ok',
+                'media' => $this->presentAsset($asset->fresh()),
+                'extraction' => $this->presentExtraction($extraction->fresh()),
+                'action_key' => $result['action_key'] ?? null,
+                'task_id' => $result['task_id'] ?? ($result['task']['id'] ?? null),
+                'proposal' => $result['proposal'] ?? null,
+                'task' => $result['task'] ?? null,
+                'clarification' => $result['clarification'] ?? null,
+                'normalized_input' => $result['normalized_input'] ?? null,
+                'message' => $result['message'] ?? null,
+            ], 200);
+        } catch (Throwable $e) {
+            return $this->handleException($e);
+        }
+    }
+
+    public function prepareExisting(Request $request, string $id): JsonResponse
+    {
+        $request->merge(['media_id' => $id]);
+
+        return $this->prepare($request);
     }
 
     public function destroy(Request $request, string $id): JsonResponse

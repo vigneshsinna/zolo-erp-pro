@@ -42,6 +42,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Direct Commercial Invoice Posting Policy
+    |--------------------------------------------------------------------------
+    |
+    | When false (default), uploading an external vendor invoice/bill will
+    | restrict direct General Ledger posting and route the user to stage a
+    | Purchase Order (`purchase_order.create.v1`) to safeguard 3-way matching.
+    | When true, direct Purchase Bill proposals (`purchase_bill.create.v1`)
+    | can be staged from extracted media for human approval.
+    |
+    */
+
+    'allow_direct_purchase_bill' => (bool) env('AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Ingestion Security & Quotas
     |--------------------------------------------------------------------------
     */

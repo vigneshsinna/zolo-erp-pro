@@ -43,6 +43,8 @@ class UploadAiMediaRequest extends FormRequest
             'idempotency_key' => ['nullable', 'string', 'max:120'],
             'companion_text' => ['nullable', 'string', 'max:2000'],
             'extract_now' => ['nullable', 'boolean'],
+            'prepare_now' => ['nullable', 'boolean'],
+            'action_key' => ['nullable', 'string', 'max:80'],
             'async' => ['nullable', 'boolean'],
         ];
     }

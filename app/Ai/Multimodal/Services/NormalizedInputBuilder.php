@@ -50,11 +50,25 @@ final class NormalizedInputBuilder
 
         $this->detectPostedImmutableConflict($principal, $extracted, $companionText, $conflicts, $warnings);
 
+        if ((bool) ($extracted['erp_checks']['company_mismatch'] ?? false)) {
+            $msg = 'Company Mismatch: Document buyer identity does not match active workspace company. Direct transaction staging is blocked.';
+            $conflicts[] = [
+                'code' => 'company_mismatch',
+                'message' => $msg,
+            ];
+            $warnings[] = $msg;
+        }
+
         $capabilityReason = null;
         $isActionable = false;
 
         if ($intentKey !== null && $intentKey !== 'query_readonly') {
-            $disallowedDirectHandoff = in_array($intentKey, ['purchase_bill.create.v1', 'sales_invoice.create.v1'], true);
+            $allowDirectPurchaseBill = (bool) config('ai_multimodal.allow_direct_purchase_bill', true);
+            $disallowed = ['sales_invoice.create.v1'];
+            if (! $allowDirectPurchaseBill) {
+                $disallowed[] = 'purchase_bill.create.v1';
+            }
+            $disallowedDirectHandoff = in_array($intentKey, $disallowed, true);
             if ($disallowedDirectHandoff || ! $this->capabilityRegistry->has($intentKey)) {
                 $capabilityReason = $this->unimplementedCapabilityMessage($intentKey);
                 $warnings[] = $capabilityReason;
@@ -107,7 +121,8 @@ final class NormalizedInputBuilder
                 || preg_match('/\b(sales\s*order)\b/', $text)) {
                 return 'sales_order.create.v1';
             }
-            if (preg_match('/\b(post|create|enter|book)\b.*\b(purchase\s*bill|vendor\s*bill)\b/', $text)) {
+            if (preg_match('/\b(post|create|enter|book|make|prepare|draft|raise)\b.*\b(purchase\s*bill|vendor\s*bill|supplier\s*bill|supplier\s*invoice|bill)\b/', $text)
+                || preg_match('/\b(purchase\s*bill|vendor\s*bill|supplier\s*invoice)\b/', $text)) {
                 return 'purchase_bill.create.v1';
             }
             if (preg_match('/\b(post|create|enter|book)\b.*\b(sales\s*invoice|tax\s*invoice)\b/', $text)) {
@@ -118,7 +133,7 @@ final class NormalizedInputBuilder
         if ($asset->source_kind === 'audio') {
             $guess = (string) ($extracted['intent_guess'] ?? 'unknown');
 
-            return in_array($guess, ['purchase_order.create.v1', 'sales_order.create.v1', 'query_readonly'], true)
+            return in_array($guess, ['purchase_order.create.v1', 'sales_order.create.v1', 'purchase_bill.create.v1', 'query_readonly'], true)
                 ? $guess
                 : null;
         }
@@ -128,7 +143,7 @@ final class NormalizedInputBuilder
         return match ($docType) {
             'purchase_order' => 'purchase_order.create.v1',
             'sales_order' => 'sales_order.create.v1',
-            'purchase_bill' => 'purchase_bill.create.v1',
+            'purchase_bill', 'supplier_invoice' => 'purchase_bill.create.v1',
             'sales_invoice' => 'sales_invoice.create.v1',
             default => null,
         };
@@ -145,6 +160,7 @@ final class NormalizedInputBuilder
         ?string $companionText,
     ): array {
         $isSales = $intentKey === 'sales_order.create.v1' || $intentKey === 'sales_invoice.create.v1';
+        $invoiceNo = $extracted['supplier_invoice_no'] ?? $extracted['invoice_number'] ?? null;
 
         if ($asset->source_kind === 'audio') {
             $party = $extracted['party_name'] ?? null;
@@ -155,6 +171,9 @@ final class NormalizedInputBuilder
                 'note' => $extracted['notes'] ?? null,
                 'items' => [],
             ];
+            if (! $isSales && $invoiceNo !== null && trim((string) $invoiceNo) !== '') {
+                $slots['supplier_invoice_no'] = trim((string) $invoiceNo);
+            }
 
             foreach ((array) ($extracted['items'] ?? []) as $idx => $item) {
                 if (! is_array($item)) {
@@ -180,7 +199,7 @@ final class NormalizedInputBuilder
             ? ($extracted['buyer_name'] ?? $extracted['supplier_name'] ?? null)
             : ($extracted['supplier_name'] ?? null);
 
-        $warehouseQuery = $this->extractWarehouseFromText($companionText);
+        $warehouseQuery = $this->extractWarehouseFromText($companionText) ?? ($extracted['warehouse_name'] ?? null);
 
         $slots = [
             $isSales ? 'customer_query' : 'supplier_query' => $party,
@@ -189,6 +208,10 @@ final class NormalizedInputBuilder
             'note' => isset($extracted['invoice_number']) ? 'Source Ref: ' . $extracted['invoice_number'] : null,
             'items' => [],
         ];
+
+        if (! $isSales && $invoiceNo !== null && trim((string) $invoiceNo) !== '') {
+            $slots['supplier_invoice_no'] = trim((string) $invoiceNo);
+        }
 
         foreach ((array) ($extracted['lines'] ?? []) as $idx => $line) {
             if (! is_array($line)) {
@@ -208,6 +231,9 @@ final class NormalizedInputBuilder
             }
             if (! empty($line['sku_or_hsn'])) {
                 $row['note'] = 'Ref/HSN: ' . $line['sku_or_hsn'];
+                $row['hsn_code'] = (string) $line['sku_or_hsn'];
+            } elseif (! empty($line['hsn_code'])) {
+                $row['hsn_code'] = (string) $line['hsn_code'];
             }
             $slots['items'][] = $row;
         }

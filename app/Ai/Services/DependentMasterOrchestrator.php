@@ -375,6 +375,16 @@ class DependentMasterOrchestrator
                     $prefilled['hsn_code'] = (string) $defaultHsn->code;
                 }
             }
+            if (empty($prefilled['hsn_code']) && Schema::hasTable('products')) {
+                $existingHsn = DB::table('products')
+                    ->where('company_id', $context->companyId)
+                    ->whereNotNull('hsn_code')
+                    ->where('hsn_code', '!=', '')
+                    ->value('hsn_code');
+                if ($existingHsn) {
+                    $prefilled['hsn_code'] = (string) $existingHsn;
+                }
+            }
         } elseif ($entityMeta['entity_type'] === 'customer') {
             $query = trim((string) ($slots['customer_query'] ?? ''));
             $prefilled['name'] = $query !== '' ? $query : null;
@@ -419,6 +429,15 @@ class DependentMasterOrchestrator
                     ->where('kind', 'hsn')
                     ->get(['code', 'description'])
                     ->toArray();
+            }
+            if (empty($defaults['hsn_codes']) && Schema::hasTable('products')) {
+                $productHsns = DB::table('products')
+                    ->where('company_id', $context->companyId)
+                    ->whereNotNull('hsn_code')
+                    ->where('hsn_code', '!=', '')
+                    ->distinct()
+                    ->pluck('hsn_code');
+                $defaults['hsn_codes'] = $productHsns->map(fn ($code) => (object) ['code' => (string) $code, 'description' => 'HSN ' . $code])->toArray();
             }
         } elseif ($entityType === 'warehouse') {
             $defaults['branches'] = DB::table('company_branches')

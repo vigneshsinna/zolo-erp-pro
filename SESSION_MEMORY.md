@@ -1,3 +1,247 @@
+## Unified Supplier Invoice Single-Card UI Rendering Fix & Crash Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis of UI Freeze on Attachment Upload:**
+  - *Observed Behavior:* User uploaded `SAMPLE_PURCHASE_BILL_DEMO_INV_1045.png` with text `"create a purchase bill."`. The backend successfully processed extraction and generated proposal `283676b3-2724-40ce-8966-a86cc9af46f6` in 8.2s (HTTP 200). However, the client UI displayed an empty card, the composer status was stuck on `"Extracting attachment…"`, and the send button was permanently disabled with the `"Working…"` spinner.
+  - *Identified Root Causes:*
+    1. **Undeclared Variable `initialStatus` in `renderUnifiedWorkflowCard`:** At line 901 of `public/js/ai-media-input.js`, `if (initialStatus === 'needs_input')` threw `ReferenceError: initialStatus is not defined` because `initialStatus` was referenced without being declared (`const initialStatus = ...`).
+    2. **Uncaught Exception Interrupted Callback Chain:** Because `renderUnifiedWorkflowCard()` threw a runtime exception inside `$.ajax.success:`, execution halted before line 299 `if (callback) callback(null, res);` was reached. In `workspace.blade.php`, the callback resetting `sending = false`, `#btn-send-spinner`, `#btn-send`, and `#ai-response-status` was never invoked, causing the permanent freeze.
+    3. **Unscoped `aiBaseUrl` Reference:** Within `renderProposalView`, `renderBookedView`, `renderClarificationView`, and `renderEditView`, URL construction directly referenced `aiBaseUrl` rather than resolving from `window.zoloAiWorkspace.aiBaseUrl` or `cfg.mediaBaseUrl`, risking `ReferenceError: aiBaseUrl is not defined` on button clicks.
+    4. **Totals Display Alignment:** Totals block in `renderProposalView` was aligned horizontally rather than stacked on the right matching Image 3 (`Subtotal`, `GST`, bold `Total`).
+
+- **Architectural & Client Fixes Implemented:**
+  1. **Declared `initialStatus` Explicitly:** `const initialStatus = res.status || ((res.clarification || (res.task && res.task.status === 'needs_input')) ? 'needs_input' : 'proposal_created');`, cleanly routing into clarification view if missing fields exist, or directly into proposal review.
+  2. **Wrapped Callback Chain in `try...catch...finally`:** In `public/js/ai-media-input.js::submitStagedAttachment()`, both `success:` and `error:` now wrap card rendering in `try...catch` and invoke `callback()` inside `finally`, guaranteeing that the composer button and status text always reset even if unexpected rendering errors occur.
+  3. **Added `resolveAiBaseUrl()` Helper:** Dynamically extracts `aiBaseUrl` from active workspace context (`getWs().aiBaseUrl || cfg.mediaBaseUrl || '/ai'`) and scopes `const aiBaseUrl = resolveAiBaseUrl();` in `renderUnifiedWorkflowCard()`.
+  4. **Right-Stacked Totals Layout (Image 3 Specification):** Rendered totals stacked on the right (`Subtotal`, `GST`, large bold `Total`) matching the user's design reference.
+  5. **Exported `renderUnifiedWorkflowCard` on `window.zoloAiMedia`:** Enabled headless DOM verification and programmatic re-renders.
+
+- **Verification:**
+  - Automated Node.js simulated DOM test of `renderUnifiedWorkflowCard`: passed without error for proposal review, clarification view, and error handling.
+  - PHPUnit test suite: `NormalizedInputWorkflowTest` passed (11/11 tests, 96 assertions).
+  - Clean `php artisan optimize:clear` and syntax check `node -c public/js/ai-media-input.js`.
+
+---
+
+## Unified Supplier Invoice to Purchase Bill Single-Card Workflow & Governed Execution Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Problems Identified & Architectural Resolutions:**
+  1. **Removed Three-Step Manual Decision Handoff:**
+     - *Previous Behavior:* User had to click "Confirm Extraction" -> wait for confirmation -> click "Stage ERP Proposal" -> wait for proposal card -> click "Approve".
+     - *Resolution:* Created a unified `prepare` backend pipeline (`POST /api/v1/ai/media/prepare` & `POST /api/v1/ai/media/{id}/prepare`). Uploading an invoice automatically executes: ingestion -> perception extraction -> automated validation -> trusted preparation state (`confirmation_status = 'prepared'`) -> master entity resolution -> input completeness evaluation -> final purchase-bill proposal generation in one continuous step.
+  2. **Resolved Purchase Bill Routing Conflict:**
+     - *Previous Behavior:* `purchase_bill.create.v1` was artificially blocked from direct handoff in `NormalizedInputBuilder.php`, and `ai-media-input.js` guided the user to convert supplier invoices into Purchase Orders.
+     - *Resolution:* Set `'allow_direct_purchase_bill' => true` in `config/ai_multimodal.php` and `.env.example`. Removed artificial blockage in `NormalizedInputBuilder.php`. Preserved the authentic document type (`purchase_bill`) and intent (`purchase_bill.create.v1`) throughout the pipeline.
+  3. **Corrected Source Invoice Number Field Mapping:**
+     - *Previous Behavior:* Source invoice number was placed into a general note rather than `supplier_invoice_no`.
+     - *Resolution:* Mapped `$extracted['supplier_invoice_no'] ?? $extracted['invoice_number']` directly to `$slots['supplier_invoice_no']` in `NormalizedInputBuilder.php`. Flowed into `PurchaseBillPreviewAdapter` and `PurchaseBillCommandAdapter` creating the purchase with `supplier_invoice_no`.
+  4. **Single Continuously Updated Chat Card:**
+     - *Previous Behavior:* Generated multiple disjoint cards across chat (Extraction Card, then Task Card, then Proposal Card, then Receipt Card).
+     - *Resolution:* Built `renderUnifiedWorkflowCard` in `public/js/ai-media-input.js`:
+       - **Review State:** 4-grid metadata box (Supplier, Invoice number, Date, Warehouse), item table (`Product | Qty | Rate | Amount`), right-aligned totals (`Subtotal | GST | Total`), with `[Edit Bill]` and `[✓ Approve & Create]` buttons.
+       - **In-Place Edit State:** Inline editable inputs for supplier, invoice number, warehouse, and line items, revalidating and recalculating on Save.
+       - **Clarification State:** If information is missing or ambiguous, pauses and displays only unresolved fields.
+       - **Booked State:** Upon approval, transforms the card in-place to display `✓ ERP purchase bill created`, ERP bill reference number, status, and PDF link, eliminating duplicate cards.
+  5. **Maintained Strict Two-Phase Governance:**
+     - Model perception and preparation remain unprivileged planners. Zero financial or inventory writes occur without human authorization.
+     - Execution is sealed with digital signatures and version binding in `ActionApprovalService` and `ApprovedActionExecutor`.
+  6. **Proposal Versioning on Edit:**
+     - Hardened `AiWorkflowTaskController::prepareProposal`: when a proposal already exists for the task, delegates to `ActionProposalService::applyChangeRequest()`, creating version 2 with recalculated preview totals and invalidating version 1 with 422 ("stale or already decided").
+
+- **Automated Verification & Regression Test Suite:**
+  - **Full Supplier-Invoice Journey (`tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` - 11/11 passed, 96 assertions):**
+    1. `test_supplier_invoice_automatic_preparation_and_approved_execution_journey`: Single upload -> auto-extraction & tax calculation -> preserved invoice number (`PB-100`) & document type (`purchase_bill`) -> single proposal (v1) -> zero DB writes before approval -> single approval creates 1 purchase (`status = 1`, `grand_total = 1575.00`, `total_tax = 75.00`, physical stock movement, and GL journal entries).
+    2. `test_duplicate_invoice_number_detection_and_warning`: Flags existing invoice numbers via `erp_checks.duplicate_purchase`.
+    3. `test_missing_warehouse_defaults_to_active_branch_warehouse`: Resolves to active branch's default warehouse when omitted.
+    4. `test_edited_proposal_bumps_version_and_updates_totals`: Editing quantities updates task and regenerates proposal at version 2, rendering version 1 stale.
+    5. `test_expired_proposal_fails_closed_on_approval`: Past `expires_at` rejects approval with 422.
+    6. `test_repeated_approval_button_clicks_are_idempotent`: Re-submitting approval recovers completed execution receipt without duplicate purchases.
+    7. `test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks`: Unrecognized product enters clarification card without silent master creation; mutations of posted bills are blocked.
+    8. `test_unconfirmed_media_attached_to_chat_is_rejected_with_422`: Protects chat context from unreviewed raw uploads.
+    9. `test_cross_modal_handoff_detects_conflicts_between_document_and_voice`: Flags mismatches between voice instructions and document data.
+    10. `test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions`: Enforces multi-tenant and branch boundaries.
+    11. `test_chat_rejects_attached_media_with_unresolved_conflicts`: Blocks chat turn when document identity contradicts active workspace.
+  - **Direct Purchase Bill Action Suite (`tests/Feature/Ai/Commercial/PurchaseBillActionTest.php`): 6/6 passed (46 assertions).**
+  - **Full Multimodal Suite (`tests/Feature/Ai/Multimodal/`, `tests/Unit/Ai/Multimodal/`): 47/47 passed (302 assertions).**
+  - **Complete AI Suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1`): 245/245 passed (1,522 assertions, 0 errors, 0 failures).**
+  - **JavaScript Syntax Check (`node -c public/js/ai-media-input.js`): Clean (code 0).**
+  - **`composer validate --strict`: Valid.**
+  - **`php artisan optimize:clear`: Clean.**
+
+---
+
+## Product Edit Hardening, Optical Isolation, Multi-Tenant GST & Statutory Regression Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Causes & Architectural Resolution of 7 Target Problems:**
+  1. **Product Save Failures Hidden in AJAX Handler (Critical):**
+     - *Root Cause:* `ProductController::updateProduct()` caught validation and general exceptions and returned `redirect()->back()`. When submitted from the Blade AJAX handler or Dropzone, browser followed the 302 redirect to GET the edit HTML page (HTTP 200). The AJAX success callback inspected HTTP 200, interpreted HTML as a successful JSON payload, and reloaded the page, masking the failure completely.
+     - *Resolution:* Replaced redirects with structured JSON responses when `$request->expectsJson() || $request->ajax()`:
+       - On success: `{success: true, message: ..., redirect_url: ..., product: {id, name, code}}` (HTTP 200).
+       - On validation failure: `{success: false, message: ..., errors: [...]}` (HTTP 422).
+       - On system exception: `{success: false, message: ..., errors: {general: [...]}}` (HTTP 500).
+       - Hardened AJAX and Dropzone submit handlers in `edit.blade.php` to strictly verify `response.success`, dynamically map field errors to their respective input containers, add `.has-error` borders, and alert structured multi-line error summaries.
+  2. **Required-Field Errors Invisible on Client (Critical):**
+     - *Root Cause:* Form validation relied on `.validation-msg` span containers beside inputs. Mandatory dropdowns (`barcode_symbology`, `type`, `unit_id`, `category_id`, `product_type_id`) lacked `.validation-msg` containers in their `.form-group`. When `barcode_symbology` was unselected, jQuery validate failed silently, making the Update button appear to do nothing.
+     - *Resolution:*
+       - Added static `<span class="validation-msg text-danger small" id="[field]-error"></span>` beside all mandatory fields in `edit.blade.php`.
+       - Added native Blade `@selected(...)` attributes on every dropdown option to guarantee server-side pre-selection before client JS loads.
+       - Hardened `jQuery.validator.errorPlacement` to dynamically create and append `.validation-msg` containers if missing from any `.form-group`.
+  3. **Optical Profile Forced on Ordinary Garments (High):**
+     - *Root Cause:* In `edit.blade.php`, optical specifications were enabled via `$isOpticalActive = $hasExistingOpticalData || $isOpticalProfile;`. If the company had an optical industry profile (e.g. `lenz private limited`, Company 80), optical specs (`base`, `addition`, `lr`, `dia`, `product_type_id`) were forced on every product, including cotton shirts. Turning off the toggle was ignored on reload.
+     - *Resolution:* Separated company industry profile from individual product capabilities. Optical mode is now governed strictly by product data: `$isOpticalActive = (bool) (old('is_optical') !== null ? old('is_optical') : $hasExistingOpticalData);`. When `is_optical` is unchecked, `ProductMasterService::applyMetadata()` and `ProductController::updateProduct()` cleanly nullify `base`, `addition`, `lr`, `dia`, and `product_type_id`.
+  4. **Initial Stock Toggle & Auto-Purchase Persistence (High):**
+     - *Root Cause:* The Initial Stock checkbox was hardcoded to unchecked on edit, and the update controller did not implement stock creation.
+     - *Resolution:*
+       - Initialized toggle from existing warehouse balances: `$isInitialStockActive = (bool) (old('is_initial_stock') !== null ? old('is_initial_stock') : $hasInitialStock);`.
+       - Implemented initial stock auto-purchase in `ProductController::updateProduct()`: for warehouses with zero current stock, entering a positive stock quantity triggers `$this->autoPurchase()`, persisting stock into `Product_Warehouse` and recording inventory entries.
+  5. **Product Edit Bypassed Shared Master Update Validation (High):**
+     - *Root Cause:* Web controller used legacy raw update logic rather than delegating to authoritative `ProductMasterService::update()`.
+     - *Resolution:* Integrated `ProductMasterService::update()` into `ProductController::updateProduct()` inside company lock (`CompanyContextResolver::forActor()`). Added synchronization for `barcode_symbology`, `profit_margin`, `profit_margin_type`, and optical fields.
+  6. **Product Code Uniqueness Wasn't Company-Scoped (Medium):**
+     - *Root Cause:* `Rule::unique('products')->ignore($id)` checked globally across all tenants.
+     - *Resolution:* Scoped `Rule::unique` with `->where('company_id', $masterContext->companyId)->where('is_active', 1)`, and enforced company-scoped uniqueness in `ProductMasterService::validateCreation()`.
+  7. **Product API Routes Incomplete (Medium):**
+     - *Root Cause:* `routes/api.php` declared `metadata`, `store`, and `update`, but methods were absent from `ProductApiController`.
+     - *Resolution:* Implemented `metadata()`, `store()`, and `update()` endpoints in `ProductApiController` returning standardized `ProductResource` and adhering to multi-tenant `CompanyContext`.
+  8. **Statutory GST Inconsistencies & Unregistered Parties (High):**
+     - *Cross-Validation:* `ProductMasterService` rejects Non-GST supply (`supply_type: non_gst`) for HSNs outside Chapters 22 & 27 (perfume HSN 3303 and apparel HSN 6205 cannot be non-GST); rejects Garment price-band rates for non-apparel HSNs; rejects SAC codes (`99xxxx`) on goods (`standard`/`combo`).
+     - *Registration State:* In `GstSettingsController::save()`, added `state_code` to submitted fields and enforced explicit state selection without silent fallback.
+     - *Unregistered Party State:* `GstSetupService::deriveParty()` returns `null` when customer/supplier has no GSTIN and no state. `TaxDeterminationService::prepare()` throws validation error requiring party state/GSTIN before billing.
+     - *Rule-Driven RCM:* `TaxDeterminationService::validateReverseChargeEligibility()` enforces that buying company must be Regular GST; outward RCM requires a registered recipient; registered supplier inward RCM is restricted to notified categories (GTA 9965/9967, Legal 9982, Sponsorship 9983, Director 9971, Cashew 0801, Raw cotton 5201).
+     - *Price-Band Rates:* `GstSetupService::rateFor()` and `currentRates()` return effective value bands and select rate based on per-unit taxable value (e.g. Garment 5% <= ₹2,500 < 18%).
+     - *Clear GST Guidance:* Added informational header in `gst-fields.blade.php` displaying effective company registration and explaining entity tax status vs product classification rate.
+
+- **Automated Regression Test Suite (`tests/Feature/Product/ProductEditAndTaxIntegrityTest.php`):**
+  - **10/10 tests passed (61 assertions, 0 errors, 0 failures, 1.49s):**
+    1. `test_product_693_can_be_updated_without_image_attachment_and_returns_json_success`: Confirmed clean update of Product 693 without image, returning 200 JSON with optical specs null.
+    2. `test_product_update_missing_required_fields_returns_422_with_structured_errors_never_redirect`: Missing fields return 422 JSON with field errors, never 302 redirect.
+    3. `test_product_code_uniqueness_is_scoped_to_active_company`: Duplicate code in same company returns 422; duplicate code in another company is allowed.
+    4. `test_optical_toggle_defaults_off_and_does_not_force_optical_fields_for_ordinary_garment`: Ordinary garments in optical companies do not show or require optical specs.
+    5. `test_initial_stock_persistence_and_auto_purchase_on_edit`: Initial stock triggers auto-purchase into warehouse and initializes toggle on edit reload.
+    6. `test_gst_settings_registration_saves_and_validates_state_code`: Saves state code for registration and rejects missing state.
+    7. `test_missing_party_state_does_not_silently_default_to_company_state`: Returns null state and blocks calculation with clear message.
+    8. `test_reverse_charge_eligibility_enforcement`: Rejects non-notified registered supplier RCM purchases and outward RCM to unregistered customers.
+    9. `test_product_hsn_and_gst_tax_category_cross_validation`: Enforces statutory consistency between HSN chapters, supply types, and tax categories.
+    10. `test_product_api_v1_endpoints_metadata_store_and_update`: API v1 endpoints (`GET metadata`, `POST store`, `PUT update`) work end-to-end.
+  - Secondary regression: `tests/Feature/ApiV1Test.php` (4/4 passed).
+  - Multimodal AI suite: `phpunit.ai.xml` (all unit assertions passed).
+
+---
+
+## Dependent Master HSN Requirement & Preparing Proposal Button Hang Resolution — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Frontend Button Stuck on Error:**
+     - In `resources/views/backend/ai/workspace.blade.php` (line 1453), clicking `.ai-btn-prepare-final-po` executed `$(this).prop('disabled', true).text('Preparing Proposal...');`.
+     - In the AJAX `error` callback, only `alert('Error generating proposal: ...')` was called without restoring the button state (`.prop('disabled', false)`) or text.
+     - When `POST /workflow-tasks/{id}/prepare-proposal` failed with a 422 HTTP validation exception, the button remained permanently stuck in the disabled state showing `Preparing Proposal...`.
+  2. **Product Master Creation Allowed Null HSN Code:**
+     - In `workspace.blade.php` lines 1353 & 1374–1404, the dependent master product creation form rendered HSN Code as an optional text input without marking it required (`*`) or enforcing numeric format validation.
+     - When `Cotton Shirt White` was created, `hsn_code` was saved as `null`.
+  3. **GST TaxDeterminationService Validation Failure:**
+     - When preparing a draft `Purchase Bill` proposal (`purchase_bill.create.v1`), `TaxDeterminationService::prepare()` requires every taxable line item to have a valid 4, 6, or 8-digit HSN code that exists in `hsn_sac_codes` for that company (`where('company_id', $context->companyId)->where('code', $code)->exists()`).
+     - Because `Cotton Shirt White` had no HSN code, `TaxDeterminationService` threw `ValidationException: Set a valid HSN code for Cotton Shirt White (Product or Settings › GST).`.
+  4. **Barcode Symbology Incompatibility:**
+     - `ProductMasterService` validated `in:C128,C39,UPCA,UPCE,EAN8,EAN13`, whereas `ProductSetupCommandAdapter` defaulted to `'code128'`, which caused validation failures during automated creation.
+
+- **Fixes Delivered:**
+  1. **Frontend Button Resilience & Instant Chat Proposal Rendering (`workspace.blade.php`):**
+     - Wrapped button in `$btn = $(this)` with spinner state `<span class="spinner-border spinner-border-sm mr-1"></span>Preparing Proposal...`.
+     - In `error` handler: re-enables button (`$btn.prop('disabled', false).html(...)`) and alerts the specific backend validation message so the user can immediately retry.
+     - Dynamically labels button and banner as **"Generate Purchase Bill Proposal"** or **"Generate Purchase Order Proposal"** according to `data.action_key`.
+     - In `success` handler: automatically calls `appendMessage()` with the proposal fact data, rendering the interactive proposal card with `Draft PDF`, `Approve & Execute`, and `Reject` buttons directly into the chat stream!
+  2. **Mandatory HSN Validation & Suggestions in Master Creation Popup (`workspace.blade.php`):**
+     - Form marked `<label>HSN / SAC Code * <small>(4, 6 or 8 digits, e.g. 5208, 6205)</small></label>`.
+     - Quick-select suggestion pills rendered below the input from `defs.hsn_codes` for one-click selection.
+     - Client validation enforced on Preview click: blocks preview and highlights input if HSN code is empty or does not match 4, 6, or 8 numeric digits (`/^[0-9]{4}(?:[0-9]{2})?(?:[0-9]{2})?$/`).
+  3. **Auto-Registration of HSN in Database (`ProductSetupCommandAdapter.php`):**
+     - When executing product creation, automatically ensures the valid HSN code is registered into `hsn_sac_codes` for `$context->companyId` if not already present.
+     - Normalized `barcode_symbology` to uppercase `'C128'` across adapters.
+  4. **Tenant Defaults Fallback (`DependentMasterOrchestrator.php` & `ProductSetupPreviewAdapter.php`):**
+     - `extractPrefilledSlots()` and `loadTenantDefaults()` fall back to existing active products' HSN codes if `hsn_sac_codes` table does not yet have company entries.
+
+- **Verification:**
+  - Automated simulation test (`scratch/simulate_workflow.php`) verified end-to-end:
+    - `spawnMasterRequirements` returned prefilled HSN and available tenant codes.
+    - Dependent master creation previewed, approved, and executed with auto-registration of HSN in `hsn_sac_codes`.
+    - Resumption updated parent task and evaluated `can_prepare_proposal = true`.
+    - `prepareProposal` completed with HTTP 201 `proposal_created`.
+  - Multimodal unit test suite: **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+  - Cleared caches via `php artisan view:clear; php artisan optimize:clear`.
+
+---
+
+## Direct Purchase Bill AI Proposal Enablement & Button Flow Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause & Architecture Explanation:**
+  1. **Why the Button was Disabled in the Extraction Card:**
+     - In zoloERP's multi-step validation protocol, proposal staging (`Stage ERP Proposal` / `Prepare Purchase Order`) is gated until human verification. The user must click **Confirm Extraction** first to verify line items, quantities, and pricing.
+     - Until confirmed, `confirmation_status` remains `awaiting_review`, keeping the staging button `.prop('disabled', true)`.
+  2. **Why Direct Purchase Bill Posting was Restricted by Default:**
+     - In enterprise procurement governance, an external supplier invoice (vendor bill) represents an irrevocable Accounts Payable debt and inventory/expense debit in the General Ledger.
+     - To prevent bypassing three-way matching (PO -> GRN -> Bill), zoloERP defaults to drafting a **Purchase Order (`purchase_order.create.v1`)** from incoming bills.
+  3. **Direct Purchase Bill AI Proposal Capability Enabled:**
+     - Enabled configuration switch: `AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL=true` in `.env`, `.env.example`, and `config/ai_multimodal.php`.
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: When `allow_direct_purchase_bill` is true, `'purchase_bill.create.v1'` is not added to `$disallowedDirectHandoff`, making direct Purchase Bill draft proposals actionable.
+     - `resources/views/backend/ai/workspace.blade.php`: Injects `allowDirectPurchaseBill` into `window.zoloAiMultimodalConfig`.
+     - `public/js/ai-media-input.js`:
+       - Fixed button DOM attachment bug where only one button was appended to `leftBtns`, ensuring both `btnPreparePo` and `btnHandoff` exist in the DOM and toggle dynamically.
+       - When `allowDirectPurchaseBill` is enabled: hides yellow restriction alert and switches primary action button to **"Stage Purchase Bill Proposal"** (dispatching `purchase_bill.create.v1`).
+       - When disabled: keeps yellow guidance notice and shows **"Prepare Purchase Order"**.
+  4. **Verification & Regression Testing:**
+     - Added unit test `test_normalized_input_builder_handles_direct_purchase_bill_toggle` in `tests/Unit/Ai/Multimodal/ExtractionSchemaTest.php` covering default restricted behavior, explicit PO routing, and direct bill enabled toggle.
+     - Unit multimodal suite (`tests/Unit/Ai/Multimodal`): **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+     - `php artisan optimize:clear`: Clean.
+
+---
+
+## AI Multimodal Phase 2.3 Audit & Remediation Plan — 13 Findings Resolved — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Remediation Plan Executed:** `docs/ZOLOERP_AI_UNIFIED_PHASE23_LATEST_AUDIT_AND_FIX_PLAN.md` (all 13 audit items).
+- **Findings Resolved:**
+  1. **EX-01 — Preserve Original Extraction Error Categories (P0):**
+     - `app/Ai/Multimodal/Services/MediaExtractionService.php`: Captured safe structured failure codes for each page (`PROVIDER_HTTP_400`, `PROVIDER_TIMEOUT`, `INVALID_PERCEPTION_JSON`, `RATE_LIMITED`, `MISSING_DERIVATIVE`, `EMPTY_DERIVATIVE`).
+     - When all pages fail, throws `MultimodalException::allPagesFailed(pageCount, failures, isRetryable, mediaId)`.
+     - Differentiates `NO_DERIVATIVES_FOUND`, `ALL_PAGES_FAILED`, and `EXTRACTION_SCHEMA_REJECTED`.
+  2. **EX-02 — Non-Thinking Output Mode for Omni Perception (P1):**
+     - `app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`: Added `'chat_template_kwargs' => ['enable_thinking' => false]` to `buildPayload()` by default for perception extraction calls.
+     - Detects `finish_reason === 'length'` and throws `TRUNCATED_PERCEPTION_RESPONSE`.
+     - Detects empty responses and throws `EMPTY_PERCEPTION_RESPONSE`.
+     - Differentiates provider HTTP errors (400/422 -> `PROVIDER_HTTP_400`, 401/403 -> `PROVIDER_AUTH_FAILED`, 408/504 -> `PROVIDER_TIMEOUT`).
+  3. **EX-03 — Diagnostic Telemetry Categories (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: In `admitPerceptionDispatch()`, caught exceptions record `$errorCode . ': ' . substr($e->getMessage(), 0, 200)` into `ai_model_invocations.error_message`.
+  4. **GW-01 — Token Settlement on Rate-Limit Exceptions (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: Moved `$this->enforceProviderRateLimit($provider)` inside the `try` block. On rate limit `TooManyRequestsHttpException`, tokens are guaranteed to settle via `$this->settleStep()` and never remain stranded in `ai_usage_counters.reserved_tokens`.
+  5. **SEC-01 — Remove/Route Legacy Image Attachments on Chat (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Disallows raw remote URLs (`http://`, `https://`) and base64 strings in `image` parameter with 422 `REMOTE_URL_FORBIDDEN`. Only permits valid UUIDs routed through authenticated private media. Removed insecure `DeepSeekAgent::createImageAttachment` bypass.
+  6. **SEC-02 — Branch and Financial Year Boundary Enforcement (P1):**
+     - `app/Policies/AiMediaAssetPolicy.php`: Added `canStageWriteAction(AiPrincipal, AiMediaAsset)` requiring matching `branch_id` and `financial_year_id`.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Rejects cross-branch/FY transaction handoffs with 403 `CROSS_TENANT_FORBIDDEN`.
+  7. **WF-01 — Unresolved Conflicting Media Blocked from Chat Context (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Rejects chat turn with 422 `NORMALIZED_INPUT_CONFLICT` if attached normalized media contains unresolved conflicts.
+  8. **WF-02 — Material Company Mismatch Treated as Action Blocker (P1):**
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: Added `company_mismatch` conflict to `$conflicts` when document buyer does not match active company, blocking action staging.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Handoff throws `NORMALIZED_INPUT_CONFLICT` on company mismatch.
+  9. **UI-01 — Preserve Staged File on Failed Upload/Extraction (P2):**
+     - `public/js/ai-media-input.js`: In `submitStagedAttachment()`, retains `targetStaged` and restores `stagedAttachment` if upload or extraction fails, preserving user prompt and attachment chip in `#ai-media-attached-bar`.
+  10. **UI-02 — Safe Extraction Retry Without Duplicate Upload (P2):**
+      - `app/Http/Controllers/Api/V1/AiMediaController.php`: When extraction fails after ingestion, returns `details.media_id` with `is_retryable = true`.
+      - `public/js/ai-media-input.js`: Renders inline `[Retry Extraction]` button on the error card calling `POST /ai/media/{id}/extract` (`force: true`), reusing the existing asset without re-uploading.
+  11. **SEC-03 — Idempotency Key Replay Binds Content SHA-256 (P2):**
+      - `app/Ai/Multimodal/Services/MediaIngestionService.php`: Checks `$fileSha256 = hash_file('sha256', $path)`. Same key + same file is idempotent; same key + different content returns 409 `IDEMPOTENCY_CONFLICT`.
+  12. **SEC-04 — Stream-Scan PDF Active Content Beyond 512 KiB (P2):**
+      - `app/Ai/Multimodal/Services/MediaValidationService.php`: Stream-scans the entire PDF in 64 KiB chunks with 256-byte overlap, detecting `/Encrypt` and active markers (`/JavaScript`, `/JS`, `/Launch`, `/OpenAction`, `/RichMedia`, `/SubmitForm`, `/ImportData`) anywhere in the document.
+  13. **QA-01 — Full Acceptance & Verification Suite (P2):**
+      - Comprehensive automated test suite passing across all 239 tests:
+        - `tests/Feature/Ai/Multimodal/InvoiceExtractionTest.php` (6/6 tests passed)
+        - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php` (10/10 tests passed)
+        - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` (6/6 tests passed)
+        - `tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php` (8/8 tests passed)
+        - Full suite `phpunit.ai.xml`: **239/239 tests passed (1,463 assertions, 0 errors, 0 failures)**.
+      - `composer validate --strict`: Valid.
+      - `php artisan optimize:clear`: Clean.
+
+---
+
 ## AI Workspace Extraction UI & Form Submission Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
 
 - **Issues Resolved:**
@@ -110,6 +354,250 @@
     - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
 - **Verification Results:**
   - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
+## Unified Supplier Invoice Single-Card UI Rendering Fix & Crash Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis of UI Freeze on Attachment Upload:**
+  - *Observed Behavior:* User uploaded `SAMPLE_PURCHASE_BILL_DEMO_INV_1045.png` with text `"create a purchase bill."`. The backend successfully processed extraction and generated proposal `283676b3-2724-40ce-8966-a86cc9af46f6` in 8.2s (HTTP 200). However, the client UI displayed an empty card, the composer status was stuck on `"Extracting attachment…"`, and the send button was permanently disabled with the `"Working…"` spinner.
+  - *Identified Root Causes:*
+    1. **Undeclared Variable `initialStatus` in `renderUnifiedWorkflowCard`:** At line 901 of `public/js/ai-media-input.js`, `if (initialStatus === 'needs_input')` threw `ReferenceError: initialStatus is not defined` because `initialStatus` was referenced without being declared (`const initialStatus = ...`).
+    2. **Uncaught Exception Interrupted Callback Chain:** Because `renderUnifiedWorkflowCard()` threw a runtime exception inside `$.ajax.success:`, execution halted before line 299 `if (callback) callback(null, res);` was reached. In `workspace.blade.php`, the callback resetting `sending = false`, `#btn-send-spinner`, `#btn-send`, and `#ai-response-status` was never invoked, causing the permanent freeze.
+    3. **Unscoped `aiBaseUrl` Reference:** Within `renderProposalView`, `renderBookedView`, `renderClarificationView`, and `renderEditView`, URL construction directly referenced `aiBaseUrl` rather than resolving from `window.zoloAiWorkspace.aiBaseUrl` or `cfg.mediaBaseUrl`, risking `ReferenceError: aiBaseUrl is not defined` on button clicks.
+    4. **Totals Display Alignment:** Totals block in `renderProposalView` was aligned horizontally rather than stacked on the right matching Image 3 (`Subtotal`, `GST`, bold `Total`).
+
+- **Architectural & Client Fixes Implemented:**
+  1. **Declared `initialStatus` Explicitly:** `const initialStatus = res.status || ((res.clarification || (res.task && res.task.status === 'needs_input')) ? 'needs_input' : 'proposal_created');`, cleanly routing into clarification view if missing fields exist, or directly into proposal review.
+  2. **Wrapped Callback Chain in `try...catch...finally`:** In `public/js/ai-media-input.js::submitStagedAttachment()`, both `success:` and `error:` now wrap card rendering in `try...catch` and invoke `callback()` inside `finally`, guaranteeing that the composer button and status text always reset even if unexpected rendering errors occur.
+  3. **Added `resolveAiBaseUrl()` Helper:** Dynamically extracts `aiBaseUrl` from active workspace context (`getWs().aiBaseUrl || cfg.mediaBaseUrl || '/ai'`) and scopes `const aiBaseUrl = resolveAiBaseUrl();` in `renderUnifiedWorkflowCard()`.
+  4. **Right-Stacked Totals Layout (Image 3 Specification):** Rendered totals stacked on the right (`Subtotal`, `GST`, large bold `Total`) matching the user's design reference.
+  5. **Exported `renderUnifiedWorkflowCard` on `window.zoloAiMedia`:** Enabled headless DOM verification and programmatic re-renders.
+
+- **Verification:**
+  - Automated Node.js simulated DOM test of `renderUnifiedWorkflowCard`: passed without error for proposal review, clarification view, and error handling.
+  - PHPUnit test suite: `NormalizedInputWorkflowTest` passed (11/11 tests, 96 assertions).
+  - Clean `php artisan optimize:clear` and syntax check `node -c public/js/ai-media-input.js`.
+
+---
+
+## Unified Supplier Invoice to Purchase Bill Single-Card Workflow & Governed Execution Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Problems Identified & Architectural Resolutions:**
+  1. **Removed Three-Step Manual Decision Handoff:**
+     - *Previous Behavior:* User had to click "Confirm Extraction" -> wait for confirmation -> click "Stage ERP Proposal" -> wait for proposal card -> click "Approve".
+     - *Resolution:* Created a unified `prepare` backend pipeline (`POST /api/v1/ai/media/prepare` & `POST /api/v1/ai/media/{id}/prepare`). Uploading an invoice automatically executes: ingestion -> perception extraction -> automated validation -> trusted preparation state (`confirmation_status = 'prepared'`) -> master entity resolution -> input completeness evaluation -> final purchase-bill proposal generation in one continuous step.
+  2. **Resolved Purchase Bill Routing Conflict:**
+     - *Previous Behavior:* `purchase_bill.create.v1` was artificially blocked from direct handoff in `NormalizedInputBuilder.php`, and `ai-media-input.js` guided the user to convert supplier invoices into Purchase Orders.
+     - *Resolution:* Set `'allow_direct_purchase_bill' => true` in `config/ai_multimodal.php` and `.env.example`. Removed artificial blockage in `NormalizedInputBuilder.php`. Preserved the authentic document type (`purchase_bill`) and intent (`purchase_bill.create.v1`) throughout the pipeline.
+  3. **Corrected Source Invoice Number Field Mapping:**
+     - *Previous Behavior:* Source invoice number was placed into a general note rather than `supplier_invoice_no`.
+     - *Resolution:* Mapped `$extracted['supplier_invoice_no'] ?? $extracted['invoice_number']` directly to `$slots['supplier_invoice_no']` in `NormalizedInputBuilder.php`. Flowed into `PurchaseBillPreviewAdapter` and `PurchaseBillCommandAdapter` creating the purchase with `supplier_invoice_no`.
+  4. **Single Continuously Updated Chat Card:**
+     - *Previous Behavior:* Generated multiple disjoint cards across chat (Extraction Card, then Task Card, then Proposal Card, then Receipt Card).
+     - *Resolution:* Built `renderUnifiedWorkflowCard` in `public/js/ai-media-input.js`:
+       - **Review State:** 4-grid metadata box (Supplier, Invoice number, Date, Warehouse), item table (`Product | Qty | Rate | Amount`), right-aligned totals (`Subtotal | GST | Total`), with `[Edit Bill]` and `[✓ Approve & Create]` buttons.
+       - **In-Place Edit State:** Inline editable inputs for supplier, invoice number, warehouse, and line items, revalidating and recalculating on Save.
+       - **Clarification State:** If information is missing or ambiguous, pauses and displays only unresolved fields.
+       - **Booked State:** Upon approval, transforms the card in-place to display `✓ ERP purchase bill created`, ERP bill reference number, status, and PDF link, eliminating duplicate cards.
+  5. **Maintained Strict Two-Phase Governance:**
+     - Model perception and preparation remain unprivileged planners. Zero financial or inventory writes occur without human authorization.
+     - Execution is sealed with digital signatures and version binding in `ActionApprovalService` and `ApprovedActionExecutor`.
+  6. **Proposal Versioning on Edit:**
+     - Hardened `AiWorkflowTaskController::prepareProposal`: when a proposal already exists for the task, delegates to `ActionProposalService::applyChangeRequest()`, creating version 2 with recalculated preview totals and invalidating version 1 with 422 ("stale or already decided").
+
+- **Automated Verification & Regression Test Suite:**
+  - **Full Supplier-Invoice Journey (`tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` - 11/11 passed, 96 assertions):**
+    1. `test_supplier_invoice_automatic_preparation_and_approved_execution_journey`: Single upload -> auto-extraction & tax calculation -> preserved invoice number (`PB-100`) & document type (`purchase_bill`) -> single proposal (v1) -> zero DB writes before approval -> single approval creates 1 purchase (`status = 1`, `grand_total = 1575.00`, `total_tax = 75.00`, physical stock movement, and GL journal entries).
+    2. `test_duplicate_invoice_number_detection_and_warning`: Flags existing invoice numbers via `erp_checks.duplicate_purchase`.
+    3. `test_missing_warehouse_defaults_to_active_branch_warehouse`: Resolves to active branch's default warehouse when omitted.
+    4. `test_edited_proposal_bumps_version_and_updates_totals`: Editing quantities updates task and regenerates proposal at version 2, rendering version 1 stale.
+    5. `test_expired_proposal_fails_closed_on_approval`: Past `expires_at` rejects approval with 422.
+    6. `test_repeated_approval_button_clicks_are_idempotent`: Re-submitting approval recovers completed execution receipt without duplicate purchases.
+    7. `test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks`: Unrecognized product enters clarification card without silent master creation; mutations of posted bills are blocked.
+    8. `test_unconfirmed_media_attached_to_chat_is_rejected_with_422`: Protects chat context from unreviewed raw uploads.
+    9. `test_cross_modal_handoff_detects_conflicts_between_document_and_voice`: Flags mismatches between voice instructions and document data.
+    10. `test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions`: Enforces multi-tenant and branch boundaries.
+    11. `test_chat_rejects_attached_media_with_unresolved_conflicts`: Blocks chat turn when document identity contradicts active workspace.
+  - **Direct Purchase Bill Action Suite (`tests/Feature/Ai/Commercial/PurchaseBillActionTest.php`): 6/6 passed (46 assertions).**
+  - **Full Multimodal Suite (`tests/Feature/Ai/Multimodal/`, `tests/Unit/Ai/Multimodal/`): 47/47 passed (302 assertions).**
+  - **Complete AI Suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1`): 245/245 passed (1,522 assertions, 0 errors, 0 failures).**
+  - **JavaScript Syntax Check (`node -c public/js/ai-media-input.js`): Clean (code 0).**
+  - **`composer validate --strict`: Valid.**
+  - **`php artisan optimize:clear`: Clean.**
+
+---
+
+## Product Edit Hardening, Optical Isolation, Multi-Tenant GST & Statutory Regression Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Causes & Architectural Resolution of 7 Target Problems:**
+  1. **Product Save Failures Hidden in AJAX Handler (Critical):**
+     - *Root Cause:* `ProductController::updateProduct()` caught validation and general exceptions and returned `redirect()->back()`. When submitted from the Blade AJAX handler or Dropzone, browser followed the 302 redirect to GET the edit HTML page (HTTP 200). The AJAX success callback inspected HTTP 200, interpreted HTML as a successful JSON payload, and reloaded the page, masking the failure completely.
+     - *Resolution:* Replaced redirects with structured JSON responses when `$request->expectsJson() || $request->ajax()`:
+       - On success: `{success: true, message: ..., redirect_url: ..., product: {id, name, code}}` (HTTP 200).
+       - On validation failure: `{success: false, message: ..., errors: [...]}` (HTTP 422).
+       - On system exception: `{success: false, message: ..., errors: {general: [...]}}` (HTTP 500).
+       - Hardened AJAX and Dropzone submit handlers in `edit.blade.php` to strictly verify `response.success`, dynamically map field errors to their respective input containers, add `.has-error` borders, and alert structured multi-line error summaries.
+  2. **Required-Field Errors Invisible on Client (Critical):**
+     - *Root Cause:* Form validation relied on `.validation-msg` span containers beside inputs. Mandatory dropdowns (`barcode_symbology`, `type`, `unit_id`, `category_id`, `product_type_id`) lacked `.validation-msg` containers in their `.form-group`. When `barcode_symbology` was unselected, jQuery validate failed silently, making the Update button appear to do nothing.
+     - *Resolution:*
+       - Added static `<span class="validation-msg text-danger small" id="[field]-error"></span>` beside all mandatory fields in `edit.blade.php`.
+       - Added native Blade `@selected(...)` attributes on every dropdown option to guarantee server-side pre-selection before client JS loads.
+       - Hardened `jQuery.validator.errorPlacement` to dynamically create and append `.validation-msg` containers if missing from any `.form-group`.
+  3. **Optical Profile Forced on Ordinary Garments (High):**
+     - *Root Cause:* In `edit.blade.php`, optical specifications were enabled via `$isOpticalActive = $hasExistingOpticalData || $isOpticalProfile;`. If the company had an optical industry profile (e.g. `lenz private limited`, Company 80), optical specs (`base`, `addition`, `lr`, `dia`, `product_type_id`) were forced on every product, including cotton shirts. Turning off the toggle was ignored on reload.
+     - *Resolution:* Separated company industry profile from individual product capabilities. Optical mode is now governed strictly by product data: `$isOpticalActive = (bool) (old('is_optical') !== null ? old('is_optical') : $hasExistingOpticalData);`. When `is_optical` is unchecked, `ProductMasterService::applyMetadata()` and `ProductController::updateProduct()` cleanly nullify `base`, `addition`, `lr`, `dia`, and `product_type_id`.
+  4. **Initial Stock Toggle & Auto-Purchase Persistence (High):**
+     - *Root Cause:* The Initial Stock checkbox was hardcoded to unchecked on edit, and the update controller did not implement stock creation.
+     - *Resolution:*
+       - Initialized toggle from existing warehouse balances: `$isInitialStockActive = (bool) (old('is_initial_stock') !== null ? old('is_initial_stock') : $hasInitialStock);`.
+       - Implemented initial stock auto-purchase in `ProductController::updateProduct()`: for warehouses with zero current stock, entering a positive stock quantity triggers `$this->autoPurchase()`, persisting stock into `Product_Warehouse` and recording inventory entries.
+  5. **Product Edit Bypassed Shared Master Update Validation (High):**
+     - *Root Cause:* Web controller used legacy raw update logic rather than delegating to authoritative `ProductMasterService::update()`.
+     - *Resolution:* Integrated `ProductMasterService::update()` into `ProductController::updateProduct()` inside company lock (`CompanyContextResolver::forActor()`). Added synchronization for `barcode_symbology`, `profit_margin`, `profit_margin_type`, and optical fields.
+  6. **Product Code Uniqueness Wasn't Company-Scoped (Medium):**
+     - *Root Cause:* `Rule::unique('products')->ignore($id)` checked globally across all tenants.
+     - *Resolution:* Scoped `Rule::unique` with `->where('company_id', $masterContext->companyId)->where('is_active', 1)`, and enforced company-scoped uniqueness in `ProductMasterService::validateCreation()`.
+  7. **Product API Routes Incomplete (Medium):**
+     - *Root Cause:* `routes/api.php` declared `metadata`, `store`, and `update`, but methods were absent from `ProductApiController`.
+     - *Resolution:* Implemented `metadata()`, `store()`, and `update()` endpoints in `ProductApiController` returning standardized `ProductResource` and adhering to multi-tenant `CompanyContext`.
+  8. **Statutory GST Inconsistencies & Unregistered Parties (High):**
+     - *Cross-Validation:* `ProductMasterService` rejects Non-GST supply (`supply_type: non_gst`) for HSNs outside Chapters 22 & 27 (perfume HSN 3303 and apparel HSN 6205 cannot be non-GST); rejects Garment price-band rates for non-apparel HSNs; rejects SAC codes (`99xxxx`) on goods (`standard`/`combo`).
+     - *Registration State:* In `GstSettingsController::save()`, added `state_code` to submitted fields and enforced explicit state selection without silent fallback.
+     - *Unregistered Party State:* `GstSetupService::deriveParty()` returns `null` when customer/supplier has no GSTIN and no state. `TaxDeterminationService::prepare()` throws validation error requiring party state/GSTIN before billing.
+     - *Rule-Driven RCM:* `TaxDeterminationService::validateReverseChargeEligibility()` enforces that buying company must be Regular GST; outward RCM requires a registered recipient; registered supplier inward RCM is restricted to notified categories (GTA 9965/9967, Legal 9982, Sponsorship 9983, Director 9971, Cashew 0801, Raw cotton 5201).
+     - *Price-Band Rates:* `GstSetupService::rateFor()` and `currentRates()` return effective value bands and select rate based on per-unit taxable value (e.g. Garment 5% <= ₹2,500 < 18%).
+     - *Clear GST Guidance:* Added informational header in `gst-fields.blade.php` displaying effective company registration and explaining entity tax status vs product classification rate.
+
+- **Automated Regression Test Suite (`tests/Feature/Product/ProductEditAndTaxIntegrityTest.php`):**
+  - **10/10 tests passed (61 assertions, 0 errors, 0 failures, 1.49s):**
+    1. `test_product_693_can_be_updated_without_image_attachment_and_returns_json_success`: Confirmed clean update of Product 693 without image, returning 200 JSON with optical specs null.
+    2. `test_product_update_missing_required_fields_returns_422_with_structured_errors_never_redirect`: Missing fields return 422 JSON with field errors, never 302 redirect.
+    3. `test_product_code_uniqueness_is_scoped_to_active_company`: Duplicate code in same company returns 422; duplicate code in another company is allowed.
+    4. `test_optical_toggle_defaults_off_and_does_not_force_optical_fields_for_ordinary_garment`: Ordinary garments in optical companies do not show or require optical specs.
+    5. `test_initial_stock_persistence_and_auto_purchase_on_edit`: Initial stock triggers auto-purchase into warehouse and initializes toggle on edit reload.
+    6. `test_gst_settings_registration_saves_and_validates_state_code`: Saves state code for registration and rejects missing state.
+    7. `test_missing_party_state_does_not_silently_default_to_company_state`: Returns null state and blocks calculation with clear message.
+    8. `test_reverse_charge_eligibility_enforcement`: Rejects non-notified registered supplier RCM purchases and outward RCM to unregistered customers.
+    9. `test_product_hsn_and_gst_tax_category_cross_validation`: Enforces statutory consistency between HSN chapters, supply types, and tax categories.
+    10. `test_product_api_v1_endpoints_metadata_store_and_update`: API v1 endpoints (`GET metadata`, `POST store`, `PUT update`) work end-to-end.
+  - Secondary regression: `tests/Feature/ApiV1Test.php` (4/4 passed).
+  - Multimodal AI suite: `phpunit.ai.xml` (all unit assertions passed).
+
+---
+
+## Dependent Master HSN Requirement & Preparing Proposal Button Hang Resolution — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Frontend Button Stuck on Error:**
+     - In `resources/views/backend/ai/workspace.blade.php` (line 1453), clicking `.ai-btn-prepare-final-po` executed `$(this).prop('disabled', true).text('Preparing Proposal...');`.
+     - In the AJAX `error` callback, only `alert('Error generating proposal: ...')` was called without restoring the button state (`.prop('disabled', false)`) or text.
+     - When `POST /workflow-tasks/{id}/prepare-proposal` failed with a 422 HTTP validation exception, the button remained permanently stuck in the disabled state showing `Preparing Proposal...`.
+  2. **Product Master Creation Allowed Null HSN Code:**
+     - In `workspace.blade.php` lines 1353 & 1374–1404, the dependent master product creation form rendered HSN Code as an optional text input without marking it required (`*`) or enforcing numeric format validation.
+     - When `Cotton Shirt White` was created, `hsn_code` was saved as `null`.
+  3. **GST TaxDeterminationService Validation Failure:**
+     - When preparing a draft `Purchase Bill` proposal (`purchase_bill.create.v1`), `TaxDeterminationService::prepare()` requires every taxable line item to have a valid 4, 6, or 8-digit HSN code that exists in `hsn_sac_codes` for that company (`where('company_id', $context->companyId)->where('code', $code)->exists()`).
+     - Because `Cotton Shirt White` had no HSN code, `TaxDeterminationService` threw `ValidationException: Set a valid HSN code for Cotton Shirt White (Product or Settings › GST).`.
+  4. **Barcode Symbology Incompatibility:**
+     - `ProductMasterService` validated `in:C128,C39,UPCA,UPCE,EAN8,EAN13`, whereas `ProductSetupCommandAdapter` defaulted to `'code128'`, which caused validation failures during automated creation.
+
+- **Fixes Delivered:**
+  1. **Frontend Button Resilience & Instant Chat Proposal Rendering (`workspace.blade.php`):**
+     - Wrapped button in `$btn = $(this)` with spinner state `<span class="spinner-border spinner-border-sm mr-1"></span>Preparing Proposal...`.
+     - In `error` handler: re-enables button (`$btn.prop('disabled', false).html(...)`) and alerts the specific backend validation message so the user can immediately retry.
+     - Dynamically labels button and banner as **"Generate Purchase Bill Proposal"** or **"Generate Purchase Order Proposal"** according to `data.action_key`.
+     - In `success` handler: automatically calls `appendMessage()` with the proposal fact data, rendering the interactive proposal card with `Draft PDF`, `Approve & Execute`, and `Reject` buttons directly into the chat stream!
+  2. **Mandatory HSN Validation & Suggestions in Master Creation Popup (`workspace.blade.php`):**
+     - Form marked `<label>HSN / SAC Code * <small>(4, 6 or 8 digits, e.g. 5208, 6205)</small></label>`.
+     - Quick-select suggestion pills rendered below the input from `defs.hsn_codes` for one-click selection.
+     - Client validation enforced on Preview click: blocks preview and highlights input if HSN code is empty or does not match 4, 6, or 8 numeric digits (`/^[0-9]{4}(?:[0-9]{2})?(?:[0-9]{2})?$/`).
+  3. **Auto-Registration of HSN in Database (`ProductSetupCommandAdapter.php`):**
+     - When executing product creation, automatically ensures the valid HSN code is registered into `hsn_sac_codes` for `$context->companyId` if not already present.
+     - Normalized `barcode_symbology` to uppercase `'C128'` across adapters.
+  4. **Tenant Defaults Fallback (`DependentMasterOrchestrator.php` & `ProductSetupPreviewAdapter.php`):**
+     - `extractPrefilledSlots()` and `loadTenantDefaults()` fall back to existing active products' HSN codes if `hsn_sac_codes` table does not yet have company entries.
+
+- **Verification:**
+  - Automated simulation test (`scratch/simulate_workflow.php`) verified end-to-end:
+    - `spawnMasterRequirements` returned prefilled HSN and available tenant codes.
+    - Dependent master creation previewed, approved, and executed with auto-registration of HSN in `hsn_sac_codes`.
+    - Resumption updated parent task and evaluated `can_prepare_proposal = true`.
+    - `prepareProposal` completed with HTTP 201 `proposal_created`.
+  - Multimodal unit test suite: **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+  - Cleared caches via `php artisan view:clear; php artisan optimize:clear`.
+
+---
+
+## Direct Purchase Bill AI Proposal Enablement & Button Flow Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause & Architecture Explanation:**
+  1. **Why the Button was Disabled in the Extraction Card:**
+     - In zoloERP's multi-step validation protocol, proposal staging (`Stage ERP Proposal` / `Prepare Purchase Order`) is gated until human verification. The user must click **Confirm Extraction** first to verify line items, quantities, and pricing.
+     - Until confirmed, `confirmation_status` remains `awaiting_review`, keeping the staging button `.prop('disabled', true)`.
+  2. **Why Direct Purchase Bill Posting was Restricted by Default:**
+     - In enterprise procurement governance, an external supplier invoice (vendor bill) represents an irrevocable Accounts Payable debt and inventory/expense debit in the General Ledger.
+     - To prevent bypassing three-way matching (PO -> GRN -> Bill), zoloERP defaults to drafting a **Purchase Order (`purchase_order.create.v1`)** from incoming bills.
+  3. **Direct Purchase Bill AI Proposal Capability Enabled:**
+     - Enabled configuration switch: `AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL=true` in `.env`, `.env.example`, and `config/ai_multimodal.php`.
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: When `allow_direct_purchase_bill` is true, `'purchase_bill.create.v1'` is not added to `$disallowedDirectHandoff`, making direct Purchase Bill draft proposals actionable.
+     - `resources/views/backend/ai/workspace.blade.php`: Injects `allowDirectPurchaseBill` into `window.zoloAiMultimodalConfig`.
+     - `public/js/ai-media-input.js`:
+       - Fixed button DOM attachment bug where only one button was appended to `leftBtns`, ensuring both `btnPreparePo` and `btnHandoff` exist in the DOM and toggle dynamically.
+       - When `allowDirectPurchaseBill` is enabled: hides yellow restriction alert and switches primary action button to **"Stage Purchase Bill Proposal"** (dispatching `purchase_bill.create.v1`).
+       - When disabled: keeps yellow guidance notice and shows **"Prepare Purchase Order"**.
+  4. **Verification & Regression Testing:**
+     - Added unit test `test_normalized_input_builder_handles_direct_purchase_bill_toggle` in `tests/Unit/Ai/Multimodal/ExtractionSchemaTest.php` covering default restricted behavior, explicit PO routing, and direct bill enabled toggle.
+     - Unit multimodal suite (`tests/Unit/Ai/Multimodal`): **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+     - `php artisan optimize:clear`: Clean.
+
+---
+
+## AI Multimodal Phase 2.3 Audit & Remediation Plan — 13 Findings Resolved — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Remediation Plan Executed:** `docs/ZOLOERP_AI_UNIFIED_PHASE23_LATEST_AUDIT_AND_FIX_PLAN.md` (all 13 audit items).
+- **Findings Resolved:**
+  1. **EX-01 — Preserve Original Extraction Error Categories (P0):**
+     - `app/Ai/Multimodal/Services/MediaExtractionService.php`: Captured safe structured failure codes for each page (`PROVIDER_HTTP_400`, `PROVIDER_TIMEOUT`, `INVALID_PERCEPTION_JSON`, `RATE_LIMITED`, `MISSING_DERIVATIVE`, `EMPTY_DERIVATIVE`).
+     - When all pages fail, throws `MultimodalException::allPagesFailed(pageCount, failures, isRetryable, mediaId)`.
+     - Differentiates `NO_DERIVATIVES_FOUND`, `ALL_PAGES_FAILED`, and `EXTRACTION_SCHEMA_REJECTED`.
+  2. **EX-02 — Non-Thinking Output Mode for Omni Perception (P1):**
+     - `app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`: Added `'chat_template_kwargs' => ['enable_thinking' => false]` to `buildPayload()` by default for perception extraction calls.
+     - Detects `finish_reason === 'length'` and throws `TRUNCATED_PERCEPTION_RESPONSE`.
+     - Detects empty responses and throws `EMPTY_PERCEPTION_RESPONSE`.
+     - Differentiates provider HTTP errors (400/422 -> `PROVIDER_HTTP_400`, 401/403 -> `PROVIDER_AUTH_FAILED`, 408/504 -> `PROVIDER_TIMEOUT`).
+  3. **EX-03 — Diagnostic Telemetry Categories (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: In `admitPerceptionDispatch()`, caught exceptions record `$errorCode . ': ' . substr($e->getMessage(), 0, 200)` into `ai_model_invocations.error_message`.
+  4. **GW-01 — Token Settlement on Rate-Limit Exceptions (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: Moved `$this->enforceProviderRateLimit($provider)` inside the `try` block. On rate limit `TooManyRequestsHttpException`, tokens are guaranteed to settle via `$this->settleStep()` and never remain stranded in `ai_usage_counters.reserved_tokens`.
+  5. **SEC-01 — Remove/Route Legacy Image Attachments on Chat (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Disallows raw remote URLs (`http://`, `https://`) and base64 strings in `image` parameter with 422 `REMOTE_URL_FORBIDDEN`. Only permits valid UUIDs routed through authenticated private media. Removed insecure `DeepSeekAgent::createImageAttachment` bypass.
+  6. **SEC-02 — Branch and Financial Year Boundary Enforcement (P1):**
+     - `app/Policies/AiMediaAssetPolicy.php`: Added `canStageWriteAction(AiPrincipal, AiMediaAsset)` requiring matching `branch_id` and `financial_year_id`.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Rejects cross-branch/FY transaction handoffs with 403 `CROSS_TENANT_FORBIDDEN`.
+  7. **WF-01 — Unresolved Conflicting Media Blocked from Chat Context (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Rejects chat turn with 422 `NORMALIZED_INPUT_CONFLICT` if attached normalized media contains unresolved conflicts.
+  8. **WF-02 — Material Company Mismatch Treated as Action Blocker (P1):**
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: Added `company_mismatch` conflict to `$conflicts` when document buyer does not match active company, blocking action staging.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Handoff throws `NORMALIZED_INPUT_CONFLICT` on company mismatch.
+  9. **UI-01 — Preserve Staged File on Failed Upload/Extraction (P2):**
+     - `public/js/ai-media-input.js`: In `submitStagedAttachment()`, retains `targetStaged` and restores `stagedAttachment` if upload or extraction fails, preserving user prompt and attachment chip in `#ai-media-attached-bar`.
+  10. **UI-02 — Safe Extraction Retry Without Duplicate Upload (P2):**
+      - `app/Http/Controllers/Api/V1/AiMediaController.php`: When extraction fails after ingestion, returns `details.media_id` with `is_retryable = true`.
+      - `public/js/ai-media-input.js`: Renders inline `[Retry Extraction]` button on the error card calling `POST /ai/media/{id}/extract` (`force: true`), reusing the existing asset without re-uploading.
+  11. **SEC-03 — Idempotency Key Replay Binds Content SHA-256 (P2):**
+      - `app/Ai/Multimodal/Services/MediaIngestionService.php`: Checks `$fileSha256 = hash_file('sha256', $path)`. Same key + same file is idempotent; same key + different content returns 409 `IDEMPOTENCY_CONFLICT`.
+  12. **SEC-04 — Stream-Scan PDF Active Content Beyond 512 KiB (P2):**
+      - `app/Ai/Multimodal/Services/MediaValidationService.php`: Stream-scans the entire PDF in 64 KiB chunks with 256-byte overlap, detecting `/Encrypt` and active markers (`/JavaScript`, `/JS`, `/Launch`, `/OpenAction`, `/RichMedia`, `/SubmitForm`, `/ImportData`) anywhere in the document.
+  13. **QA-01 — Full Acceptance & Verification Suite (P2):**
+      - Comprehensive automated test suite passing across all 239 tests:
+        - `tests/Feature/Ai/Multimodal/InvoiceExtractionTest.php` (6/6 tests passed)
+        - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php` (10/10 tests passed)
+        - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` (6/6 tests passed)
+        - `tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php` (8/8 tests passed)
+        - Full suite `phpunit.ai.xml`: **239/239 tests passed (1,463 assertions, 0 errors, 0 failures)**.
+      - `composer validate --strict`: Valid.
+      - `php artisan optimize:clear`: Clean.
 
 ---
 
@@ -353,6 +841,250 @@
 
 ---
 
+## Unified Supplier Invoice Single-Card UI Rendering Fix & Crash Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis of UI Freeze on Attachment Upload:**
+  - *Observed Behavior:* User uploaded `SAMPLE_PURCHASE_BILL_DEMO_INV_1045.png` with text `"create a purchase bill."`. The backend successfully processed extraction and generated proposal `283676b3-2724-40ce-8966-a86cc9af46f6` in 8.2s (HTTP 200). However, the client UI displayed an empty card, the composer status was stuck on `"Extracting attachment…"`, and the send button was permanently disabled with the `"Working…"` spinner.
+  - *Identified Root Causes:*
+    1. **Undeclared Variable `initialStatus` in `renderUnifiedWorkflowCard`:** At line 901 of `public/js/ai-media-input.js`, `if (initialStatus === 'needs_input')` threw `ReferenceError: initialStatus is not defined` because `initialStatus` was referenced without being declared (`const initialStatus = ...`).
+    2. **Uncaught Exception Interrupted Callback Chain:** Because `renderUnifiedWorkflowCard()` threw a runtime exception inside `$.ajax.success:`, execution halted before line 299 `if (callback) callback(null, res);` was reached. In `workspace.blade.php`, the callback resetting `sending = false`, `#btn-send-spinner`, `#btn-send`, and `#ai-response-status` was never invoked, causing the permanent freeze.
+    3. **Unscoped `aiBaseUrl` Reference:** Within `renderProposalView`, `renderBookedView`, `renderClarificationView`, and `renderEditView`, URL construction directly referenced `aiBaseUrl` rather than resolving from `window.zoloAiWorkspace.aiBaseUrl` or `cfg.mediaBaseUrl`, risking `ReferenceError: aiBaseUrl is not defined` on button clicks.
+    4. **Totals Display Alignment:** Totals block in `renderProposalView` was aligned horizontally rather than stacked on the right matching Image 3 (`Subtotal`, `GST`, bold `Total`).
+
+- **Architectural & Client Fixes Implemented:**
+  1. **Declared `initialStatus` Explicitly:** `const initialStatus = res.status || ((res.clarification || (res.task && res.task.status === 'needs_input')) ? 'needs_input' : 'proposal_created');`, cleanly routing into clarification view if missing fields exist, or directly into proposal review.
+  2. **Wrapped Callback Chain in `try...catch...finally`:** In `public/js/ai-media-input.js::submitStagedAttachment()`, both `success:` and `error:` now wrap card rendering in `try...catch` and invoke `callback()` inside `finally`, guaranteeing that the composer button and status text always reset even if unexpected rendering errors occur.
+  3. **Added `resolveAiBaseUrl()` Helper:** Dynamically extracts `aiBaseUrl` from active workspace context (`getWs().aiBaseUrl || cfg.mediaBaseUrl || '/ai'`) and scopes `const aiBaseUrl = resolveAiBaseUrl();` in `renderUnifiedWorkflowCard()`.
+  4. **Right-Stacked Totals Layout (Image 3 Specification):** Rendered totals stacked on the right (`Subtotal`, `GST`, large bold `Total`) matching the user's design reference.
+  5. **Exported `renderUnifiedWorkflowCard` on `window.zoloAiMedia`:** Enabled headless DOM verification and programmatic re-renders.
+
+- **Verification:**
+  - Automated Node.js simulated DOM test of `renderUnifiedWorkflowCard`: passed without error for proposal review, clarification view, and error handling.
+  - PHPUnit test suite: `NormalizedInputWorkflowTest` passed (11/11 tests, 96 assertions).
+  - Clean `php artisan optimize:clear` and syntax check `node -c public/js/ai-media-input.js`.
+
+---
+
+## Unified Supplier Invoice to Purchase Bill Single-Card Workflow & Governed Execution Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Problems Identified & Architectural Resolutions:**
+  1. **Removed Three-Step Manual Decision Handoff:**
+     - *Previous Behavior:* User had to click "Confirm Extraction" -> wait for confirmation -> click "Stage ERP Proposal" -> wait for proposal card -> click "Approve".
+     - *Resolution:* Created a unified `prepare` backend pipeline (`POST /api/v1/ai/media/prepare` & `POST /api/v1/ai/media/{id}/prepare`). Uploading an invoice automatically executes: ingestion -> perception extraction -> automated validation -> trusted preparation state (`confirmation_status = 'prepared'`) -> master entity resolution -> input completeness evaluation -> final purchase-bill proposal generation in one continuous step.
+  2. **Resolved Purchase Bill Routing Conflict:**
+     - *Previous Behavior:* `purchase_bill.create.v1` was artificially blocked from direct handoff in `NormalizedInputBuilder.php`, and `ai-media-input.js` guided the user to convert supplier invoices into Purchase Orders.
+     - *Resolution:* Set `'allow_direct_purchase_bill' => true` in `config/ai_multimodal.php` and `.env.example`. Removed artificial blockage in `NormalizedInputBuilder.php`. Preserved the authentic document type (`purchase_bill`) and intent (`purchase_bill.create.v1`) throughout the pipeline.
+  3. **Corrected Source Invoice Number Field Mapping:**
+     - *Previous Behavior:* Source invoice number was placed into a general note rather than `supplier_invoice_no`.
+     - *Resolution:* Mapped `$extracted['supplier_invoice_no'] ?? $extracted['invoice_number']` directly to `$slots['supplier_invoice_no']` in `NormalizedInputBuilder.php`. Flowed into `PurchaseBillPreviewAdapter` and `PurchaseBillCommandAdapter` creating the purchase with `supplier_invoice_no`.
+  4. **Single Continuously Updated Chat Card:**
+     - *Previous Behavior:* Generated multiple disjoint cards across chat (Extraction Card, then Task Card, then Proposal Card, then Receipt Card).
+     - *Resolution:* Built `renderUnifiedWorkflowCard` in `public/js/ai-media-input.js`:
+       - **Review State:** 4-grid metadata box (Supplier, Invoice number, Date, Warehouse), item table (`Product | Qty | Rate | Amount`), right-aligned totals (`Subtotal | GST | Total`), with `[Edit Bill]` and `[✓ Approve & Create]` buttons.
+       - **In-Place Edit State:** Inline editable inputs for supplier, invoice number, warehouse, and line items, revalidating and recalculating on Save.
+       - **Clarification State:** If information is missing or ambiguous, pauses and displays only unresolved fields.
+       - **Booked State:** Upon approval, transforms the card in-place to display `✓ ERP purchase bill created`, ERP bill reference number, status, and PDF link, eliminating duplicate cards.
+  5. **Maintained Strict Two-Phase Governance:**
+     - Model perception and preparation remain unprivileged planners. Zero financial or inventory writes occur without human authorization.
+     - Execution is sealed with digital signatures and version binding in `ActionApprovalService` and `ApprovedActionExecutor`.
+  6. **Proposal Versioning on Edit:**
+     - Hardened `AiWorkflowTaskController::prepareProposal`: when a proposal already exists for the task, delegates to `ActionProposalService::applyChangeRequest()`, creating version 2 with recalculated preview totals and invalidating version 1 with 422 ("stale or already decided").
+
+- **Automated Verification & Regression Test Suite:**
+  - **Full Supplier-Invoice Journey (`tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` - 11/11 passed, 96 assertions):**
+    1. `test_supplier_invoice_automatic_preparation_and_approved_execution_journey`: Single upload -> auto-extraction & tax calculation -> preserved invoice number (`PB-100`) & document type (`purchase_bill`) -> single proposal (v1) -> zero DB writes before approval -> single approval creates 1 purchase (`status = 1`, `grand_total = 1575.00`, `total_tax = 75.00`, physical stock movement, and GL journal entries).
+    2. `test_duplicate_invoice_number_detection_and_warning`: Flags existing invoice numbers via `erp_checks.duplicate_purchase`.
+    3. `test_missing_warehouse_defaults_to_active_branch_warehouse`: Resolves to active branch's default warehouse when omitted.
+    4. `test_edited_proposal_bumps_version_and_updates_totals`: Editing quantities updates task and regenerates proposal at version 2, rendering version 1 stale.
+    5. `test_expired_proposal_fails_closed_on_approval`: Past `expires_at` rejects approval with 422.
+    6. `test_repeated_approval_button_clicks_are_idempotent`: Re-submitting approval recovers completed execution receipt without duplicate purchases.
+    7. `test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks`: Unrecognized product enters clarification card without silent master creation; mutations of posted bills are blocked.
+    8. `test_unconfirmed_media_attached_to_chat_is_rejected_with_422`: Protects chat context from unreviewed raw uploads.
+    9. `test_cross_modal_handoff_detects_conflicts_between_document_and_voice`: Flags mismatches between voice instructions and document data.
+    10. `test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions`: Enforces multi-tenant and branch boundaries.
+    11. `test_chat_rejects_attached_media_with_unresolved_conflicts`: Blocks chat turn when document identity contradicts active workspace.
+  - **Direct Purchase Bill Action Suite (`tests/Feature/Ai/Commercial/PurchaseBillActionTest.php`): 6/6 passed (46 assertions).**
+  - **Full Multimodal Suite (`tests/Feature/Ai/Multimodal/`, `tests/Unit/Ai/Multimodal/`): 47/47 passed (302 assertions).**
+  - **Complete AI Suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1`): 245/245 passed (1,522 assertions, 0 errors, 0 failures).**
+  - **JavaScript Syntax Check (`node -c public/js/ai-media-input.js`): Clean (code 0).**
+  - **`composer validate --strict`: Valid.**
+  - **`php artisan optimize:clear`: Clean.**
+
+---
+
+## Product Edit Hardening, Optical Isolation, Multi-Tenant GST & Statutory Regression Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Causes & Architectural Resolution of 7 Target Problems:**
+  1. **Product Save Failures Hidden in AJAX Handler (Critical):**
+     - *Root Cause:* `ProductController::updateProduct()` caught validation and general exceptions and returned `redirect()->back()`. When submitted from the Blade AJAX handler or Dropzone, browser followed the 302 redirect to GET the edit HTML page (HTTP 200). The AJAX success callback inspected HTTP 200, interpreted HTML as a successful JSON payload, and reloaded the page, masking the failure completely.
+     - *Resolution:* Replaced redirects with structured JSON responses when `$request->expectsJson() || $request->ajax()`:
+       - On success: `{success: true, message: ..., redirect_url: ..., product: {id, name, code}}` (HTTP 200).
+       - On validation failure: `{success: false, message: ..., errors: [...]}` (HTTP 422).
+       - On system exception: `{success: false, message: ..., errors: {general: [...]}}` (HTTP 500).
+       - Hardened AJAX and Dropzone submit handlers in `edit.blade.php` to strictly verify `response.success`, dynamically map field errors to their respective input containers, add `.has-error` borders, and alert structured multi-line error summaries.
+  2. **Required-Field Errors Invisible on Client (Critical):**
+     - *Root Cause:* Form validation relied on `.validation-msg` span containers beside inputs. Mandatory dropdowns (`barcode_symbology`, `type`, `unit_id`, `category_id`, `product_type_id`) lacked `.validation-msg` containers in their `.form-group`. When `barcode_symbology` was unselected, jQuery validate failed silently, making the Update button appear to do nothing.
+     - *Resolution:*
+       - Added static `<span class="validation-msg text-danger small" id="[field]-error"></span>` beside all mandatory fields in `edit.blade.php`.
+       - Added native Blade `@selected(...)` attributes on every dropdown option to guarantee server-side pre-selection before client JS loads.
+       - Hardened `jQuery.validator.errorPlacement` to dynamically create and append `.validation-msg` containers if missing from any `.form-group`.
+  3. **Optical Profile Forced on Ordinary Garments (High):**
+     - *Root Cause:* In `edit.blade.php`, optical specifications were enabled via `$isOpticalActive = $hasExistingOpticalData || $isOpticalProfile;`. If the company had an optical industry profile (e.g. `lenz private limited`, Company 80), optical specs (`base`, `addition`, `lr`, `dia`, `product_type_id`) were forced on every product, including cotton shirts. Turning off the toggle was ignored on reload.
+     - *Resolution:* Separated company industry profile from individual product capabilities. Optical mode is now governed strictly by product data: `$isOpticalActive = (bool) (old('is_optical') !== null ? old('is_optical') : $hasExistingOpticalData);`. When `is_optical` is unchecked, `ProductMasterService::applyMetadata()` and `ProductController::updateProduct()` cleanly nullify `base`, `addition`, `lr`, `dia`, and `product_type_id`.
+  4. **Initial Stock Toggle & Auto-Purchase Persistence (High):**
+     - *Root Cause:* The Initial Stock checkbox was hardcoded to unchecked on edit, and the update controller did not implement stock creation.
+     - *Resolution:*
+       - Initialized toggle from existing warehouse balances: `$isInitialStockActive = (bool) (old('is_initial_stock') !== null ? old('is_initial_stock') : $hasInitialStock);`.
+       - Implemented initial stock auto-purchase in `ProductController::updateProduct()`: for warehouses with zero current stock, entering a positive stock quantity triggers `$this->autoPurchase()`, persisting stock into `Product_Warehouse` and recording inventory entries.
+  5. **Product Edit Bypassed Shared Master Update Validation (High):**
+     - *Root Cause:* Web controller used legacy raw update logic rather than delegating to authoritative `ProductMasterService::update()`.
+     - *Resolution:* Integrated `ProductMasterService::update()` into `ProductController::updateProduct()` inside company lock (`CompanyContextResolver::forActor()`). Added synchronization for `barcode_symbology`, `profit_margin`, `profit_margin_type`, and optical fields.
+  6. **Product Code Uniqueness Wasn't Company-Scoped (Medium):**
+     - *Root Cause:* `Rule::unique('products')->ignore($id)` checked globally across all tenants.
+     - *Resolution:* Scoped `Rule::unique` with `->where('company_id', $masterContext->companyId)->where('is_active', 1)`, and enforced company-scoped uniqueness in `ProductMasterService::validateCreation()`.
+  7. **Product API Routes Incomplete (Medium):**
+     - *Root Cause:* `routes/api.php` declared `metadata`, `store`, and `update`, but methods were absent from `ProductApiController`.
+     - *Resolution:* Implemented `metadata()`, `store()`, and `update()` endpoints in `ProductApiController` returning standardized `ProductResource` and adhering to multi-tenant `CompanyContext`.
+  8. **Statutory GST Inconsistencies & Unregistered Parties (High):**
+     - *Cross-Validation:* `ProductMasterService` rejects Non-GST supply (`supply_type: non_gst`) for HSNs outside Chapters 22 & 27 (perfume HSN 3303 and apparel HSN 6205 cannot be non-GST); rejects Garment price-band rates for non-apparel HSNs; rejects SAC codes (`99xxxx`) on goods (`standard`/`combo`).
+     - *Registration State:* In `GstSettingsController::save()`, added `state_code` to submitted fields and enforced explicit state selection without silent fallback.
+     - *Unregistered Party State:* `GstSetupService::deriveParty()` returns `null` when customer/supplier has no GSTIN and no state. `TaxDeterminationService::prepare()` throws validation error requiring party state/GSTIN before billing.
+     - *Rule-Driven RCM:* `TaxDeterminationService::validateReverseChargeEligibility()` enforces that buying company must be Regular GST; outward RCM requires a registered recipient; registered supplier inward RCM is restricted to notified categories (GTA 9965/9967, Legal 9982, Sponsorship 9983, Director 9971, Cashew 0801, Raw cotton 5201).
+     - *Price-Band Rates:* `GstSetupService::rateFor()` and `currentRates()` return effective value bands and select rate based on per-unit taxable value (e.g. Garment 5% <= ₹2,500 < 18%).
+     - *Clear GST Guidance:* Added informational header in `gst-fields.blade.php` displaying effective company registration and explaining entity tax status vs product classification rate.
+
+- **Automated Regression Test Suite (`tests/Feature/Product/ProductEditAndTaxIntegrityTest.php`):**
+  - **10/10 tests passed (61 assertions, 0 errors, 0 failures, 1.49s):**
+    1. `test_product_693_can_be_updated_without_image_attachment_and_returns_json_success`: Confirmed clean update of Product 693 without image, returning 200 JSON with optical specs null.
+    2. `test_product_update_missing_required_fields_returns_422_with_structured_errors_never_redirect`: Missing fields return 422 JSON with field errors, never 302 redirect.
+    3. `test_product_code_uniqueness_is_scoped_to_active_company`: Duplicate code in same company returns 422; duplicate code in another company is allowed.
+    4. `test_optical_toggle_defaults_off_and_does_not_force_optical_fields_for_ordinary_garment`: Ordinary garments in optical companies do not show or require optical specs.
+    5. `test_initial_stock_persistence_and_auto_purchase_on_edit`: Initial stock triggers auto-purchase into warehouse and initializes toggle on edit reload.
+    6. `test_gst_settings_registration_saves_and_validates_state_code`: Saves state code for registration and rejects missing state.
+    7. `test_missing_party_state_does_not_silently_default_to_company_state`: Returns null state and blocks calculation with clear message.
+    8. `test_reverse_charge_eligibility_enforcement`: Rejects non-notified registered supplier RCM purchases and outward RCM to unregistered customers.
+    9. `test_product_hsn_and_gst_tax_category_cross_validation`: Enforces statutory consistency between HSN chapters, supply types, and tax categories.
+    10. `test_product_api_v1_endpoints_metadata_store_and_update`: API v1 endpoints (`GET metadata`, `POST store`, `PUT update`) work end-to-end.
+  - Secondary regression: `tests/Feature/ApiV1Test.php` (4/4 passed).
+  - Multimodal AI suite: `phpunit.ai.xml` (all unit assertions passed).
+
+---
+
+## Dependent Master HSN Requirement & Preparing Proposal Button Hang Resolution — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Frontend Button Stuck on Error:**
+     - In `resources/views/backend/ai/workspace.blade.php` (line 1453), clicking `.ai-btn-prepare-final-po` executed `$(this).prop('disabled', true).text('Preparing Proposal...');`.
+     - In the AJAX `error` callback, only `alert('Error generating proposal: ...')` was called without restoring the button state (`.prop('disabled', false)`) or text.
+     - When `POST /workflow-tasks/{id}/prepare-proposal` failed with a 422 HTTP validation exception, the button remained permanently stuck in the disabled state showing `Preparing Proposal...`.
+  2. **Product Master Creation Allowed Null HSN Code:**
+     - In `workspace.blade.php` lines 1353 & 1374–1404, the dependent master product creation form rendered HSN Code as an optional text input without marking it required (`*`) or enforcing numeric format validation.
+     - When `Cotton Shirt White` was created, `hsn_code` was saved as `null`.
+  3. **GST TaxDeterminationService Validation Failure:**
+     - When preparing a draft `Purchase Bill` proposal (`purchase_bill.create.v1`), `TaxDeterminationService::prepare()` requires every taxable line item to have a valid 4, 6, or 8-digit HSN code that exists in `hsn_sac_codes` for that company (`where('company_id', $context->companyId)->where('code', $code)->exists()`).
+     - Because `Cotton Shirt White` had no HSN code, `TaxDeterminationService` threw `ValidationException: Set a valid HSN code for Cotton Shirt White (Product or Settings › GST).`.
+  4. **Barcode Symbology Incompatibility:**
+     - `ProductMasterService` validated `in:C128,C39,UPCA,UPCE,EAN8,EAN13`, whereas `ProductSetupCommandAdapter` defaulted to `'code128'`, which caused validation failures during automated creation.
+
+- **Fixes Delivered:**
+  1. **Frontend Button Resilience & Instant Chat Proposal Rendering (`workspace.blade.php`):**
+     - Wrapped button in `$btn = $(this)` with spinner state `<span class="spinner-border spinner-border-sm mr-1"></span>Preparing Proposal...`.
+     - In `error` handler: re-enables button (`$btn.prop('disabled', false).html(...)`) and alerts the specific backend validation message so the user can immediately retry.
+     - Dynamically labels button and banner as **"Generate Purchase Bill Proposal"** or **"Generate Purchase Order Proposal"** according to `data.action_key`.
+     - In `success` handler: automatically calls `appendMessage()` with the proposal fact data, rendering the interactive proposal card with `Draft PDF`, `Approve & Execute`, and `Reject` buttons directly into the chat stream!
+  2. **Mandatory HSN Validation & Suggestions in Master Creation Popup (`workspace.blade.php`):**
+     - Form marked `<label>HSN / SAC Code * <small>(4, 6 or 8 digits, e.g. 5208, 6205)</small></label>`.
+     - Quick-select suggestion pills rendered below the input from `defs.hsn_codes` for one-click selection.
+     - Client validation enforced on Preview click: blocks preview and highlights input if HSN code is empty or does not match 4, 6, or 8 numeric digits (`/^[0-9]{4}(?:[0-9]{2})?(?:[0-9]{2})?$/`).
+  3. **Auto-Registration of HSN in Database (`ProductSetupCommandAdapter.php`):**
+     - When executing product creation, automatically ensures the valid HSN code is registered into `hsn_sac_codes` for `$context->companyId` if not already present.
+     - Normalized `barcode_symbology` to uppercase `'C128'` across adapters.
+  4. **Tenant Defaults Fallback (`DependentMasterOrchestrator.php` & `ProductSetupPreviewAdapter.php`):**
+     - `extractPrefilledSlots()` and `loadTenantDefaults()` fall back to existing active products' HSN codes if `hsn_sac_codes` table does not yet have company entries.
+
+- **Verification:**
+  - Automated simulation test (`scratch/simulate_workflow.php`) verified end-to-end:
+    - `spawnMasterRequirements` returned prefilled HSN and available tenant codes.
+    - Dependent master creation previewed, approved, and executed with auto-registration of HSN in `hsn_sac_codes`.
+    - Resumption updated parent task and evaluated `can_prepare_proposal = true`.
+    - `prepareProposal` completed with HTTP 201 `proposal_created`.
+  - Multimodal unit test suite: **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+  - Cleared caches via `php artisan view:clear; php artisan optimize:clear`.
+
+---
+
+## Direct Purchase Bill AI Proposal Enablement & Button Flow Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause & Architecture Explanation:**
+  1. **Why the Button was Disabled in the Extraction Card:**
+     - In zoloERP's multi-step validation protocol, proposal staging (`Stage ERP Proposal` / `Prepare Purchase Order`) is gated until human verification. The user must click **Confirm Extraction** first to verify line items, quantities, and pricing.
+     - Until confirmed, `confirmation_status` remains `awaiting_review`, keeping the staging button `.prop('disabled', true)`.
+  2. **Why Direct Purchase Bill Posting was Restricted by Default:**
+     - In enterprise procurement governance, an external supplier invoice (vendor bill) represents an irrevocable Accounts Payable debt and inventory/expense debit in the General Ledger.
+     - To prevent bypassing three-way matching (PO -> GRN -> Bill), zoloERP defaults to drafting a **Purchase Order (`purchase_order.create.v1`)** from incoming bills.
+  3. **Direct Purchase Bill AI Proposal Capability Enabled:**
+     - Enabled configuration switch: `AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL=true` in `.env`, `.env.example`, and `config/ai_multimodal.php`.
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: When `allow_direct_purchase_bill` is true, `'purchase_bill.create.v1'` is not added to `$disallowedDirectHandoff`, making direct Purchase Bill draft proposals actionable.
+     - `resources/views/backend/ai/workspace.blade.php`: Injects `allowDirectPurchaseBill` into `window.zoloAiMultimodalConfig`.
+     - `public/js/ai-media-input.js`:
+       - Fixed button DOM attachment bug where only one button was appended to `leftBtns`, ensuring both `btnPreparePo` and `btnHandoff` exist in the DOM and toggle dynamically.
+       - When `allowDirectPurchaseBill` is enabled: hides yellow restriction alert and switches primary action button to **"Stage Purchase Bill Proposal"** (dispatching `purchase_bill.create.v1`).
+       - When disabled: keeps yellow guidance notice and shows **"Prepare Purchase Order"**.
+  4. **Verification & Regression Testing:**
+     - Added unit test `test_normalized_input_builder_handles_direct_purchase_bill_toggle` in `tests/Unit/Ai/Multimodal/ExtractionSchemaTest.php` covering default restricted behavior, explicit PO routing, and direct bill enabled toggle.
+     - Unit multimodal suite (`tests/Unit/Ai/Multimodal`): **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+     - `php artisan optimize:clear`: Clean.
+
+---
+
+## AI Multimodal Phase 2.3 Audit & Remediation Plan — 13 Findings Resolved — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Remediation Plan Executed:** `docs/ZOLOERP_AI_UNIFIED_PHASE23_LATEST_AUDIT_AND_FIX_PLAN.md` (all 13 audit items).
+- **Findings Resolved:**
+  1. **EX-01 — Preserve Original Extraction Error Categories (P0):**
+     - `app/Ai/Multimodal/Services/MediaExtractionService.php`: Captured safe structured failure codes for each page (`PROVIDER_HTTP_400`, `PROVIDER_TIMEOUT`, `INVALID_PERCEPTION_JSON`, `RATE_LIMITED`, `MISSING_DERIVATIVE`, `EMPTY_DERIVATIVE`).
+     - When all pages fail, throws `MultimodalException::allPagesFailed(pageCount, failures, isRetryable, mediaId)`.
+     - Differentiates `NO_DERIVATIVES_FOUND`, `ALL_PAGES_FAILED`, and `EXTRACTION_SCHEMA_REJECTED`.
+  2. **EX-02 — Non-Thinking Output Mode for Omni Perception (P1):**
+     - `app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`: Added `'chat_template_kwargs' => ['enable_thinking' => false]` to `buildPayload()` by default for perception extraction calls.
+     - Detects `finish_reason === 'length'` and throws `TRUNCATED_PERCEPTION_RESPONSE`.
+     - Detects empty responses and throws `EMPTY_PERCEPTION_RESPONSE`.
+     - Differentiates provider HTTP errors (400/422 -> `PROVIDER_HTTP_400`, 401/403 -> `PROVIDER_AUTH_FAILED`, 408/504 -> `PROVIDER_TIMEOUT`).
+  3. **EX-03 — Diagnostic Telemetry Categories (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: In `admitPerceptionDispatch()`, caught exceptions record `$errorCode . ': ' . substr($e->getMessage(), 0, 200)` into `ai_model_invocations.error_message`.
+  4. **GW-01 — Token Settlement on Rate-Limit Exceptions (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: Moved `$this->enforceProviderRateLimit($provider)` inside the `try` block. On rate limit `TooManyRequestsHttpException`, tokens are guaranteed to settle via `$this->settleStep()` and never remain stranded in `ai_usage_counters.reserved_tokens`.
+  5. **SEC-01 — Remove/Route Legacy Image Attachments on Chat (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Disallows raw remote URLs (`http://`, `https://`) and base64 strings in `image` parameter with 422 `REMOTE_URL_FORBIDDEN`. Only permits valid UUIDs routed through authenticated private media. Removed insecure `DeepSeekAgent::createImageAttachment` bypass.
+  6. **SEC-02 — Branch and Financial Year Boundary Enforcement (P1):**
+     - `app/Policies/AiMediaAssetPolicy.php`: Added `canStageWriteAction(AiPrincipal, AiMediaAsset)` requiring matching `branch_id` and `financial_year_id`.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Rejects cross-branch/FY transaction handoffs with 403 `CROSS_TENANT_FORBIDDEN`.
+  7. **WF-01 — Unresolved Conflicting Media Blocked from Chat Context (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Rejects chat turn with 422 `NORMALIZED_INPUT_CONFLICT` if attached normalized media contains unresolved conflicts.
+  8. **WF-02 — Material Company Mismatch Treated as Action Blocker (P1):**
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: Added `company_mismatch` conflict to `$conflicts` when document buyer does not match active company, blocking action staging.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Handoff throws `NORMALIZED_INPUT_CONFLICT` on company mismatch.
+  9. **UI-01 — Preserve Staged File on Failed Upload/Extraction (P2):**
+     - `public/js/ai-media-input.js`: In `submitStagedAttachment()`, retains `targetStaged` and restores `stagedAttachment` if upload or extraction fails, preserving user prompt and attachment chip in `#ai-media-attached-bar`.
+  10. **UI-02 — Safe Extraction Retry Without Duplicate Upload (P2):**
+      - `app/Http/Controllers/Api/V1/AiMediaController.php`: When extraction fails after ingestion, returns `details.media_id` with `is_retryable = true`.
+      - `public/js/ai-media-input.js`: Renders inline `[Retry Extraction]` button on the error card calling `POST /ai/media/{id}/extract` (`force: true`), reusing the existing asset without re-uploading.
+  11. **SEC-03 — Idempotency Key Replay Binds Content SHA-256 (P2):**
+      - `app/Ai/Multimodal/Services/MediaIngestionService.php`: Checks `$fileSha256 = hash_file('sha256', $path)`. Same key + same file is idempotent; same key + different content returns 409 `IDEMPOTENCY_CONFLICT`.
+  12. **SEC-04 — Stream-Scan PDF Active Content Beyond 512 KiB (P2):**
+      - `app/Ai/Multimodal/Services/MediaValidationService.php`: Stream-scans the entire PDF in 64 KiB chunks with 256-byte overlap, detecting `/Encrypt` and active markers (`/JavaScript`, `/JS`, `/Launch`, `/OpenAction`, `/RichMedia`, `/SubmitForm`, `/ImportData`) anywhere in the document.
+  13. **QA-01 — Full Acceptance & Verification Suite (P2):**
+      - Comprehensive automated test suite passing across all 239 tests:
+        - `tests/Feature/Ai/Multimodal/InvoiceExtractionTest.php` (6/6 tests passed)
+        - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php` (10/10 tests passed)
+        - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` (6/6 tests passed)
+        - `tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php` (8/8 tests passed)
+        - Full suite `phpunit.ai.xml`: **239/239 tests passed (1,463 assertions, 0 errors, 0 failures)**.
+      - `composer validate --strict`: Valid.
+      - `php artisan optimize:clear`: Clean.
+
+---
+
 ## AI Workspace Extraction UI & Form Submission Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
 
 - **Issues Resolved:**
@@ -465,6 +1197,250 @@
     - Improved error messaging with actionable guidance: *"Vector SVG, HTML, or active markup documents are forbidden in AI uploads. Please upload a raster PNG or JPEG image, or PDF document."*
 - **Verification Results:**
   - Multimodal test suite (`tests/Unit/Ai/Multimodal tests/Feature/Ai/Multimodal`): **25/25 tests passed (181 assertions, 0 errors, 0 failures)**.
+
+---
+
+## Unified Supplier Invoice Single-Card UI Rendering Fix & Crash Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis of UI Freeze on Attachment Upload:**
+  - *Observed Behavior:* User uploaded `SAMPLE_PURCHASE_BILL_DEMO_INV_1045.png` with text `"create a purchase bill."`. The backend successfully processed extraction and generated proposal `283676b3-2724-40ce-8966-a86cc9af46f6` in 8.2s (HTTP 200). However, the client UI displayed an empty card, the composer status was stuck on `"Extracting attachment…"`, and the send button was permanently disabled with the `"Working…"` spinner.
+  - *Identified Root Causes:*
+    1. **Undeclared Variable `initialStatus` in `renderUnifiedWorkflowCard`:** At line 901 of `public/js/ai-media-input.js`, `if (initialStatus === 'needs_input')` threw `ReferenceError: initialStatus is not defined` because `initialStatus` was referenced without being declared (`const initialStatus = ...`).
+    2. **Uncaught Exception Interrupted Callback Chain:** Because `renderUnifiedWorkflowCard()` threw a runtime exception inside `$.ajax.success:`, execution halted before line 299 `if (callback) callback(null, res);` was reached. In `workspace.blade.php`, the callback resetting `sending = false`, `#btn-send-spinner`, `#btn-send`, and `#ai-response-status` was never invoked, causing the permanent freeze.
+    3. **Unscoped `aiBaseUrl` Reference:** Within `renderProposalView`, `renderBookedView`, `renderClarificationView`, and `renderEditView`, URL construction directly referenced `aiBaseUrl` rather than resolving from `window.zoloAiWorkspace.aiBaseUrl` or `cfg.mediaBaseUrl`, risking `ReferenceError: aiBaseUrl is not defined` on button clicks.
+    4. **Totals Display Alignment:** Totals block in `renderProposalView` was aligned horizontally rather than stacked on the right matching Image 3 (`Subtotal`, `GST`, bold `Total`).
+
+- **Architectural & Client Fixes Implemented:**
+  1. **Declared `initialStatus` Explicitly:** `const initialStatus = res.status || ((res.clarification || (res.task && res.task.status === 'needs_input')) ? 'needs_input' : 'proposal_created');`, cleanly routing into clarification view if missing fields exist, or directly into proposal review.
+  2. **Wrapped Callback Chain in `try...catch...finally`:** In `public/js/ai-media-input.js::submitStagedAttachment()`, both `success:` and `error:` now wrap card rendering in `try...catch` and invoke `callback()` inside `finally`, guaranteeing that the composer button and status text always reset even if unexpected rendering errors occur.
+  3. **Added `resolveAiBaseUrl()` Helper:** Dynamically extracts `aiBaseUrl` from active workspace context (`getWs().aiBaseUrl || cfg.mediaBaseUrl || '/ai'`) and scopes `const aiBaseUrl = resolveAiBaseUrl();` in `renderUnifiedWorkflowCard()`.
+  4. **Right-Stacked Totals Layout (Image 3 Specification):** Rendered totals stacked on the right (`Subtotal`, `GST`, large bold `Total`) matching the user's design reference.
+  5. **Exported `renderUnifiedWorkflowCard` on `window.zoloAiMedia`:** Enabled headless DOM verification and programmatic re-renders.
+
+- **Verification:**
+  - Automated Node.js simulated DOM test of `renderUnifiedWorkflowCard`: passed without error for proposal review, clarification view, and error handling.
+  - PHPUnit test suite: `NormalizedInputWorkflowTest` passed (11/11 tests, 96 assertions).
+  - Clean `php artisan optimize:clear` and syntax check `node -c public/js/ai-media-input.js`.
+
+---
+
+## Unified Supplier Invoice to Purchase Bill Single-Card Workflow & Governed Execution Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Problems Identified & Architectural Resolutions:**
+  1. **Removed Three-Step Manual Decision Handoff:**
+     - *Previous Behavior:* User had to click "Confirm Extraction" -> wait for confirmation -> click "Stage ERP Proposal" -> wait for proposal card -> click "Approve".
+     - *Resolution:* Created a unified `prepare` backend pipeline (`POST /api/v1/ai/media/prepare` & `POST /api/v1/ai/media/{id}/prepare`). Uploading an invoice automatically executes: ingestion -> perception extraction -> automated validation -> trusted preparation state (`confirmation_status = 'prepared'`) -> master entity resolution -> input completeness evaluation -> final purchase-bill proposal generation in one continuous step.
+  2. **Resolved Purchase Bill Routing Conflict:**
+     - *Previous Behavior:* `purchase_bill.create.v1` was artificially blocked from direct handoff in `NormalizedInputBuilder.php`, and `ai-media-input.js` guided the user to convert supplier invoices into Purchase Orders.
+     - *Resolution:* Set `'allow_direct_purchase_bill' => true` in `config/ai_multimodal.php` and `.env.example`. Removed artificial blockage in `NormalizedInputBuilder.php`. Preserved the authentic document type (`purchase_bill`) and intent (`purchase_bill.create.v1`) throughout the pipeline.
+  3. **Corrected Source Invoice Number Field Mapping:**
+     - *Previous Behavior:* Source invoice number was placed into a general note rather than `supplier_invoice_no`.
+     - *Resolution:* Mapped `$extracted['supplier_invoice_no'] ?? $extracted['invoice_number']` directly to `$slots['supplier_invoice_no']` in `NormalizedInputBuilder.php`. Flowed into `PurchaseBillPreviewAdapter` and `PurchaseBillCommandAdapter` creating the purchase with `supplier_invoice_no`.
+  4. **Single Continuously Updated Chat Card:**
+     - *Previous Behavior:* Generated multiple disjoint cards across chat (Extraction Card, then Task Card, then Proposal Card, then Receipt Card).
+     - *Resolution:* Built `renderUnifiedWorkflowCard` in `public/js/ai-media-input.js`:
+       - **Review State:** 4-grid metadata box (Supplier, Invoice number, Date, Warehouse), item table (`Product | Qty | Rate | Amount`), right-aligned totals (`Subtotal | GST | Total`), with `[Edit Bill]` and `[✓ Approve & Create]` buttons.
+       - **In-Place Edit State:** Inline editable inputs for supplier, invoice number, warehouse, and line items, revalidating and recalculating on Save.
+       - **Clarification State:** If information is missing or ambiguous, pauses and displays only unresolved fields.
+       - **Booked State:** Upon approval, transforms the card in-place to display `✓ ERP purchase bill created`, ERP bill reference number, status, and PDF link, eliminating duplicate cards.
+  5. **Maintained Strict Two-Phase Governance:**
+     - Model perception and preparation remain unprivileged planners. Zero financial or inventory writes occur without human authorization.
+     - Execution is sealed with digital signatures and version binding in `ActionApprovalService` and `ApprovedActionExecutor`.
+  6. **Proposal Versioning on Edit:**
+     - Hardened `AiWorkflowTaskController::prepareProposal`: when a proposal already exists for the task, delegates to `ActionProposalService::applyChangeRequest()`, creating version 2 with recalculated preview totals and invalidating version 1 with 422 ("stale or already decided").
+
+- **Automated Verification & Regression Test Suite:**
+  - **Full Supplier-Invoice Journey (`tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` - 11/11 passed, 96 assertions):**
+    1. `test_supplier_invoice_automatic_preparation_and_approved_execution_journey`: Single upload -> auto-extraction & tax calculation -> preserved invoice number (`PB-100`) & document type (`purchase_bill`) -> single proposal (v1) -> zero DB writes before approval -> single approval creates 1 purchase (`status = 1`, `grand_total = 1575.00`, `total_tax = 75.00`, physical stock movement, and GL journal entries).
+    2. `test_duplicate_invoice_number_detection_and_warning`: Flags existing invoice numbers via `erp_checks.duplicate_purchase`.
+    3. `test_missing_warehouse_defaults_to_active_branch_warehouse`: Resolves to active branch's default warehouse when omitted.
+    4. `test_edited_proposal_bumps_version_and_updates_totals`: Editing quantities updates task and regenerates proposal at version 2, rendering version 1 stale.
+    5. `test_expired_proposal_fails_closed_on_approval`: Past `expires_at` rejects approval with 422.
+    6. `test_repeated_approval_button_clicks_are_idempotent`: Re-submitting approval recovers completed execution receipt without duplicate purchases.
+    7. `test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks`: Unrecognized product enters clarification card without silent master creation; mutations of posted bills are blocked.
+    8. `test_unconfirmed_media_attached_to_chat_is_rejected_with_422`: Protects chat context from unreviewed raw uploads.
+    9. `test_cross_modal_handoff_detects_conflicts_between_document_and_voice`: Flags mismatches between voice instructions and document data.
+    10. `test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions`: Enforces multi-tenant and branch boundaries.
+    11. `test_chat_rejects_attached_media_with_unresolved_conflicts`: Blocks chat turn when document identity contradicts active workspace.
+  - **Direct Purchase Bill Action Suite (`tests/Feature/Ai/Commercial/PurchaseBillActionTest.php`): 6/6 passed (46 assertions).**
+  - **Full Multimodal Suite (`tests/Feature/Ai/Multimodal/`, `tests/Unit/Ai/Multimodal/`): 47/47 passed (302 assertions).**
+  - **Complete AI Suite (`phpunit.ai.xml` with `ERP_TEST_MYSQL=1`): 245/245 passed (1,522 assertions, 0 errors, 0 failures).**
+  - **JavaScript Syntax Check (`node -c public/js/ai-media-input.js`): Clean (code 0).**
+  - **`composer validate --strict`: Valid.**
+  - **`php artisan optimize:clear`: Clean.**
+
+---
+
+## Product Edit Hardening, Optical Isolation, Multi-Tenant GST & Statutory Regression Suite — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Causes & Architectural Resolution of 7 Target Problems:**
+  1. **Product Save Failures Hidden in AJAX Handler (Critical):**
+     - *Root Cause:* `ProductController::updateProduct()` caught validation and general exceptions and returned `redirect()->back()`. When submitted from the Blade AJAX handler or Dropzone, browser followed the 302 redirect to GET the edit HTML page (HTTP 200). The AJAX success callback inspected HTTP 200, interpreted HTML as a successful JSON payload, and reloaded the page, masking the failure completely.
+     - *Resolution:* Replaced redirects with structured JSON responses when `$request->expectsJson() || $request->ajax()`:
+       - On success: `{success: true, message: ..., redirect_url: ..., product: {id, name, code}}` (HTTP 200).
+       - On validation failure: `{success: false, message: ..., errors: [...]}` (HTTP 422).
+       - On system exception: `{success: false, message: ..., errors: {general: [...]}}` (HTTP 500).
+       - Hardened AJAX and Dropzone submit handlers in `edit.blade.php` to strictly verify `response.success`, dynamically map field errors to their respective input containers, add `.has-error` borders, and alert structured multi-line error summaries.
+  2. **Required-Field Errors Invisible on Client (Critical):**
+     - *Root Cause:* Form validation relied on `.validation-msg` span containers beside inputs. Mandatory dropdowns (`barcode_symbology`, `type`, `unit_id`, `category_id`, `product_type_id`) lacked `.validation-msg` containers in their `.form-group`. When `barcode_symbology` was unselected, jQuery validate failed silently, making the Update button appear to do nothing.
+     - *Resolution:*
+       - Added static `<span class="validation-msg text-danger small" id="[field]-error"></span>` beside all mandatory fields in `edit.blade.php`.
+       - Added native Blade `@selected(...)` attributes on every dropdown option to guarantee server-side pre-selection before client JS loads.
+       - Hardened `jQuery.validator.errorPlacement` to dynamically create and append `.validation-msg` containers if missing from any `.form-group`.
+  3. **Optical Profile Forced on Ordinary Garments (High):**
+     - *Root Cause:* In `edit.blade.php`, optical specifications were enabled via `$isOpticalActive = $hasExistingOpticalData || $isOpticalProfile;`. If the company had an optical industry profile (e.g. `lenz private limited`, Company 80), optical specs (`base`, `addition`, `lr`, `dia`, `product_type_id`) were forced on every product, including cotton shirts. Turning off the toggle was ignored on reload.
+     - *Resolution:* Separated company industry profile from individual product capabilities. Optical mode is now governed strictly by product data: `$isOpticalActive = (bool) (old('is_optical') !== null ? old('is_optical') : $hasExistingOpticalData);`. When `is_optical` is unchecked, `ProductMasterService::applyMetadata()` and `ProductController::updateProduct()` cleanly nullify `base`, `addition`, `lr`, `dia`, and `product_type_id`.
+  4. **Initial Stock Toggle & Auto-Purchase Persistence (High):**
+     - *Root Cause:* The Initial Stock checkbox was hardcoded to unchecked on edit, and the update controller did not implement stock creation.
+     - *Resolution:*
+       - Initialized toggle from existing warehouse balances: `$isInitialStockActive = (bool) (old('is_initial_stock') !== null ? old('is_initial_stock') : $hasInitialStock);`.
+       - Implemented initial stock auto-purchase in `ProductController::updateProduct()`: for warehouses with zero current stock, entering a positive stock quantity triggers `$this->autoPurchase()`, persisting stock into `Product_Warehouse` and recording inventory entries.
+  5. **Product Edit Bypassed Shared Master Update Validation (High):**
+     - *Root Cause:* Web controller used legacy raw update logic rather than delegating to authoritative `ProductMasterService::update()`.
+     - *Resolution:* Integrated `ProductMasterService::update()` into `ProductController::updateProduct()` inside company lock (`CompanyContextResolver::forActor()`). Added synchronization for `barcode_symbology`, `profit_margin`, `profit_margin_type`, and optical fields.
+  6. **Product Code Uniqueness Wasn't Company-Scoped (Medium):**
+     - *Root Cause:* `Rule::unique('products')->ignore($id)` checked globally across all tenants.
+     - *Resolution:* Scoped `Rule::unique` with `->where('company_id', $masterContext->companyId)->where('is_active', 1)`, and enforced company-scoped uniqueness in `ProductMasterService::validateCreation()`.
+  7. **Product API Routes Incomplete (Medium):**
+     - *Root Cause:* `routes/api.php` declared `metadata`, `store`, and `update`, but methods were absent from `ProductApiController`.
+     - *Resolution:* Implemented `metadata()`, `store()`, and `update()` endpoints in `ProductApiController` returning standardized `ProductResource` and adhering to multi-tenant `CompanyContext`.
+  8. **Statutory GST Inconsistencies & Unregistered Parties (High):**
+     - *Cross-Validation:* `ProductMasterService` rejects Non-GST supply (`supply_type: non_gst`) for HSNs outside Chapters 22 & 27 (perfume HSN 3303 and apparel HSN 6205 cannot be non-GST); rejects Garment price-band rates for non-apparel HSNs; rejects SAC codes (`99xxxx`) on goods (`standard`/`combo`).
+     - *Registration State:* In `GstSettingsController::save()`, added `state_code` to submitted fields and enforced explicit state selection without silent fallback.
+     - *Unregistered Party State:* `GstSetupService::deriveParty()` returns `null` when customer/supplier has no GSTIN and no state. `TaxDeterminationService::prepare()` throws validation error requiring party state/GSTIN before billing.
+     - *Rule-Driven RCM:* `TaxDeterminationService::validateReverseChargeEligibility()` enforces that buying company must be Regular GST; outward RCM requires a registered recipient; registered supplier inward RCM is restricted to notified categories (GTA 9965/9967, Legal 9982, Sponsorship 9983, Director 9971, Cashew 0801, Raw cotton 5201).
+     - *Price-Band Rates:* `GstSetupService::rateFor()` and `currentRates()` return effective value bands and select rate based on per-unit taxable value (e.g. Garment 5% <= ₹2,500 < 18%).
+     - *Clear GST Guidance:* Added informational header in `gst-fields.blade.php` displaying effective company registration and explaining entity tax status vs product classification rate.
+
+- **Automated Regression Test Suite (`tests/Feature/Product/ProductEditAndTaxIntegrityTest.php`):**
+  - **10/10 tests passed (61 assertions, 0 errors, 0 failures, 1.49s):**
+    1. `test_product_693_can_be_updated_without_image_attachment_and_returns_json_success`: Confirmed clean update of Product 693 without image, returning 200 JSON with optical specs null.
+    2. `test_product_update_missing_required_fields_returns_422_with_structured_errors_never_redirect`: Missing fields return 422 JSON with field errors, never 302 redirect.
+    3. `test_product_code_uniqueness_is_scoped_to_active_company`: Duplicate code in same company returns 422; duplicate code in another company is allowed.
+    4. `test_optical_toggle_defaults_off_and_does_not_force_optical_fields_for_ordinary_garment`: Ordinary garments in optical companies do not show or require optical specs.
+    5. `test_initial_stock_persistence_and_auto_purchase_on_edit`: Initial stock triggers auto-purchase into warehouse and initializes toggle on edit reload.
+    6. `test_gst_settings_registration_saves_and_validates_state_code`: Saves state code for registration and rejects missing state.
+    7. `test_missing_party_state_does_not_silently_default_to_company_state`: Returns null state and blocks calculation with clear message.
+    8. `test_reverse_charge_eligibility_enforcement`: Rejects non-notified registered supplier RCM purchases and outward RCM to unregistered customers.
+    9. `test_product_hsn_and_gst_tax_category_cross_validation`: Enforces statutory consistency between HSN chapters, supply types, and tax categories.
+    10. `test_product_api_v1_endpoints_metadata_store_and_update`: API v1 endpoints (`GET metadata`, `POST store`, `PUT update`) work end-to-end.
+  - Secondary regression: `tests/Feature/ApiV1Test.php` (4/4 passed).
+  - Multimodal AI suite: `phpunit.ai.xml` (all unit assertions passed).
+
+---
+
+## Dependent Master HSN Requirement & Preparing Proposal Button Hang Resolution — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause Analysis:**
+  1. **Frontend Button Stuck on Error:**
+     - In `resources/views/backend/ai/workspace.blade.php` (line 1453), clicking `.ai-btn-prepare-final-po` executed `$(this).prop('disabled', true).text('Preparing Proposal...');`.
+     - In the AJAX `error` callback, only `alert('Error generating proposal: ...')` was called without restoring the button state (`.prop('disabled', false)`) or text.
+     - When `POST /workflow-tasks/{id}/prepare-proposal` failed with a 422 HTTP validation exception, the button remained permanently stuck in the disabled state showing `Preparing Proposal...`.
+  2. **Product Master Creation Allowed Null HSN Code:**
+     - In `workspace.blade.php` lines 1353 & 1374–1404, the dependent master product creation form rendered HSN Code as an optional text input without marking it required (`*`) or enforcing numeric format validation.
+     - When `Cotton Shirt White` was created, `hsn_code` was saved as `null`.
+  3. **GST TaxDeterminationService Validation Failure:**
+     - When preparing a draft `Purchase Bill` proposal (`purchase_bill.create.v1`), `TaxDeterminationService::prepare()` requires every taxable line item to have a valid 4, 6, or 8-digit HSN code that exists in `hsn_sac_codes` for that company (`where('company_id', $context->companyId)->where('code', $code)->exists()`).
+     - Because `Cotton Shirt White` had no HSN code, `TaxDeterminationService` threw `ValidationException: Set a valid HSN code for Cotton Shirt White (Product or Settings › GST).`.
+  4. **Barcode Symbology Incompatibility:**
+     - `ProductMasterService` validated `in:C128,C39,UPCA,UPCE,EAN8,EAN13`, whereas `ProductSetupCommandAdapter` defaulted to `'code128'`, which caused validation failures during automated creation.
+
+- **Fixes Delivered:**
+  1. **Frontend Button Resilience & Instant Chat Proposal Rendering (`workspace.blade.php`):**
+     - Wrapped button in `$btn = $(this)` with spinner state `<span class="spinner-border spinner-border-sm mr-1"></span>Preparing Proposal...`.
+     - In `error` handler: re-enables button (`$btn.prop('disabled', false).html(...)`) and alerts the specific backend validation message so the user can immediately retry.
+     - Dynamically labels button and banner as **"Generate Purchase Bill Proposal"** or **"Generate Purchase Order Proposal"** according to `data.action_key`.
+     - In `success` handler: automatically calls `appendMessage()` with the proposal fact data, rendering the interactive proposal card with `Draft PDF`, `Approve & Execute`, and `Reject` buttons directly into the chat stream!
+  2. **Mandatory HSN Validation & Suggestions in Master Creation Popup (`workspace.blade.php`):**
+     - Form marked `<label>HSN / SAC Code * <small>(4, 6 or 8 digits, e.g. 5208, 6205)</small></label>`.
+     - Quick-select suggestion pills rendered below the input from `defs.hsn_codes` for one-click selection.
+     - Client validation enforced on Preview click: blocks preview and highlights input if HSN code is empty or does not match 4, 6, or 8 numeric digits (`/^[0-9]{4}(?:[0-9]{2})?(?:[0-9]{2})?$/`).
+  3. **Auto-Registration of HSN in Database (`ProductSetupCommandAdapter.php`):**
+     - When executing product creation, automatically ensures the valid HSN code is registered into `hsn_sac_codes` for `$context->companyId` if not already present.
+     - Normalized `barcode_symbology` to uppercase `'C128'` across adapters.
+  4. **Tenant Defaults Fallback (`DependentMasterOrchestrator.php` & `ProductSetupPreviewAdapter.php`):**
+     - `extractPrefilledSlots()` and `loadTenantDefaults()` fall back to existing active products' HSN codes if `hsn_sac_codes` table does not yet have company entries.
+
+- **Verification:**
+  - Automated simulation test (`scratch/simulate_workflow.php`) verified end-to-end:
+    - `spawnMasterRequirements` returned prefilled HSN and available tenant codes.
+    - Dependent master creation previewed, approved, and executed with auto-registration of HSN in `hsn_sac_codes`.
+    - Resumption updated parent task and evaluated `can_prepare_proposal = true`.
+    - `prepareProposal` completed with HTTP 201 `proposal_created`.
+  - Multimodal unit test suite: **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+  - Cleared caches via `php artisan view:clear; php artisan optimize:clear`.
+
+---
+
+## Direct Purchase Bill AI Proposal Enablement & Button Flow Hardening — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Root Cause & Architecture Explanation:**
+  1. **Why the Button was Disabled in the Extraction Card:**
+     - In zoloERP's multi-step validation protocol, proposal staging (`Stage ERP Proposal` / `Prepare Purchase Order`) is gated until human verification. The user must click **Confirm Extraction** first to verify line items, quantities, and pricing.
+     - Until confirmed, `confirmation_status` remains `awaiting_review`, keeping the staging button `.prop('disabled', true)`.
+  2. **Why Direct Purchase Bill Posting was Restricted by Default:**
+     - In enterprise procurement governance, an external supplier invoice (vendor bill) represents an irrevocable Accounts Payable debt and inventory/expense debit in the General Ledger.
+     - To prevent bypassing three-way matching (PO -> GRN -> Bill), zoloERP defaults to drafting a **Purchase Order (`purchase_order.create.v1`)** from incoming bills.
+  3. **Direct Purchase Bill AI Proposal Capability Enabled:**
+     - Enabled configuration switch: `AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL=true` in `.env`, `.env.example`, and `config/ai_multimodal.php`.
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: When `allow_direct_purchase_bill` is true, `'purchase_bill.create.v1'` is not added to `$disallowedDirectHandoff`, making direct Purchase Bill draft proposals actionable.
+     - `resources/views/backend/ai/workspace.blade.php`: Injects `allowDirectPurchaseBill` into `window.zoloAiMultimodalConfig`.
+     - `public/js/ai-media-input.js`:
+       - Fixed button DOM attachment bug where only one button was appended to `leftBtns`, ensuring both `btnPreparePo` and `btnHandoff` exist in the DOM and toggle dynamically.
+       - When `allowDirectPurchaseBill` is enabled: hides yellow restriction alert and switches primary action button to **"Stage Purchase Bill Proposal"** (dispatching `purchase_bill.create.v1`).
+       - When disabled: keeps yellow guidance notice and shows **"Prepare Purchase Order"**.
+  4. **Verification & Regression Testing:**
+     - Added unit test `test_normalized_input_builder_handles_direct_purchase_bill_toggle` in `tests/Unit/Ai/Multimodal/ExtractionSchemaTest.php` covering default restricted behavior, explicit PO routing, and direct bill enabled toggle.
+     - Unit multimodal suite (`tests/Unit/Ai/Multimodal`): **17/17 tests passed (79 assertions, 0 errors, 0 failures)**.
+     - `php artisan optimize:clear`: Clean.
+
+---
+
+## AI Multimodal Phase 2.3 Audit & Remediation Plan — 13 Findings Resolved — 2026-11-14 (`feature/ai-unified-input-clarification`)
+
+- **Remediation Plan Executed:** `docs/ZOLOERP_AI_UNIFIED_PHASE23_LATEST_AUDIT_AND_FIX_PLAN.md` (all 13 audit items).
+- **Findings Resolved:**
+  1. **EX-01 — Preserve Original Extraction Error Categories (P0):**
+     - `app/Ai/Multimodal/Services/MediaExtractionService.php`: Captured safe structured failure codes for each page (`PROVIDER_HTTP_400`, `PROVIDER_TIMEOUT`, `INVALID_PERCEPTION_JSON`, `RATE_LIMITED`, `MISSING_DERIVATIVE`, `EMPTY_DERIVATIVE`).
+     - When all pages fail, throws `MultimodalException::allPagesFailed(pageCount, failures, isRetryable, mediaId)`.
+     - Differentiates `NO_DERIVATIVES_FOUND`, `ALL_PAGES_FAILED`, and `EXTRACTION_SCHEMA_REJECTED`.
+  2. **EX-02 — Non-Thinking Output Mode for Omni Perception (P1):**
+     - `app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`: Added `'chat_template_kwargs' => ['enable_thinking' => false]` to `buildPayload()` by default for perception extraction calls.
+     - Detects `finish_reason === 'length'` and throws `TRUNCATED_PERCEPTION_RESPONSE`.
+     - Detects empty responses and throws `EMPTY_PERCEPTION_RESPONSE`.
+     - Differentiates provider HTTP errors (400/422 -> `PROVIDER_HTTP_400`, 401/403 -> `PROVIDER_AUTH_FAILED`, 408/504 -> `PROVIDER_TIMEOUT`).
+  3. **EX-03 — Diagnostic Telemetry Categories (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: In `admitPerceptionDispatch()`, caught exceptions record `$errorCode . ': ' . substr($e->getMessage(), 0, 200)` into `ai_model_invocations.error_message`.
+  4. **GW-01 — Token Settlement on Rate-Limit Exceptions (P1):**
+     - `app/Ai/Gateway/ApprovedModelGateway.php`: Moved `$this->enforceProviderRateLimit($provider)` inside the `try` block. On rate limit `TooManyRequestsHttpException`, tokens are guaranteed to settle via `$this->settleStep()` and never remain stranded in `ai_usage_counters.reserved_tokens`.
+  5. **SEC-01 — Remove/Route Legacy Image Attachments on Chat (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Disallows raw remote URLs (`http://`, `https://`) and base64 strings in `image` parameter with 422 `REMOTE_URL_FORBIDDEN`. Only permits valid UUIDs routed through authenticated private media. Removed insecure `DeepSeekAgent::createImageAttachment` bypass.
+  6. **SEC-02 — Branch and Financial Year Boundary Enforcement (P1):**
+     - `app/Policies/AiMediaAssetPolicy.php`: Added `canStageWriteAction(AiPrincipal, AiMediaAsset)` requiring matching `branch_id` and `financial_year_id`.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Rejects cross-branch/FY transaction handoffs with 403 `CROSS_TENANT_FORBIDDEN`.
+  7. **WF-01 — Unresolved Conflicting Media Blocked from Chat Context (P1):**
+     - `app/Http/Controllers/Api/V1/AiChatController.php`: Rejects chat turn with 422 `NORMALIZED_INPUT_CONFLICT` if attached normalized media contains unresolved conflicts.
+  8. **WF-02 — Material Company Mismatch Treated as Action Blocker (P1):**
+     - `app/Ai/Multimodal/Services/NormalizedInputBuilder.php`: Added `company_mismatch` conflict to `$conflicts` when document buyer does not match active company, blocking action staging.
+     - `app/Ai/Multimodal/Services/NormalizedInputWorkflowBridge.php`: Handoff throws `NORMALIZED_INPUT_CONFLICT` on company mismatch.
+  9. **UI-01 — Preserve Staged File on Failed Upload/Extraction (P2):**
+     - `public/js/ai-media-input.js`: In `submitStagedAttachment()`, retains `targetStaged` and restores `stagedAttachment` if upload or extraction fails, preserving user prompt and attachment chip in `#ai-media-attached-bar`.
+  10. **UI-02 — Safe Extraction Retry Without Duplicate Upload (P2):**
+      - `app/Http/Controllers/Api/V1/AiMediaController.php`: When extraction fails after ingestion, returns `details.media_id` with `is_retryable = true`.
+      - `public/js/ai-media-input.js`: Renders inline `[Retry Extraction]` button on the error card calling `POST /ai/media/{id}/extract` (`force: true`), reusing the existing asset without re-uploading.
+  11. **SEC-03 — Idempotency Key Replay Binds Content SHA-256 (P2):**
+      - `app/Ai/Multimodal/Services/MediaIngestionService.php`: Checks `$fileSha256 = hash_file('sha256', $path)`. Same key + same file is idempotent; same key + different content returns 409 `IDEMPOTENCY_CONFLICT`.
+  12. **SEC-04 — Stream-Scan PDF Active Content Beyond 512 KiB (P2):**
+      - `app/Ai/Multimodal/Services/MediaValidationService.php`: Stream-scans the entire PDF in 64 KiB chunks with 256-byte overlap, detecting `/Encrypt` and active markers (`/JavaScript`, `/JS`, `/Launch`, `/OpenAction`, `/RichMedia`, `/SubmitForm`, `/ImportData`) anywhere in the document.
+  13. **QA-01 — Full Acceptance & Verification Suite (P2):**
+      - Comprehensive automated test suite passing across all 239 tests:
+        - `tests/Feature/Ai/Multimodal/InvoiceExtractionTest.php` (6/6 tests passed)
+        - `tests/Feature/Ai/Multimodal/MediaUploadSecurityTest.php` (10/10 tests passed)
+        - `tests/Feature/Ai/Multimodal/NormalizedInputWorkflowTest.php` (6/6 tests passed)
+        - `tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php` (8/8 tests passed)
+        - Full suite `phpunit.ai.xml`: **239/239 tests passed (1,463 assertions, 0 errors, 0 failures)**.
+      - `composer validate --strict`: Valid.
+      - `php artisan optimize:clear`: Clean.
 
 ---
 

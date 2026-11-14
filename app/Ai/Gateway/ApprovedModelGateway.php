@@ -255,10 +255,11 @@ class ApprovedModelGateway
             }
         }, 3);
 
-        $this->enforceProviderRateLimit($provider);
         $start = microtime(true);
 
         try {
+            $this->enforceProviderRateLimit($provider);
+
             $result = $callback($provider, $model);
             $durationMs = max(1, $result->durationMs > 0 ? $result->durationMs : (int) round((microtime(true) - $start) * 1000));
 
@@ -286,6 +287,9 @@ class ApprovedModelGateway
         } catch (Throwable $e) {
             $this->settleStep($principal, $date, $reserved, new TextUsage());
             $durationMs = (int) round((microtime(true) - $start) * 1000);
+            $errorCode = $e instanceof MultimodalException ? $e->errorCode : class_basename($e);
+            $errorMessage = $errorCode . ': ' . substr($e->getMessage(), 0, 200);
+
             $this->recordModelInvocation(
                 $principal,
                 1,
@@ -295,7 +299,7 @@ class ApprovedModelGateway
                 0,
                 0,
                 $durationMs,
-                class_basename($e),
+                $errorMessage,
                 httpAttempts: 1,
                 modelPurpose: $purpose->value,
                 mediaId: $mediaId,

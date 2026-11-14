@@ -68,5 +68,15 @@ class AiMediaExtraction extends Model
     {
         return $this->confirmation_status === 'confirmed';
     }
+
+    public function isPrepared(): bool
+    {
+        return $this->confirmation_status === 'prepared' || $this->confirmation_status === 'internally_verified';
+    }
+
+    public function isPreparedOrConfirmed(): bool
+    {
+        return $this->isConfirmed() || $this->isPrepared();
+    }
 }
 

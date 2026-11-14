@@ -41,6 +41,7 @@ final class DependentMasterResolutionTest extends TestCase
         config()->set('ai_actions.foundation_enabled', true);
         config()->set('ai_actions.execution_enabled', true);
         config()->set('commercial.enabled', true);
+        config()->set('compliance.enabled', true);
         config()->set('erp_ai.enabled', true);
         config()->set('erp_ai.read_only', false);
 
@@ -558,6 +559,8 @@ final class DependentMasterResolutionTest extends TestCase
             'name' => 'Apex Fabrics Supplier',
             'company_name' => 'Apex Fabrics Pvt Ltd',
             'phone_number' => '9888877777',
+            'vat_number' => $this->validGstin('33'),
+            'state' => 'Tamil Nadu',
             'is_active' => true,
             'company_id' => $this->company->id,
         ]);

@@ -387,6 +387,90 @@ final class InvoiceExtractionTest extends TestCase
         @unlink($jpeg);
     }
 
+    public function test_all_pages_failed_returns_422_with_safe_diagnostic_categories_and_retryable_flag(): void
+    {
+        Http::fake([
+            'https://integrate.api.nvidia.com/v1/chat/completions' => Http::response([
+                'error' => 'Service Unavailable',
+            ], 503),
+        ]);
+
+        $jpeg = $this->makeTempJpeg();
+
+        $res = $this->actingAs($this->admin)
+            ->withSession(['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpeg, 'failed_bill.jpg', 'image/jpeg', null, true),
+                'extract_now' => true,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'ALL_PAGES_FAILED');
+
+        $details = $res->json('details');
+        $this->assertSame(1, $details['total_pages']);
+        $this->assertTrue($details['is_retryable']);
+        $this->assertNotEmpty($details['media_id']);
+        $this->assertCount(1, $details['failures']);
+        $this->assertSame('PERCEPTION_PROVIDER_UNAVAILABLE', $details['failures'][0]['error_code']);
+        $this->assertSame('provider', $details['failures'][0]['error_category']);
+
+        @unlink($jpeg);
+    }
+
+    public function test_company_mismatch_blocks_action_staging_in_workflow_handoff(): void
+    {
+        Http::fake([
+            'https://integrate.api.nvidia.com/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl-test-mismatch-handoff',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+                'choices' => [['index' => 0, 'message' => ['role' => 'assistant', 'content' => json_encode([
+                    'document_type' => 'purchase_bill',
+                    'supplier_name' => 'ABC Traders',
+                    'buyer_name' => 'Other Entity Private Limited',
+                    'invoice_number' => 'DEMO-INV-999',
+                    'subtotal' => 5000.00,
+                    'tax_amount' => 900.00,
+                    'total_amount' => 5900.00,
+                    'lines' => [
+                        ['description' => 'Cotton Shirt', 'quantity' => 10, 'unit_price' => 500, 'line_total' => 5000],
+                    ],
+                ])], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 120, 'completion_tokens' => 80],
+            ], 200),
+        ]);
+
+        $jpeg = $this->makeTempJpeg();
+
+        $res = $this->actingAs($this->admin)
+            ->withSession(['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId])
+            ->postJson('/api/v1/ai/media', [
+                'file' => new UploadedFile($jpeg, 'supplier_invoice.jpg', 'image/jpeg', null, true),
+                'extract_now' => true,
+            ])
+            ->assertStatus(201);
+
+        $mediaId = $res->json('media.id');
+
+        // Confirm extraction
+        $this->actingAs($this->admin)
+            ->withSession(['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId])
+            ->postJson("/api/v1/ai/media/{$mediaId}/confirm")
+            ->assertStatus(200);
+
+        // Handoff to stage Purchase Order must be BLOCKED due to company mismatch
+        $this->actingAs($this->admin)
+            ->withSession(['company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId])
+            ->postJson("/api/v1/ai/media/{$mediaId}/handoff", [
+                'action_key' => 'purchase_order.create.v1',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'NORMALIZED_INPUT_CONFLICT');
+
+        @unlink($jpeg);
+    }
+
     private function makeTempJpeg(): string
     {
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zolo_inv_' . uniqid() . '.jpg';

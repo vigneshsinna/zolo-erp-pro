@@ -84,10 +84,14 @@
         return h;
     }
 
-    function mediaUrl(suffix) {
+    function resolveAiBaseUrl() {
         const ws = getWs();
         const base = (ws && ws.aiBaseUrl) ? ws.aiBaseUrl : (cfg.mediaBaseUrl || '/ai');
-        return base.replace(/\/$/, '') + '/media' + (suffix || '');
+        return base.replace(/\/$/, '');
+    }
+
+    function mediaUrl(suffix) {
+        return resolveAiBaseUrl() + '/media' + (suffix || '');
     }
 
     function formatTimer(sec) {
@@ -264,14 +268,14 @@
         const placeholderId = 'ai-media-loading-' + Date.now();
         const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
         const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
-            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Validating, sanitizing, and extracting fields with ' + escapeText(perceptionName) + '...</div>');
+            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Validating document, resolving records, and automatically preparing ERP proposal with ' + escapeText(perceptionName) + '...</div>');
         $('.ai-welcome-box').remove();
         $('#chat-messages').append(loadingCard);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
         const fd = new FormData();
         fd.append('file', targetStaged.file, targetStaged.fileName);
-        fd.append('extract_now', '1');
+        fd.append('prepare_now', '1');
         if (companionText) {
             fd.append('companion_text', companionText);
         }
@@ -281,7 +285,7 @@
         }
 
         $.ajax({
-            url: mediaUrl('/'),
+            url: mediaUrl('/prepare'),
             method: 'POST',
             headers: baseHeaders(false),
             data: fd,
@@ -292,27 +296,139 @@
                 if (targetStaged.previewUrl) {
                     try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
                 }
+                try {
+                    renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                    if (ws && ws.loadTelemetry) {
+                        ws.loadTelemetry();
+                    }
+                } catch (cardErr) {
+                    console.error('Error rendering unified workflow card:', cardErr);
+                    if (ws && ws.appendMessage) {
+                        ws.appendMessage('assistant', 'An unexpected error occurred while displaying the bill review: ' + (cardErr.message || 'Unknown error'));
+                    }
+                } finally {
+                    if (callback) callback(null, res);
+                }
+            },
+            error: function (xhr) {
+                $('#' + placeholderId).remove();
+                try {
+                    const err = xhr.responseJSON || {};
+                    const code = err.error_code || ('HTTP_' + xhr.status);
+                    const msg = err.error_message || err.message || 'Media upload or preparation failed.';
+                    const details = err.details || {};
+
+                    // UI-01: Preserve staged attachment on upload/extraction failure
+                    if (xhr.status !== 413) {
+                        stagedAttachment = targetStaged;
+                        renderAttachedChips();
+                    } else if (targetStaged.previewUrl) {
+                        try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
+                    }
+
+                    let errMsg = '[' + code + '] ' + msg;
+                    if (details.failures && Array.isArray(details.failures) && details.failures.length > 0) {
+                        const failCodes = details.failures.map(function (f) { return 'P' + f.page + ':' + f.error_code; }).join(', ');
+                        errMsg += ' (' + failCodes + ')';
+                    }
+
+                    if (ws && ws.appendMessage) {
+                        const msgEl = ws.appendMessage('assistant', errMsg);
+
+                        // UI-02: Add Retry Preparation on existing valid media object
+                        if (details.media_id && details.is_retryable !== false) {
+                            const retryBtn = $('<button type="button" class="btn btn-sm btn-outline-primary mt-2 d-inline-flex align-items-center"><i class="dripicons-clockwise mr-1"></i> Retry Preparation</button>');
+                            retryBtn.on('click', function () {
+                                retryBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Retrying...');
+                                retryPreparation(details.media_id, companionText, function () {
+                                    retryBtn.remove();
+                                });
+                            });
+                            if (msgEl && msgEl.find) {
+                                msgEl.find('.chat-bubble').append($('<div class="mt-2"></div>').append(retryBtn));
+                            }
+                        }
+                    }
+                } finally {
+                    if (callback) callback(xhr.responseJSON || new Error('Upload or preparation failed'));
+                }
+            }
+        });
+    }
+
+    function retryPreparation(mediaId, companionText, onDone) {
+        const ws = getWs();
+        const placeholderId = 'ai-media-loading-' + Date.now();
+        const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
+        const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
+            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Retrying preparation with ' + escapeText(perceptionName) + '...</div>');
+        $('#chat-messages').append(loadingCard);
+        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+
+        $.ajax({
+            url: mediaUrl('/' + encodeURIComponent(mediaId) + '/prepare'),
+            method: 'POST',
+            headers: baseHeaders(true),
+            data: JSON.stringify({
+                force: true,
+                companion_text: companionText || null,
+            }),
+            success: function (res) {
+                $('#' + placeholderId).remove();
+                if (onDone) onDone();
+                clearStagedAttachment();
+                renderUnifiedWorkflowCard(res, companionText);
+                if (ws && ws.loadTelemetry) {
+                    ws.loadTelemetry();
+                }
+            },
+            error: function (xhr) {
+                $('#' + placeholderId).remove();
+                if (onDone) onDone();
+                const err = xhr.responseJSON || {};
+                const code = err.error_code || ('HTTP_' + xhr.status);
+                const msg = err.error_message || err.message || 'Retry preparation failed.';
+                if (ws && ws.appendMessage) {
+                    ws.appendMessage('assistant', '[' + code + '] ' + msg);
+                }
+            }
+        });
+    }
+
+    function retryExtraction(mediaId, companionText, onDone) {
+        const ws = getWs();
+        const placeholderId = 'ai-media-loading-' + Date.now();
+        const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
+        const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
+            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Retrying extraction with ' + escapeText(perceptionName) + '...</div>');
+        $('#chat-messages').append(loadingCard);
+        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+
+        $.ajax({
+            url: mediaUrl('/' + encodeURIComponent(mediaId) + '/extract'),
+            method: 'POST',
+            headers: baseHeaders(true),
+            data: JSON.stringify({
+                force: true,
+                companion_text: companionText || null,
+            }),
+            success: function (res) {
+                $('#' + placeholderId).remove();
+                if (onDone) onDone();
+                clearStagedAttachment();
                 if (res && res.media && res.extraction) {
                     renderExtractionCard(res.media, res.extraction, companionText);
-
-                    // Contextual assistant message summarizing the perception extraction
                     const ext = res.extraction.extracted || {};
                     const partyName = ext.supplier_name || ext.buyer_name || 'party';
                     const totalAmt = ext.total_amount ? ('₹' + ext.total_amount) : '';
                     const docLabel = (ext.document_type || 'document').replace('_', ' ');
                     const modelBadge = formatModelDisplayName(res.extraction.model_key, res.extraction.model_provider);
 
-                    let summaryMsg = 'I have extracted the ' + docLabel + ' from **' + escapeText(partyName) + '**';
+                    let summaryMsg = 'Extraction succeeded on retry for ' + docLabel + ' from **' + escapeText(partyName) + '**';
                     if (totalAmt) {
                         summaryMsg += ' totaling **' + escapeText(totalAmt) + '**';
                     }
-                    summaryMsg += ' using **' + escapeText(modelBadge) + '**.\n\n';
-                    if (ext.document_type === 'purchase_bill') {
-                        summaryMsg += '> **Notice:** Direct Purchase Bill posting from AI is restricted in zoloERP to safeguard accounting integrity. Please review the extracted bill above, then click **Prepare Purchase Order** to stage a draft Purchase Order (`purchase_order.create.v1`) for this vendor.';
-                    } else {
-                        summaryMsg += 'Please review the extracted fields and line items above. Click **Confirm Extraction** to verify the data, then proceed to **Stage ERP Proposal**.';
-                    }
-
+                    summaryMsg += ' using **' + escapeText(modelBadge) + '**.\n\nPlease review the extracted fields above and click **Confirm Extraction** to proceed.';
                     if (ws && ws.appendMessage) {
                         ws.appendMessage('assistant', summaryMsg);
                     }
@@ -320,20 +436,16 @@
                 if (ws && ws.loadTelemetry) {
                     ws.loadTelemetry();
                 }
-                if (callback) callback(null, res);
             },
             error: function (xhr) {
                 $('#' + placeholderId).remove();
-                if (targetStaged.previewUrl) {
-                    try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
-                }
+                if (onDone) onDone();
                 const err = xhr.responseJSON || {};
                 const code = err.error_code || ('HTTP_' + xhr.status);
-                const msg = err.error_message || err.message || 'Media upload or extraction failed.';
+                const msg = err.error_message || err.message || 'Retry extraction failed.';
                 if (ws && ws.appendMessage) {
                     ws.appendMessage('assistant', '[' + code + '] ' + msg);
                 }
-                if (callback) callback(err);
             }
         });
     }
@@ -343,6 +455,455 @@
         const num = Number(val);
         if (isNaN(num)) return String(val);
         return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    function renderUnifiedWorkflowCard(res, companionText, stagedRef) {
+        const ws = getWs();
+        const aiBaseUrl = resolveAiBaseUrl();
+        const media = res.media || {};
+        const extraction = res.extraction || {};
+        const taskId = res.task_id || (res.task && res.task.id) || media.workflow_task_id;
+
+        const container = $('<div class="d-flex mb-3 justify-content-start ai-unified-workflow-wrap"></div>');
+        const bubble = $('<div class="chat-bubble chat-assistant shadow-sm w-100 ai-media-review-bubble"></div>');
+        const card = $('<div class="card border shadow-none ai-unified-card" data-media-id="' + escapeText(media.id || '') + '" data-task-id="' + escapeText(taskId || '') + '"></div>');
+
+        bubble.append(card);
+        container.append(bubble);
+        $('.ai-welcome-box').remove();
+        $('#chat-messages').append(container);
+        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+
+        let currentRes = res;
+
+        function refreshView(stateName, stateData) {
+            card.empty();
+            if (stateName === 'booked') {
+                renderBookedView(stateData);
+            } else if (stateName === 'edit') {
+                renderEditView();
+            } else if (stateName === 'clarification') {
+                renderClarificationView(stateData || currentRes);
+            } else {
+                renderProposalView(stateData || currentRes);
+            }
+            $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+        }
+
+        function renderProposalView(dataPayload) {
+            currentRes = dataPayload;
+            const proposal = currentRes.proposal || {};
+            const preview = proposal.preview || {};
+            const ext = (currentRes.extraction && currentRes.extraction.extracted) || {};
+            const actionKey = currentRes.action_key || proposal.action_key || 'purchase_bill.create.v1';
+            const isPb = (actionKey === 'purchase_bill.create.v1');
+            const docTitle = isPb ? 'Purchase Bill Review' : ((preview.document_type || 'Commercial Action') + ' Review');
+            const proposalId = proposal.proposal_id || proposal.id;
+            const version = proposal.version || 1;
+
+            const header = $('<div class="card-header bg-white py-3 px-3 border-bottom"></div>');
+            const topRow = $('<div class="d-flex justify-content-between align-items-center flex-wrap"></div>');
+            const titleWrap = $('<div></div>');
+            titleWrap.append($('<h5 class="font-weight-bold mb-1 text-dark"></h5>').html('<i class="dripicons-document mr-2 text-primary"></i>' + escapeText(docTitle)));
+            const perceptionName = formatModelDisplayName((currentRes.extraction && currentRes.extraction.model_key) || media.model_key || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
+            titleWrap.append($('<div class="small text-muted"></div>').text('Extracted by ' + perceptionName + ' · Verified by ERP Validation'));
+            topRow.append(titleWrap);
+            topRow.append($('<span class="badge badge-success px-2 py-1 font-weight-bold"><i class="dripicons-checkmark mr-1"></i>Validation passed</span>'));
+            header.append(topRow);
+            card.append(header);
+
+            const body = $('<div class="card-body p-3 bg-white"></div>');
+
+            // Collapsible Document Preview
+            if (media.preview_url) {
+                const prevWrap = $('<div class="mb-3"></div>');
+                const btnToggle = $('<button type="button" class="btn btn-xs btn-outline-secondary py-1 px-2 mb-2"><i class="dripicons-preview mr-1"></i><span>Preview Document</span></button>');
+                const prevBox = $('<div class="border rounded p-2 bg-light text-center mb-2 d-none"></div>');
+                if (media.source_kind === 'audio') {
+                    prevBox.append($('<audio controls class="w-100"></audio>').attr('src', media.preview_url));
+                } else {
+                    prevBox.append($('<img class="img-fluid rounded" style="max-height: 280px;" alt="Document preview">').attr('src', media.preview_url));
+                }
+                btnToggle.on('click', function () {
+                    prevBox.toggleClass('d-none');
+                    $(this).find('span').text(prevBox.hasClass('d-none') ? 'Preview Document' : 'Hide Preview');
+                });
+                prevWrap.append(btnToggle).append(prevBox);
+                body.append(prevWrap);
+            }
+
+            // 4-grid Metadata box (Image 3)
+            const metaBox = $('<div class="row no-gutters ai-meta-grid p-2 mb-3 border rounded bg-light"></div>');
+            const supplierName = (preview.supplier && preview.supplier.name) || ext.supplier_name || '—';
+            const invoiceNo = preview.supplier_invoice_no || ext.invoice_number || '—';
+            const invoiceDate = preview.date || ext.invoice_date || '—';
+            const warehouseName = (preview.warehouse && preview.warehouse.name) || 'Main Warehouse';
+
+            metaBox.append('<div class="col-6 mb-2"><small class="text-muted d-block">' + (isPb ? 'Supplier' : 'Customer') + '</small><strong class="text-dark">' + escapeText(supplierName) + '</strong></div>');
+            metaBox.append('<div class="col-6 mb-2 text-right"><small class="text-muted d-block">Invoice number</small><strong class="text-dark">' + escapeText(invoiceNo) + '</strong></div>');
+            metaBox.append('<div class="col-6"><small class="text-muted d-block">Invoice date</small><strong class="text-dark">' + escapeText(invoiceDate) + '</strong></div>');
+            metaBox.append('<div class="col-6 text-right"><small class="text-muted d-block">Warehouse</small><strong class="text-dark">' + escapeText(warehouseName) + '</strong></div>');
+            body.append(metaBox);
+
+            // Table of Line Items (Image 3)
+            const items = preview.items || ext.lines || [];
+            const tableWrap = $('<div class="table-responsive my-2"></div>');
+            const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
+            table.append('<thead class="thead-light"><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amount</th></tr></thead>');
+            const tbody = $('<tbody></tbody>');
+
+            if (items.length > 0) {
+                items.forEach(function (item) {
+                    const tr = $('<tr></tr>');
+                    const prodName = item.product_name || item.description || 'Product';
+                    const prodCode = item.product_code || item.sku_or_hsn || '';
+                    const tdProd = $('<td></td>').append($('<div class="font-weight-bold"></div>').text(prodName));
+                    if (prodCode) tdProd.append($('<small class="text-muted"></small>').text(prodCode));
+                    tr.append(tdProd);
+                    tr.append($('<td class="text-right"></td>').text(item.qty != null ? item.qty : (item.quantity != null ? item.quantity : '—')));
+                    const unitRate = item.net_unit_cost ?? item.net_unit_price ?? item.unit_price;
+                    tr.append($('<td class="text-right"></td>').text(formatCurrencyVal(unitRate)));
+                    const lineAmt = item.line_total ?? item.total;
+                    tr.append($('<td class="text-right font-weight-bold"></td>').text(formatCurrencyVal(lineAmt)));
+                    tbody.append(tr);
+                });
+            } else {
+                tbody.append('<tr><td colspan="4" class="text-center text-muted small py-2">No product lines found.</td></tr>');
+            }
+            table.append(tbody);
+            tableWrap.append(table);
+            body.append(tableWrap);
+
+            // Totals Block (Matching Image 3 Right-Stacked Spec)
+            const totals = preview.totals || {};
+            const subtotalVal = totals.subtotal ?? ext.subtotal;
+            const taxVal = totals.tax_total ?? ext.tax_amount;
+            const grandTotalVal = totals.grand_total ?? ext.total_amount;
+
+            const totalsDiv = $('<div class="row justify-content-end no-gutters mt-2 mb-2"></div>');
+            const totalsCol = $('<div class="col-sm-6 col-md-5 text-right"></div>');
+            totalsCol.append('<div class="d-flex justify-content-between small text-muted mb-1"><span>Subtotal</span><strong class="text-dark font-weight-normal">' + formatCurrencyVal(subtotalVal) + '</strong></div>');
+            totalsCol.append('<div class="d-flex justify-content-between small text-muted mb-2"><span>GST</span><strong class="text-dark font-weight-normal">' + formatCurrencyVal(taxVal) + '</strong></div>');
+            totalsCol.append('<div class="d-flex justify-content-between align-items-baseline border-top pt-2"><span class="font-weight-bold text-dark">Total</span><span class="h5 mb-0 font-weight-bold text-dark">' + formatCurrencyVal(grandTotalVal) + '</span></div>');
+            totalsDiv.append(totalsCol);
+            body.append(totalsDiv);
+
+            // Footnote
+            body.append('<div class="small text-muted border-top pt-2 mt-2 font-italic"><i class="dripicons-shield mr-1 text-success"></i>Original invoice number and document type verified by ERP validation. Real financial writes require human authorization.</div>');
+
+            // Action Feedback
+            const feedbackBox = $('<div class="small mt-2 mb-1 ai-action-feedback"></div>');
+            body.append(feedbackBox);
+
+            // Action Buttons (Image 3)
+            const footer = $('<div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2 flex-wrap"></div>');
+            const btnEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-3 ai-btn-edit-bill"><i class="dripicons-pencil mr-1"></i>Edit Bill</button>');
+            const rightWrap = $('<div class="d-flex align-items-center flex-wrap"></div>');
+            const pdfUrl = aiBaseUrl + '/proposals/' + proposalId + '/pdf';
+            const btnDraft = $('<button type="button" class="btn btn-sm btn-outline-primary mr-2 py-1 px-2 btn-preview-pdf" data-pdf-url="' + pdfUrl + '"><i class="dripicons-document mr-1"></i>Draft PDF</button>');
+            const btnApprove = $('<button type="button" class="btn btn-sm btn-success px-3 py-1 font-weight-bold ai-btn-approve-bill"><i class="dripicons-checkmark mr-1"></i>Approve & Create</button>');
+
+            btnEdit.on('click', function () {
+                refreshView('edit');
+            });
+
+            btnApprove.on('click', function () {
+                btnApprove.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Approving...');
+                btnEdit.prop('disabled', true);
+                feedbackBox.empty();
+
+                $.ajax({
+                    url: aiBaseUrl + '/proposals/' + proposalId + '/approve',
+                    method: 'POST',
+                    headers: baseHeaders(true),
+                    data: JSON.stringify({ expected_version: version }),
+                    success: function (resApprove) {
+                        if (resApprove.status === 'completed') {
+                            refreshView('booked', (resApprove.execution && resApprove.execution.receipt) || {});
+                        } else if (resApprove.status === 'queued') {
+                            feedbackBox.html('<span class="badge badge-info p-2">Execution queued in background. Check back in a moment.</span>');
+                        } else {
+                            feedbackBox.html('<span class="badge badge-success p-2">Approved.</span>');
+                        }
+                    },
+                    error: function (xhr) {
+                        btnApprove.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Approve & Create');
+                        btnEdit.prop('disabled', false);
+                        const err = xhr.responseJSON || {};
+                        const msg = err.message || err.error_message || 'Approval failed.';
+                        feedbackBox.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(msg) + '</div>');
+                    }
+                });
+            });
+
+            rightWrap.append(btnDraft).append(btnApprove);
+            footer.append(btnEdit).append(rightWrap);
+            body.append(footer);
+            card.append(body);
+        }
+
+        function renderBookedView(receipt) {
+            const refNo = (receipt && receipt.details && receipt.details.reference_no) || (receipt && receipt.resource_id) || 'PR-BOOKED';
+            const resId = (receipt && receipt.resource_id) || (receipt && receipt.details && receipt.details.purchase_id);
+            const pdfUrl = resId ? (aiBaseUrl + '/documents/purchase/' + resId + '/pdf') : null;
+
+            const header = $('<div class="card-header bg-white py-3 px-3 border-bottom"></div>');
+            const topRow = $('<div class="d-flex justify-content-between align-items-center flex-wrap"></div>');
+            topRow.append($('<h5 class="font-weight-bold mb-0 text-success"></h5>').html('<i class="dripicons-checkmark mr-2"></i>ERP Purchase Bill Created'));
+            topRow.append($('<span class="badge badge-success px-2 py-1 font-weight-bold"><i class="dripicons-checkmark mr-1"></i>Booked</span>'));
+            header.append(topRow);
+            card.append(header);
+
+            const body = $('<div class="card-body p-3 bg-white"></div>');
+            const successBox = $('<div class="alert alert-success p-3 border-success mb-2"></div>');
+            successBox.append('<h6 class="font-weight-bold text-success mb-1">Voucher Booked: ' + escapeText(refNo) + '</h6>');
+            successBox.append('<div class="small text-muted mb-3">Status: Successfully posted to Accounts Payable, inventory updated in Main Warehouse.</div>');
+
+            const btnRow = $('<div class="d-flex align-items-center flex-wrap"></div>');
+            if (pdfUrl) {
+                btnRow.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 mb-1 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
+                btnRow.append($('<a class="btn btn-sm btn-primary py-1 px-2 mb-1" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
+            }
+            successBox.append(btnRow);
+            body.append(successBox);
+            card.append(body);
+        }
+
+        function renderClarificationView(dataPayload) {
+            currentRes = dataPayload;
+            const taskObj = currentRes.task || {};
+            const clarifyObj = currentRes.clarification || {};
+            const currentTaskId = currentRes.task_id || (taskObj && taskObj.id) || taskId;
+
+            const header = $('<div class="card-header bg-white py-3 px-3 border-bottom"></div>');
+            const topRow = $('<div class="d-flex justify-content-between align-items-center flex-wrap"></div>');
+            topRow.append($('<h5 class="font-weight-bold mb-0 text-dark"></h5>').html('<i class="dripicons-warning mr-2 text-warning"></i>Purchase Bill Review'));
+            topRow.append($('<span class="badge badge-warning px-2 py-1 font-weight-bold"><i class="dripicons-hourglass mr-1"></i>Details Required</span>'));
+            header.append(topRow);
+            card.append(header);
+
+            const body = $('<div class="card-body p-3 bg-white"></div>');
+            body.append('<div class="alert alert-warning py-2 px-3 small border-warning mb-3">Please resolve the missing details below to generate the purchase bill proposal.</div>');
+
+            const inputsForm = $('<div class="ai-clarification-form mb-3"></div>');
+            const reqInputs = clarifyObj.required_inputs || [];
+            if (reqInputs.length > 0) {
+                reqInputs.forEach(function (inp) {
+                    const grp = $('<div class="form-group mb-3 border p-2 rounded bg-light"></div>');
+                    grp.append($('<label class="font-weight-bold small mb-1 text-dark"></label>').text(inp.label || inp.field));
+                    if (inp.help_text) {
+                        grp.append($('<small class="text-muted d-block mb-2"></small>').text(inp.help_text));
+                    }
+                    if (Array.isArray(inp.candidates) && inp.candidates.length > 0) {
+                        const sel = $('<select class="form-control form-control-sm ai-clarify-select"></select>').attr('data-field', inp.field);
+                        sel.append('<option value="">-- Choose ' + escapeText(inp.label || 'Candidate') + ' --</option>');
+                        inp.candidates.forEach(function (c) {
+                            sel.append($('<option></option>').attr('value', c.id).text(c.display || c.name || c.code));
+                        });
+                        grp.append(sel);
+                    } else {
+                        const txt = $('<input type="text" class="form-control form-control-sm ai-clarify-input">')
+                            .attr('data-field', inp.field)
+                            .val(inp.current_value || '');
+                        grp.append(txt);
+                    }
+                    inputsForm.append(grp);
+                });
+            } else {
+                inputsForm.append('<div class="small text-muted mb-2">' + escapeText(clarifyObj.message || 'Please check and complete the missing records.') + '</div>');
+            }
+            body.append(inputsForm);
+
+            const feedback = $('<div class="small mb-2 ai-clarify-feedback"></div>');
+            body.append(feedback);
+
+            const footer = $('<div class="pt-2 border-top d-flex justify-content-end"></div>');
+            const btnSubmit = $('<button type="button" class="btn btn-sm btn-primary px-3 ai-btn-submit-clarify"><i class="dripicons-direction mr-1"></i>Submit Details & Generate Preview</button>');
+
+            btnSubmit.on('click', function () {
+                btnSubmit.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Submitting...');
+                feedback.empty();
+
+                const slotPatch = {};
+                inputsForm.find('.ai-clarify-select, .ai-clarify-input').each(function () {
+                    const f = $(this).attr('data-field');
+                    const v = $(this).val();
+                    if (f && v !== '') {
+                        slotPatch[f] = v;
+                    }
+                });
+
+                $.ajax({
+                    url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/inputs',
+                    method: 'PATCH',
+                    headers: baseHeaders(true),
+                    data: JSON.stringify({
+                        expected_revision: (taskObj && taskObj.revision) || 1,
+                        slots_patch: slotPatch
+                    }),
+                    success: function (resPatch) {
+                        $.ajax({
+                            url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/prepare-proposal',
+                            method: 'POST',
+                            headers: baseHeaders(true),
+                            data: JSON.stringify({}),
+                            success: function (resPrep) {
+                                if (resPrep && resPrep.proposal) {
+                                    refreshView('proposal', {
+                                        status: 'proposal_created',
+                                        proposal: resPrep.proposal,
+                                        task: resPrep.task,
+                                        media: media,
+                                        extraction: extraction
+                                    });
+                                } else if (resPrep && resPrep.status === 'needs_input') {
+                                    refreshView('clarification', resPrep);
+                                }
+                            },
+                            error: function (xhrPrep) {
+                                btnSubmit.prop('disabled', false).html('<i class="dripicons-direction mr-1"></i>Submit Details & Generate Preview');
+                                const err = xhrPrep.responseJSON || {};
+                                feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to prepare proposal.') + '</div>');
+                            }
+                        });
+                    },
+                    error: function (xhrPatch) {
+                        btnSubmit.prop('disabled', false).html('<i class="dripicons-direction mr-1"></i>Submit Details & Generate Preview');
+                        const err = xhrPatch.responseJSON || {};
+                        feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to update inputs.') + '</div>');
+                    }
+                });
+            });
+
+            footer.append(btnSubmit);
+            body.append(footer);
+            card.append(body);
+        }
+
+        function renderEditView() {
+            const proposal = currentRes.proposal || {};
+            const preview = proposal.preview || {};
+            const ext = (currentRes.extraction && currentRes.extraction.extracted) || {};
+            const currentTaskId = currentRes.task_id || (currentRes.task && currentRes.task.id) || taskId;
+
+            const header = $('<div class="card-header bg-white py-3 px-3 border-bottom"></div>');
+            const topRow = $('<div class="d-flex justify-content-between align-items-center flex-wrap"></div>');
+            topRow.append($('<h5 class="font-weight-bold mb-0 text-dark"></h5>').html('<i class="dripicons-pencil mr-2 text-primary"></i>Edit Bill Details'));
+            topRow.append($('<span class="badge badge-secondary px-2 py-1">Draft Revision</span>'));
+            header.append(topRow);
+            card.append(header);
+
+            const body = $('<div class="card-body p-3 bg-white"></div>');
+            const formGrid = $('<div class="form-row mb-3"></div>');
+
+            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Supplier</label><input type="text" class="form-control form-control-sm ai-edit-supplier" value="' + escapeText((preview.supplier && preview.supplier.name) || ext.supplier_name || '') + '"></div>');
+            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Invoice Number</label><input type="text" class="form-control form-control-sm ai-edit-invoice-no" value="' + escapeText(preview.supplier_invoice_no || ext.invoice_number || '') + '"></div>');
+            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Invoice Date</label><input type="date" class="form-control form-control-sm ai-edit-date" value="' + escapeText(preview.date || ext.invoice_date || '') + '"></div>');
+            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Warehouse</label><input type="text" class="form-control form-control-sm ai-edit-warehouse" value="' + escapeText((preview.warehouse && preview.warehouse.name) || 'Main Warehouse') + '"></div>');
+            body.append(formGrid);
+
+            const tableWrap = $('<div class="table-responsive my-2"></div>');
+            const table = $('<table class="table table-sm table-bordered mb-0"></table>');
+            table.append('<thead class="thead-light"><tr><th>Product</th><th style="width: 100px;">Qty</th><th style="width: 120px;">Rate</th></tr></thead>');
+            const tbody = $('<tbody></tbody>');
+
+            const items = preview.items || ext.lines || [];
+            items.forEach(function (item, idx) {
+                const tr = $('<tr></tr>');
+                tr.append('<td><input type="text" class="form-control form-control-sm ai-edit-item-desc" value="' + escapeText(item.product_name || item.description || '') + '"></td>');
+                tr.append('<td><input type="number" step="any" class="form-control form-control-sm ai-edit-item-qty text-right" value="' + (item.qty ?? item.quantity ?? 1) + '"></td>');
+                const costVal = item.net_unit_cost ?? item.net_unit_price ?? item.unit_price ?? 0;
+                tr.append('<td><input type="number" step="any" class="form-control form-control-sm ai-edit-item-rate text-right" value="' + costVal + '"></td>');
+                tbody.append(tr);
+            });
+            table.append(tbody);
+            tableWrap.append(table);
+            body.append(tableWrap);
+
+            const feedback = $('<div class="small mt-2 mb-1 ai-edit-feedback"></div>');
+            body.append(feedback);
+
+            const footer = $('<div class="pt-3 border-top d-flex justify-content-between align-items-center"></div>');
+            const btnCancel = $('<button type="button" class="btn btn-sm btn-outline-secondary">Cancel</button>');
+            const btnSave = $('<button type="button" class="btn btn-sm btn-success px-3 font-weight-bold"><i class="dripicons-checkmark mr-1"></i>Update & Revalidate</button>');
+
+            btnCancel.on('click', function () {
+                refreshView('proposal');
+            });
+
+            btnSave.on('click', function () {
+                btnSave.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Revalidating...');
+                feedback.empty();
+
+                const updatedItems = [];
+                tbody.find('tr').each(function (idx) {
+                    const desc = $(this).find('.ai-edit-item-desc').val().trim();
+                    const qty = parseFloat($(this).find('.ai-edit-item-qty').val()) || 1;
+                    const rate = parseFloat($(this).find('.ai-edit-item-rate').val()) || 0;
+                    updatedItems.push({
+                        client_line_id: 'line-' + idx,
+                        product_query: desc,
+                        qty: qty,
+                        net_unit_cost: rate
+                    });
+                });
+
+                const patchData = {
+                    supplier_invoice_no: body.find('.ai-edit-invoice-no').val().trim(),
+                    date: body.find('.ai-edit-date').val(),
+                    items: updatedItems
+                };
+
+                $.ajax({
+                    url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/inputs',
+                    method: 'PATCH',
+                    headers: baseHeaders(true),
+                    data: JSON.stringify({
+                        expected_revision: (currentRes.task && currentRes.task.revision) || 1,
+                        slots_patch: patchData
+                    }),
+                    success: function (resPatch) {
+                        $.ajax({
+                            url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/prepare-proposal',
+                            method: 'POST',
+                            headers: baseHeaders(true),
+                            data: JSON.stringify({}),
+                            success: function (resPrep) {
+                                refreshView('proposal', {
+                                    status: 'proposal_created',
+                                    proposal: resPrep.proposal,
+                                    task: resPrep.task,
+                                    media: media,
+                                    extraction: extraction
+                                });
+                            },
+                            error: function (xhrPrep) {
+                                btnSave.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Update & Revalidate');
+                                const err = xhrPrep.responseJSON || {};
+                                feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Validation failed.') + '</div>');
+                            }
+                        });
+                    },
+                    error: function (xhrPatch) {
+                        btnSave.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Update & Revalidate');
+                        const err = xhrPatch.responseJSON || {};
+                        feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to update details.') + '</div>');
+                    }
+                });
+            });
+
+            footer.append(btnCancel).append(btnSave);
+            body.append(footer);
+            card.append(body);
+        }
+
+        // Initialize view based on initial status
+        const initialStatus = res.status || ((res.clarification || (res.task && res.task.status === 'needs_input')) ? 'needs_input' : 'proposal_created');
+        if (initialStatus === 'needs_input') {
+            refreshView('clarification', res);
+        } else {
+            refreshView('proposal', res);
+        }
     }
 
     function renderExtractionCard(media, extraction, companionText) {
@@ -481,10 +1042,13 @@
         companionGroup.append(companionInput);
         body.append(companionGroup);
 
+        const isPurchaseBill = (data.document_type === 'purchase_bill');
+        const canDirectBill = !!(cfg && cfg.allowDirectPurchaseBill);
+
         // Direct Purchase Bill Posting Restriction Notice
         const restrictionAlert = $('<div class="alert alert-warning py-2 px-3 small border-warning mt-2 mb-2" style="background-color: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 6px;"></div>')
-            .html('Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (<code>purchase_order.create.v1</code>) instead.');
-        if (data.document_type === 'purchase_bill') {
+            .html('Direct Purchase Bill posting from AI is not enabled yet. Review the extracted bill above, or explicitly ask to draft a Purchase Order (<code>purchase_order.create.v1</code>) instead. (To enable direct bills, set <code>AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL=true</code> in <code>.env</code>).');
+        if (isPurchaseBill && !canDirectBill) {
             restrictionAlert.removeClass('d-none');
         } else {
             restrictionAlert.addClass('d-none');
@@ -503,27 +1067,21 @@
         const btnConfirm = $('<button type="button" class="btn btn-sm btn-primary mr-2 mb-1 ai-btn-media-confirm">Confirm Extraction</button>')
             .prop('disabled', confirmationStatus === 'confirmed');
 
-        const isPurchaseBill = (data.document_type === 'purchase_bill');
         const btnPreparePo = $('<button type="button" class="btn btn-sm btn-primary mr-2 mb-1 ai-btn-media-prepare-po">Prepare Purchase Order</button>')
             .prop('disabled', confirmationStatus !== 'confirmed')
-            .toggleClass('d-none', !isPurchaseBill);
+            .toggleClass('d-none', !isPurchaseBill || canDirectBill);
 
-        const btnHandoff = $('<button type="button" class="btn btn-sm btn-success mr-2 mb-1 ai-btn-media-handoff">Stage ERP Proposal</button>')
+        const handoffLabel = (isPurchaseBill && canDirectBill) ? 'Stage Purchase Bill Proposal' : 'Stage ERP Proposal';
+        const btnHandoff = $('<button type="button" class="btn btn-sm btn-success mr-2 mb-1 ai-btn-media-handoff">' + handoffLabel + '</button>')
             .prop('disabled', confirmationStatus !== 'confirmed')
-            .toggleClass('d-none', isPurchaseBill);
+            .toggleClass('d-none', isPurchaseBill && !canDirectBill);
 
         const btnToggleEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 mb-1 ai-btn-media-toggle-edit">Edit Details</button>');
         const btnSave = $('<button type="button" class="btn btn-sm btn-outline-primary mr-2 mb-1 ai-btn-media-save d-none">Save Edits</button>');
         const btnAttach = $('<button type="button" class="btn btn-sm btn-outline-info mr-2 mb-1 ai-btn-media-attach">Attach to Chat</button>');
         const btnDiscard = $('<button type="button" class="btn btn-sm btn-outline-danger mb-1 ai-btn-media-discard">Discard Media</button>');
 
-        leftBtns.append(btnConfirm);
-        if (isPurchaseBill) {
-            leftBtns.append(btnPreparePo);
-        } else {
-            leftBtns.append(btnHandoff);
-        }
-        leftBtns.append(btnToggleEdit).append(btnSave);
+        leftBtns.append(btnConfirm).append(btnPreparePo).append(btnHandoff).append(btnToggleEdit).append(btnSave);
         rightBtns.append(btnAttach).append(btnDiscard);
         footer.append(leftBtns).append(rightBtns);
         body.append(footer);
@@ -548,13 +1106,18 @@
             btnConfirm.prop('disabled', confirmationStatus === 'confirmed');
 
             const isPb = (data.document_type === 'purchase_bill');
-            btnPreparePo.prop('disabled', confirmationStatus !== 'confirmed').toggleClass('d-none', !isPb);
-            btnHandoff.prop('disabled', confirmationStatus !== 'confirmed').toggleClass('d-none', isPb);
-
-            if (isPb) {
+            if (isPb && !canDirectBill) {
                 restrictionAlert.removeClass('d-none');
+                btnPreparePo.prop('disabled', confirmationStatus !== 'confirmed').removeClass('d-none');
+                btnHandoff.addClass('d-none');
+            } else if (isPb && canDirectBill) {
+                restrictionAlert.addClass('d-none');
+                btnPreparePo.addClass('d-none');
+                btnHandoff.prop('disabled', confirmationStatus !== 'confirmed').removeClass('d-none').text('Stage Purchase Bill Proposal');
             } else {
                 restrictionAlert.addClass('d-none');
+                btnPreparePo.addClass('d-none');
+                btnHandoff.prop('disabled', confirmationStatus !== 'confirmed').removeClass('d-none').text('Stage ERP Proposal');
             }
 
             // Refresh KPI Tiles
@@ -633,7 +1196,7 @@
                     } else {
                         renderInvoiceEditor(formCol, res.extraction.extracted || {});
                     }
-                    const nextAction = (data.document_type === 'purchase_bill') ? 'Prepare Purchase Order' : 'Stage ERP Proposal';
+                    const nextAction = (data.document_type === 'purchase_bill' && !canDirectBill) ? 'Prepare Purchase Order' : (data.document_type === 'purchase_bill' ? 'Stage Purchase Bill Proposal' : 'Stage ERP Proposal');
                     actionFeedback.html('<span class="text-success font-weight-bold">Confirmed at Revision ' + currentRevision + '. You can now click "' + nextAction + '" or ask Copilot below.</span>');
                 },
                 error: function (xhr) {
@@ -648,6 +1211,7 @@
         function executeHandoff(actionKey) {
             const isPO = (actionKey === 'purchase_order.create.v1');
             const activeBtn = isPO ? btnPreparePo : btnHandoff;
+            const originalText = isPO ? 'Prepare Purchase Order' : ((data.document_type === 'purchase_bill' && canDirectBill) ? 'Stage Purchase Bill Proposal' : 'Stage ERP Proposal');
             activeBtn.prop('disabled', true).text('Staging...');
             actionFeedback.empty();
 
@@ -700,7 +1264,7 @@
                     actionFeedback.empty().append($('<div class="alert alert-warning py-1 px-2 mb-0"></div>').text(msg));
                 },
                 complete: function () {
-                    activeBtn.prop('disabled', confirmationStatus !== 'confirmed').text(isPO ? 'Prepare Purchase Order' : 'Stage ERP Proposal');
+                    activeBtn.prop('disabled', confirmationStatus !== 'confirmed').text(originalText);
                 }
             });
         }
@@ -710,7 +1274,8 @@
         });
 
         btnHandoff.on('click', function () {
-            executeHandoff(null);
+            const isPb = (data.document_type === 'purchase_bill');
+            executeHandoff(isPb && canDirectBill ? 'purchase_bill.create.v1' : null);
         });
 
         btnAttach.on('click', function () {
@@ -1151,5 +1716,6 @@
         stageFile: stageFile,
         submitStagedAttachment: submitStagedAttachment,
         renderExtractionCard: renderExtractionCard,
+        renderUnifiedWorkflowCard: renderUnifiedWorkflowCard,
     };
 })(jQuery);

@@ -89,12 +89,19 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
                 ->where('kind', 'hsn')
                 ->value('code');
         }
+        if (!$hsnCode && \Illuminate\Support\Facades\Schema::hasTable('products')) {
+            $hsnCode = DB::table('products')
+                ->where('company_id', $context->companyId)
+                ->whereNotNull('hsn_code')
+                ->where('hsn_code', '!=', '')
+                ->value('hsn_code');
+        }
 
         $payload = [
             'name' => $name,
             'code' => $code,
             'type' => (string) ($slots['type'] ?? 'standard'),
-            'barcode_symbology' => (string) ($slots['barcode_symbology'] ?? 'code128'),
+            'barcode_symbology' => (string) ($slots['barcode_symbology'] ?? 'C128'),
             'unit_id' => $unitId,
             'purchase_unit_id' => !empty($slots['purchase_unit_id']) ? (int) $slots['purchase_unit_id'] : $unitId,
             'sale_unit_id' => !empty($slots['sale_unit_id']) ? (int) $slots['sale_unit_id'] : $unitId,

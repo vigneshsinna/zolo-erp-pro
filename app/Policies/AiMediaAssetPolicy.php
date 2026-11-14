@@ -55,5 +55,26 @@ class AiMediaAssetPolicy
             && (int) $asset->company_id === $principal->companyId
             && (int) $asset->actor_id === $principal->actorId;
     }
+
+    /**
+     * Authoritative check for transaction staging / write action reuse.
+     * Prevents cross-branch or cross-financial-year document reuse for financial/inventory writes.
+     */
+    public function canStageWriteAction(AiPrincipal $principal, AiMediaAsset $asset): bool
+    {
+        if (! $this->canAccessPrincipal($principal, $asset)) {
+            return false;
+        }
+
+        if ($asset->branch_id !== null && (int) $asset->branch_id !== $principal->branchId) {
+            return false;
+        }
+
+        if ($asset->financial_year_id !== null && (int) $asset->financial_year_id !== $principal->financialYearId) {
+            return false;
+        }
+
+        return true;
+    }
 }
 

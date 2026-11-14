@@ -44,6 +44,7 @@ final class PurchaseBillActionTest extends TestCase
         config()->set('ai_actions.foundation_enabled', true);
         config()->set('ai_actions.execution_enabled', true);
         config()->set('commercial.enabled', true);
+        config()->set('compliance.enabled', true);
         config()->set('erp_ai.enabled', true);
         config()->set('erp_ai.read_only', false);
         $this->app->forgetInstance(\App\Ai\Services\AiFeatureGate::class);

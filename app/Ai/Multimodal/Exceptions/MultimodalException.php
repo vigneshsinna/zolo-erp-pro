@@ -130,9 +130,32 @@ class MultimodalException extends RuntimeException
         return new self($code, $message, 422);
     }
 
-    public static function extractionFailed(string $code, string $message): self
+    public static function extractionFailed(string $code, string $message, int $httpStatus = 422, array $details = []): self
     {
-        return new self($code, $message, 422);
+        return new self($code, $message, $httpStatus, $details);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $failures
+     */
+    public static function allPagesFailed(
+        int $pageCount,
+        array $failures,
+        bool $isRetryable = true,
+        ?string $mediaId = null,
+        string $message = 'Document extraction failed across all pages.',
+    ): self {
+        return new self('ALL_PAGES_FAILED', $message, 422, [
+            'total_pages' => $pageCount,
+            'failures' => $failures,
+            'is_retryable' => $isRetryable,
+            'media_id' => $mediaId,
+        ]);
+    }
+
+    public static function idempotencyConflict(string $message = 'Idempotency key was previously used with different file contents.'): self
+    {
+        return new self('IDEMPOTENCY_CONFLICT', $message, 409);
     }
 
     public static function revisionConflict(int $expected, int $actual): self

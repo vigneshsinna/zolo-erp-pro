@@ -50,6 +50,9 @@ final class MediaIngestionService
             ? substr(trim($idempotencyKey), 0, 120)
             : null;
 
+        $sourcePath = $file instanceof UploadedFile ? $file->getRealPath() : (string) $file;
+        $fileSha256 = is_string($sourcePath) && file_exists($sourcePath) ? hash_file('sha256', $sourcePath) : false;
+
         if ($cleanKey !== null) {
             $existing = AiMediaAsset::query()
                 ->where('company_id', $principal->companyId)
@@ -58,6 +61,10 @@ final class MediaIngestionService
                 ->first();
 
             if ($existing !== null && !$existing->isPurged() && !$existing->isExpired()) {
+                if ($fileSha256 !== false && $existing->sha256 !== $fileSha256) {
+                    throw MultimodalException::idempotencyConflict();
+                }
+
                 return $existing;
             }
         }
