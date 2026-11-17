@@ -33,6 +33,7 @@
 
     function render(state) {
         if (!state?.task_id) return;
+        if (active?.task_id === state.task_id && state.task_revision < active.task_revision) { reload(); return; }
         const log = $('#chat-messages');
         const wasAtEnd = log[0].scrollHeight - log.scrollTop() - log.innerHeight() < 80;
         let root = $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === state.task_id).first();
@@ -105,6 +106,7 @@
         const facts = (result.facts || []).filter(fact => fact.tool !== 'workflow.clarification.v1');
         if (result.message) ws.appendMessage('assistant', result.message, result.sources, result.warnings, facts);
         if (result.workflow) render(result.workflow);
+        if (result.workflow?.replayed) reload();
     }
 
     async function reload() {
@@ -183,7 +185,13 @@
     $(document).on('ai:conversation:reset', reset).on('ai:conversation:history', reload);
     $(document).on('ai:workflow:card-state', (_, state) => {
         if (!active || state.task_id !== active.task_id) return;
-        if (state.status === 'completed') reset();
+        if (state.status === 'completed') {
+            const root = $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === state.task_id);
+            root.children('div').first().text('Step 3/3 · Purchase order created');
+            root.find('.ai-conversation-question').text('Purchase order created. Review the receipt below.');
+            root.find('[data-conversation-action]').prop('disabled', true);
+            reset();
+        }
         else if (state.task_revision && state.task_revision !== active.task_revision) reload();
     });
 })(jQuery);

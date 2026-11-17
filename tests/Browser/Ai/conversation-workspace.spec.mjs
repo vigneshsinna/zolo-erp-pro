@@ -11,6 +11,7 @@ const taskId = '22222222-2222-4222-8222-222222222222';
 const choiceSet = '33333333-3333-4333-8333-333333333333';
 const requests = [], errors = [];
 let revision = 2, conflict = false, readyWorkflow = null;
+let approvals = 0;
 const mediaId = '55555555-5555-4555-8555-555555555555';
 const workflow = () => ({status: 'needs_input', task_id: taskId, task_revision: revision,
     action_key: 'purchase_order.create.v1', message: 'Which supplier and product quantities?',
@@ -45,6 +46,12 @@ await context.route('**/*', async route => {
     }
     if (url.pathname === `/ai/workflow-tasks/${taskId}`) return route.fulfill({json: {task: {id: taskId, revision, status: readyWorkflow ? 'proposal_created' : 'collecting', action_key: 'purchase_order.create.v1'}, clarification: workflow(), evaluation: {is_ready: Boolean(readyWorkflow)}}});
     if (url.pathname === `/ai/workflow-tasks/${taskId}/prepare-proposal`) return route.fulfill({json: {task_revision: revision, proposal: {id: readyWorkflow.proposal_id, version: 1, preview: readyWorkflow.preview}}});
+    if (url.pathname === '/ai/proposals/66666666-6666-4666-8666-666666666666/approve') {
+        approvals++;
+        assert.deepEqual(request.postDataJSON(), {expected_version: 1});
+        return route.fulfill({json: {status: 'completed', execution: {receipt: {resource_type: 'purchase_order', resource_id: 101,
+            details: {reference_no: 'D08-PO-101', warehouse_name: 'Fixture Main', payment_terms: {payment_terms_type: 'credit', credit_days: 30}}}}}});
+    }
     if (url.pathname === '/ai/media/prepare') return route.fulfill({json: {status: 'voice_reply_ready', task_id: taskId, task_revision: revision, thread_id: threadId,
         media: {id: mediaId, source_kind: 'audio'}, extraction: {revision: 1, extracted: {transcript_text: 'Credit thirty days', warnings: ['Confirm spoken credit days']}}}});
     if (url.pathname === `/ai/media/${mediaId}/confirm`) return route.fulfill({json: {extraction: {revision: 2, confirmation_status: 'confirmed', extracted: {transcript_text: request.postDataJSON().transcript_text}}}});
@@ -107,6 +114,21 @@ try {
     await page.reload({waitUntil: 'networkidle'});
     await page.locator('.ai-po-terms').getByText(/credit.*30/).waitFor();
     assert.equal(requests.length, chatCount, 'Reload must not submit another chat/model turn');
+    await page.locator('.ai-btn-approve-bill').click();
+    await page.getByText('ERP Purchase Order Created', {exact: false}).waitFor();
+    assert.equal(approvals, 1);
+    assert.ok((await page.getByRole('link', {name: 'Download PDF Receipt'}).getAttribute('href')).includes('/purchase-order/101/pdf'));
+    await page.getByText('Voucher Booked: D08-PO-101', {exact: false}).waitFor();
+    assert.equal(await page.getByText('Step 3/3 · Awaiting explicit approval', {exact: true}).count(), 0, 'Completed order must not remain awaiting approval');
+    await page.screenshot({path: 'output/playwright/conversation-order-receipt.png', fullPage: true});
+    await page.setViewportSize({width: 390, height: 844});
+    await page.evaluate(state => {
+        state.preview.items = Array.from({length: 25}, (_, index) => ({...state.preview.items[0], product_name: `Line ${index + 1}: Cotton Shirt Blue with a long product and variant description`}));
+        window.zoloAiConversation.render(state);
+    }, readyWorkflow);
+    assert.equal(await page.locator('.ai-conversation-task tbody tr').count(), 25);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Long multi-line preview fits mobile');
+    assert.ok((await page.locator('.ai-conversation-task .table-responsive').first().boundingBox()).height <= 360, 'Long preview has bounded scroll region');
     assert.deepEqual(errors, []);
-    console.log('PASS conversation desktop/mobile, keyboard choices, same-card updates, 409 recovery, confirmed voice and reload (mocked API)');
+    console.log('PASS conversation desktop/mobile, keyboard choices, same-card updates, 409 recovery, confirmed voice, reload, explicit signed-version approval receipt and 25 long lines (mocked API)');
 } finally { await browser.close(); }

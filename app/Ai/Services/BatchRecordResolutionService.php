@@ -227,15 +227,28 @@ final class BatchRecordResolutionService
 
         if ($mode === 'sale' || isset($line['sale_unit_id'])) {
             $uomKey = "items[{$clientLineId}].sale_unit_id";
-            $unitId = $this->resolver->resolveUnit($product, $uomQuery, 'sale');
+            $unitId = (int) ($line['sale_unit_id'] ?? $this->resolver->resolveUnit($product, $uomQuery, 'sale'));
         } else {
             $uomKey = "items[{$clientLineId}].purchase_unit_id";
-            $unitId = $this->resolver->resolveUnit($product, $uomQuery, 'purchase');
+            $unitId = (int) ($line['purchase_unit_id'] ?? $this->resolver->resolveUnit($product, $uomQuery, 'purchase'));
         }
 
         if ($unitId) {
-            $unit = Unit::find($unitId);
+            $unit = Unit::where('company_id', $product->company_id)->where('is_active', true)->find($unitId);
+            $normalize = static fn ($value) => \Illuminate\Support\Str::singular(mb_strtolower(trim((string) $value)));
+            if (!$unit || ($uomQuery && !in_array($normalize($uomQuery), [$normalize($unit->unit_code), $normalize($unit->unit_name)], true))) {
+                $result->setNone($uomKey, $uomQuery, 'Select an active unit that belongs to this product company.');
+                return;
+            }
+            try {
+                app(\App\Services\Inventory\UomConversionService::class)->toBase($product, 1, $unitId);
+            } catch (\InvalidArgumentException) {
+                $result->setNone($uomKey, $uomQuery, 'This unit has no valid ERP conversion for the product.');
+                return;
+            }
             $result->setResolved($uomKey, (int) $unitId, $unit);
+        } else {
+            $result->setNone($uomKey, $uomQuery, 'Select a valid product unit.');
         }
     }
 
