@@ -135,6 +135,15 @@
           "message": "Failed asserting that false is identical to true."
         }
       ]
+    },
+    "committed_focused": {
+      "command": "php vendor/bin/phpunit -c scratch/conversation.phpunit.xml tests/Feature/Ai/Conversation tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php tests/Feature/Ai/Clarification --log-junit scratch/d08-committed-focused.xml",
+      "tests": "70",
+      "assertions": "578",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "time": "23.910740"
     }
   },
   "tested_php_sha256": {
@@ -155,5 +164,7 @@
     "config/ai_credits.php": "201d1800df47221693b15a495a28f21129bca90c",
     "config/ai_multimodal.php": "46613917888720c2be232e2c7eb64d954086f769",
     "phpunit.ai.xml": "9195c639cd8ea7fca6c1486e6d4c65078b5e7922"
-  }
+  },
+  "validated_implementation_sha": "57e07c68ced907c7a922347908eab5755300dffd",
+  "draft_pr": "https://github.com/vigneshsinna/zolo-erp-pro/pull/15"
 }

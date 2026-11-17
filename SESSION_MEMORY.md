@@ -1,3 +1,9 @@
+## Conversational DELTA D08 draft PR opened — 2026-11-18
+
+- Implementation committed 57e07c68ced907c7a922347908eab5755300dffd and pushed. Draft PR #15 https://github.com/vigneshsinna/zolo-erp-pro/pull/15 targets D07 codex/d07-conversation-workspace. Eight separate stacked draft PRs #8–#15, none merged.
+- Exact committed-head focused rerun: php vendor/bin/phpunit -c scratch/conversation.phpunit.xml tests/Feature/Ai/Conversation tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php tests/Feature/Ai/Clarification --log-junit scratch/d08-committed-focused.xml: 70 tests / 578 assertions, 0 errors/failures/skips. All tested PHP SHA256 values match; full403/4070 still has4errors/2failures from untouched billing/environment assumptions. Both conversation (including 25 long lines and the completed-label fix) and existing drift browser specs pass with intercepted API. See D08 report.
+- D01–D07 implementation complete locally; D08 validation artifacts complete but release acceptance BLOCKED as documented. Keep feature default-off. No production/staging/live-provider or actual simultaneous workflow race claim. No T tasks reimplemented. Only supplied docs packs untracked. Next resume: resolve prior gate blockers in separately scoped work if authorized; do not silently enable feature or merge draft PRs. Evidence-only follow-up commit records PR and validation SHA. The isolated scratch MySQL server on 3308 was shut down after testing; fixture data is retained under scratch/d08-mysql-data. Restart that isolated server before further local fixture tests. Do not use the unavailable shared3307 service.
+
 ## Conversational DELTA D08 validation and release blockers — 2026-11-18
 
 - Current branch codex/d08-conversation-integration-evidence, base D07 7c1993563b6cc7f7f63e88d759091edcd5cf8783. D01–D07 draft PRs #8–#14 stacked, unmerged. Remote original feature SHA rechecked ee9be8cb3b42776e5f338d760b1940db8f497dca unchanged.
