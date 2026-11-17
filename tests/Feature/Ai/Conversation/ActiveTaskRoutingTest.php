@@ -224,4 +224,31 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertSame(1, DB::table('ai_media_extractions')->where('media_id', $media->id)->count());
         Http::assertNothingSent();
     }
+
+    public function test_spoken_terms_override_supplier_default_without_losing_other_slots(): void
+    {
+        [$thread, $task] = $this->draft();
+        $supplier = \App\Models\Supplier::create(['company_id' => $this->company->id, 'name' => 'Terms Supplier', 'phone_number' => '7000000011',
+            'is_active' => true, 'credit_days' => 30, 'purchase_defaults' => ['payment_mode' => 'Credit']]);
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'Terms Supplier'];
+        $result = $this->postJson(route('ai.chat'), $input)->assertOk()->json('workflow');
+        $default = collect($result['confirmed_fields'])->firstWhere('field', 'credit_days');
+        $this->assertSame('30', $default['display']);
+        $this->assertSame('erp_default', $default['source']);
+        $input['expected_task_revision'] = $result['task_revision'];
+        $input['client_turn_id'] = (string) Str::uuid();
+        $input['message'] = 'Credit 45 days';
+        $result = $this->postJson(route('ai.chat'), $input)->assertOk()->json('workflow');
+        $this->assertSame('45', collect($result['confirmed_fields'])->firstWhere('field', 'credit_days')['display']);
+        $input['expected_task_revision'] = $result['task_revision'];
+        $input['client_turn_id'] = (string) Str::uuid();
+        $input['message'] = 'Cash';
+        $this->postJson(route('ai.chat'), $input)->assertOk();
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame('cash', $slots['payment_terms_type']);
+        $this->assertSame(0, $slots['credit_days']);
+        $this->assertSame('Terms Supplier', $slots['supplier_query']);
+        Http::assertNothingSent();
+    }
 }

@@ -219,6 +219,72 @@ final class PurchaseOrderActionTest extends TestCase
         ];
     }
 
+    public function test_po_terms_round_trip_match_normal_domain_without_payments(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $context = new CompanyContext($this->company->id, $this->branch->id, $this->fiscalYear->id);
+        $payments = DB::table('payments')->count();
+        $journals = DB::table('journal_entries')->where('company_id', $this->company->id)->count();
+        foreach ([['cash', 0], ['credit', 30], ['credit', 45]] as [$type, $days]) {
+            $slots = ['supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id,
+                'date' => '2026-11-17', 'payment_terms_type' => $type, 'credit_days' => $days,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]];
+            $proposal = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+                'action_key' => 'purchase_order.create.v1', 'slots' => $slots,
+            ])->assertCreated()->json('proposal');
+            $this->assertSame($type, $proposal['preview']['payment_terms']['payment_terms_type']);
+            $this->assertSame($days, $proposal['preview']['payment_terms']['credit_days']);
+            $created = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals/'.$proposal['id'].'/approve', [
+                'expected_version' => 1, 'execute' => true,
+            ])->assertOk()->json('execution');
+            $purchase = Purchase::where('company_id', $this->company->id)->findOrFail($created['receipt']['resource_id']);
+            $this->assertSame($type, $purchase->attributes_json['payment_terms_type']);
+            $this->assertSame($days, $purchase->attributes_json['credit_days']);
+            $this->assertEquals(4, $purchase->status);
+            $this->assertEquals(0, $purchase->paid_amount);
+            $this->assertEquals(2, $purchase->payment_status);
+            unset($slots['payment_terms_type']);
+            $normal = app(\App\Services\Commercial\CommercialApplicationService::class)->create('purchase', $slots + [
+                'status' => 4, 'payment_status' => 1, 'paid_amount' => 0, 'paying_method' => ucfirst($type),
+            ], 'terms-normal-'.\Illuminate\Support\Str::uuid(), $this->adminUser->id, $context);
+            $this->assertSame($purchase->attributes_json['payment_terms_type'], $normal->attributes_json['payment_terms_type']);
+            $this->assertSame($purchase->attributes_json['due_date'], $normal->attributes_json['due_date']);
+        }
+        $this->assertSame($payments, DB::table('payments')->count());
+        $this->assertSame($journals, DB::table('journal_entries')->where('company_id', $this->company->id)->count());
+    }
+
+    public function test_terms_edit_requires_new_signed_version_and_supplier_default_is_fresh(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        config(['ai_actions.execution_enabled' => false]);
+        $proposal = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => ['supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id, 'date' => '2026-11-17', 'payment_terms_type' => 'credit', 'credit_days' => 30,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertCreated()->json('proposal');
+        $url = '/api/v1/ai/proposals/'.$proposal['id'];
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/approve', ['expected_version' => 1])->assertOk();
+        $changed = $this->withHeaders($this->contextHeaders())->postJson($url.'/change-request', [
+            'expected_version' => 1, 'changes' => ['payment_terms_type' => 'credit', 'credit_days' => 45],
+        ])->assertOk()->assertJsonPath('proposal.version', 2)->json('proposal');
+        $this->assertSame('2027-01-01', $changed['preview']['payment_terms']['due_date']);
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/approve', ['expected_version' => 1])->assertUnprocessable();
+        $this->supplier->update(['credit_days' => 60]);
+        config(['ai_actions.execution_enabled' => true]);
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/approve', ['expected_version' => 2])->assertUnprocessable();
+    }
+
+    public function test_cash_with_credit_days_is_rejected_before_proposal_creation(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => ['supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id, 'payment_terms_type' => 'cash', 'credit_days' => 30,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertUnprocessable();
+    }
+
     public function test_unauthorized_user_cannot_create_purchase_order_proposal(): void
     {
         $this->actingAs($this->restrictedUser, 'sanctum');

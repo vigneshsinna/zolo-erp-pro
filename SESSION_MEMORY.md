@@ -1,3 +1,10 @@
+## Conversational DELTA D04 progress — 2026-11-17
+
+- D03 committed `7e8b09e3c64ed198eddddbbc280e40b3d73c8aa8`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/10 stacked on D02.
+- Active branch `codex/d04-purchase-order-terms`. Traced canonical supplier `purchase_defaults.payment_mode`, credit_days and domain due_date attributes. Added terms schema/tool/provider, scoped visible defaults, domain normalization shared with normal PO entry, preview/command/receipt/open-order/print propagation and source freshness. Cash remains unpaid; existing domain returns payment_status **2 (Due)** despite adapter input 1. No migration or payment/GL path added.
+- Red: new terms rejected as unknown fields, HTTP 500 (1 failure / 1 assertion). Final exact command in `docs/ai/conversation/D04.md`: 40 tests / 314 assertions, zero failures/skips, `scratch/d04-final.xml`. Node syntax and diff check pass. Existing domain/approval tests include credit30/45, cash, no payments, normal-domain parity, version changes and stale source. No browser/live/production proof yet.
+- Next: commit/open D04; D05 server-bound revisioned choices using existing entity API and resolution candidates. Then D06 master continuation, D07 UI, D08 CW scenario integration/release blockers.
+
 ## Conversational DELTA D03 progress — 2026-11-17
 
 - D02 committed `1de2d1ec4994f9b8a2d2898d59d3146df41100a1`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/9 stacked on D01.

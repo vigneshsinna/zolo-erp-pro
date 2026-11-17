@@ -79,7 +79,13 @@ final class ActionProposalService
 
         $definition = $this->security->definition($old['action_key'], $principal);
         $base = json_decode($old['payload_json'], true, flags: JSON_THROW_ON_ERROR);
-        $validated = $this->security->validate($definition, array_replace($base, $changes));
+        $input = array_replace($base, $changes);
+        if ($old['action_key'] === 'purchase_order.create.v1'
+            && array_intersect(array_keys($changes), ['payment_terms_type', 'credit_days', 'date']) !== []
+            && !array_key_exists('due_date', $changes)) {
+            unset($input['due_date']);
+        }
+        $validated = $this->security->validate($definition, $input);
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
         if ($reuseUnchanged && $old['expires_at'] > now('UTC')->toDateTimeString()
             && hash_equals($old['payload_hash'], CanonicalActionPayload::hash($preview->payload))

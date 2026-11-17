@@ -91,6 +91,7 @@ class ReadOpenOrders
                     'date' => substr((string) $order->{$dateColumn}, 0, 10),
                     'party' => ['type' => $party, 'id' => (int) $order->{$party . '_id'}, 'name' => $order->{$party}?->name],
                     'items_count' => (int) $order->line_count,
+                    'payment_terms' => $sale ? null : array_intersect_key($order->attributes_json ?? [], array_flip(['payment_terms_type', 'credit_days', 'due_date'])),
                     'grand_total' => $order->ordered_value === null ? null : $money($order->ordered_value),
                     'open_balance' => $order->remaining_value === null ? null : $money($order->remaining_value),
                     'status' => $sale ? $order->status : ($order->attributes_json['order_status'] ?? 'open'),
