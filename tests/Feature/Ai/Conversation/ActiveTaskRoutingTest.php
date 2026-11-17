@@ -109,11 +109,53 @@ class ActiveTaskRoutingTest extends TestCase
         Http::assertNothingSent();
     }
 
-    private function draft(): array
+    public function test_multi_slot_reply_and_replay_patch_same_task_and_preserve_lines(): void
+    {
+        [$thread, $task] = $this->draft();
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'ABC Traders; add 100 pairs of Cotton Shirt Blue at 480'];
+        $response = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.task_id', $task['task_id']);
+        $revision = $response->json('workflow.task_revision');
+        $this->assertSame($task['task_revision'] + 1, $revision);
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame('ABC Traders', $slots['supplier_query']);
+        $this->assertSame('100.00', $slots['items'][0]['qty']);
+        $this->assertSame('480.00', $slots['items'][0]['net_unit_cost']);
+        $this->assertSame('pairs', $slots['items'][0]['uom']);
+        $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.task_revision', $revision);
+        $input['message'] = 'make it 120 instead';
+        $this->postJson(route('ai.chat'), $input)->assertConflict();
+        $input['client_turn_id'] = (string) Str::uuid();
+        $this->postJson(route('ai.chat'), $input)->assertConflict();
+        $input['expected_task_revision'] = $revision;
+        $this->postJson(route('ai.chat'), $input)->assertOk();
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame('120.00', $slots['items'][0]['qty']);
+        $this->assertSame('480.00', $slots['items'][0]['net_unit_cost']);
+        $this->assertSame('ABC Traders', $slots['supplier_query']);
+        Http::assertNothingSent();
+    }
+
+    protected function draft(): array
     {
         $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
         $task = $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'message' => 'Create a purchase order', 'client_turn_id' => (string) Str::uuid()])
             ->assertOk()->json('workflow');
         return [$thread, $task];
+    }
+
+    public function test_parse_only_model_cannot_supply_erp_ids(): void
+    {
+        [$thread, $task] = $this->draft();
+        DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->update(['slots_json' => json_encode(['supplier_id' => 99, 'items' => [['client_line_id' => 'alpha', 'qty' => '5']]])]);
+        config(['erp_ai.provider' => 'openai', 'erp_ai.model' => 'gpt-4o-mini', 'ai.providers.openai.key' => 'fixture-key']);
+        \App\Ai\Conversation\ConversationParseAgent::fake([[
+            'turn_intent' => 'continue_task', 'corrections' => [['operation' => 'set', 'field' => 'supplier_id', 'value' => '99']], 'warnings' => [],
+        ]]);
+        $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Please replace the vendor with whichever you like'])
+            ->assertUnprocessable();
+        $this->assertSame($task['task_revision'], DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
     }
 }

@@ -37,6 +37,10 @@ final class TaskCorrectionService
         array $corrections,
     ): array {
         $task = $this->taskState->getTask($principal, $taskId);
+        if (!in_array($task['status'], ['collecting', 'ready', 'proposal_created', 'awaiting_master'], true)
+            || $task['expires_at'] <= now('UTC')->toDateTimeString()) {
+            throw ValidationException::withMessages(['task' => 'This draft is no longer editable.']);
+        }
         $actionKey = (string) $task['action_key'];
         $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get($actionKey);
         if ($principal instanceof AiPrincipal)
@@ -56,6 +60,12 @@ final class TaskCorrectionService
 
             if ($field === '') {
                 continue;
+            }
+            $schemaField = preg_replace('/^items(?:\[[^\]]+\]|\.[^.]+)\./', 'items.*.', $field);
+            $internalField = in_array($field, ['supplier_query', 'warehouse_query', 'customer_query'], true)
+                || preg_match('/^items\[[a-zA-Z0-9_-]+\]\.(?:_destroy|product_query|uom)$/D', $field);
+            if (!isset($rules[$schemaField]) && !$internalField) {
+                throw ValidationException::withMessages(['corrections' => 'Unsupported field correction.']);
             }
 
             if (isset($rules[$field]) && !str_contains($field, '.')) {
@@ -126,8 +136,33 @@ final class TaskCorrectionService
         ];
     }
 
+    public function prepareProposal(AiPrincipal $principal, array $task, EvaluationResult $evaluation): array
+    {
+        if (!$evaluation->isReady()) {
+            throw ValidationException::withMessages(['task' => 'ERP validation is incomplete.']);
+        }
+        $service = app(ActionProposalService::class);
+        if ($task['linked_proposal_id']) {
+            $old = $service->getOwned($principal, $task['linked_proposal_id']);
+            $proposal = $service->applyChangeRequest($principal, $old['id'], $evaluation->validatedSlots, (int) $old['version'], reuseUnchanged: true);
+        } else {
+            $proposal = $service->create($principal, $task['action_key'], $evaluation->validatedSlots, $task['thread_id']);
+            $this->taskState->linkProposal($task['id'], $proposal['id']);
+        }
+        return ['status' => 'proposal_created', 'task_id' => $task['id'], 'task_revision' => (int) $task['revision'],
+            'action_key' => $task['action_key'], 'proposal_id' => $proposal['id'], 'version' => (int) $proposal['version'],
+            'preview' => json_decode($proposal['preview_json'], true, flags: JSON_THROW_ON_ERROR),
+            'message' => 'ERP validation passed. Review this proposal and use the explicit approval control to create the order.',
+            'can_prepare_proposal' => true];
+    }
+
     private function applyFieldCorrection(array &$slots, string $field, mixed $value): void
     {
+        if (in_array($field, ['supplier_query', 'warehouse_query', 'customer_query'], true)) {
+            $slots[$field] = trim((string) $value);
+            unset($slots[str_replace('_query', '_id', $field)]);
+            return;
+        }
         // 1. Direct scalar / entity fields
         if ($field === 'supplier_id') {
             if (is_numeric($value) && (int) $value > 0) {
@@ -169,7 +204,8 @@ final class TaskCorrectionService
                     if (!is_array($line))
                         continue;
                     $lineId = (string) ($line['client_line_id'] ?? "line-{$idx}");
-                    $cleanLine = ['client_line_id' => $lineId];
+                    $cleanLine = array_intersect_key($line, array_flip(['client_line_id', 'uom', 'discount', 'tax_rate', 'note', 'sale_unit_id']));
+                    $cleanLine['client_line_id'] = $lineId;
                     if (!empty($line['product_id']) && is_numeric($line['product_id'])) {
                         $cleanLine['product_id'] = (int) $line['product_id'];
                     } elseif (!empty($line['product_query']) || !empty($line['product_name'])) {
@@ -262,8 +298,8 @@ final class TaskCorrectionService
                     throw ValidationException::withMessages(['items' => 'Line deletion requires an explicit true value.']);
                 unset($slots['items'][$lineIndex]);
                 $slots['items'] = array_values($slots['items']);
-            } elseif ($property === 'product_id') {
-                if (is_numeric($value) && (int) $value > 0) {
+            } elseif (in_array($property, ['product_id', 'product_query'], true)) {
+                if ($property === 'product_id' && is_numeric($value) && (int) $value > 0) {
                     $slots['items'][$lineIndex]['product_id'] = (int) $value;
                     unset($slots['items'][$lineIndex]['product_query']);
                 } else {
@@ -271,7 +307,9 @@ final class TaskCorrectionService
                     unset($slots['items'][$lineIndex]['product_id']);
                 }
                 // Dependency invalidation: clear previously assumed UOM or cost if product changed
-                unset($slots['items'][$lineIndex]['uom']);
+                foreach (['uom', 'purchase_unit_id', 'sale_unit_id', 'net_unit_cost', 'net_unit_price', 'tax_rate', 'hsn_code'] as $dependent) {
+                    unset($slots['items'][$lineIndex][$dependent]);
+                }
             } elseif ($property === 'qty') {
                 $slots['items'][$lineIndex]['qty'] = is_numeric($value) ? sprintf('%.2f', (float) $value) : $value;
             } elseif ($property === 'net_unit_cost' || $property === 'net_unit_price') {
