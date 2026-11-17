@@ -665,6 +665,12 @@
             metaBox.append('<div class="col-6 text-right"><small class="text-muted d-block">Warehouse</small><strong class="text-dark">' + escapeText(warehouseName) + '</strong></div>');
             body.append(metaBox);
 
+            if (preview.payment_terms) {
+                body.append($('<div class="alert alert-light border small ai-po-terms"></div>').text(
+                    'Commercial terms: ' + preview.payment_terms.payment_terms_type + ' · ' + preview.payment_terms.credit_days +
+                    ' days · ' + preview.payment_terms.due_date + '. No payment is posted by this order.'));
+            }
+
             // Table of Line Items (Image 3)
             const items = preview.items || ext.lines || [];
             const tableWrap = $('<div class="table-responsive my-2"></div>');

@@ -47,7 +47,7 @@ final class InputCompletenessEvaluator
                 continue;
             }
 
-            $this->evaluateScalarRequirement($req, $taskContext, $slots, $batchResult, $issues, $confirmed, $cleanSlots);
+            $this->evaluateScalarRequirement($req, $taskContext, array_replace($slots, $cleanSlots), $batchResult, $issues, $confirmed, $cleanSlots);
         }
 
         // Add downstream pending checks when prerequisite entities are unresolved
