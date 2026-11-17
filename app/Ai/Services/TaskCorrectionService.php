@@ -138,6 +138,13 @@ final class TaskCorrectionService
 
     public function prepareProposal(AiPrincipal $principal, array $task, EvaluationResult $evaluation): array
     {
+        $current = $this->taskState->getTask($principal, $task['id']);
+        if ((int) $current['revision'] !== (int) $task['revision']) {
+            throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException('Draft changed before proposal preparation.');
+        }
+        if (!in_array($current['status'], ['collecting', 'ready', 'proposal_created'], true) || $current['expires_at'] <= now('UTC')->toDateTimeString()) {
+            throw ValidationException::withMessages(['task' => 'This draft is no longer editable.']);
+        }
         if (!$evaluation->isReady()) {
             throw ValidationException::withMessages(['task' => 'ERP validation is incomplete.']);
         }

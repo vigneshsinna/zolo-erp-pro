@@ -132,6 +132,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         if (getenv('ERP_EXPORT_AI_WORKSPACE_BROWSER') === '1') {
             file_put_contents(base_path('scratch/ai-workspace-disabled.html'), $response->getContent());
             config(['ai_multimodal.enabled' => true]);
+            config(['erp_ai.conversation_enabled' => getenv('ERP_EXPORT_AI_CONVERSATION') === '1']);
             app(AiFeatureGate::class)->setCompanyMultimodal($this->company->id, true);
             $enabled = $this->get(route('ai.workspace'))->assertOk();
             file_put_contents(base_path('scratch/ai-workspace-enabled.html'), $enabled->getContent());

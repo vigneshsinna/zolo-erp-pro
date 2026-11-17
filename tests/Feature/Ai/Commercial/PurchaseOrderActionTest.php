@@ -243,9 +243,10 @@ final class PurchaseOrderActionTest extends TestCase
             $this->assertEquals(4, $purchase->status);
             $this->assertEquals(0, $purchase->paid_amount);
             $this->assertEquals(2, $purchase->payment_status);
+            $this->assertSame('2026-11-17', $purchase->created_at->toDateString());
             unset($slots['payment_terms_type']);
             $normal = app(\App\Services\Commercial\CommercialApplicationService::class)->create('purchase', $slots + [
-                'status' => 4, 'payment_status' => 1, 'paid_amount' => 0, 'paying_method' => ucfirst($type),
+                'status' => 4, 'payment_status' => 1, 'paid_amount' => 0, 'paying_method' => ucfirst($type), 'business_date' => $slots['date'],
             ], 'terms-normal-'.\Illuminate\Support\Str::uuid(), $this->adminUser->id, $context);
             $this->assertSame($purchase->attributes_json['payment_terms_type'], $normal->attributes_json['payment_terms_type']);
             $this->assertSame($purchase->attributes_json['due_date'], $normal->attributes_json['due_date']);
@@ -283,6 +284,22 @@ final class PurchaseOrderActionTest extends TestCase
                 'warehouse_id' => $this->warehouse->id, 'payment_terms_type' => 'cash', 'credit_days' => 30,
                 'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
         ])->assertUnprocessable();
+    }
+
+    public function test_reloading_ready_task_reuses_unchanged_proposal_version(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $task = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => ['supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id, 'date' => '2026-11-17', 'payment_terms_type' => 'cash', 'credit_days' => 0,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertCreated()->json('task');
+        $url = '/api/v1/ai/workflow-tasks/'.$task['id'];
+        $first = $this->withHeaders($this->contextHeaders())->postJson($url.'/prepare-proposal')->assertCreated()->json('proposal');
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/prepare-proposal')->assertOk()
+            ->assertJsonPath('proposal.id', $first['id'])->assertJsonPath('proposal.version', 1);
+        $this->withHeaders($this->contextHeaders())->getJson($url)->assertOk()->assertJsonPath('proposal.status', 'pending');
+        $this->assertSame(1, DB::table('ai_action_proposals')->where('company_id', $this->company->id)->where('id', $first['id'])->count());
     }
 
     public function test_unauthorized_user_cannot_create_purchase_order_proposal(): void
