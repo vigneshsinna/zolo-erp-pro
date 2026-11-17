@@ -1,3 +1,12 @@
+## Conversational DELTA D01–D08 — 2026-11-17 (active)
+
+- User scope: only `docs/ZOLOERP_CONVERSATIONAL_AGENT_DELTA` tasks D01–D08, one PR per task. Do not implement T00–T11. Caveman and ponytail skills active for chat; normal prose for persisted artifacts.
+- Remote `feature/ai-unified-input-clarification` verified using `git ls-remote`: `ee9be8cb3b42776e5f338d760b1940db8f497dca`; local matched. Initial tracked tree clean; supplied DELTA package untracked. User subsequently supplied `docs/nextsteps` (also untracked), explicitly says earlier pack is not implemented. Read both packs' 00/09 and DELTA 01–08. Existing source does contain selectors/corrections/master/approval infrastructure; do not equate this with completed T release gates.
+- Working branch: `codex/d01-conversation-task-binding`. D01 adds owned active task resolution, thread-bound receipt replay, draft cancellation and switch protection before generic Copilot; scoped PO tool thread binding; read-only interruption tools. Separate `AI_CONVERSATION_ENABLED` defaults false.
+- First test attempt failed because historical disposable schema was absent. Created only guarded `zolo_test_conversation_20261117`, migrated cleanly via ignored `scratch/prepare-conversation.php`; no active/production database modified. Ignored `scratch/conversation.phpunit.xml` derives existing fixture configuration without exposing credentials.
+- D01 behavior red: focused bare PO returned HTTP 500 with provider calls forbidden (1 test, 2 assertions, 1 failure). Green: 5 tests, 38 assertions, zero failures/skips; command and artifacts in `docs/ai/conversation/D01.md`.
+- Next: finish D01 regression and PR; D02 bounded interpreter and stable line operations; D03 voice; D04 PO terms; D05 choices; D06 dependent masters; D07 UI; D08 exact CW scenario evidence. Keep feature flag disabled. No production verification claimed.
+
 ## ActionKey-Based Purchase vs Sale Slot Resolution & PDF Download Hardening — 2026-11-17 (`feature/ai-unified-input-clarification`)
 
 - **Context & Problem Analysis:**

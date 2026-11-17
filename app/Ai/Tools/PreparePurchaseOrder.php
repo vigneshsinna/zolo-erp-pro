@@ -131,7 +131,7 @@ final class PreparePurchaseOrder implements Tool
             context: $context,
             mode: 'company',
             taskId: !empty($args['task_id']) ? (string) $args['task_id'] : null,
-            threadId: $this->principal->requestId ?? null,
+            threadId: $this->principal->threadId,
         );
 
         $actionKey = 'purchase_order.create.v1';
@@ -141,10 +141,9 @@ final class PreparePurchaseOrder implements Tool
         $taskId = !empty($args['task_id']) ? (string) $args['task_id'] : null;
         $task = null;
         if ($taskId) {
-            try {
-                $task = $this->taskState->getTask($this->principal, $taskId);
-            } catch (Throwable) {
-                $task = null;
+            $task = $this->taskState->getTask($this->principal, $taskId);
+            if ($task['action_key'] !== $actionKey || ($this->principal->threadId !== null && $task['thread_id'] !== $this->principal->threadId)) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('Workflow task does not belong to this operation and thread.');
             }
         }
 
@@ -189,7 +188,7 @@ final class PreparePurchaseOrder implements Tool
                 $this->principal,
                 $actionKey,
                 $validatedSlots,
-                $this->principal->requestId ?? null,
+                $this->principal->threadId,
             );
 
             // Link proposal to workflow task

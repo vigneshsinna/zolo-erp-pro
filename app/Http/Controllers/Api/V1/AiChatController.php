@@ -765,6 +765,10 @@ class AiChatController extends Controller
             'image' => 'nullable|string',
             'media_ids' => 'nullable|array|max:3',
             'media_ids.*' => 'uuid',
+            'active_task_id' => 'nullable|uuid',
+            'expected_task_revision' => 'nullable|integer|min:1',
+            'client_turn_id' => 'nullable|uuid',
+            'choice_set_id' => 'nullable|uuid',
         ]);
         $principal = $this->principal($request);
         if ($denial = $this->accessDenial($principal)) {
@@ -861,6 +865,40 @@ class AiChatController extends Controller
         $existingThreadId = $validated['thread_id'] ?? null;
         $threadId = $existingThreadId ?? (string) Str::uuid();
         $question = $validated['message'];
+        if (config('erp_ai.conversation_enabled', false) && $mediaIds === [] && $existingThreadId !== null) {
+            try {
+                $conversation = DB::transaction(function () use ($principal, $threadId, $validated, $question): ?array {
+                    if (!$this->ownedThreads($principal)->where('id', $threadId)->lockForUpdate()->first()) {
+                        abort(404, 'Conversation is unavailable.');
+                    }
+                    $result = app(\App\Ai\Conversation\ConversationTurnRouter::class)->route($principal, $threadId, $validated);
+                    if ($result === null) {
+                        return null;
+                    }
+                    if (empty($result['replayed'])) {
+                        $this->modelGateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
+                        $evidence = ['facts' => [['tool' => 'workflow.clarification.v1', 'data' => $result]],
+                            'sources' => [], 'warnings' => [], 'answer_status' => 'needs_input',
+                            'workflow' => $result, 'interaction_type' => 'workflow_continuation'];
+                        $response = new AgentResponse($principal->requestId, $result['message'],
+                            new \Laravel\Ai\Responses\Data\TextUsage, new \Laravel\Ai\Responses\Data\Meta);
+                        $this->storeTurn($principal, $threadId, $question, $result['message'], $response, $evidence);
+                        $this->ownedThreads($principal)->where('id', $threadId)->update(['updated_at' => now()]);
+                    }
+                    return $result;
+                }, 3);
+                if ($conversation !== null) {
+                    return response()->json(['thread_id' => $threadId, 'status' => 'completed',
+                        'interaction_type' => 'workflow_continuation', 'workflow' => $conversation,
+                        'message' => $conversation['message'], 'answer_status' => 'needs_input',
+                        'facts' => [['tool' => 'workflow.clarification.v1', 'data' => $conversation]],
+                        'sources' => [], 'warnings' => [], 'scope' => $this->scope($principal)]);
+                }
+            } catch (\Symfony\Component\HttpKernel\Exception\ConflictHttpException $error) {
+                return $this->error('TASK_REVISION_CONFLICT', $error->getMessage(), 409);
+            }
+        }
+        $principal = new AiPrincipal(...array_replace(get_object_vars($principal), ['threadId' => $threadId]));
         $imageInput = $validated['image'] ?? null;
         $quotaDate = now('UTC')->toDateString();
         try {
@@ -938,7 +976,9 @@ class AiChatController extends Controller
                 $history,
                 fn(PendingStep $step, Closure $next) => $this->modelGateway->budgetStep($principal, $quotaDate, $step, $next),
                 $activeEntities,
-                $normalizedMediaContext
+                $normalizedMediaContext,
+                readToolsOnly: config('erp_ai.conversation_enabled', false)
+                    && app(\App\Ai\Conversation\ActiveWorkflowTaskResolver::class)->tasks($principal, $threadId)->exists(),
             );
             if ($onDelta === null) {
                 $response = $copilot->prompt($question, attachments: $attachments, provider: $model['provider'], model: $model['model'], timeout: (int) config('erp_ai.timeout', 90));
