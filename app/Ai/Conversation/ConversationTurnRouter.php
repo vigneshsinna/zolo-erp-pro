@@ -82,6 +82,11 @@ final class ConversationTurnRouter
             $result['required_inputs'] = [$issue];
         } elseif (preg_match('/^cancel\b/i', $message)) {
             $this->assertRevision($task, $input);
+            if ($task['linked_proposal_id']) {
+                $service = app(\App\Ai\Services\ActionProposalService::class);
+                $proposal = $service->getOwned($principal, $task['linked_proposal_id']);
+                $service->reject($principal, $proposal['id'], (int) $proposal['version']);
+            }
             $this->state->updateTaskState($principal, $task['id'], (int) $task['revision'],
                 json_decode($task['slots_json'], true), status: 'cancelled');
             $result = $this->summary($this->state->getTask($principal, $task['id']), 'Draft cancelled. No ERP document was changed.');

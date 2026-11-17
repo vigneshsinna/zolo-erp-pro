@@ -153,8 +153,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             $lineTaxAmount = (float) ($pricedLine['tax'] ?? 0);
             $lineTotal = (float) ($pricedLine['total'] ?? 0);
 
-            $qtyStr = sprintf('%.2f', $qty);
-            $costStr = sprintf('%.2f', $unitCost);
+            $qtyStr = CommercialDecimal::format($qty);
+            $costStr = CommercialDecimal::format($unitCost);
             $discountStr = sprintf('%.2f', $lineDiscount);
             $taxRateStr = sprintf('%.2f', $lineTaxRate);
             $taxAmountStr = sprintf('%.2f', $lineTaxAmount);
@@ -232,8 +232,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
 
             $lineTotals[] = [
                 'product_id' => (int) $pItem['product_id'],
-                'qty' => sprintf('%.2f', (float) $pItem['qty']),
-                'net_unit_cost' => sprintf('%.2f', (float) ($pItem['net_unit_cost'] ?? 0)),
+                'qty' => CommercialDecimal::format((float) $pItem['qty']),
+                'net_unit_cost' => CommercialDecimal::format((float) ($pItem['net_unit_cost'] ?? 0)),
                 'tax_amount' => sprintf('%.2f', (float) ($pItem['tax'] ?? 0)),
                 'line_total' => sprintf('%.2f', (float) ($pItem['total'] ?? 0)),
             ];
@@ -351,6 +351,11 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ->get();
 
         $legacyTaxIds = $products->pluck('tax_id')->filter()->unique()->values()->all();
+        // ponytail: conservatively invalidate on any company unit change; narrow to a dependency graph if unit catalogs become large.
+        $units = DB::table('units')->where('company_id', $context->companyId)->orderBy('id')
+            ->get(['id', 'unit_code', 'unit_name', 'base_unit', 'operator', 'operation_value', 'is_active', 'updated_at']);
+        $conversions = DB::table('product_uom_conversions')->where('company_id', $context->companyId)
+            ->whereIn('product_id', $productIds)->orderBy('id')->get();
         $legacyTaxes = !empty($legacyTaxIds)
             ? DB::table('taxes')
                 ->whereIn('id', $legacyTaxIds)
@@ -392,6 +397,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'party_tax_profile' => $partyTaxProfile ? (array) $partyTaxProfile : null,
             'warehouse' => $warehouse ? (array) $warehouse : null,
             'products' => $products->map(fn($p) => (array) $p)->all(),
+            'units' => $units->map(fn ($unit) => (array) $unit)->all(),
+            'uom_conversions' => $conversions->map(fn ($conversion) => (array) $conversion)->all(),
             'legacy_taxes' => $legacyTaxes->map(fn($t) => (array) $t)->all(),
             'tax_categories' => $taxCategories->map(fn($c) => (array) $c)->all(),
             'tax_rates' => $taxRates->map(fn($r) => (array) $r)->all(),
