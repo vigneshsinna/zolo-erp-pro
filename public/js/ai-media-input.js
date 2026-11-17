@@ -7,7 +7,7 @@
     'use strict';
 
     const cfg = window.zoloAiMultimodalConfig || {};
-    if (!cfg.enabled) {
+    if (!cfg.enabled && !cfg.conversationEnabled) {
         return;
     }
 
@@ -375,6 +375,11 @@
         if (effectiveThreadId) {
             fd.append('thread_id', effectiveThreadId);
         }
+        const replyTask = targetStaged.isAudio && window.zoloAiConversation?.getActiveTask();
+        if (replyTask) {
+            fd.append('workflow_task_id', replyTask.task_id);
+            fd.append('expected_task_revision', replyTask.task_revision);
+        }
 
         $.ajax({
             url: mediaUrl('/prepare'),
@@ -389,7 +394,8 @@
                     try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
                 }
                 try {
-                    renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                    if (res.status === 'voice_reply_ready' && window.zoloAiConversation) window.zoloAiConversation.reviewVoice(res);
+                    else renderUnifiedWorkflowCard(res, companionText, targetStaged);
                     if (ws && ws.loadTelemetry) {
                         ws.loadTelemetry();
                     }
@@ -549,7 +555,7 @@
         return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     }
 
-    function renderUnifiedWorkflowCard(res, companionText, stagedRef) {
+    function renderUnifiedWorkflowCard(res, companionText, stagedRef, mount) {
         const ws = getWs();
         const aiBaseUrl = resolveAiBaseUrl();
         const media = res.media || {};
@@ -563,7 +569,7 @@
         bubble.append(card);
         container.append(bubble);
         $('.ai-welcome-box').remove();
-        $('#chat-messages').append(container);
+        (mount || $('#chat-messages')).append(container);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
         let currentRes = res;
@@ -579,6 +585,9 @@
             } else {
                 renderProposalView(stateData || currentRes);
             }
+            $(document).trigger('ai:workflow:card-state', [{task_id: taskId,
+                task_revision: stateData?.task?.revision || stateData?.task_revision || stateData?.clarification?.task_revision,
+                status: stateName === 'booked' ? 'completed' : stateName}]);
             $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
         }
 
@@ -624,7 +633,7 @@
             const titleWrap = $('<div></div>');
             titleWrap.append($('<h5 class="font-weight-bold mb-1 text-dark"></h5>').html('<i class="dripicons-document mr-2 text-primary"></i>' + escapeText(docTitle)));
             const perceptionName = formatModelDisplayName((currentRes.extraction && currentRes.extraction.model_key) || media.model_key || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
-            titleWrap.append($('<div class="small text-muted"></div>').text('Extracted by ' + perceptionName + ' · Verified by ERP Validation'));
+            titleWrap.append($('<div class="small text-muted"></div>').text(media.id ? 'Extracted by ' + perceptionName + ' · Verified by ERP Validation' : 'Prepared from conversation · Verified by ERP Validation'));
             topRow.append(titleWrap);
             topRow.append($('<span class="badge badge-success px-2 py-1 font-weight-bold"><i class="dripicons-checkmark mr-1"></i>Validation passed</span>'));
             header.append(topRow);
@@ -715,7 +724,9 @@
             body.append(totalsDiv);
 
             // Footnote
-            body.append('<div class="small text-muted border-top pt-2 mt-2 font-italic"><i class="dripicons-shield mr-1 text-success"></i>Original invoice number and document type verified by ERP validation. Real financial writes require human authorization.</div>');
+            body.append($('<div class="small text-muted border-top pt-2 mt-2 font-italic"></div>').text(isPo
+                ? 'Purchase order pricing validated by ERP. Payment and goods receipt require separate billing and receiving workflows.'
+                : 'Original invoice number and document type verified by ERP validation. Real financial writes require human authorization.'));
 
             // Action Feedback
             const feedbackBox = $('<div class="small mt-2 mb-1 ai-action-feedback"></div>');
@@ -723,7 +734,7 @@
 
             // Action Buttons (Image 3)
             const footer = $('<div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2 flex-wrap"></div>');
-            const btnEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-3 ai-btn-edit-bill"><i class="dripicons-pencil mr-1"></i>Edit Bill</button>');
+            const btnEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-3 ai-btn-edit-bill"></button>').text(isPo ? 'Edit PO' : 'Edit Bill');
             const rightWrap = $('<div class="d-flex align-items-center flex-wrap"></div>');
             const pdfUrl = aiBaseUrl + '/proposals/' + proposalId + '/pdf';
             const btnDraft = $('<button type="button" class="btn btn-sm btn-outline-primary mr-2 py-1 px-2 btn-preview-pdf" data-pdf-url="' + pdfUrl + '"><i class="dripicons-document mr-1"></i>Draft PDF</button>');
@@ -944,7 +955,7 @@
             totalsCol.append('<div class="d-flex justify-content-between small text-muted mb-2"><span>GST</span><strong class="text-dark font-weight-normal">' + formatCurrencyVal(taxVal) + '</strong></div>');
             totalsCol.append('<div class="d-flex justify-content-between align-items-baseline border-top pt-2"><span class="font-weight-bold text-dark">Total</span><span class="h5 mb-0 font-weight-bold text-dark">' + formatCurrencyVal(grandTotalVal) + '</span></div>');
             totalsDiv.append(totalsCol);
-            leftCol.append(totalsDiv);
+            leftCol.append((currentRes.validation_pending || (cfg.conversationEnabled && mount)) ? $('<p class="small text-muted mt-2"></p>').text('Draft details — not calculated. ERP validation pending.') : totalsDiv);
 
             // Footnote
             leftCol.append('<div class="small text-muted border-top pt-2 mt-2 font-italic"><i class="dripicons-shield mr-1 text-warning"></i>Unresolved selections cannot be booked. Real financial writes require human authorization.</div>');

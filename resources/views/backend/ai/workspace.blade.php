@@ -401,8 +401,9 @@
 
                 // Switch or create thread
                 $('#btn-new-thread').on('click', function () {
-                    if (sending || loadingHistory) return;
+                    if (sending || loadingHistory || window.zoloAiConversation?.isBusy()) return;
                     currentThreadId = null;
+                    $(document).trigger('ai:conversation:reset');
                     sessionStorage.removeItem('ai_active_thread');
                     $('#active-thread-title').text('New conversation');
                     $('#thread-list .thread-item').removeClass('active').attr('aria-current', 'false');
@@ -413,12 +414,13 @@
 
                 $(document).on('click', '.thread-item', function (e) {
                     e.preventDefault();
-                    if (sending || loadingHistory) return;
+                    if (sending || loadingHistory || window.zoloAiConversation?.isBusy()) return;
                     loadingHistory = true;
                     closeHistory();
                     $('#chat-messages').attr('aria-busy', 'true');
                     const id = $(this).data('id');
                     currentThreadId = id;
+                    $(document).trigger('ai:conversation:reset');
                     sessionStorage.setItem('ai_active_thread', id);
                     $('#thread-list .thread-item').removeClass('active').attr('aria-current', 'false');
                     $(this).addClass('active').attr('aria-current', 'true');
@@ -439,6 +441,7 @@
                             } else {
                                 $('#chat-messages').html(welcomeMarkup);
                             }
+                            $(document).trigger('ai:conversation:history');
                         },
                         error: function () {
                             $('#chat-messages').empty().append($('<div class="text-danger p-3"></div>').text('Could not load this conversation.'));
@@ -559,6 +562,15 @@
 
                 // Append Message helper
                 function appendMessage(role, text, sources, warnings, facts, attachments) {
+                    if (role === 'assistant' && window.zoloAiConversation && Array.isArray(facts)) {
+                        facts = facts.filter(function (fact) {
+                            if (fact.tool === 'workflow.clarification.v1' && fact.data?.task_id) {
+                                window.zoloAiConversation.render(fact.data);
+                                return false;
+                            }
+                            return true;
+                        });
+                    }
                     $('.ai-welcome-box').remove();
                     const isUser = (role === 'user');
                     const container = $('<div class="ai-message ' + (isUser ? 'ai-message-user' : 'ai-message-assistant') + '"></div>');
@@ -1859,6 +1871,7 @@
                     if (sending || loadingHistory) return;
                     const input = $('#chat-input');
                     const message = input.val().trim();
+                    if (window.zoloAiConversation?.interceptSubmit(message)) return;
                     // Check if an image, PDF, or audio is staged for submission with this prompt
                     if (window.zoloAiMedia && typeof window.zoloAiMedia.hasStagedAttachment === 'function' && window.zoloAiMedia.hasStagedAttachment()) {
                         sending = true;
@@ -2154,6 +2167,7 @@
         <script>
             window.zoloAiMultimodalConfig = {!! \Illuminate\Support\Js::from([
                 'enabled' => (bool) ($isMultimodalEnabled ?? false),
+                'conversationEnabled' => (bool) config('erp_ai.conversation_enabled', false),
                 'allowDirectPurchaseBill' => (bool) config('ai_multimodal.allow_direct_purchase_bill', false),
                 'mediaBaseUrl' => url('ai'),
                 'maxAudioSeconds' => (int) ($multimodalLimits['max_audio_seconds'] ?? 120),
@@ -2162,7 +2176,10 @@
                 'multimodalModel' => (string) config('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning'),
             ]) !!};
         </script>
-        @if (!empty($isMultimodalEnabled) && $canUseCopilot)
+        @if ((!empty($isMultimodalEnabled) || config('erp_ai.conversation_enabled', false)) && $canUseCopilot)
             <script src="{{ versioned_asset('js/ai-media-input.js') }}"></script>
+        @endif
+        @if (config('erp_ai.conversation_enabled', false) && $canUseCopilot)
+            <script src="{{ versioned_asset('js/ai-conversation-workflow.js') }}"></script>
         @endif
 @endpush

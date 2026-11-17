@@ -124,6 +124,14 @@ final class ConversationTurnRouter
             $result['warnings'] = array_values(array_unique([...$parsed['warnings'], ...($input['voice_source']['warnings'] ?? [])]));
         }
         $task = $this->state->getTask($principal, $task['id']);
+        if (($result['status'] ?? '') === 'needs_input' && !$directory) {
+            $missing = array_column(array_filter($result['required_inputs'] ?? [], fn ($issue) => ($issue['status'] ?? '') === 'missing'), 'field');
+            if (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
+                $result['message'] = 'Which supplier and products/quantities should I use?';
+            } elseif (in_array('payment_terms_type', $missing, true) && !in_array('supplier_id', $missing, true)) {
+                $result['message'] = 'Cash or Credit terms? For Credit, how many days? No payment is posted by an order.';
+            }
+        }
         $result = app(ConversationChoices::class)->publish($principal, $task, $result);
         DB::table('ai_workflow_task_events')->insert([
             'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
