@@ -54,6 +54,15 @@ class DependentMasterOrchestrator
             ];
         }
 
+        if ($field === 'product_id' || $field === 'items') {
+            return [
+                'entity_type' => 'product',
+                'capability_key' => 'setup.product.create.v1',
+                'permission' => 'products-add',
+                'client_line_id' => null,
+            ];
+        }
+
         return match ($field) {
             'supplier_id' => [
                 'entity_type' => 'supplier',

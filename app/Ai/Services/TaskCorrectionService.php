@@ -39,7 +39,8 @@ final class TaskCorrectionService
         $task = $this->taskState->getTask($principal, $taskId);
         $actionKey = (string) $task['action_key'];
         $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get($actionKey);
-        if ($principal instanceof AiPrincipal) app(ActionSecurity::class)->definition($actionKey, $principal);
+        if ($principal instanceof AiPrincipal)
+            app(ActionSecurity::class)->definition($actionKey, $principal);
         $rules = app($definition->inputSchemaClass)->rules();
         $provider = $this->requirementsRegistry->get($actionKey);
 
@@ -60,10 +61,23 @@ final class TaskCorrectionService
             if (isset($rules[$field]) && !str_contains($field, '.')) {
                 $fieldRules = is_array($rules[$field]) ? implode('|', $rules[$field]) : $rules[$field];
                 if (str_contains($fieldRules, 'array') && is_string($value)) {
-                    try { $value = json_decode($value, true, 32, JSON_THROW_ON_ERROR); }
-                    catch (\JsonException) { throw ValidationException::withMessages([$field => 'Enter a valid JSON array.']); }
+                    try {
+                        $value = json_decode($value, true, 32, JSON_THROW_ON_ERROR);
+                    } catch (\JsonException) {
+                        if ($field === 'items' && trim($value) !== '') {
+                            $value = [
+                                [
+                                    'client_line_id' => 'line-0',
+                                    'product_query' => trim($value),
+                                    'qty' => '1.00',
+                                ]
+                            ];
+                        } else {
+                            throw ValidationException::withMessages([$field => 'Enter a valid JSON array.']);
+                        }
+                    }
                 }
-                if (!in_array($field, ['supplier_id', 'customer_id', 'warehouse_id'], true)) {
+                if (!in_array($field, ['supplier_id', 'customer_id', 'warehouse_id', 'items'], true)) {
                     $slots[$field] = $value;
                     continue;
                 }
@@ -75,8 +89,8 @@ final class TaskCorrectionService
         $taskContext = new WorkflowTaskContext(
             principal: $principal,
             context: $principal instanceof AiPrincipal
-                ? new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId)
-                : null,
+            ? new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId)
+            : null,
             mode: (string) $task['mode'],
             taskId: $taskId,
             threadId: (string) $task['thread_id'],
@@ -148,16 +162,77 @@ final class TaskCorrectionService
             return;
         }
 
-        if (in_array($field, ['date', 'note', 'order_discount', 'shipping_cost', 'biller_id', 'valid_until', 'sales_order_id',
-            'delivery_challan_id', 'purpose', 'due_date', 'open_item_id', 'amount', 'settlement_account_id'], true)) {
+        if ($field === 'items') {
+            if (is_array($value)) {
+                $cleanItems = [];
+                foreach ($value as $idx => $line) {
+                    if (!is_array($line))
+                        continue;
+                    $lineId = (string) ($line['client_line_id'] ?? "line-{$idx}");
+                    $cleanLine = ['client_line_id' => $lineId];
+                    if (!empty($line['product_id']) && is_numeric($line['product_id'])) {
+                        $cleanLine['product_id'] = (int) $line['product_id'];
+                    } elseif (!empty($line['product_query']) || !empty($line['product_name'])) {
+                        $cleanLine['product_query'] = trim((string) ($line['product_query'] ?? $line['product_name']));
+                    }
+                    if (isset($line['qty']) && is_numeric($line['qty'])) {
+                        $cleanLine['qty'] = sprintf('%.2f', (float) $line['qty']);
+                    } else {
+                        $cleanLine['qty'] = '1.00';
+                    }
+                    if (isset($line['net_unit_cost']) && is_numeric($line['net_unit_cost'])) {
+                        $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $line['net_unit_cost']);
+                        $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $line['net_unit_cost']);
+                    } elseif (isset($line['net_unit_price']) && is_numeric($line['net_unit_price'])) {
+                        $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $line['net_unit_price']);
+                        $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $line['net_unit_price']);
+                    } elseif (isset($line['rate']) && is_numeric($line['rate'])) {
+                        $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $line['rate']);
+                        $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $line['rate']);
+                    }
+                    if (isset($line['purchase_unit_id']) && is_numeric($line['purchase_unit_id'])) {
+                        $cleanLine['purchase_unit_id'] = (int) $line['purchase_unit_id'];
+                    }
+                    $cleanItems[] = $cleanLine;
+                }
+                $slots['items'] = $cleanItems;
+            } elseif (is_string($value) && trim($value) !== '') {
+                $slots['items'] = [
+                    [
+                        'client_line_id' => 'line-0',
+                        'product_query' => trim($value),
+                        'qty' => '1.00',
+                    ]
+                ];
+            }
+            return;
+        }
+
+        if (
+            in_array($field, [
+                'date',
+                'note',
+                'order_discount',
+                'shipping_cost',
+                'biller_id',
+                'valid_until',
+                'sales_order_id',
+                'delivery_challan_id',
+                'purpose',
+                'due_date',
+                'open_item_id',
+                'amount',
+                'settlement_account_id'
+            ], true)
+        ) {
             $slots[$field] = $value;
             return;
         }
 
-        // 2. Line item fields (e.g. items[line-0].product_id, items[line-0].qty, items[line-0].net_unit_cost)
-        if (preg_match('/^items\[([^\]]+)\]\.([a-z_]+)$/D', $field, $matches)) {
-            $clientLineId = $matches[1];
-            $property = $matches[2];
+        // 2. Line item fields (e.g. items[line-0].product_id, items.0.net_unit_cost, items[0].qty)
+        if (preg_match('/^items(?:\[([^\]]+)\]|\.([0-9a-zA-Z\-_]+))\.([a-z_]+)$/D', $field, $matches)) {
+            $clientLineId = !empty($matches[1]) ? $matches[1] : $matches[2];
+            $property = $matches[3];
 
             if (!isset($slots['items']) || !is_array($slots['items'])) {
                 $slots['items'] = [];
@@ -183,7 +258,8 @@ final class TaskCorrectionService
             }
 
             if ($property === '_destroy') {
-                if ($value !== true) throw ValidationException::withMessages(['items' => 'Line deletion requires an explicit true value.']);
+                if ($value !== true)
+                    throw ValidationException::withMessages(['items' => 'Line deletion requires an explicit true value.']);
                 unset($slots['items'][$lineIndex]);
                 $slots['items'] = array_values($slots['items']);
             } elseif ($property === 'product_id') {
@@ -198,8 +274,10 @@ final class TaskCorrectionService
                 unset($slots['items'][$lineIndex]['uom']);
             } elseif ($property === 'qty') {
                 $slots['items'][$lineIndex]['qty'] = is_numeric($value) ? sprintf('%.2f', (float) $value) : $value;
-            } elseif ($property === 'net_unit_cost') {
-                $slots['items'][$lineIndex]['net_unit_cost'] = is_numeric($value) ? sprintf('%.2f', (float) $value) : $value;
+            } elseif ($property === 'net_unit_cost' || $property === 'net_unit_price') {
+                $val = (is_numeric($value) && (float) $value >= 0) ? sprintf('%.2f', (float) $value) : '0.00';
+                $slots['items'][$lineIndex]['net_unit_cost'] = $val;
+                $slots['items'][$lineIndex]['net_unit_price'] = $val;
             } else {
                 $slots['items'][$lineIndex][$property] = $value;
             }

@@ -146,6 +146,7 @@ final class BatchRecordResolutionService
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         if ($warehouseId > 0) {
             $warehouse = Warehouse::where('company_id', $context->companyId)
+                ->where('branch_id', $context->branchId)
                 ->where('is_active', true)
                 ->find($warehouseId);
 
@@ -156,32 +157,19 @@ final class BatchRecordResolutionService
         }
 
         $query = isset($slots['warehouse_query']) ? trim((string) $slots['warehouse_query']) : null;
-        if ($query !== null && $query !== '') {
-            $res = $this->resolver->resolveWarehouse($context, $query);
+        $res = $this->resolver->resolveWarehouse($context, $query);
 
-            if ($res['status'] === 'exact' && $res['warehouse']) {
-                $result->setResolved('warehouse_id', (int) $res['warehouse']->id, $res['warehouse']);
-            } elseif ($res['status'] === 'candidates') {
-                $candidates = $res['candidates']->map(fn(Warehouse $w): array => [
-                    'id' => (int) $w->id,
-                    'label' => $w->name,
-                    'branch_id' => (int) $w->branch_id,
-                ])->all();
-                $result->setCandidates('warehouse_id', $candidates, $query);
-            } else {
-                $result->setNone('warehouse_id', $query, "No warehouse found matching '{$query}'.");
-            }
-            return;
-        }
-
-        // Automatic default resolution: primary warehouse of the active branch
-        $defaultWh = Warehouse::where('company_id', $context->companyId)
-            ->where('branch_id', $context->branchId)
-            ->where('is_active', true)
-            ->first();
-
-        if ($defaultWh) {
-            $result->setResolved('warehouse_id', (int) $defaultWh->id, $defaultWh);
+        if ($res['status'] === 'exact' && $res['warehouse']) {
+            $result->setResolved('warehouse_id', (int) $res['warehouse']->id, $res['warehouse']);
+        } elseif ($res['status'] === 'candidates') {
+            $candidates = $res['candidates']->map(fn(Warehouse $w): array => [
+                'id' => (int) $w->id,
+                'label' => $w->name,
+                'branch_id' => (int) $w->branch_id,
+            ])->all();
+            $result->setCandidates('warehouse_id', $candidates, $query);
+        } else {
+            $result->setNone('warehouse_id', $query, $query ? "No warehouse found matching '{$query}'." : "No active warehouse found for this branch.");
         }
     }
 

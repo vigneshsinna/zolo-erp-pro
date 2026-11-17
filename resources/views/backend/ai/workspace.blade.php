@@ -168,7 +168,7 @@
                                         </div>
                                         <div class="d-flex align-items-center">
                                             <button type="button" id="btn-ai-voice-stop" class="btn btn-sm btn-danger mr-1 d-none">Stop</button>
-                                            <button type="button" id="btn-ai-voice-upload" class="btn btn-sm btn-success mr-1 d-none">Transcribe &amp; Review</button>
+                                            <button type="button" id="btn-ai-voice-upload" class="btn btn-sm btn-success mr-1 d-none"><i class="dripicons-checkmark mr-1"></i> Attach Voice Note</button>
                                             <button type="button" id="btn-ai-voice-discard" class="btn btn-sm btn-outline-secondary">Discard</button>
                                         </div>
                                     </div>
@@ -537,7 +537,7 @@
                     const actions = $('<div class="d-flex align-items-center"></div>');
                     if (pdfUrl) {
                         actions.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
-                        actions.append($('<a class="btn btn-sm btn-primary py-1 px-2" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
+                        actions.append($('<a class="btn btn-sm btn-primary py-1 px-2" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl + (pdfUrl.indexOf('?') === -1 ? '?download=1' : '&download=1')));
                     }
                     cardFooter.append(actions);
                     cardBody.append(cardFooter);
@@ -1056,7 +1056,7 @@
                             const actionGroup = $('<div class="d-flex align-items-center"></div>');
                             if (docPdfUrl) {
                                 actionGroup.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', docPdfUrl).attr('data-title', data.reference_no || 'Document'));
-                                actionGroup.append($('<a class="btn btn-sm btn-primary py-1 px-2" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF</a>').attr('href', docPdfUrl));
+                                actionGroup.append($('<a class="btn btn-sm btn-primary py-1 px-2" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF</a>').attr('href', docPdfUrl + (docPdfUrl.indexOf('?') === -1 ? '?download=1' : '&download=1')));
                             }
                             footer.append(actionGroup);
                             cardBody.append(footer);
@@ -1181,7 +1181,7 @@
                                                 const successBtns = $('<div class="d-flex align-items-center flex-wrap mt-2"></div>');
                                                 if (pdfUrl) {
                                                     successBtns.append($('<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 mr-2 mb-1 btn-preview-pdf"><i class="dripicons-preview mr-1"></i>View PDF in Chat</button>').attr('data-pdf-url', pdfUrl).attr('data-title', refNo));
-                                                    successBtns.append($('<a class="btn btn-sm btn-primary py-1 px-2 mb-1" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl));
+                                                    successBtns.append($('<a class="btn btn-sm btn-primary py-1 px-2 mb-1" target="_blank" download><i class="dripicons-download mr-1"></i>Download PDF Receipt</a>').attr('href', pdfUrl + (pdfUrl.indexOf('?') === -1 ? '?download=1' : '&download=1')));
                                                 }
                                                 successBox.append(successBtns);
                                                 actionRow.empty().append(successBox);
@@ -2043,7 +2043,7 @@
                     const title = $(this).attr('data-title') || $(this).data('title') || 'Receipt';
                     if (!pdfUrl) return;
                     $('#ai-pdf-modal-title').html('<i class="dripicons-document mr-1 text-primary"></i> Receipt / Voucher: <strong>' + $('<div>').text(title).html() + '</strong>');
-                    $('#ai-pdf-download-btn').attr('href', pdfUrl);
+                    $('#ai-pdf-download-btn').attr('href', pdfUrl + (pdfUrl.indexOf('?') === -1 ? '?download=1' : '&download=1'));
                     $('#ai-pdf-iframe').attr('src', pdfUrl);
                     $('#ai-pdf-preview-modal').modal('show');
                 });
@@ -2163,6 +2163,6 @@
             ]) !!};
         </script>
         @if (!empty($isMultimodalEnabled) && $canUseCopilot)
-            <script src="{{ asset('js/ai-media-input.js') }}"></script>
+            <script src="{{ versioned_asset('js/ai-media-input.js') }}"></script>
         @endif
 @endpush

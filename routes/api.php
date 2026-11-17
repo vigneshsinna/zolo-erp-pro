@@ -279,6 +279,9 @@ Route::prefix('v1')->group(function () {
                 Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.approve-and-execute');
             });
 
+            // Phase 2.4: Scoped Entity Directory & Disambiguation Options
+            Route::get('entity-options', [\App\Http\Controllers\Api\V1\AiEntityOptionsController::class, 'index'])->name('api.v1.ai.entity-options');
+
             // Phase 2.3: Private Multimodal Uploads, Perception & Revisioned Extractions
             Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
                 Route::post('/', 'store')->name('api.v1.ai.media.store');

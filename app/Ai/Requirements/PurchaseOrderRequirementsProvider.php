@@ -48,11 +48,13 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                     if (!$ctx->companyId()) {
                         return null;
                     }
-                    $wh = Warehouse::where('company_id', $ctx->companyId())
+                    $query = Warehouse::where('company_id', $ctx->companyId())
                         ->where('is_active', true)
-                        ->when($ctx->branchId(), fn($q) => $q->where('branch_id', $ctx->branchId()))
-                        ->first();
-                    return $wh ? (int) $wh->id : null;
+                        ->when($ctx->branchId(), fn($q) => $q->where('branch_id', $ctx->branchId()));
+                    if ($query->count() === 1) {
+                        return (int) $query->value('id');
+                    }
+                    return null;
                 },
             ),
             new ActionFieldRequirement(

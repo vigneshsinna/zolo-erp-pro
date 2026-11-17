@@ -230,9 +230,15 @@ final class AiWorkflowTaskController extends Controller
                     expectedVersion: (int) $existingProposal->version,
                 );
 
+                $preview = json_decode((string) ($proposal['preview_json'] ?? '{}'), true) ?? [];
+
                 return response()->json([
                     'status' => 'proposal_created',
-                    'proposal' => $proposal,
+                    'proposal' => array_merge($proposal, [
+                        'proposal_id' => (string) $proposal['id'],
+                        'preview' => $preview,
+                    ]),
+                    'action_key' => $actionKey,
                     'task_id' => $id,
                 ], 200);
             }
@@ -247,9 +253,15 @@ final class AiWorkflowTaskController extends Controller
 
         $this->taskState->linkProposal($id, (string) $proposal['id']);
 
+        $preview = json_decode((string) ($proposal['preview_json'] ?? '{}'), true) ?? [];
+
         return response()->json([
             'status' => 'proposal_created',
-            'proposal' => $proposal,
+            'proposal' => array_merge($proposal, [
+                'proposal_id' => (string) $proposal['id'],
+                'preview' => $preview,
+            ]),
+            'action_key' => $actionKey,
             'task_id' => $id,
         ], 201);
     }

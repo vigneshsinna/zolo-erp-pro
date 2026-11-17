@@ -386,9 +386,11 @@ class AiChatController extends Controller
             financialYearId: $principal->financialYearId
         );
 
-        $isPurchase = in_array($type, ['purchase', 'purchase_order', 'purchases'], true);
-        $isSale = in_array($type, ['sale', 'sales_order', 'sales', 'invoice', 'sales_invoice'], true);
-        $isQuotation = in_array($type, ['quotation', 'quotations', 'quote'], true);
+        $normalizedType = str_replace('-', '_', strtolower($type));
+
+        $isPurchase = in_array($normalizedType, ['purchase', 'purchase_order', 'purchases', 'purchase_bill', 'purchase_bills', 'po'], true);
+        $isSale = in_array($normalizedType, ['sale', 'sales_order', 'sales', 'invoice', 'sales_invoice', 'so'], true);
+        $isQuotation = in_array($normalizedType, ['quotation', 'quotations', 'quote'], true);
 
         if (!$isPurchase && !$isSale && !$isQuotation) {
             return $this->error('AI_INVALID_DOCUMENT_TYPE', "Unsupported document type [{$type}].", 422);
@@ -399,20 +401,59 @@ class AiChatController extends Controller
             return $this->error('AI_TOOL_FORBIDDEN', 'Access denied to document.', 403);
         }
 
-        $documentId = is_numeric($id) ? (int) $id : null;
-        if ($documentId === null) {
-            if ($isPurchase) {
-                $documentId = (int) \App\Models\Purchase::where('company_id', $principal->companyId)
+        $docContext = $context;
+        $documentId = null;
+
+        if ($isPurchase) {
+            $purchase = is_numeric($id)
+                ? \App\Models\Purchase::where('company_id', $principal->companyId)->find((int) $id)
+                : null;
+            if (!$purchase) {
+                $purchase = \App\Models\Purchase::where('company_id', $principal->companyId)
                     ->where('reference_no', (string) $id)
-                    ->value('id');
-            } elseif ($isQuotation) {
-                $documentId = (int) \App\Models\Quotation::where('company_id', $principal->companyId)
+                    ->first();
+            }
+            if ($purchase) {
+                $documentId = (int) $purchase->id;
+                $docContext = new CompanyContext(
+                    companyId: $principal->companyId,
+                    branchId: (int) $purchase->branch_id,
+                    financialYearId: $principal->financialYearId
+                );
+            }
+        } elseif ($isQuotation) {
+            $quote = is_numeric($id)
+                ? \App\Models\Quotation::where('company_id', $principal->companyId)->find((int) $id)
+                : null;
+            if (!$quote) {
+                $quote = \App\Models\Quotation::where('company_id', $principal->companyId)
                     ->where('reference_no', (string) $id)
-                    ->value('id');
-            } else {
-                $documentId = (int) \App\Models\Sale::where('company_id', $principal->companyId)
+                    ->first();
+            }
+            if ($quote) {
+                $documentId = (int) $quote->id;
+                $docContext = new CompanyContext(
+                    companyId: $principal->companyId,
+                    branchId: (int) $quote->branch_id,
+                    financialYearId: $principal->financialYearId
+                );
+            }
+        } else {
+            $sale = is_numeric($id)
+                ? \App\Models\Sale::where('company_id', $principal->companyId)->find((int) $id)
+                : null;
+            if (!$sale) {
+                $sale = \App\Models\Sale::where('company_id', $principal->companyId)
                     ->where('reference_no', (string) $id)
-                    ->value('id');
+                    ->first();
+            }
+            if ($sale) {
+                $documentId = (int) $sale->id;
+                $docContext = new CompanyContext(
+                    companyId: $principal->companyId,
+                    branchId: (int) $sale->branch_id,
+                    financialYearId: $principal->financialYearId
+                );
             }
         }
 
@@ -426,8 +467,8 @@ class AiChatController extends Controller
             if ($isQuotation) {
                 $quote = \App\Models\Quotation::where('company_id', $principal->companyId)->findOrFail($documentId);
                 $customer = $quote->customer;
-                $company = \App\Models\Company::findOrFail($context->companyId);
-                $print = $renderer->printSettings($context);
+                $company = \App\Models\Company::findOrFail($docContext->companyId);
+                $print = $renderer->printSettings($docContext);
 
                 $lines = [];
                 foreach ($quote->productQuotations as $pq) {
@@ -484,28 +525,30 @@ class AiChatController extends Controller
                     'source_number' => null,
                 ];
 
-                $profile = $renderer->profile('sale', $context, null, 'a4');
+                $profile = $renderer->profile('sale', $docContext, null, 'a4');
                 $html = $renderer->html($docDto, $profile);
                 $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
                 $filename = 'Quotation_' . str_replace(['/', '\\'], '_', (string) $quote->reference_no) . '.pdf';
+                $disposition = ($request->has('download') || $request->boolean('download')) ? 'attachment' : 'inline';
 
                 return response($pdf->output(), 200, [
                     'Content-Type' => 'application/pdf',
-                    'Content-Disposition' => 'inline; filename="' . $filename . '"',
+                    'Content-Disposition' => $disposition . '; filename="' . $filename . '"',
                 ]);
             }
 
-            $docKind = $isPurchase ? 'purchase' : ($type === 'sales_order' ? 'sales_order' : 'sale');
-            $dto = $renderer->dto($docKind, $documentId, $context);
-            $profile = $renderer->profile($docKind, $context, null, 'a4');
+            $docKind = $isPurchase ? 'purchase' : ($normalizedType === 'sales_order' ? 'sales_order' : 'sale');
+            $dto = $renderer->dto($docKind, $documentId, $docContext);
+            $profile = $renderer->profile($docKind, $docContext, null, 'a4');
             $html = $renderer->html($dto, $profile);
 
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
             $filename = str_replace(' ', '_', ($dto['title'] ?? 'Document') . '_' . ($dto['number'] ?? $documentId)) . '.pdf';
+            $disposition = ($request->has('download') || $request->boolean('download')) ? 'attachment' : 'inline';
 
             return response($pdf->output(), 200, [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+                'Content-Disposition' => $disposition . '; filename="' . $filename . '"',
             ]);
         } catch (\Throwable $e) {
             return $this->error('AI_PDF_GENERATION_FAILED', 'Could not generate PDF: ' . $e->getMessage(), 500);
@@ -620,10 +663,11 @@ class AiChatController extends Controller
             $profile = ['format' => 'a4', 'width' => 210, 'lines' => 68, 'columns' => 80, 'copies' => ['Draft Copy']];
             $html = view('backend.compliance.tax-invoice', ['document' => $docDto, 'profile' => $profile])->render();
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+            $disposition = ($request->has('download') || $request->boolean('download')) ? 'attachment' : 'inline';
 
             return response($pdf->output(), 200, [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="Proposal_' . substr($proposal->id, 0, 8) . '.pdf"',
+                'Content-Disposition' => $disposition . '; filename="Proposal_' . substr($proposal->id, 0, 8) . '.pdf"',
             ]);
         } catch (\Throwable $e) {
             return $this->error('AI_PDF_GENERATION_FAILED', 'Could not generate proposal PDF: ' . $e->getMessage(), 500);

@@ -869,6 +869,19 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertEquals('application/pdf', $response->headers->get('Content-Type'));
         $this->assertStringContainsString('.pdf', (string) $response->headers->get('Content-Disposition'));
         $this->assertNotEmpty($response->getContent());
+
+        // Hyphenated type 'purchase-order' (matches frontend URL generation)
+        $poHyphen = $this->get(route('ai.documents.pdf', ['type' => 'purchase-order', 'id' => $purchase->id]));
+        $poHyphen->assertOk();
+        $this->assertEquals('application/pdf', $poHyphen->headers->get('Content-Type'));
+        $this->assertStringContainsString('inline;', (string) $poHyphen->headers->get('Content-Disposition'));
+
+        // Reference number string lookup with download=1
+        $poDownload = $this->get(route('ai.documents.pdf', ['type' => 'purchase-order', 'id' => $purchase->reference_no, 'download' => 1]));
+        $poDownload->assertOk();
+        $this->assertEquals('application/pdf', $poDownload->headers->get('Content-Type'));
+        $this->assertStringContainsString('attachment;', (string) $poDownload->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('PO-TEST-PDF.pdf', (string) $poDownload->headers->get('Content-Disposition'));
     }
 
     private function providerResponse(array $output, int $inputTokens, int $outputTokens): array

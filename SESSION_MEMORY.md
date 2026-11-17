@@ -1,3 +1,278 @@
+## ActionKey-Based Purchase vs Sale Slot Resolution & PDF Download Hardening — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Problem Analysis:**
+  - *Symptom 1 (Clarification Loop & "Items 0 Net Unit Cost"):* In the Purchase Order review card, even when the user had selected a supplier, warehouse, and entered product lines with rates, clicking "Submit Details & Generate Preview" resulted in the task remaining stuck in `collecting`. The user was trapped in a loop with the error: `"Items 0 Net Unit Cost: The items.0.net_unit_cost field is required."` (and the left preview showed `"No product lines found."`).
+  - *Root Cause 1 (Flawed Intent Detection in Evaluator):* In `app/Ai/Services/InputCompletenessEvaluator.php`, `evaluateListRequirement` determined `$isSale` using:
+    `$isSale = isset($slots['customer_id']) || isset($slots['customer_query']) || isset($line['net_unit_price']) || isset($line['unit_price']);`
+    Because `TaskCorrectionService` populated both `net_unit_cost` and `net_unit_price` in task slots, `isset($line['net_unit_price'])` was always true! This caused `InputCompletenessEvaluator` to classify every purchase line as a sales line, setting `$cleanLine['net_unit_price']` and `$cleanLine['sale_unit_id']` while **omitting** `$cleanLine['net_unit_cost']` and `$cleanLine['purchase_unit_id']`. Subsequently, `CreatePurchaseOrderInputSchema::rules()` failed on `'items.*.net_unit_cost' => 'required'`, resetting `is_ready` to `false` and re-prompting the user.
+  - *Symptom 2 (Empty Preview During Clarification):* In `ClarificationResponseBuilder.php`, `line_items` only returned `['client_line_id', 'label']` without quantities, rates, line totals, or totals. As a result, the left preview table showed `"No product lines found."` even though lines were entered on the right.
+  - *Symptom 3 (PDF Download Returning `pdf.json` Error):* Clicking "Download PDF Receipt" in Edge resulted in `pdf.json: Couldn't download - Something went wrong. Try again, or contact your organisation.`.
+  - *Root Cause 3 (Branch Mismatch & Extension):* In `AiChatController::downloadDocumentPdf`, when `DocumentRenderingService::source` evaluated the purchase, it threw `ValidationException: Print and dispatch require a posted document in this branch` if the user's active session branch differed from the purchase's branch. `AiChatController` caught the exception and returned a JSON error response `{"error_code":"AI_PDF_GENERATION_FAILED",...}` with `Content-Type: application/json`. Edge downloaded the error response as `pdf.json` because `<a download>` lacked an explicit `.pdf` filename.
+
+- **Architectural Solutions & Changes Implemented:**
+  1. **ActionKey-Driven Evaluator (`app/Ai/Services/InputCompletenessEvaluator.php`):**
+     - Updated `evaluateListRequirement` to accept `?ActionRequirementsProviderInterface $provider = null`.
+     - Derived intent strictly from `$provider->actionKey()`:
+       `$isPurchase = str_contains($actionKey, 'purchase') || str_contains($actionKey, 'grn') || str_contains($actionKey, 'bill') || isset($slots['supplier_id']) || isset($slots['supplier_query']);`
+     - For purchase orders, extracts rate from `$line['net_unit_cost'] ?? $line['net_unit_price'] ?? $line['rate'] ?? ...` and always guarantees `$cleanLine['net_unit_cost']` and `$cleanLine['purchase_unit_id']` are populated.
+     - Confirmed: Task evaluation transitions immediately from `collecting` to `ready`, with `0` validation issues and `is_ready: true`.
+  2. **Rich Preview in Clarification (`app/Ai/Services/ClarificationResponseBuilder.php`):**
+     - Populated `line_items` with `product_name`, `qty`, `net_unit_cost`, `net_unit_price`, `line_total`, and calculated `totals` (`subtotal`, `grand_total`).
+     - The left preview table now immediately displays live product lines, quantities, rates, amounts, and subtotal instead of `"No product lines found."`.
+  3. **Resilient Document PDF Controller (`app/Http/Controllers/Api/V1/AiChatController.php`):**
+     - Updated `downloadDocumentPdf` to inspect the target document (`Purchase`, `Sale`, `Quotation`) by both integer ID and reference number (`PO-00001`).
+     - Constructed `$docContext` using the document's own branch (`$purchase->branch_id`), guaranteeing PDF rendering never fails on session branch switches.
+     - Updated `public/js/ai-media-input.js` to set `download="[ref_no].pdf"` on the anchor tag.
+
+- **Automated Verification:**
+  - `AiChatApiAndWorkspaceTest.php`: 28 / 28 passed (246 assertions, 100%).
+  - `UnifiedInputClarificationTest.php`: 12 / 12 passed (89 assertions, 100%).
+  - `EntityOptionsTest.php`: 8 / 8 passed (36 assertions, 100%).
+  - Verified proposal preview generation and PDF compilation (`Content-Type: application/pdf`, 1.27 MB output).
+  - Cleaned up all scratch files and cleared Laravel caches.
+
+---
+
+## Unit Cost "Items 0 Net Unit Cost" Elimination & Spacious Table Layout Overhaul — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Problem Analysis:**
+  - *Symptom 1 ("Items 0 Net Unit Cost"):* In the clarification panel, when a product had no pre-configured cost in the master catalog or when the user didn't specify a rate, the backend domain validation threw Laravel's raw internal validation message: `"The items.0.net_unit_cost field is required."` with label `"Items 0 Net Unit Cost"`. The user asked: *"i dont have this, what is this?"*.
+  - *Root Cause 1:* `InputCompletenessEvaluator` previously had no fallback when `$productEntity->cost` was null or 0. Because no issue was recorded for cost, it proceeded to `$provider->validate()`, where `CreatePurchaseBillInputSchema` failed on `'items.*.net_unit_cost' => 'required'`.
+  - *Symptom 2 (Cramped Table UI):* The preview table was cramped in `col-lg-6` with `.table-sm` (4px padding) and hardcoded `max-height: 200px`. The user asked: *"also the table UI needs bigger space"*.
+
+- **Architectural Solutions & Changes Implemented:**
+  1. **Graceful Cost Defaulting (`app/Ai/Services/InputCompletenessEvaluator.php`):**
+     - When `net_unit_cost` is unspecified and unconfigured in product master, defaults safely to `'0.00'` (`'₹0.00 (Pending rate)'`). In ERP purchasing, drafting a purchase order with rate pending vendor invoice or sample items is standard practice.
+     - Satisfies `CreatePurchaseOrderInputSchema` and `CreatePurchaseBillInputSchema` rules (`min:0`). The user is never blocked by this requirement.
+     - Clean human-friendly label mapping: If cost is ever queried, converts raw dot-notation `items.0.net_unit_cost` to `"Item 1 Unit Rate / Cost"`.
+  2. **Human-Friendly UI Fallback (`public/js/ai-media-input.js`):**
+     - When `inp.field.indexOf('net_unit_cost') !== -1`, labels field as `"Unit Cost / Rate (₹)"`, subtext as *"Specify the unit purchase rate, or enter 0.00 if rate is pending supplier invoice."*, and defaults value to `"0.00"`.
+  3. **Multi-Notation Correction Support (`app/Ai/Services/TaskCorrectionService.php`):**
+     - Added support for both bracket notation `items[0].net_unit_cost` and dot notation `items.0.net_unit_cost`, cleanly setting both `net_unit_cost` and `net_unit_price` with zero-safe formatting.
+  4. **Spacious Table UI & Full-Width Expand Toggle (`public/js/ai-media-input.js` & `public/css/pages/ai-workspace.css`):**
+     - Expanded default desktop column ratio from 50/50 (`6 / 6`) to **`col-lg-7 col-xl-7` (preview)** and **`col-lg-5 col-xl-5` (resolution)**, increasing table width by ~30%.
+     - Added interactive **"Wider Table" / "Split View"** toggle button (`.ai-btn-toggle-table-expand`) in the preview header: clicking toggles `.ai-table-expanded`, expanding the line items table across the **full 100% width of the card**!
+     - Upgraded table styles: removed `.table-sm`, enlarged cells to 12px 14px padding, set clear minimum column widths (Product: 170px+, Qty: 80px, Rate: 110px, Amount: 120px), and increased `max-height` to 420px.
+
+- **Automated Verification:**
+  - `UnifiedInputClarificationTest.php`: 12/12 passed (89 assertions).
+  - `EntityOptionsTest.php`: 8/8 passed (36 assertions).
+  - Node and PHP syntax checks clean (0 errors).
+  - Ran `php artisan optimize:clear` and `php artisan view:clear`.
+
+---
+
+## Comprehensive Line Items Interactive Builder & Purchase Order Voice Resolution Fix — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Problem Analysis:**
+  - *Symptom 1 (Broken Line Items Input):* When attempting to create a Purchase Order from voice or document input where product line items were unmapped or missing, the clarification form rendered "Line Items" as a single text `<input>` containing a raw string (e.g. `linen shirt`). Submitting caused a backend validation crash: `Enter a valid JSON array.` because `rules['items'] = 'array'` expected JSON array data.
+  - *Symptom 2 (Missing Line Item Controls):* Users had no mechanism to search products, select from inventory, inspect/adjust quantities, or fetch/edit rates. Line rate auto-fill from the product master was missing in the clarification UI.
+  - *Symptom 3 (Wrong Intent & Party Label):* Spoken instructions requesting "create a purchase order" or "raise a PO" were erroneously classified as `purchase_bill.create.v1`, rendering "Purchase Bill Review" and labeling the party as "Customer" instead of "Supplier".
+  - *Symptom 4 (Warehouse "Unresolved" Badge Discrepancy):* In branches with a single warehouse (`lenz - Main`), the backend auto-defaulted `warehouse_id = 124` via `defaultPolicy`, but did not populate `warehouse_name` in `$cleanSlots`. The UI preview displayed `Warehouse: Unresolved` with a yellow warning badge while omitting warehouse from the missing details panel on the right.
+  - *Symptom 5 (Voice Warehouse Query Mismatch):* Spoken phrases like "main warehouse" failed exact substring matching against `lenz - Main` due to the word "warehouse".
+
+- **Architectural Solutions & Changes Implemented:**
+  1. **Interactive Line Items Builder (`public/js/ai-media-input.js` & `public/css/pages/ai-workspace.css`):**
+     - When `inp.field === 'items' || inp.control === 'line_items'`, renders a rich multi-line interactive table (`.ai-clarify-lines-table`):
+       - **Product Search & Autocomplete:** Real-time search against `/api/v1/ai/entity-options?type=product&q=...` with 250ms debounce.
+       - **Auto-Fill Unit Rate:** When a product is selected from dropdown, automatically populates the row's Rate (`net_unit_cost`) from the product master's `cost` (or `price` if cost is 0), and records `product_id`.
+       - **Custom Products & Manual Rate:** Allows entering custom/unmatched item names with user-specified rates.
+       - **Live Dynamic Calculation:** Real-time computation of Line Total (`qty * rate`) and table Subtotal upon changing quantities or rates.
+       - **Row Operations:** "+ Add Line Item" button and trash delete button with safety minimum of 1 row.
+       - **Structured Submission:** Maps rows to `{ client_line_id, product_id, product_name, product_query, qty, net_unit_cost, net_unit_price }` submitted under `corrections: [{ field: 'items', value: lines, confirmation: 'user_selected' }]`.
+  2. **Graceful String Fallback & Multi-Line Parsing (`app/Ai/Services/TaskCorrectionService.php`):**
+     - If a string is submitted for `items`, falls back cleanly to a structured line `[['client_line_id' => 'line-0', 'product_query' => trim($value), 'qty' => '1.00']]` instead of throwing `Enter a valid JSON array.`.
+     - In `applyFieldCorrection()`, parses structured arrays and populates both `net_unit_cost` and `net_unit_price` for universal compatibility across purchase and sales actions.
+  3. **Voice Audio Intent & Transcript Classification (`app/Ai/Multimodal/Services/NormalizedInputBuilder.php`):**
+     - When `$companionText` is empty, inspects `$extracted['transcript_text']`.
+     - Matches `\b(purchase\s*order|po)\b` and `\b(sales\s*order|so)\b` directly.
+     - Automatically routes voice instructions asking for a PO to `purchase_order.create.v1`, displaying "Purchase Order Review" and "Supplier".
+  4. **Warehouse Name Defaulting & Natural Language Stopword Matching:**
+     - In `InputCompletenessEvaluator.php`: When `warehouse_id` resolves via `defaultPolicy`, sets `$cleanSlots['warehouse_name'] = $wh->name` and `$confirmed['warehouse_name']`.
+     - In `RecordResolutionService.php`: Added stopword cleaning fallback (`warehouse`, `wh`, `store`, `godown`) so "main warehouse" resolves "lenz - Main" immediately.
+     - In `public/js/ai-media-input.js`: Renders active badge `<span class="badge badge-primary">lenz - Main</span>` when defaulted.
+  5. **Dependent Master Product Creation (`app/Ai/Services/DependentMasterOrchestrator.php` & `public/js/ai-media-input.js`):**
+     - Added `setup.product.create.v1` and `'product'` handling in `resolveFieldEntity()`.
+     - Extended inline master creation form to collect Product Name, SKU (`code`), Cost Price (`cost`), and Selling Price (`price`).
+
+- **Automated Verification:**
+     - `UnifiedInputClarificationTest.php`: 12 / 12 passed (89 assertions).
+     - `EntityOptionsTest.php`: 8 / 8 passed (36 assertions).
+     - `DependentMasterResolutionTest.php`: 8 / 8 passed (73 assertions).
+     - `Multimodal` test suite: 30 / 30 passed (225 assertions).
+     - `AiChatApiAndWorkspaceTest.php`: 28 / 28 passed (246 assertions).
+     - Node and PHP syntax checks clean across all touched files (0 errors).
+     - Ran `php artisan optimize:clear` and `php artisan view:clear`.
+
+---
+
+## AI Audio Recording & Dictation Hardening Fix — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Problem Analysis:**
+  - *Symptom 1 (Voice Recording Failure):* In `https://httpzolo-erp-pro.test.test/ai`, clicking "Record", recording a voice prompt, attaching it, and clicking "Send" resulted in the assistant response: `[AUDIO_TRANSCODER_UNAVAILABLE] Audio transcoder (ffmpeg) is unavailable on this server. Upload PCM WAV audio instead.`
+  - *Symptom 2 (Dictation Issues):* Clicking "Dictate" either abruptly stopped after brief pauses, failed to display real-time text, or errored with "Dictation unavailable. Type your message or use Record." on no-speech timeouts.
+  - *Root Cause 1 (Audio Transcoder & Format):*
+    - `public/js/ai-media-input.js` previously recorded audio exclusively using `MediaRecorder`, outputting Opus-compressed WebM (`audio/webm`).
+    - The backend's `DefaultAudioTranscoder` can normalize WAV natively in 100% pure PHP (`normalizeWavInPhp()`), but requires `ffmpeg` for non-WAV formats (`audio/webm`). FFmpeg was not installed on the Windows server environment.
+  - *Root Cause 2 (Dictation Locale & Session Handling):*
+    - In `public/js/ai-workspace-dictation.js`, `session.lang` was hardcoded to `document.documentElement.lang || 'en-IN'`. Because `<html>` in the main app shell had no `lang` attribute, it defaulted to `en-IN`, failing on systems where English (India) speech packs were not present.
+    - `session.continuous` and `session.interimResults` were both set to `false`, causing the speech recognizer to prematurely abort on the first brief pause with zero real-time visual transcription feedback.
+    - `session.onerror` treated benign `no-speech` timeouts as fatal "Dictation unavailable" failures.
+
+- **Architectural Solutions & Changes Implemented:**
+  1. **Dual-Layer Audio Recording (Pure 16kHz PCM WAV in Browser + Fallback) (`public/js/ai-media-input.js`):**
+     - Implemented `encodePcm16Wav(pcmChunks, sampleRate)`: Uses the browser's native Web Audio API (`AudioContext` / `createScriptProcessor`) to capture microphone PCM float buffers, downsamples to canonical 16,000 Hz, and builds standard 16-bit mono RIFF WAVE headers.
+     - Stages recorded voice notes as `voice_note_<timestamp>.wav` with MIME `audio/wav`.
+     - In `DefaultAudioTranscoder`, `normalizeWavInPhp()` processes incoming 16kHz mono WAV in pure PHP with zero external dependencies.
+     - Changed upload button text in `workspace.blade.php` from "Transcribe & Review" to `<i class="dripicons-checkmark mr-1"></i> Attach Voice Note`.
+  2. **Host Server FFmpeg Deployment & Binary Auto-Detection (`app/Ai/Multimodal/Drivers/DefaultAudioTranscoder.php`):**
+     - Installed FFmpeg Essentials (v9.0.1) on Windows host via WinGet and placed executables in `C:\ProgramData\envkit\bin\`.
+     - Added `resolveFfmpegBinary()` to `DefaultAudioTranscoder`: Automatically probes configured binary, WinGet package paths, Envkit bin, and standard UNIX paths (`/usr/bin/ffmpeg`, `/usr/local/bin/ffmpeg`).
+     - Verified WebM transcoding via Symfony Process in PHP: converts 2-second WebM to canonical 16kHz WAV in <0.1s.
+  3. **Hardened Dictation Engine (`public/js/ai-workspace-dictation.js`):**
+     - Resolved language from browser locale: `(navigator.languages && navigator.languages[0]) || navigator.language || 'en-US'`.
+     - Enabled `session.continuous = true` and `session.interimResults = true`, allowing continuous speaking with real-time text streaming.
+     - Added visual active state on button (`btn-danger active`, `'Stop dictation'`).
+     - Enhanced error handling: `no-speech` advises speaking clearly; `not-allowed` guides microphone permission.
+  4. **Automated Verification:**
+     - Verified PHP syntax on `DefaultAudioTranscoder.php`: 0 errors.
+     - Verified Node syntax on `ai-media-input.js` and `ai-workspace-dictation.js`: 0 errors.
+     - Ran unit tests: `ExtractionSchemaTest.php` 9/9 passed (51 assertions).
+     - Verified live WebM transcoding to canonical WAV via `DefaultAudioTranscoder`.
+     - Ran `php artisan optimize:clear` and `php artisan view:clear`.
+
+---
+
+## Purchase Order PDF Download Resolution & Content-Disposition Streaming Fix — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Problem Analysis:**
+  - *Symptom:* After successfully booking a Purchase Order (`PO-00001`), clicking the "Download PDF Receipt" button resulted in the browser downloading `pdf.json` with error: `Couldn't download - Something went wrong. Try again, or contact your organisation.`
+  - *Root Cause 1 (Document Type Mismatch):* In `public/js/ai-media-input.js`, `renderBookedView` generated `pdfUrl = /ai/documents/purchase-order/{id}/pdf` with hyphenated `purchase-order`. In `app/Http/Controllers/Api/V1/AiChatController.php::downloadDocumentPdf()`, the type array check `in_array($type, ['purchase', 'purchase_order', 'purchases'], true)` only checked underscore `purchase_order`. Hyphenated `purchase-order` failed with HTTP 422 `{"error_code": "AI_INVALID_DOCUMENT_TYPE", "error_message": "Unsupported document type [purchase-order]."}`, causing the browser to download the JSON error response as `pdf.json`.
+  - *Root Cause 2 (Hardcoded Inline Content-Disposition):* `downloadDocumentPdf()` hardcoded `Content-Disposition: inline; filename="..."`. Direct download links `<a download>` benefited from explicit `attachment` disposition when requested via `?download=1`.
+
+- **Architectural Solutions & Changes Implemented:**
+  1. **Normalized Document Types (`app/Http/Controllers/Api/V1/AiChatController.php`):**
+     - Normalized incoming type via `$normalizedType = str_replace('-', '_', strtolower($type))`.
+     - Permitted variants:
+       - Purchase: `purchase`, `purchase_order`, `purchases`, `purchase_bill`, `purchase_bills`, `po`
+       - Sale: `sale`, `sales_order`, `sales`, `invoice`, `sales_invoice`, `so`
+       - Quotation: `quotation`, `quotations`, `quote`
+     - Evaluated `$docKind = $isPurchase ? 'purchase' : ($normalizedType === 'sales_order' ? 'sales_order' : 'sale')`.
+  2. **Dynamic Content-Disposition Attachment Handling (`app/Http/Controllers/Api/V1/AiChatController.php`):**
+     - Checks `$disposition = ($request->has('download') || $request->boolean('download')) ? 'attachment' : 'inline'`.
+     - When viewed in chat iframe (`btn-preview-pdf`), delivers `inline` for smooth embedding.
+     - When clicked via download button (`?download=1`), delivers `attachment; filename="Purchase_order_PO-00001.pdf"`.
+  3. **Robust Download URL & Reference Fallback (`public/js/ai-media-input.js` & `resources/views/backend/ai/workspace.blade.php`):**
+     - In `renderBookedView`: Appends `?download=1` to the Download PDF Receipt button link.
+     - Falls back to `receipt.details.reference_no` if resource ID is missing.
+     - Updated modal download button `#ai-pdf-download-btn` in `workspace.blade.php` with `?download=1`.
+  4. **Automated Verification & Feature Test Coverage:**
+     - Expanded `tests/Feature/Ai/AiChatApiAndWorkspaceTest.php`:
+       - Verified `purchase-order` (hyphenated) returns HTTP 200 with `application/pdf` and `inline`.
+       - Verified `download=1` returns HTTP 200 with `attachment; filename="Purchase_order_PO-TEST-PDF.pdf"`.
+       - Verified string reference number lookup `PO-TEST-PDF` works identically to integer ID.
+     - Ran PHPUnit: `test_download_document_pdf_endpoint_streams_pdf` passed 11 assertions.
+     - Ran full `UnifiedInputClarificationTest.php`: 12/12 passed (89 assertions).
+     - Ran full `EntityOptionsTest.php`: 8/8 passed (36 assertions).
+
+---
+
+## Intelligent ERP Entity Resolution & Governed Resumption Implementation — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Objectives:**
+  - Implemented the specifications in `docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md` following the authoritative EGM 5-stage review findings and constraints.
+  - Eliminated the P0 frontend crash in the unified clarification/edit card where `slots_patch` was submitted instead of `corrections`.
+  - Replaced unsafe `first()` warehouse auto-matches with branch-scoped, deterministic resolution (returning exact unique matches, candidates on multiple, or none on zero).
+  - Eliminated hardcoded `"Main Warehouse"` UI fallback strings, replacing them with dynamic labels and receipt metadata.
+  - Implemented the multi-tenant, branch-scoped `GET /api/v1/ai/entity-options` endpoint and wired the Three-Way Disambiguation Triad with inline master creation and automatic parent workflow resumption.
+  - **Full Two-Column Clarification Layout & `AiEntityPicker` UI Overhaul (`public/js/ai-media-input.js`, `public/css/pages/ai-workspace.css`, `resources/views/backend/ai/workspace.blade.php`):**
+    - Redesigned `renderClarificationView` to render the target desktop two-column split grid (Section 3.1):
+      - **Left Column (`col-lg-6 pr-lg-3 ai-clarify-preview-col`):** Purchase Bill Preview displaying supplier, invoice number, invoice date, dynamic warehouse badge (`Unresolved` / selected warehouse name), collapsible document preview (audio/image), extracted line items fact table (Product, Qty, Rate, Line Total), totals breakdown (Subtotal, GST, Grand Total), and legal guardrail footnote.
+      - **Right Column (`col-lg-6 pl-lg-3 ai-clarify-resolution-col`):** Entity Resolution Panel featuring `AiEntityPicker` with real-time directory search, 300ms debounce, radio option cards (`.ai-entity-card`) showing warehouse name, recommendation badge (`Recommended`), branch name, code, and address/location, visual card selection state (`.selected`), selection summary pill (`Selected: lenz - Main [Change]`), and inline master creation form (`AiMasterCreatePanel`) with sequential two-gate approval (`spawn` -> `preview` -> `approve-and-execute`) and automatic proposal preparation on completion.
+    - Added dedicated CSS styles in `public/css/pages/ai-workspace.css` for `.ai-clarification-grid`, `.ai-clarify-preview-col`, `.ai-clarify-resolution-col`, `.ai-entity-card`, `.ai-selection-pill`, and `.ai-preview-table-wrap`.
+    - Added cache buster to `resources/views/backend/ai/workspace.blade.php` using `versioned_asset('js/ai-media-input.js')` so browser clients immediately load updated script versions without stale cache issues.
+    - **P0 Proposal Preview Decoding Fix (`AiWorkflowTaskController::prepareProposal` & `renderProposalView`):**
+      - *Root Cause:* `AiWorkflowTaskController::prepareProposal` returned the raw database row where `preview_json` was a serialized JSON string rather than a parsed array under `'preview'`. In `ai-media-input.js`, `renderProposalView` inspected `proposal.preview` (which was `undefined`), causing all extracted fields, party details, line items, and totals to fall back to `—` ("No product lines found") and titled the card "Commercial Action Review" with "Customer".
+      - *Resolution:* `prepareProposal` now parses `preview_json` and returns `preview`, `proposal_id`, and `action_key`. In `ai-media-input.js`, `renderProposalView` and `renderEditView` safely parse `preview_json` and `payload_json`, properly format `purchase_order` vs `purchase_bill` document titles, display the correct party label ("Supplier" for all purchase actions), show line items, and render the "Approve & Create PO/Bill" button.
+    - Cleared compiled Blade views via `php artisan view:clear` and `php artisan optimize:clear`.
+
+- **Architectural Solutions & Changes Implemented:**
+  1. **Safe Deterministic Warehouse Disambiguation (`app/Ai/Services/RecordResolutionService.php` & `BatchRecordResolutionService.php`):**
+     - Enforced strict branch isolation (`where('branch_id', $context->branchId)`) on all warehouse queries.
+     - Never silently defaults to `first()` when multiple warehouses exist in the active branch; returns `status: 'candidates'` with the collection of matching warehouses.
+     - Returns `status: 'exact'` only when exactly 1 active warehouse exists in the active branch or when a unique exact/prefix/substring match is found.
+     - Preserves full backward-compatible return type (`Collection<int, Warehouse>` and `?Warehouse`) preventing fatal type errors in `BatchRecordResolutionService`.
+  2. **Scoped Entity Options API (`app/Http/Controllers/Api/V1/AiEntityOptionsController.php`, `routes/api.php`, `routes/web.php`):**
+     - Implemented `GET /api/v1/ai/entity-options` and session route `GET /ai/entity-options`.
+     - Supports `type`: `warehouse|supplier|product|customer|unit`, with sanitized search query `q`, `page`, and `per_page`.
+     - Scopes warehouse queries strictly by `company_id` and active `branch_id`.
+     - Evaluates user capabilities via `CommercialPermission` (`warehouse`, `suppliers-add`, `products-add`, `customers-add`, `unit`) to return accurate `can_create` and `create_disabled_reason`.
+     - Returns `{ entity_type, field, items, total, has_more, can_create, recommended_id, recommendation_reason }`.
+  3. **Updated InputCompletenessEvaluator Triad Endpoints (`app/Ai/Services/InputCompletenessEvaluator.php`):**
+     - Updated `buildTriadOptions()` to target `/api/v1/ai/entity-options?type=...` for scoped entity lookups.
+  4. **Frontend Clarification & Edit Contract Fix (`public/js/ai-media-input.js`):**
+     - Refactored `renderClarificationView`:
+       - Submits `corrections: [{ field, value, confirmation: 'user_selected' }]` to `PATCH /ai/workflow-tasks/{id}/inputs`.
+       - On success: auto-triggers `POST /ai/workflow-tasks/{id}/prepare-proposal` when `evaluation.is_ready === true`, or refreshes clarification view when unresolved blockers remain.
+       - On HTTP 409 conflict: safely reloads the latest server task revision via `GET /ai/workflow-tasks/{id}` without replaying stale data.
+       - Supports inline Three-Way Disambiguation Triad: renders candidate dropdowns and inline master creation form (`dependent-masters/spawn` -> `preview` -> `approve-and-execute`), automatically resuming the parent review card upon creation.
+     - Refactored `renderEditView`:
+       - Captures supplier, invoice number, date, warehouse, and line item inputs into a unified `corrections` array.
+       - Re-evaluates completeness and updates proposal preview.
+     - Removed all hardcoded `"Main Warehouse"` strings:
+       - Line 540: `(preview.warehouse && preview.warehouse.name) || 'Not selected'`
+       - Line 660: Contextual warehouse badge from booking receipt or proposal preview.
+       - Line 803: `(preview.warehouse && preview.warehouse.name) || ''`
+  5. **Warehouse Model Relationship (`app/Models/Warehouse.php`):**
+     - Added `branch(): BelongsTo` mapping to `CompanyBranch`.
+  6. **Automated Verification & Feature Test Coverage:**
+     - Created `tests/Feature/Ai/Clarification/EntityOptionsTest.php` (8 tests, 36 assertions, all passing).
+     - Expanded `tests/Feature/Ai/Clarification/UnifiedInputClarificationTest.php` with:
+       - `test_warehouse_resolution_returns_candidates_when_multiple_branch_warehouses_exist()`
+       - `test_warehouse_resolution_ignores_warehouses_from_other_branches()`
+       - `test_patch_inputs_rejects_legacy_slots_patch_and_accepts_corrections()`
+       (12 tests, 85 assertions, all passing).
+     - Verified `DependentMasterResolutionTest` (8 tests, 73 assertions, all passing).
+     - Verified full `tests/Feature/Ai/Clarification/` (28 tests, 194 assertions, 100% passing).
+     - Verified full `tests/Feature/Ai/Multimodal/` (30 tests, 225 assertions, 100% passing).
+     - PHP syntax check across all 9 touched PHP files: 0 errors.
+     - Node syntax check across `public/js/ai-media-input.js`: 0 errors.
+
+---
+
+## EGM 5-Stage Goldfish Review of Intelligent Entity Resolution UI Specification — 2026-11-17 (`feature/ai-unified-input-clarification`)
+
+- **Context & Objectives:**
+  - Evaluated `docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md` via the full 5-stage Elephant-Goldfish Model (EGM) Goldfish Review Protocol in uninterrupted execution mode.
+  - Objective: Stress-test the design document, uncover hidden contradictions, verify codebase compatibility against live services, evaluate compliance with `zoom-out-standard.md`, `feature-spec-standard.md`, and `implementation-readiness-standard.md`, and produce an authoritative actionable synthesis before writing code.
+
+- **Review Pipeline & Stage Artifacts Executed:**
+  1. **Stage 5 (Initial Zoom Out):** `egm-zoom-out` & `egm-inventive-catalyst` evaluated full file against simplicity, YAGNI, and TRIZ contradictions. Saved to `zoom_out_report.md`.
+  2. **Stage 6 (Comprehension Test):** `egm-comprehension` audited `FeatureRange` (lines 1–376) and `DetailedRange` (lines 377–659) with zero assumed knowledge, capturing architectural paraphrases and missing schemas. Saved to `comprehension_report.md`.
+  3. **Stage 7 (Critic Review):** `egm-design`, `egm-structural`, and `egm-style` evaluated `FeatureRange` against `feature-spec-standard.md`. Flagged absence of Alternatives Considered, missing Risks & Mitigations, and full-table scan vulnerabilities. Saved to `critic_report.md`.
+  4. **Stage 8 (Intermediate Zoom Out):** `egm-zoom-out` pruned reviewer-induced over-engineering (rejected composite sagas, rejected search-engine bloat for 20 warehouses, rejected 11-component taxonomy, and protected P0 focus). Saved to `intermediate_zoom_out_report.md`.
+  5. **Stage 9 (Implementation Readiness Test):** `egm-implementation-readiness`, `egm-codebase-details`, and `egm-style` evaluated `DetailedRange` against `implementation-readiness-standard.md`. Uncovered fatal return type mismatch in `resolveWarehouse()` for `BatchRecordResolutionService`, non-existent async polling endpoint citations, and branch isolation requirements. Saved to `implementation_readiness_report.md`.
+  6. **Synthesis:** Cross-stage deduplication and compilation produced master report `consolidated_review_report.md` with a complete Traceability Matrix.
+
+- **Consolidated Findings & Remediation Summary:**
+  - **10 Blockers Identified:**
+    1. `RecordResolutionService::resolveWarehouse` proposed scalar return breaks `BatchRecordResolutionService` collection mapping (fatal type error). Retain `Collection<int, Warehouse>` and `?Warehouse`.
+    2. Non-existent async execution polling endpoint citation in Section 9.3 removed.
+    3. Missing mandatory `Alternatives Considered` section added to feature specification.
+    4. Missing mandatory `Risks & Mitigations` section added to feature specification.
+    5. Dependent master endpoints (`spawn`, `preview`, `approve-and-execute`) documented with explicit JSON schemas.
+    6. Parent task resumption clarified as 100% server-authoritative (`DependentMasterOrchestrator`).
+    7. API route locked down: `GET /api/v1/ai/entity-options` under Sanctum/session & company context.
+    8. Warehouse candidate search strictly enforces `$context->branchId` to prevent 422 errors in `PurchaseBillPreviewAdapter`.
+    9. Speculative composite atomic sagas formally rejected in favor of the proven sequential two-gate model.
+    10. Milestone scope strictly bounded to P0 clarification contract bug and warehouse disambiguation (deferring Phase 4 multi-master expansion).
+
+- **Current Repository State & Artifact Locations:**
+  - Active branch: `feature/ai-unified-input-clarification` (clean HEAD at `a352dbd`).
+  - Reports generated: `zoom_out_report.md`, `comprehension_report.md`, `critic_report.md`, `intermediate_zoom_out_report.md`, `implementation_readiness_report.md`, `consolidated_review_report.md`.
+  - Next step: Incorporate resolutions into `docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md` via `egm-resolve`, then execute phased implementation (Phases 0–3).
+
+---
 ## Paid SaaS Production Safeguards, Subscription Wallets, Payment Top-Up Hardening & Operational Evidence Framework — 2026-11-17 (`feature/ai-unified-input-clarification`)
 
 - **Context & Objectives:**

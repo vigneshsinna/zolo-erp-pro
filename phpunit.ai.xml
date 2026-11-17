@@ -11,6 +11,7 @@
     <env name="CACHE_DRIVER" value="array" force="true"/>
     <env name="CACHE_STORE" value="array" force="true"/>
     <env name="AI_ENABLED" value="false" force="true"/>
+    <env name="AI_CREDITS_REQUIRE_SUBSCRIPTION" value="false" force="false"/>
     <env name="ERP_COMPLIANCE_ENABLED" value="false" force="true"/>
     <env name="SESSION_DRIVER" value="array" force="true"/>
     <env name="QUEUE_CONNECTION" value="sync" force="true"/>

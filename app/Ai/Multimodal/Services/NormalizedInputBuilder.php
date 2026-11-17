@@ -112,13 +112,16 @@ final class NormalizedInputBuilder
         }
 
         $text = strtolower((string) $companionText);
+        if ($text === '' && $asset->source_kind === 'audio') {
+            $text = strtolower((string) ($extracted['transcript_text'] ?? ''));
+        }
         if ($text !== '') {
             if (preg_match('/\b(create|make|prepare|draft|raise|convert)\b.*\b(purchase\s*order|p\.?\s*o\.?)\b/', $text)
-                || preg_match('/\b(purchase\s*order)\b/', $text)) {
+                || preg_match('/\b(purchase\s*order|po)\b/', $text)) {
                 return 'purchase_order.create.v1';
             }
             if (preg_match('/\b(create|make|prepare|draft|raise|convert)\b.*\b(sales\s*order|s\.?\s*o\.?)\b/', $text)
-                || preg_match('/\b(sales\s*order)\b/', $text)) {
+                || preg_match('/\b(sales\s*order|so)\b/', $text)) {
                 return 'sales_order.create.v1';
             }
             if (preg_match('/\b(post|create|enter|book|make|prepare|draft|raise)\b.*\b(purchase\s*bill|vendor\s*bill|supplier\s*bill|supplier\s*invoice|bill)\b/', $text)
