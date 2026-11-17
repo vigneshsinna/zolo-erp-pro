@@ -1,3 +1,10 @@
+## Conversational DELTA D03 progress — 2026-11-17
+
+- D02 committed `1de2d1ec4994f9b8a2d2898d59d3146df41100a1`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/9 stacked on D01.
+- Active branch `codex/d03-voice-continuation`. Existing audio preparation returns `voice_reply_ready` for bound replies without new-task handoff. Chat requires exact owned workspace/thread/task and current explicitly confirmed transcript revision; applies same typed correction path and records extraction provenance. Existing transcript uncertainty schema already supplies warnings, so reused unchanged.
+- D03 focused red: HTTP 500, 1 failure / 3 assertions. Final conversation + existing multimodal suites: 40 tests / 309 assertions, zero failures/skips, `scratch/d03-final.xml`; exact command in `docs/ai/conversation/D03.md`. Fixture-only voice; no live provider or production claims. Conversation flag remains default-off.
+- Next: commit D03 and open stacked PR; D04 terms propagation/persistence and normal-UI parity. Domain already stores `credit_days` and `due_date` in purchase attributes, but not explicit payment terms. `paying_method` only posts actual payment when paid_amount > 0. Preserve ordered status 4 and unpaid state.
+
 ## Conversational DELTA D02 progress — 2026-11-17
 
 - D01 committed `9c8e1dd8b000c4270ceed6806fea96667f3a0b79`, pushed; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/8 targets original feature branch. Existing chat regression passes 28 tests / 246 assertions.
