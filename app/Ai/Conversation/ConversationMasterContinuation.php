@@ -1,0 +1,117 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Conversation;
+
+use App\Ai\DTOs\AiPrincipal;
+use App\Ai\DTOs\WorkflowTaskContext;
+use App\Ai\Registries\ActionCapabilityRegistry;
+use App\Ai\Services\DependentMasterOrchestrator;
+use App\Ai\Services\TaskCorrectionService;
+use App\Ai\Services\WorkflowTaskStateService;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\Platform\CompanyContext;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
+
+final class ConversationMasterContinuation
+{
+    public function handles(array $task, string $message): bool
+    {
+        return (bool) preg_match('/^(?:create |add )?(?:a )?new (?:warehouse|supplier|product)\b/i', trim($message))
+            || collect(json_decode($task['dependent_masters_json'] ?? '{}', true))->contains(fn ($master) => ($master['status'] ?? '') === 'conversation_collecting');
+    }
+
+    public function turn(AiPrincipal $principal, array $task, string $message): array
+    {
+        $context = new WorkflowTaskContext($principal, new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId), taskId: $task['id'], threadId: $task['thread_id']);
+        $orchestrator = app(DependentMasterOrchestrator::class);
+        $masters = json_decode($task['dependent_masters_json'] ?? '{}', true, flags: JSON_THROW_ON_ERROR);
+        if (preg_match('/^(?:create |add )?(?:a )?new (warehouse|supplier|product)\s+(?:named\s+)?(.+?)(?:\s+(anyway))?$/i', trim($message), $match)) {
+            $type = strtolower($match[1]);
+            $name = trim($match[2]);
+            $field = $type.'_id';
+            if ($type === 'product') {
+                $lines = json_decode($task['slots_json'], true)['items'] ?? [];
+                if (count($lines) > 1) {
+                    throw ValidationException::withMessages(['master' => 'Choose the unresolved product line before creating a product.']);
+                }
+                $field = 'items['.($lines[0]['client_line_id'] ?? 'line-'.Str::uuid()).'].product_id';
+            }
+            $meta = $orchestrator->resolveFieldEntity($field);
+            app(CommercialPermission::class)->assert($meta['permission'], $context->context, $principal->actorId);
+            $queryField = $type === 'product' ? str_replace('product_id', 'product_query', $field) : $type.'_query';
+            $applied = app(TaskCorrectionService::class)->applyCorrections($principal, $task['id'], (int) $task['revision'], [['field' => $queryField, 'value' => $name]]);
+            $task = $applied['task'];
+            $issue = app(ConversationChoices::class)->directory($principal, $task, $type, $name);
+            if ($issue['candidates'] !== [] && empty($match[3])) {
+                return ['status' => 'needs_input', 'task_id' => $task['id'], 'task_revision' => (int) $task['revision'], 'action_key' => $task['action_key'],
+                    'required_inputs' => [$issue], 'message' => 'Eligible records already match. Select one, or explicitly request the new master again with “anyway”.'];
+            }
+            $masters[$field] = ['status' => 'conversation_collecting', 'entity_type' => $type, 'action_key' => $meta['capability_key'],
+                'conversation' => true, 'draft_data' => ['name' => $name]];
+        } else {
+            $pending = array_filter($masters, fn ($master) => ($master['status'] ?? '') === 'conversation_collecting');
+            if (count($pending) !== 1) {
+                throw ValidationException::withMessages(['master' => 'Select one pending master before providing details.']);
+            }
+            $field = array_key_first($pending);
+            $type = $masters[$field]['entity_type'];
+            $data = $masters[$field]['draft_data'];
+            foreach (preg_split('/\s*[;]\s*/', trim($message)) as $part) {
+                if (!preg_match('/^(name|address|phone|email|city|state|gstin|sku|hsn|unit|tax category|category|cost|price)\s*[:=]?\s+(.+)$/i', $part, $match)) {
+                    throw ValidationException::withMessages(['master' => 'Provide named master details such as “address Erode” or “SKU CTN-001; unit Pairs; HSN 5205”.']);
+                }
+                $key = strtolower($match[1]);
+                $value = trim($match[2]);
+                $key = match ($key) { 'sku' => 'code', 'hsn' => 'hsn_code', 'gstin' => 'vat_number', 'phone' => $type === 'supplier' ? 'phone_number' : 'phone', default => $key };
+                if (in_array($key, ['unit', 'tax category', 'category'], true)) {
+                    $table = ['unit' => 'units', 'tax category' => 'tax_categories', 'category' => 'categories'][$key];
+                    $column = $key === 'unit' ? 'unit_name' : 'name';
+                    $records = DB::table($table)->where('company_id', $principal->companyId)->where($column, $value)
+                        ->when($table === 'units', fn ($query) => $query->where('is_active', true))->get(['id']);
+                    if ($records->count() !== 1) {
+                        throw ValidationException::withMessages(['master' => 'Select one exact eligible '.$key.' from this company.']);
+                    }
+                    $key = ['unit' => 'unit_id', 'tax category' => 'tax_category_id', 'category' => 'category_id'][$key];
+                    $value = (int) $records[0]->id;
+                }
+                $data[$key] = $value;
+            }
+            $masters[$field]['draft_data'] = $data;
+            $task = app(WorkflowTaskStateService::class)->updateTaskState($principal, $task['id'], (int) $task['revision'], json_decode($task['slots_json'], true), patch: [['field' => 'dependent_master', 'value' => array_keys($data)]]);
+        }
+        DB::table('ai_workflow_tasks')->where('company_id', $principal->companyId)->where('branch_id', $principal->branchId)
+            ->where('financial_year_id', $principal->financialYearId)->where('actor_id', $principal->actorId)->where('id', $task['id'])
+            ->update(['dependent_masters_json' => json_encode($masters, JSON_THROW_ON_ERROR)]);
+        $spawn = $orchestrator->spawnMasterRequirements($context, $task['id'], $field);
+        $data = $masters[$field]['draft_data'];
+        $definition = app(ActionCapabilityRegistry::class)->get($masters[$field]['action_key']);
+        $rules = app($definition->inputSchemaClass)->rules();
+        if ($type === 'product') {
+            // Conversation never accepts unrelated product tax/HSN/UOM defaults.
+            foreach (['code', 'unit_id', 'tax_category_id', 'hsn_code'] as $required) {
+                $rules[$required] = array_merge(['required'], $rules[$required]);
+                unset($spawn['prefilled'][$required]);
+            }
+            $data['barcode_symbology'] = 'code128';
+        }
+        $spawn['prefilled'] = $data;
+        $validator = Validator::make($data, $rules);
+        $result = ['status' => 'master_needs_input', 'task_id' => $task['id'], 'task_revision' => (int) $task['revision'],
+            'action_key' => $task['action_key'], 'master_schema' => $spawn, 'required_inputs' => [],
+            'message' => 'Provide the remaining master details. Master creation and the order require separate explicit approvals.'];
+        if ($validator->fails()) {
+            $result['master_required_inputs'] = $validator->errors()->toArray();
+            return $result;
+        }
+        $preview = $orchestrator->previewMasterProposal($context, $task['id'], $field, $validator->validated());
+        $result['status'] = 'master_proposal_created';
+        $result['master_proposal'] = $preview['proposal'];
+        $result['message'] = 'Review this master proposal. Approve master creation explicitly; the order remains unapproved.';
+        return $result;
+    }
+}

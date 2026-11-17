@@ -369,6 +369,27 @@ final class AiWorkflowTaskController extends Controller
             (int) ($validated['expected_version'] ?? 1)
         );
 
+        if (config('erp_ai.conversation_enabled', false) && $result['status'] === 'resumed') {
+            try {
+                $result['workflow'] = DB::transaction(function () use ($principal, $id, $taskContext): array {
+                    DB::table('ai_workflow_tasks')->where('company_id', $principal->companyId)->where('branch_id', $principal->branchId)
+                        ->where('financial_year_id', $principal->financialYearId)->where('actor_id', $principal->actorId)
+                        ->where('id', $id)->lockForUpdate()->firstOrFail();
+                    $task = $this->taskState->getTask($principal, $id);
+                    $slots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+                    $batch = $this->batchResolver->resolveAll($taskContext, $slots);
+                    $evaluation = $this->evaluator->evaluate($this->requirementsRegistry->get($task['action_key']), $taskContext, $slots, $batch);
+                    return $evaluation->isReady()
+                        ? $this->correctionService->prepareProposal($principal, $task, $evaluation)
+                        : $this->clarificationBuilder->build($task, $evaluation);
+                });
+            } catch (\Throwable $error) {
+                $result['status'] = 'master_created_parent_pending';
+                $result['error_code'] = 'PARENT_PREVIEW_REQUIRED';
+                $result['message'] = 'The master was created. Review the parent draft before preparing its order proposal.';
+            }
+        }
+
         return response()->json($result);
     }
 

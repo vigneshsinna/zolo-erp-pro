@@ -86,6 +86,9 @@ final class ConversationTurnRouter
                 json_decode($task['slots_json'], true), status: 'cancelled');
             $result = $this->summary($this->state->getTask($principal, $task['id']), 'Draft cancelled. No ERP document was changed.');
             $result['status'] = 'cancelled';
+        } elseif (app(ConversationMasterContinuation::class)->handles($task, $message)) {
+            $this->assertRevision($task, $input);
+            $result = app(ConversationMasterContinuation::class)->turn($principal, $task, $message);
         } else {
             $interpreter = app(ConversationalSlotInterpreter::class);
             $selection = null;
@@ -120,6 +123,7 @@ final class ConversationTurnRouter
             }
             $result['warnings'] = array_values(array_unique([...$parsed['warnings'], ...($input['voice_source']['warnings'] ?? [])]));
         }
+        $task = $this->state->getTask($principal, $task['id']);
         $result = app(ConversationChoices::class)->publish($principal, $task, $result);
         DB::table('ai_workflow_task_events')->insert([
             'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
@@ -146,6 +150,9 @@ final class ConversationTurnRouter
             return null;
         }
         $task = $tasks[0];
+        if (app(ConversationMasterContinuation::class)->handles($task, $input['message'])) {
+            return null;
+        }
         app(ActionSecurity::class)->definition($task['action_key'], $principal);
         $interpreter = app(ConversationalSlotInterpreter::class);
         $parsed = $interpreter->interpret($task, $input['message']);
