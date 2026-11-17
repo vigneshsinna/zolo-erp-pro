@@ -431,6 +431,15 @@ class AiMediaController extends Controller
             $actionKey = $request->input('action_key');
             $threadId = $request->input('thread_id');
 
+            $voiceReplyTask = null;
+            if (config('erp_ai.conversation_enabled', false) && $request->filled('workflow_task_id')) {
+                $voiceInput = $request->validate(['thread_id' => 'required|uuid', 'workflow_task_id' => 'required|uuid', 'expected_task_revision' => 'required|integer|min:1']);
+                $voiceReplyTask = app(\App\Ai\Conversation\VoiceWorkflowReply::class)->assertTask($principal, $voiceInput['thread_id'], $voiceInput['workflow_task_id']);
+                if ((int) $voiceReplyTask['revision'] !== (int) $voiceInput['expected_task_revision']) {
+                    throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException('Draft changed. Review the current draft before recording a reply.');
+                }
+            }
+
             $asset = null;
             if ($request->hasFile('file')) {
                 $asset = $this->ingestionService->ingest(
@@ -456,6 +465,13 @@ class AiMediaController extends Controller
                     idempotencyKey: $idempotencyKey,
                     companionText: $companionText,
                 );
+            }
+
+            if ($voiceReplyTask !== null) {
+                app(\App\Ai\Conversation\VoiceWorkflowReply::class)->assertAsset($principal, $asset, (string) $threadId, $voiceReplyTask['id']);
+                return response()->json(['status' => 'voice_reply_ready', 'task_id' => $voiceReplyTask['id'], 'task_revision' => (int) $voiceReplyTask['revision'],
+                    'thread_id' => $threadId, 'media' => $this->presentAsset($asset->fresh()), 'extraction' => $this->presentExtraction($extraction->fresh()),
+                    'message' => 'Review and confirm the transcript, then send it as an answer to this draft.']);
             }
 
             // Orchestrate automatic preparation into workflow proposal

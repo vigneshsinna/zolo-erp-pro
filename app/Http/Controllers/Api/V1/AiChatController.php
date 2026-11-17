@@ -769,6 +769,7 @@ class AiChatController extends Controller
             'expected_task_revision' => 'nullable|integer|min:1',
             'client_turn_id' => 'nullable|uuid',
             'choice_set_id' => 'nullable|uuid',
+            'voice_extraction_revision' => 'nullable|integer|min:1',
         ]);
         $principal = $this->principal($request);
         if ($denial = $this->accessDenial($principal)) {
@@ -822,6 +823,13 @@ class AiChatController extends Controller
             $builder = app(NormalizedInputBuilder::class);
             foreach ($assets as $asset) {
                 $latest = $extractionsByAssetId[$asset->id];
+                if (config('erp_ai.conversation_enabled', false) && !empty($validated['active_task_id'])) {
+                    if (count($mediaIds) !== 1 || empty($validated['thread_id'])) {
+                        return $this->error('VOICE_REPLY_CONTEXT_REQUIRED', 'Send one confirmed voice transcript with its active draft and thread.', 422);
+                    }
+                    $validated['voice_source'] = app(\App\Ai\Conversation\VoiceWorkflowReply::class)->consume($principal, $asset, $latest, $validated);
+                    continue;
+                }
                 $companionExtracted = null;
                 foreach ($assets as $otherAsset) {
                     if ($otherAsset->id !== $asset->id) {
@@ -865,7 +873,7 @@ class AiChatController extends Controller
         $existingThreadId = $validated['thread_id'] ?? null;
         $threadId = $existingThreadId ?? (string) Str::uuid();
         $question = $validated['message'];
-        if (config('erp_ai.conversation_enabled', false) && $mediaIds === [] && $existingThreadId !== null) {
+        if (config('erp_ai.conversation_enabled', false) && ($mediaIds === [] || isset($validated['voice_source'])) && $existingThreadId !== null) {
             try {
                 if (!$this->ownedThreads($principal)->where('id', $threadId)->exists()) {
                     return $this->threadNotFound();

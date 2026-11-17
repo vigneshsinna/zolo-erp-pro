@@ -93,6 +93,12 @@ final class ConversationTurnRouter
             if ($tasks !== [] && $parsed['corrections'] !== []) {
                 $this->assertRevision($task, $input);
             }
+            if (isset($input['voice_source'])) {
+                foreach ($parsed['corrections'] as &$correction) {
+                    $correction['confirmation'] = 'user_voice';
+                }
+                unset($correction);
+            }
             if ($tasks === [] || $parsed['corrections'] !== [] || preg_match('/^(?:continue|resume|preview)$/i', $message)) {
                 $applied = $this->corrections->applyCorrections($principal, $task['id'], (int) $task['revision'], $parsed['corrections']);
                 $task = $applied['task'];
@@ -100,12 +106,13 @@ final class ConversationTurnRouter
             } else {
                 $result = $this->summary($task, 'Confirm the intended values or use the existing detail controls.');
             }
-            $result['warnings'] = $parsed['warnings'];
+            $result['warnings'] = array_values(array_unique([...$parsed['warnings'], ...($input['voice_source']['warnings'] ?? [])]));
         }
         DB::table('ai_workflow_task_events')->insert([
             'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
             'event_type' => 'conversation_turn', 'revision' => $result['task_revision'],
-            'metadata_json' => json_encode(['client_turn_id' => $input['client_turn_id'], 'request_hash' => $hash, 'result' => $result], JSON_THROW_ON_ERROR),
+            'metadata_json' => json_encode(['client_turn_id' => $input['client_turn_id'], 'request_hash' => $hash,
+                'source' => isset($input['voice_source']) ? array_diff_key($input['voice_source'], ['warnings' => true]) : ['kind' => 'text'], 'result' => $result], JSON_THROW_ON_ERROR),
             'created_at' => now(),
         ]);
         return $result;
