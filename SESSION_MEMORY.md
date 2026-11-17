@@ -1,3 +1,10 @@
+## Conversational DELTA D02 progress — 2026-11-17
+
+- D01 committed `9c8e1dd8b000c4270ceed6806fea96667f3a0b79`, pushed; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/8 targets original feature branch. Existing chat regression passes 28 tests / 246 assertions.
+- Active branch `codex/d02-conversation-corrections`, stacked on D01. Interpreter supports bounded deterministic text edits and tool-free metered model fallback, validates closed output, refuses model ERP IDs. Corrections preserve stable line IDs and unrelated values; new shared correction path rejects unsupported fields/expired drafts and invalidates product dependencies. Ready drafts reuse signed proposal engine, unchanged hash/version reused. All provider work stays outside draft transaction to preserve billing on rejected results.
+- D02 red: 3 missing-class errors before implementation. Final focused/affected command in `docs/ai/conversation/D02.md`: 33 tests / 235 assertions, zero failures/skips, `scratch/d02-final.xml`. Uses only `zolo_test_conversation_20261117`. Mocked parser explicitly labeled; no live provider, browser or production proof.
+- Next: commit/open D02 PR; implement D03 voice continuation against existing media preparation/confirmation. Then D04–D08. Keep separate conversation flag false. User supplied prerequisite location corrected to `docs/nextsteps`; 00/09 now read.
+
 ## Conversational DELTA D01–D08 — 2026-11-17 (active)
 
 - User scope: only `docs/ZOLOERP_CONVERSATIONAL_AGENT_DELTA` tasks D01–D08, one PR per task. Do not implement T00–T11. Caveman and ponytail skills active for chat; normal prose for persisted artifacts.

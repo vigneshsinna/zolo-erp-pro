@@ -70,6 +70,7 @@ final class ActionProposalService
         string $id,
         array $changes,
         int $expectedVersion,
+        bool $reuseUnchanged = false,
     ): array {
         $old = $this->getOwned($principal, $id);
         if ((int) $old['version'] !== $expectedVersion || !in_array($old['status'], ['pending', 'approved'], true)) {
@@ -80,6 +81,11 @@ final class ActionProposalService
         $base = json_decode($old['payload_json'], true, flags: JSON_THROW_ON_ERROR);
         $validated = $this->security->validate($definition, array_replace($base, $changes));
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
+        if ($reuseUnchanged && $old['expires_at'] > now('UTC')->toDateTimeString()
+            && hash_equals($old['payload_hash'], CanonicalActionPayload::hash($preview->payload))
+            && hash_equals($old['source_state_hash'], $preview->sourceStateHash)) {
+            return $old;
+        }
         $updated = DB::table('ai_action_proposals')
             ->where('id', $id)
             ->where('actor_id', $principal->actorId)
