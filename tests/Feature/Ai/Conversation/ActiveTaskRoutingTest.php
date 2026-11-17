@@ -296,4 +296,62 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertSame($task['task_revision'], DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
         Http::assertNothingSent();
     }
+
+    public function test_conversational_warehouse_master_approval_resumes_parent_and_retry_is_safe(): void
+    {
+        [$thread, $task] = $this->draft();
+        config(['ai_actions.execution_enabled' => true]);
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'create new warehouse Erode'];
+        $master = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.status', 'master_needs_input')->json('workflow');
+        $this->assertSame('warehouse', $master['master_schema']['entity_type']);
+        $input['message'] = 'address Erode industrial estate';
+        $input['client_turn_id'] = (string) Str::uuid();
+        $input['expected_task_revision'] = $master['task_revision'];
+        $ready = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.status', 'master_proposal_created')->json('workflow');
+        $this->assertSame(0, \App\Models\Warehouse::where('company_id', $this->company->id)->where('name', 'Erode')->count());
+        $approval = ['field' => 'warehouse_id', 'master_proposal_id' => $ready['master_proposal']['id'], 'expected_version' => 1];
+        $url = '/ai/workflow-tasks/'.$task['task_id'].'/dependent-masters/approve-and-execute';
+        $result = $this->postJson($url, $approval)->assertOk()->assertJsonPath('parent_task_id', $task['task_id'])->json();
+        $this->assertGreaterThan(0, $result['newly_created']['resource_id']);
+        $this->postJson($url, $approval)->assertOk();
+        $this->assertSame(1, \App\Models\Warehouse::where('company_id', $this->company->id)->where('name', 'Erode')->count());
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_conversation_product_requires_explicit_unit_and_tax_classification(): void
+    {
+        [$thread, $task] = $this->draft();
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'create new product Cotton Shirt Blue'];
+        $result = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.status', 'master_needs_input')->json('workflow');
+        foreach (['code', 'unit_id', 'tax_category_id', 'hsn_code'] as $field) {
+            $this->assertArrayHasKey($field, $result['master_required_inputs']);
+            $this->assertArrayNotHasKey($field, $result['master_schema']['prefilled']);
+        }
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('company_id', $this->company->id)->count());
+        $this->assertSame(0, \App\Models\Product::where('company_id', $this->company->id)->count());
+    }
+
+    public function test_created_master_survives_parent_failure_and_retry_recovers_receipt(): void
+    {
+        [$thread, $task] = $this->draft();
+        config(['ai_actions.execution_enabled' => true]);
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'new warehouse Recovery'];
+        $result = $this->postJson(route('ai.chat'), $input)->assertOk()->json('workflow');
+        $input['expected_task_revision'] = $result['task_revision'];
+        $input['client_turn_id'] = (string) Str::uuid();
+        $input['message'] = 'address Recovery estate';
+        $ready = $this->postJson(route('ai.chat'), $input)->assertOk()->json('workflow');
+        DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->update(['action_key' => 'unsupported.parent.v1']);
+        $approval = ['field' => 'warehouse_id', 'master_proposal_id' => $ready['master_proposal']['id'], 'expected_version' => 1];
+        $url = '/ai/workflow-tasks/'.$task['task_id'].'/dependent-masters/approve-and-execute';
+        $result = $this->postJson($url, $approval)->assertOk()->assertJsonPath('status', 'master_created_parent_pending')->json();
+        $this->assertSame(1, \App\Models\Warehouse::where('company_id', $this->company->id)->where('name', 'Recovery')->count());
+        DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->update(['action_key' => 'purchase_order.create.v1']);
+        $this->postJson($url, $approval)->assertOk()->assertJsonPath('newly_created.resource_id', $result['newly_created']['resource_id']);
+        $this->assertSame(1, \App\Models\Warehouse::where('company_id', $this->company->id)->where('name', 'Recovery')->count());
+    }
 }

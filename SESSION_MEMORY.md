@@ -1,3 +1,11 @@
+## Conversational DELTA D06 progress — 2026-11-17
+
+- D05 committed `dae2d2f84b2094ce981919f58c4cbb659b2a2abe`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/12 stacked on D04.
+- Active branch `codex/d06-conversation-master-continuation`. New master conversation reuses directory and DependentMasterOrchestrator; collects named fields in existing dependent_masters_json; shows duplicates before proposing; requires explicit product code/UOM/tax/HSN for owned conversational tasks. Existing generic T05 fallback behavior is retained outside this scope and remains a release dependency.
+- Minimal existing orchestrator changes add parent branch/FY/status and field/proposal binding, completed receipt recovery, idempotent slot resumption, and recoverable `master_created_parent_pending` after creation succeeds but parent evaluation fails. Controller returns the parent question/proposal through existing evaluator/proposal engine without auto-approving it.
+- Red: expected master_needs_input but got needs_input (1 failure / 4 assertions). Final exact command in `docs/ai/conversation/D06.md`: conversation + existing dependent master suite, 24 tests / 227 assertions, zero failures/skips, `scratch/d06-final.xml`. Covers failure/retry without duplicate master. No browser/provider/production proof.
+- Next: commit/open D06; D07 additive UI binder, current-task header, in-place card updates, confirmed transcript review and retry/409 behavior. Existing workspace inline submit handler is near line 1855; bridge near line 2136. Media staged submit near public/js/ai-media-input.js:342 currently always renders a new card. Existing browser harness `tests/Browser/support.mjs` and route-intercepted fixture tests are available. Read Playwright skill; npx exists. Apply skill when starting browser work, do not run against real tenant data.
+
 ## Conversational DELTA D05 progress — 2026-11-17
 
 - D04 committed `7a5b15efbafd2fd21c5d8decb60736433b4d7cbe`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/11 stacked on D03.
