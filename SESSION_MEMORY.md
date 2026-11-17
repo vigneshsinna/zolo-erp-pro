@@ -1,3 +1,10 @@
+## Conversational DELTA D05 progress — 2026-11-17
+
+- D04 committed `7a5b15efbafd2fd21c5d8decb60736433b4d7cbe`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/11 stacked on D03.
+- Active branch `codex/d05-conversation-choices`. Added opaque, ordered, task-revision/actor/expiry-bound choice receipts in existing workflow events, record fingerprints and fresh eligible-record checks. Ordinals and option UUIDs use same correction service. Explicit directory commands reuse AiEntityOptionsController via authenticated request clone and exact active-context verification; no new API or lookup engine.
+- D05 red: missing `workflow.choices` (1 error / 3 assertions). Final command in `docs/ai/conversation/D05.md`: conversation + EntityOptionsTest, 21 tests / 151 assertions, zero failures/skips, `scratch/d05-final.xml`. No provider/browser/production proof.
+- Next: commit/open D05; D06 conversational master continuation. Inspection found existing orchestrator lacks branch/FY in some parent queries, cannot retry completed master approval, and generic product setup guesses tax/HSN. D06 must reuse the engine but enforce conversational explicit tax/UOM, linked proposal ownership, safe retry/resumption and parent failure recovery. Do not replace T05 or claim it release-complete.
+
 ## Conversational DELTA D04 progress — 2026-11-17
 
 - D03 committed `7e8b09e3c64ed198eddddbbc280e40b3d73c8aa8`; draft PR https://github.com/vigneshsinna/zolo-erp-pro/pull/10 stacked on D02.

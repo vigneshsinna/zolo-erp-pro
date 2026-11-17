@@ -251,4 +251,49 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertSame('Terms Supplier', $slots['supplier_query']);
         Http::assertNothingSent();
     }
+
+    public function test_ordinal_supplier_selection_uses_versioned_visible_choices(): void
+    {
+        [$thread, $task] = $this->draft();
+        foreach (['ABC Chennai', 'ABC Erode'] as $name) {
+            \App\Models\Supplier::create(['company_id' => $this->company->id, 'name' => $name, 'phone_number' => '7000000011', 'is_active' => true]);
+        }
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'ABC'];
+        $result = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonCount(2, 'workflow.choices')->json('workflow');
+        $this->assertNotEmpty($result['choice_set_id']);
+        $expected = \App\Models\Supplier::where('company_id', $this->company->id)->where('name', $result['choices'][1]['label'])->value('id');
+        $input['expected_task_revision'] = $result['task_revision'];
+        $input['choice_set_id'] = $result['choice_set_id'];
+        $input['client_turn_id'] = (string) Str::uuid();
+        $input['message'] = 'Use the second supplier';
+        $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.task_id', $task['task_id']);
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame((int) $expected, $slots['supplier_id']);
+        $input['client_turn_id'] = (string) Str::uuid();
+        $this->postJson(route('ai.chat'), $input)->assertConflict();
+        Http::assertNothingSent();
+    }
+
+    public function test_directory_refresh_and_inactive_choice_cannot_select_stale_option(): void
+    {
+        [$thread, $task] = $this->draft();
+        $supplier = \App\Models\Supplier::create(['company_id' => $this->company->id, 'name' => 'Directory Supplier', 'phone_number' => '7000000011', 'is_active' => true]);
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'show suppliers'];
+        $old = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonCount(1, 'workflow.choices')->json('workflow');
+        $input['client_turn_id'] = (string) Str::uuid();
+        $current = $this->postJson(route('ai.chat'), $input)->assertOk()->json('workflow');
+        $input['message'] = 'Select option';
+        $input['client_turn_id'] = (string) Str::uuid();
+        $input['choice_set_id'] = $old['choice_set_id'];
+        $input['choice_id'] = $old['choices'][0]['choice_id'];
+        $this->postJson(route('ai.chat'), $input)->assertConflict();
+        $input['choice_set_id'] = $current['choice_set_id'];
+        $input['choice_id'] = $current['choices'][0]['choice_id'];
+        $supplier->update(['is_active' => false]);
+        $this->postJson(route('ai.chat'), $input)->assertConflict();
+        $this->assertSame($task['task_revision'], DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
+        Http::assertNothingSent();
+    }
 }
