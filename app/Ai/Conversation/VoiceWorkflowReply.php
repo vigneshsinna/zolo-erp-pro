@@ -29,6 +29,69 @@ final class VoiceWorkflowReply
         return $task;
     }
 
+    /**
+     * First voice instruction in a conversation: no ERP task exists yet.
+     * Require an owned thread and the user's exact confirmed transcript.
+     */
+    public function assertInitialAsset(AiPrincipal $principal, AiMediaAsset $asset, string $threadId): void
+    {
+        if (! DB::table('ai_thread_scopes')->where([
+            'id' => $threadId, 'user_id' => $principal->actorId,
+            'company_id' => $principal->companyId, 'branch_id' => $principal->branchId,
+            'financial_year_id' => $principal->financialYearId, 'status' => 'active',
+        ])->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))->exists()
+            || ! app(AiMediaAssetPolicy::class)->canStageWriteAction($principal, $asset)
+            || $asset->source_kind !== 'audio'
+            || $asset->thread_id !== $threadId
+            || $asset->workflow_task_id !== null
+            || $asset->isExpired()
+            || $asset->isPurged()) {
+            throw new AuthorizationException('Initial voice instruction is unavailable in this workspace.');
+        }
+    }
+
+    /** @return array<string, mixed> */
+    public function consumeInitial(
+        AiPrincipal $principal,
+        AiMediaAsset $asset,
+        AiMediaExtraction $extraction,
+        array $input,
+    ): array {
+        $this->assertInitialAsset($principal, $asset, (string) $input['thread_id']);
+        if (($input['voice_extraction_revision'] ?? null) !== $extraction->revision) {
+            throw new ConflictHttpException('Voice transcript changed. Review the latest transcription.');
+        }
+        $data = $extraction->extracted_json;
+        $transcript = trim((string) ($data['transcript_text'] ?? ''));
+        if (! $extraction->isConfirmed() || (int) $extraction->confirmed_by !== $principal->actorId
+            || $transcript === '' || ($data['language_supported'] ?? true) !== true
+            || trim((string) $input['message']) !== $transcript) {
+            throw ValidationException::withMessages([
+                'voice' => 'Review and confirm the exact voice transcript before starting a task.',
+            ]);
+        }
+
+        $intent = app(VoiceIntentResolver::class)->resolve($transcript);
+        if ($intent === null) {
+            throw ValidationException::withMessages([
+                'voice' => 'The requested transaction is unclear. Say or type "Create a purchase order" explicitly.',
+            ]);
+        }
+        if ($intent !== 'purchase_order.create.v1') {
+            throw ValidationException::withMessages([
+                'voice' => 'This conversational workflow supports Purchase Orders. The request for a different transaction was not converted or staged.',
+            ]);
+        }
+
+        return [
+            'media_id' => $asset->id,
+            'extraction_id' => $extraction->id,
+            'extraction_revision' => $extraction->revision,
+            'confirmed_intent' => $intent,
+            'warnings' => array_values($data['warnings'] ?? []),
+        ];
+    }
+
     public function assertAsset(AiPrincipal $principal, AiMediaAsset $asset, string $threadId, string $taskId): void
     {
         if (!app(AiMediaAssetPolicy::class)->canStageWriteAction($principal, $asset)
