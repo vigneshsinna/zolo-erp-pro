@@ -155,7 +155,7 @@ final class PurchaseOrderRequirementsProvider implements ActionRequirementsProvi
                 dependencies: ['supplier_id', 'payment_terms_type'],
                 requiredWhen: fn (array $slots): bool => ($slots['payment_terms_type'] ?? '') === 'credit',
                 defaultPolicy: fn (WorkflowTaskContext $ctx, array $slots) => ($slots['payment_terms_type'] ?? '') === 'cash'
-                    ? 0 : (config('erp_ai.conversation_enabled', false) ? null : $supplierDays($ctx, $slots)),
+                    ? 0 : (config('erp_ai.conversation_enabled', false) ? null : $supplierDays($ctx, $slots))),
             new ActionFieldRequirement(
                 fieldPath: 'order_discount',
                 label: 'Order Discount',
