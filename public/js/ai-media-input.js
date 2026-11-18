@@ -593,6 +593,26 @@
     function renderUnifiedWorkflowCard(res, companionText, stagedRef, mount) {
         const ws = getWs();
         const aiBaseUrl = resolveAiBaseUrl();
+        const actionCandidates = [
+            res.action_key,
+            res.task?.action_key,
+            res.clarification?.action_key,
+            res.proposal?.action_key,
+            res.proposal?.preview?.action_key,
+            res.normalized_input?.intent_key,
+        ].filter(Boolean);
+        const actionTypes = new Set(actionCandidates);
+        const allowedActions = new Set([
+            'purchase_order.create.v1', 'purchase_bill.create.v1',
+            'sales_order.create.v1', 'sales_invoice.create.v1',
+        ]);
+        if (actionTypes.size !== 1 || !allowedActions.has(actionCandidates[0])) {
+            const warning = $('<section class="alert alert-warning my-3" role="alert"></section>')
+                .text('The requested ERP transaction type is missing or conflicting. Nothing was prepared or approved. Confirm the intended transaction in chat.');
+            (mount || $('#chat-messages')).append(warning);
+            return;
+        }
+        const verifiedActionKey = actionCandidates[0];
         const media = res.media || {};
         const extraction = res.extraction || {};
         const taskId = res.task_id || (res.task && res.task.id) || media.workflow_task_id;
@@ -646,7 +666,7 @@
             payload = payload || {};
 
             const ext = (currentRes.extraction && currentRes.extraction.extracted) || (res.extraction && res.extraction.extracted) || {};
-            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');
@@ -817,7 +837,7 @@
 
         function renderBookedView(receipt) {
             const refNo = (receipt && receipt.details && receipt.details.reference_no) || (receipt && receipt.resource_id) || 'PR-BOOKED';
-            const actionKey = currentRes.action_key || (currentRes.proposal && currentRes.proposal.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || (currentRes.proposal && currentRes.proposal.action_key) || verifiedActionKey;
             const isPo = (actionKey === 'purchase_order.create.v1');
             const resId = (receipt && receipt.resource_id) || (receipt && receipt.details && (receipt.details.purchase_id || receipt.details.purchase_order_id || receipt.details.id)) || (receipt && receipt.details && receipt.details.reference_no);
             const docLabel = isPo ? 'Purchase Order' : 'Purchase Bill';
@@ -861,7 +881,7 @@
             const mediaObj = currentRes.media || res.media || {};
             const confirmed = clarifyObj.confirmed_fields || (taskObj && taskObj.confirmed_fields) || {};
             const norm = (taskObj && taskObj.normalized_input) || {};
-            const actionKey = currentRes.action_key || proposal.action_key || (taskObj && (taskObj.action_key || taskObj.intent_action)) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (taskObj && (taskObj.action_key || taskObj.intent_action)) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.indexOf('purchase') !== -1;
@@ -1673,7 +1693,7 @@
             preview = preview || {};
             const ext = (currentRes.extraction && currentRes.extraction.extracted) || (res.extraction && res.extraction.extracted) || {};
             const currentTaskId = currentRes.task_id || (currentRes.task && currentRes.task.id) || taskId;
-            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');
