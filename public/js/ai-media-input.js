@@ -2701,6 +2701,9 @@
         hasStagedAttachment: function () {
             return stagedAttachment !== null;
         },
+        hasStagedVoiceAttachment: function () {
+            return stagedAttachment !== null && stagedAttachment.isAudio === true;
+        },
         clearStagedAttachment: clearStagedAttachment,
         stageFile: stageFile,
         submitStagedAttachment: submitStagedAttachment,
