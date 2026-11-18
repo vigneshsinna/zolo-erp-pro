@@ -75,7 +75,7 @@ final class ConversationalSlotInterpreter
         }
         \Illuminate\Support\Facades\Validator::make($result, [
             'turn_intent' => 'required|in:continue_task,unknown',
-            'corrections' => 'required|array|max:20', 'corrections.*' => 'array:field,value,operation,line_id',
+            'corrections' => 'present|array|max:20', 'corrections.*' => 'array:field,value,operation,line_id',
             'corrections.*.field' => 'required|string|max:100',
             'corrections.*.value' => 'present', 'corrections.*.operation' => 'nullable|in:set,add_line,change_line,remove_line',
             'corrections.*.line_id' => 'nullable|string|max:100', 'warnings' => 'present|array|max:10', 'warnings.*' => 'string|max:300',
