@@ -11,7 +11,8 @@ const taskId = '22222222-2222-4222-8222-222222222222';
 const choiceSet = '33333333-3333-4333-8333-333333333333';
 const directoryProductChoice = '77777777-7777-4777-8777-777777777777';
 const directorySupplierChoice = '88888888-8888-4888-8888-888888888888';
-const requests = [], errors = [];
+const requests = [], errors = [], patches = [];
+const taskSlots = {date: '2026-11-17', items: []};
 let revision = 2, conflict = false, readyWorkflow = null;
 let approvals = 0;
 const mediaId = '55555555-5555-4555-8555-555555555555';
@@ -47,6 +48,9 @@ await context.route('**/*', async route => {
             state.choices = ['ABC Chennai', 'ABC Erode'].map((label, index) => ({choice_id: `44444444-4444-4444-8444-44444444444${index}`, label, field: 'supplier_id', entity_type: 'supplier'}));
         } else if (body.choice_id) {
             state.task_revision = ++revision;
+            if (body.choice_id === directoryProductChoice) {
+                taskSlots.items = [{client_line_id: 'line-fixture', product_id: 77, qty: '', net_unit_cost: ''}];
+            }
             state.confirmed_fields = body.choice_id === directoryProductChoice
                 ? [{field: 'items[line-fixture].product_id', label: 'Line 1 Product', display: 'Cotton Shirt Blue', source: 'user_selected'}]
                 : [{field: 'supplier_id', label: 'Supplier', display: 'ABC Erode', source: 'user_selected'}];
@@ -61,7 +65,19 @@ await context.route('**/*', async route => {
         }
         return route.fulfill({json: {thread_id: threadId, interaction_type: 'workflow_continuation', workflow: state, message: state.message, sources: [], warnings: [], facts: []}});
     }
-    if (url.pathname === `/ai/workflow-tasks/${taskId}`) return route.fulfill({json: {task: {id: taskId, revision, status: readyWorkflow ? 'proposal_created' : 'collecting', action_key: 'purchase_order.create.v1'}, clarification: workflow(), evaluation: {is_ready: Boolean(readyWorkflow)}}});
+    if (url.pathname === \`/ai/workflow-tasks/\${taskId}/inputs\` && request.method() === 'PATCH') {
+        const body = request.postDataJSON();
+        assert.equal(body.expected_revision, revision);
+        patches.push(body);
+        body.corrections.forEach(correction => {
+            const match = correction.field.match(/^items\[line-fixture\]\.(qty|net_unit_cost)$/);
+            if (match) taskSlots.items[0][match[1]] = correction.value;
+            else taskSlots[correction.field] = correction.value;
+        });
+        revision++;
+        return route.fulfill({json: {task: {id: taskId, revision}, evaluation: {is_ready: false}, clarification: workflow()}});
+    }
+    if (url.pathname === \`/ai/workflow-tasks/\${taskId}\`) return route.fulfill({json: {task: {id: taskId, revision, slots: taskSlots, status: readyWorkflow ? 'proposal_created' : 'collecting', action_key: 'purchase_order.create.v1'}, clarification: workflow(), evaluation: {is_ready: Boolean(readyWorkflow)}}});
     if (url.pathname === `/ai/workflow-tasks/${taskId}/prepare-proposal`) return route.fulfill({json: {task_revision: revision, proposal: {id: readyWorkflow.proposal_id, version: 1, preview: readyWorkflow.preview}}});
     if (url.pathname === '/ai/proposals/66666666-6666-4666-8666-666666666666/approve') {
         approvals++;
@@ -94,12 +110,15 @@ try {
     const initialRevision = revision;
     await page.locator('#chat-input').fill('can you tell me what are the suppliers and products available?');
     await page.locator('#btn-send').click();
-    await page.locator('.ai-conversation-directory').first().getByText('ABC Test Traders').waitFor();
-    await page.locator('.ai-conversation-directory').last().getByText(/Cotton Shirt Blue/).waitFor();
-    assert.equal(await page.locator('.ai-conversation-directory').count(), 2, 'Both ERP directories appear in the same draft card');
-    await page.locator('.ai-conversation-directory').last().getByRole('button', {name: 'Create new product'}).click();
-    await page.getByRole('textbox', {name: 'New product name'}).waitFor();
-    await page.locator('.ai-conversation-directory').last().getByRole('button', {name: /Add product: Cotton Shirt Blue/}).click();
+    const supplierPanel = page.locator('.ai-po-section').filter({has: page.getByText('Supplier *', {exact: true})}).first();
+    const productPanel = page.locator('.ai-po-section').filter({has: page.getByText('Products, Quantities & Rates *', {exact: true})}).first();
+    await supplierPanel.getByRole('button', {name: 'ABC Test Traders'}).waitFor();
+    await productPanel.getByRole('button', {name: /Cotton Shirt Blue/}).waitFor();
+    assert.equal(await page.locator('.ai-po-workspace').count(), 1, 'One comprehensive Purchase Order workspace');
+    assert.equal(await page.locator('.ai-po-section').count() >= 5, true, 'Supplier, warehouse, items and terms visible together');
+    await productPanel.getByRole('button', {name: 'Create new product'}).click();
+    await productPanel.getByRole('textbox', {name: 'New product name'}).waitFor();
+    await productPanel.getByRole('button', {name: /Cotton Shirt Blue/}).click();
     assert.equal(requests.at(-1).choice_set_id, choiceSet);
     assert.equal(requests.at(-1).choice_id, directoryProductChoice);
     assert.equal(requests.at(-1).active_task_id, taskId);
@@ -108,9 +127,21 @@ try {
     assert.equal(revision, initialRevision + 1, 'Browsing does not mutate, selecting a product does');
     assert.equal(requests.at(-1).active_task_id, taskId);
     assert.equal(await page.locator('.ai-conversation-task').count(), 1);
+    await page.locator('.ai-po-line-inputs input').first().waitFor();
+    await page.locator('.ai-po-line-inputs input').first().fill('10');
+    await page.locator('.ai-po-line-inputs input').nth(1).fill('600');
+    await page.getByRole('button', {name: 'Apply details & revalidate'}).click();
+    await page.waitForFunction(() => window.__poTestPatchCount?.() === 1, null, {timeout: 2000}).catch(async () => {
+        assert.equal(patches.length, 1);
+    });
+    assert.equal(patches.length, 1, 'Changes from the complete UI use one revisioned patch');
+    assert.deepEqual(patches[0].corrections.map(x => x.field).sort(),
+        ['items[line-fixture].net_unit_cost', 'items[line-fixture].qty']);
+    assert.equal(taskSlots.items[0].net_unit_cost, '600');
+    assert.equal(taskSlots.items[0].qty, '10');
     await page.locator('#chat-input').fill('ABC');
     await page.locator('#btn-send').click();
-    await page.getByRole('button', {name: '2. ABC Erode', exact: true}).focus();
+    await page.getByRole('button', {name: 'ABC Erode', exact: true}).focus();
     await page.keyboard.press('Enter');
     await page.locator('.ai-conversation-task').getByText('ABC Erode', {exact: false}).waitFor();
     assert.equal(requests.at(-1).choice_set_id, choiceSet);
@@ -164,5 +195,5 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Long multi-line preview fits mobile');
     assert.ok((await page.locator('.ai-conversation-task .table-responsive').first().boundingBox()).height <= 360, 'Long preview has bounded scroll region');
     assert.deepEqual(errors, []);
-    console.log('PASS read-only supplier/product directory, conversation desktop/mobile, keyboard choices, same-card updates, 409 recovery, confirmed voice, reload, explicit signed-version approval receipt and 25 long lines (mocked API)');
+    console.log('PASS consolidated PO form with batch revisioned edits, inline supplier/product choices, conversation desktop/mobile, keyboard, 409, voice, reload, final approval and receipt (mocked API)');
 } finally { await browser.close(); }
