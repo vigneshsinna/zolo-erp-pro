@@ -84,6 +84,10 @@
         }
         const details = $('<div class="ai-conversation-details"></div>');
         root.append($('<button type="button" data-conversation-action class="btn btn-sm btn-outline-secondary mb-2">Detail controls</button>').on('click', async () => {
+            if (details.children().length > 0) {
+                details.empty();
+                return;
+            }
             try {
                 const result = await request('GET', '/workflow-tasks/' + state.task_id);
                 details.empty();
