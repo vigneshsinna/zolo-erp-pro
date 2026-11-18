@@ -61,6 +61,29 @@
         (state.choices || []).forEach((choice, index) => choices.append($('<button type="button" data-conversation-action class="btn btn-sm btn-outline-primary mr-2 mb-2"></button>')
             .text((index + 1) + '. ' + choice.label).on('click', () => submit('Select option', {choice_set_id: state.choice_set_id, choice_id: choice.choice_id}))));
         root.append(choices);
+        // A read-only directory enquiry can return several entity types at once.
+        // These records are informational until the user explicitly selects a
+        // valid choice or supplies the product and quantity for a draft line.
+        (state.directories || []).forEach(directory => {
+            const names = {supplier: 'Suppliers', product: 'Products', warehouse: 'Warehouses', unit: 'Units'};
+            const panel = $('<section class="ai-conversation-directory border rounded p-2 mb-2"></section>');
+            panel.append($('<strong class="d-block mb-1"></strong>').text(names[directory.entity_type] || 'Available records'));
+            const items = directory.items || [];
+            if (!items.length) {
+                panel.append($('<p class="small text-muted mb-0"></p>').text('No matching eligible records.'));
+            } else {
+                const list = $('<ul class="small mb-1 pl-3"></ul>');
+                items.forEach(item => {
+                    const label = item.name + (item.code && directory.entity_type !== 'supplier' ? ' (' + item.code + ')' : '');
+                    list.append($('<li></li>').text(label));
+                });
+                panel.append(list);
+            }
+            if (directory.has_more) {
+                panel.append($('<p class="small text-muted mb-0"></p>').text('Showing the first results. Use Detail controls to search further.'));
+            }
+            root.append(panel);
+        });
         if (state.master_required_inputs) root.append($('<p class="small"></p>').text('Master details needed: ' + Object.keys(state.master_required_inputs).join(', ') + '. Reply with named fields, for example “address Erode” or “SKU CTN-001; unit Pairs; tax category GST 5%; HSN 5205”.'));
         (state.warnings || []).forEach(warning => root.append($('<p class="small text-warning"></p>').text(warning)));
         if (state.master_proposal) {
