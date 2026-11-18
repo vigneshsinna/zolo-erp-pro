@@ -706,6 +706,50 @@ class ActiveTaskRoutingTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_complete_po_workspace_can_patch_several_fields_together_and_still_requires_approval(): void
+    {
+        $product = $this->createCatalogueFixtureProduct();
+        $warehouse = \App\Models\Warehouse::forceCreate([
+            'company_id' => $this->company->id, 'branch_id' => $this->branchId,
+            'name' => 'Warehouse for selection', 'is_active' => true,
+        ]);
+        [$thread, $task] = $this->draft();
+        $productChoice = collect($task['choices'])->firstWhere('entity_type', 'product');
+        $selected = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select option',
+            'choice_set_id' => $task['choice_set_id'], 'choice_id' => $productChoice['choice_id'],
+        ])->assertOk()->json('workflow');
+
+        $lineId = collect(json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])
+            ->value('slots_json'), true)['items'])->first()['client_line_id'];
+        $patch = $this->patchJson('/ai/workflow-tasks/'.$task['task_id'].'/inputs', [
+            'expected_revision' => $selected['task_revision'],
+            'corrections' => [
+                ['field' => 'items['.$lineId.'].qty', 'value' => '10', 'confirmation' => 'user_edited'],
+                ['field' => 'items['.$lineId.'].net_unit_cost', 'value' => '600', 'confirmation' => 'user_edited'],
+                ['field' => 'warehouse_id', 'value' => $warehouse->id, 'confirmation' => 'user_edited'],
+                ['field' => 'date', 'value' => '2026-11-18', 'confirmation' => 'user_edited'],
+                ['field' => 'payment_terms_type', 'value' => 'credit', 'confirmation' => 'user_edited'],
+                ['field' => 'credit_days', 'value' => 30, 'confirmation' => 'user_edited'],
+            ],
+        ])->assertOk()->json();
+        $this->assertSame($selected['task_revision'] + 1, $patch['task']['revision']);
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])
+            ->value('slots_json'), true);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        $this->assertSame('10.00', $slots['items'][0]['qty']);
+        $this->assertSame('600.00', $slots['items'][0]['net_unit_cost']);
+        $this->assertSame($warehouse->id, $slots['warehouse_id']);
+        $this->assertSame('credit', $slots['payment_terms_type']);
+        $this->assertSame(30, $slots['credit_days']);
+        $this->assertSame('2026-11-18', $slots['date']);
+        $this->assertContains('supplier_id', array_column($patch['evaluation']['required_inputs'], 'field'));
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
     public function test_rate_correction_requires_exactly_one_line_and_never_invents_amounts(): void
     {
         $interpreter = app(\App\Ai\Conversation\ConversationalSlotInterpreter::class);
