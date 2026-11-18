@@ -211,6 +211,19 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertFalse($intent->isReadOnlyQuestion('Create a new supplier ABC Traders'));
     }
 
+    public function test_model_parser_accepts_a_read_only_no_change_result(): void
+    {
+        [$thread, $task] = $this->draft();
+        $row = (array) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->first();
+        $parsed = app(\App\Ai\Conversation\ConversationalSlotInterpreter::class)->validateModelResult(
+            $row, ['turn_intent' => 'unknown', 'corrections' => [], 'warnings' => []],
+        );
+        $this->assertSame('unknown', $parsed['turn_intent']);
+        $this->assertSame([], $parsed['corrections']);
+        $this->assertSame($task['task_revision'], (int) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
+        Http::assertNothingSent();
+    }
+
     protected function draft(): array
     {
         $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
