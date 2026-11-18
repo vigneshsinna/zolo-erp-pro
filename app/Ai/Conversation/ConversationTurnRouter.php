@@ -69,17 +69,41 @@ final class ConversationTurnRouter
             $task = $tasks[0];
             app(ActionSecurity::class)->definition($task['action_key'], $principal);
         }
-        $directory = preg_match('/^(?:show|list|find|search)\s+(suppliers?|warehouses?|products?|units?)(?:\s+(?:for\s+)?(.+))?$/i', $message, $directoryMatch);
-        if (!$directory && preg_match('/^(?:who|what|how|show|list|report)\b/i', $message)) {
+        $directoryTypes = app(ConversationDirectoryIntent::class)->types($message);
+        // Read-only questions must not be sent through the correction model.
+        if ($directoryTypes === [] && app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
             return null;
         }
         if (preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $message)) {
             return $this->summary($task, 'The purchase draft is preserved. Select or start a separate operation explicitly.');
         }
-        if ($directory) {
-            $issue = app(ConversationChoices::class)->directory($principal, $task, rtrim(strtolower($directoryMatch[1]), 's'), $directoryMatch[2] ?? '');
-            $result = $this->summary($task, $issue['candidates'] === [] ? 'No eligible matches. Correct the name, search again, or request approved master creation.' : 'Choose an eligible record by name, number or option button.');
-            $result['required_inputs'] = [$issue];
+        if ($directoryTypes !== []) {
+            $issues = [];
+            $directories = [];
+            foreach ($directoryTypes as $type) {
+                $query = app(ConversationDirectoryIntent::class)->query($message, $type, count($directoryTypes));
+                $issue = app(ConversationChoices::class)->directory($principal, $task, $type, $query);
+                $directories[] = [
+                    'entity_type' => $type,
+                    'items' => array_map(static fn (array $candidate): array => [
+                        'name' => (string) ($candidate['name'] ?? $candidate['label'] ?? ''),
+                        'code' => (string) ($candidate['code'] ?? ''),
+                    ], $issue['candidates']),
+                    'total' => (int) ($issue['total'] ?? count($issue['candidates'])),
+                    'has_more' => (bool) ($issue['has_more'] ?? false),
+                ];
+                // A product/unit can only be selected when the task has one stable draft line.
+                if (in_array($type, ['supplier', 'warehouse'], true)
+                    || str_starts_with($issue['field'], 'items[')) {
+                    $issues[] = $issue;
+                }
+            }
+            $result = $this->summary($task, 'Here are the eligible records in your company. Choose an option or tell me which product and quantity to add.');
+            if (array_sum(array_map(static fn (array $directory): int => count($directory['items']), $directories)) === 0) {
+                $result['message'] = 'No eligible matches found. Try another name or request approved master creation.';
+            }
+            $result['required_inputs'] = $issues;
+            $result['directories'] = $directories;
         } elseif (preg_match('/^cancel\b/i', $message)) {
             $this->assertRevision($task, $input);
             if ($task['linked_proposal_id']) {
@@ -129,7 +153,7 @@ final class ConversationTurnRouter
             $result['warnings'] = array_values(array_unique([...$parsed['warnings'], ...($input['voice_source']['warnings'] ?? [])]));
         }
         $task = $this->state->getTask($principal, $task['id']);
-        if (($result['status'] ?? '') === 'needs_input' && !$directory) {
+        if (($result['status'] ?? '') === 'needs_input' && $directoryTypes === []) {
             $missing = array_column(array_filter($result['required_inputs'] ?? [], fn ($issue) => ($issue['status'] ?? '') === 'missing'), 'field');
             if (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
                 $result['message'] = 'Which supplier and products/quantities should I use?';
@@ -156,7 +180,8 @@ final class ConversationTurnRouter
             return null;
         }
         $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
-        if (count($tasks) !== 1 || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
+        if (count($tasks) !== 1 || app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($input['message'])
+            || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
             || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])
             || preg_match('/^(?:find|search)\s+(?:suppliers?|warehouses?|products?|units?)\b/i', $input['message'])
             || app(ConversationChoices::class)->isSelection($input['message'], $input)) {
