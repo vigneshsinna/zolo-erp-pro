@@ -112,8 +112,9 @@ class ProductAliasTest extends CommercialTestCase
     {
         foreach (['sale', 'purchase'] as $kind) {
             $view = file_get_contents(resource_path('views/backend/'.$kind.'/index.blade.php'));
-            $this->assertSame(4, substr_count($view, "allProducts, '$kind', matchesProductMode"));
-            $this->assertSame(2, substr_count($view, 'CommercialProductLookup.exact(matches, val)'));
+            // Two autocomplete sources, two Enter handlers and the row change fallback share the lookup.
+            $this->assertSame(5, substr_count($view, "allProducts, '$kind', matchesProductMode"));
+            $this->assertSame(3, substr_count($view, 'CommercialProductLookup.exact(matches, val)'));
             $this->assertStringContainsString('autoFocus: false', $view);
         }
     }

@@ -611,7 +611,7 @@
             payload = payload || {};
 
             const ext = (currentRes.extraction && currentRes.extraction.extracted) || (res.extraction && res.extraction.extracted) || {};
-            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');
@@ -826,7 +826,7 @@
             const mediaObj = currentRes.media || res.media || {};
             const confirmed = clarifyObj.confirmed_fields || (taskObj && taskObj.confirmed_fields) || {};
             const norm = (taskObj && taskObj.normalized_input) || {};
-            const actionKey = currentRes.action_key || proposal.action_key || (taskObj && taskObj.intent_action) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (taskObj && (taskObj.action_key || taskObj.intent_action)) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.indexOf('purchase') !== -1;
@@ -1638,7 +1638,7 @@
             preview = preview || {};
             const ext = (currentRes.extraction && currentRes.extraction.extracted) || (res.extraction && res.extraction.extracted) || {};
             const currentTaskId = currentRes.task_id || (currentRes.task && currentRes.task.id) || taskId;
-            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');

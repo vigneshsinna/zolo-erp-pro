@@ -76,7 +76,7 @@ final class ConcurrentCreditLoadTest extends TestCase
         $this->runConcurrentReservationProfile(20, walletCredits: 100, reservePerUser: 15);
     }
 
-    public function test_concurrent_duplicate_payment_webhooks_grant_credits_exactly_once(): void
+    public function test_repeated_payment_webhooks_grant_credits_exactly_once(): void
     {
         $topupService = app(AiTopupService::class);
         $creditMeter = app(AiCreditMeter::class);
@@ -92,7 +92,7 @@ final class ConcurrentCreditLoadTest extends TestCase
         $eventId = 'evt_' . uniqid();
         $paymentId = 'pay_' . uniqid();
 
-        // Simulate 5 concurrent webhook calls delivering identical payment event
+        // Retry the same payment event five times.
         $results = [];
         for ($i = 0; $i < 5; $i++) {
             $results[] = $topupService->recordPaymentSuccess(
@@ -100,7 +100,8 @@ final class ConcurrentCreditLoadTest extends TestCase
                 $paymentId,
                 $eventId,
                 'razorpay',
-                ['amount' => 19900]
+                ['status' => 'captured', 'amount' => $order->amount_minor_inr + $order->tax_minor_inr,
+                    'currency' => 'INR', 'order_id' => $order->provider_order_id, 'id' => $paymentId]
             );
         }
 
@@ -110,7 +111,7 @@ final class ConcurrentCreditLoadTest extends TestCase
         $this->assertEquals(
             $initialBalance->topupsGranted + 5000,
             $finalBalance->topupsGranted,
-            'Concurrent payment webhooks must grant top-up credits exactly once.'
+            'Repeated payment webhooks must grant top-up credits exactly once.'
         );
 
         // Exactly one ledger row

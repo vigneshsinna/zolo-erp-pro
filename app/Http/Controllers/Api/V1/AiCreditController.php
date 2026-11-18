@@ -205,12 +205,13 @@ class AiCreditController extends Controller
 
         $payload = $request->json()->all();
         $paymentEntity = $payload['payload']['payment']['entity'] ?? $payload;
-        $orderId = (string) ($paymentEntity['order_id'] ?? $payload['order_id'] ?? '');
-        $paymentId = (string) ($paymentEntity['id'] ?? $payload['payment_id'] ?? 'pay_' . Str::random(12));
-        $eventId = (string) ($payload['event_id'] ?? $payload['id'] ?? $paymentId);
+        $orderId = $paymentEntity['order_id'] ?? null;
+        $paymentId = $paymentEntity['id'] ?? $paymentEntity['payment_id'] ?? null;
+        $eventId = $payload['event_id'] ?? $payload['id'] ?? $paymentId;
 
-        if (empty($orderId)) {
-            return response()->json(['success' => false, 'error' => 'Missing order_id in webhook payload.'], 422);
+        if (! is_string($orderId) || $orderId === '' || ! is_string($paymentId) || $paymentId === ''
+            || ! is_string($eventId) || $eventId === '') {
+            return response()->json(['success' => false, 'error' => 'Invalid order, payment or event identity in webhook payload.'], 422);
         }
 
         try {

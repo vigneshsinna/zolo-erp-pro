@@ -34,6 +34,8 @@ abstract class CompanyContextTestCase extends ErpServiceTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        (require database_path('migrations/2024_07_05_194501_add_is_packing_and_delivered_to_product_sales_table.php'))->up();
+        (require database_path('migrations/2026_11_11_000001_add_optical_prescription_columns_to_product_sales_table.php'))->up();
         CarbonImmutable::setTestNow('2026-10-03 06:00:00 UTC');
         Schema::create('users', function (Blueprint $table) {
             $table->increments('id');
