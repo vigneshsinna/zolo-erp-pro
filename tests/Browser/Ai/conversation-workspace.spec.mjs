@@ -9,6 +9,8 @@ const publicRoot = path.resolve('public');
 const threadId = '11111111-1111-4111-8111-111111111111';
 const taskId = '22222222-2222-4222-8222-222222222222';
 const choiceSet = '33333333-3333-4333-8333-333333333333';
+const directoryProductChoice = '77777777-7777-4777-8777-777777777777';
+const directorySupplierChoice = '88888888-8888-4888-8888-888888888888';
 const requests = [], errors = [];
 let revision = 2, conflict = false, readyWorkflow = null;
 let approvals = 0;
@@ -31,14 +33,23 @@ await context.route('**/*', async route => {
         if (body.message === 'can you tell me what are the suppliers and products available?') {
             state.message = 'Here are the existing suppliers and products.';
             state.directories = [
-                {entity_type: 'supplier', items: [{name: 'ABC Test Traders'}], total: 1, has_more: false},
-                {entity_type: 'product', items: [{name: 'Cotton Shirt Blue', code: 'CSB-001'}], total: 1, has_more: false},
+                {entity_type: 'supplier', items: [{name: 'ABC Test Traders'}], total: 1, has_more: false, can_create: true},
+                {entity_type: 'product', items: [{name: 'Cotton Shirt Blue', code: 'CSB-001'}], total: 1, has_more: false, can_create: true},
+            ];
+            state.choice_set_id = choiceSet;
+            state.choices = [
+                {choice_id: directorySupplierChoice, label: 'ABC Test Traders', name: 'ABC Test Traders', field: 'supplier_id', entity_type: 'supplier'},
+                {choice_id: directoryProductChoice, label: 'Cotton Shirt Blue (SKU: CSB-001)', name: 'Cotton Shirt Blue',
+                    code: 'CSB-001', field: 'items[line-fixture].product_id', entity_type: 'product'},
             ];
         } else if (body.message === 'ABC') {
             state.task_revision = ++revision; state.choice_set_id = choiceSet;
             state.choices = ['ABC Chennai', 'ABC Erode'].map((label, index) => ({choice_id: `44444444-4444-4444-8444-44444444444${index}`, label, field: 'supplier_id', entity_type: 'supplier'}));
         } else if (body.choice_id) {
-            state.task_revision = ++revision; state.confirmed_fields = [{field: 'supplier_id', label: 'Supplier', display: 'ABC Erode', source: 'user_selected'}];
+            state.task_revision = ++revision;
+            state.confirmed_fields = body.choice_id === directoryProductChoice
+                ? [{field: 'items[line-fixture].product_id', label: 'Line 1 Product', display: 'Cotton Shirt Blue', source: 'user_selected'}]
+                : [{field: 'supplier_id', label: 'Supplier', display: 'ABC Erode', source: 'user_selected'}];
         } else if (body.message === 'Cash') {
             state.task_revision = ++revision; state.confirmed_fields = [{field: 'payment_terms_type', label: 'Commercial terms', display: 'cash', source: 'user'}];
         } else if (body.media_ids) {
@@ -86,7 +97,15 @@ try {
     await page.locator('.ai-conversation-directory').first().getByText('ABC Test Traders').waitFor();
     await page.locator('.ai-conversation-directory').last().getByText(/Cotton Shirt Blue/).waitFor();
     assert.equal(await page.locator('.ai-conversation-directory').count(), 2, 'Both ERP directories appear in the same draft card');
-    assert.equal(revision, initialRevision, 'A read-only directory question must not update the PO');
+    await page.locator('.ai-conversation-directory').last().getByRole('button', {name: 'Create new product'}).click();
+    await page.getByRole('textbox', {name: 'New product name'}).waitFor();
+    await page.locator('.ai-conversation-directory').last().getByRole('button', {name: /Add product: Cotton Shirt Blue/}).click();
+    assert.equal(requests.at(-1).choice_set_id, choiceSet);
+    assert.equal(requests.at(-1).choice_id, directoryProductChoice);
+    assert.equal(requests.at(-1).active_task_id, taskId);
+    await page.locator('.ai-conversation-task').getByText('Cotton Shirt Blue', {exact: false}).waitFor();
+    assert.equal(await page.locator('.ai-conversation-task').count(), 1, 'Clicking a product reuses the same draft card');
+    assert.equal(revision, initialRevision + 1, 'Browsing does not mutate, selecting a product does');
     assert.equal(requests.at(-1).active_task_id, taskId);
     assert.equal(await page.locator('.ai-conversation-task').count(), 1);
     await page.locator('#chat-input').fill('ABC');

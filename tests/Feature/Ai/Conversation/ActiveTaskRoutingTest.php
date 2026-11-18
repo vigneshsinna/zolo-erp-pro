@@ -201,6 +201,102 @@ class ActiveTaskRoutingTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_initial_po_shows_versioned_supplier_and_product_choices_without_adding_items(): void
+    {
+        $product = $this->createCatalogueFixtureProduct();
+        $supplier = \App\Models\Supplier::create([
+            'company_id' => $this->company->id, 'name' => 'Selectable Supplier',
+            'phone_number' => '7000000011', 'is_active' => true,
+        ]);
+        [$thread, $task] = $this->draft();
+        $choices = collect($task['choices'] ?? []);
+        $productChoices = $choices->where('entity_type', 'product')->values();
+        $supplierChoices = $choices->where('entity_type', 'supplier')->values();
+        $this->assertNotEmpty($task['choice_set_id']);
+        $this->assertCount(1, $productChoices);
+        $this->assertCount(1, $supplierChoices);
+        $this->assertContains('product', array_column($task['directories'], 'entity_type'));
+        $this->assertContains('supplier', array_column($task['directories'], 'entity_type'));
+        $this->assertSame([], json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true)['items'] ?? []);
+
+        $selected = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select option', 'choice_set_id' => $task['choice_set_id'],
+            'choice_id' => $productChoices[0]['choice_id'],
+        ])->assertOk()->json('workflow');
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertCount(1, $slots['items']);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        $this->assertArrayNotHasKey('qty', $slots['items'][0]);
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+
+        $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $selected['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => '100 pairs at 500',
+        ])->assertOk()->assertJsonPath('workflow.task_id', $task['task_id']);
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame('100.00', $slots['items'][0]['qty']);
+        $this->assertSame('500.00', $slots['items'][0]['net_unit_cost']);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_spoken_product_name_and_quantity_select_one_visible_catalogue_record(): void
+    {
+        $product = $this->createCatalogueFixtureProduct();
+        [$thread, $task] = $this->draft();
+        $listing = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'can you tell me what products are available?',
+        ])->assertOk()->assertJsonCount(1, 'workflow.choices')->json('workflow');
+
+        $selected = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $listing['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select Cotton Shirt Blue; 100 pairs at 480',
+            'choice_set_id' => $listing['choice_set_id'],
+        ])->assertOk()->json('workflow');
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertCount(1, $slots['items']);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        $this->assertSame('100.00', $slots['items'][0]['qty']);
+        $this->assertSame('480.00', $slots['items'][0]['net_unit_cost']);
+
+        $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $selected['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select option', 'choice_set_id' => $listing['choice_set_id'],
+            'choice_id' => $listing['choices'][0]['choice_id'],
+        ])->assertConflict();
+        $this->assertSame(1, count(json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true)['items']));
+        Http::assertNothingSent();
+    }
+
+    private function createCatalogueFixtureProduct(): \App\Models\Product
+    {
+        $unit = \App\Models\Unit::forceCreate([
+            'company_id' => $this->company->id, 'unit_code' => 'PR'.strtoupper(Str::random(7)),
+            'unit_name' => 'Pairs', 'is_active' => true,
+        ]);
+        $category = \App\Models\Category::forceCreate([
+            'company_id' => $this->company->id, 'name' => 'Conversational Catalogue',
+            'is_active' => true,
+        ]);
+        return \App\Models\Product::forceCreate([
+            'company_id' => $this->company->id, 'name' => 'Cotton Shirt Blue',
+            'code' => 'CSB-'.strtoupper(Str::random(6)),
+            'type' => 'standard', 'barcode_symbology' => 'code128',
+            'category_id' => $category->id, 'cost' => 500, 'price' => 590,
+            'unit_id' => $unit->id, 'purchase_unit_id' => $unit->id,
+            'sale_unit_id' => $unit->id, 'is_active' => true,
+        ]);
+    }
+
     public function test_directory_intent_distinguishes_listing_from_other_read_only_questions(): void
     {
         $intent = app(\App\Ai\Conversation\ConversationDirectoryIntent::class);

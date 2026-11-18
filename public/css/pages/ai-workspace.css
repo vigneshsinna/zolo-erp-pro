@@ -742,6 +742,29 @@ body.dark-mode .ai-workspace-container .text-muted { color: var(--ai-muted) !imp
 .ai-conversation-details:empty, .ai-conversation-summary:empty { display: none; }
 .ai-conversation-task .ai-unified-workflow-wrap { margin-bottom: 0 !important; }
 .ai-conversation-details .table-responsive { min-height: 0 !important; height: auto !important; max-height: 360px; overflow: auto; }
+.ai-conversation-directory-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+    gap: .5rem;
+    margin-bottom: .75rem;
+}
+.ai-conversation-directory-option {
+    min-width: 0;
+    width: 100%;
+    white-space: normal;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+.ai-conversation-directory-search {
+    display: flex;
+    gap: .5rem;
+    align-items: stretch;
+    max-width: 100%;
+}
+.ai-conversation-directory-search .form-control { min-width: 0; flex: 1 1 auto; }
+.ai-conversation-directory-search button { flex: 0 0 auto; }
+.ai-conversation-directory-create[hidden],
+.ai-conversation-directory-create form[hidden] { display: none; }
 @media (max-width: 575px) {
     .ai-active-task-header { padding: .5rem; font-size: .8rem; }
     .ai-conversation-task { padding: .75rem !important; }

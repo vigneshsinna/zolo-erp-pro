@@ -78,32 +78,11 @@ final class ConversationTurnRouter
             return $this->summary($task, 'The purchase draft is preserved. Select or start a separate operation explicitly.');
         }
         if ($directoryTypes !== []) {
-            $issues = [];
-            $directories = [];
-            foreach ($directoryTypes as $type) {
-                $query = app(ConversationDirectoryIntent::class)->query($message, $type, count($directoryTypes));
-                $issue = app(ConversationChoices::class)->directory($principal, $task, $type, $query);
-                $directories[] = [
-                    'entity_type' => $type,
-                    'items' => array_map(static fn (array $candidate): array => [
-                        'name' => (string) ($candidate['name'] ?? $candidate['label'] ?? ''),
-                        'code' => (string) ($candidate['code'] ?? ''),
-                    ], $issue['candidates']),
-                    'total' => (int) ($issue['total'] ?? count($issue['candidates'])),
-                    'has_more' => (bool) ($issue['has_more'] ?? false),
-                ];
-                // A product/unit can only be selected when the task has one stable draft line.
-                if (in_array($type, ['supplier', 'warehouse'], true)
-                    || str_starts_with($issue['field'], 'items[')) {
-                    $issues[] = $issue;
-                }
-            }
-            $result = $this->summary($task, 'Here are the eligible records in your company. Choose an option or tell me which product and quantity to add.');
-            if (array_sum(array_map(static fn (array $directory): int => count($directory['items']), $directories)) === 0) {
-                $result['message'] = 'No eligible matches found. Try another name or request approved master creation.';
-            }
-            $result['required_inputs'] = $issues;
-            $result['directories'] = $directories;
+            $result = $this->withDirectories(
+                $principal, $task,
+                $this->summary($task, 'Here are the eligible records in your company. Choose one or tell me the product and quantity to add.'),
+                $directoryTypes, $message,
+            );
         } elseif (preg_match('/^cancel\b/i', $message)) {
             $this->assertRevision($task, $input);
             if ($task['linked_proposal_id']) {
@@ -124,7 +103,21 @@ final class ConversationTurnRouter
             if (app(ConversationChoices::class)->isSelection($message, $input)) {
                 $selection = app(ConversationChoices::class)->select($principal, $task, $input);
             }
-            $parsed = $interpreter->interpret($task, $selection['remaining_message'] ?? $message);
+            $interpretTask = $task;
+            if ($selection !== null && $selection['remaining_message'] !== '') {
+                // When selecting a product into an empty draft, the remaining spoken
+                // quantity/rate belongs to that newly selected line, not a different line.
+                $previewSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+                foreach ($selection['corrections'] as $selected) {
+                    if (preg_match('/^items\[([a-zA-Z0-9_-]+)\]\.product_id$/D', $selected['field'], $lineMatch)) {
+                        if (!collect($previewSlots['items'] ?? [])->contains('client_line_id', $lineMatch[1])) {
+                            $previewSlots['items'][] = ['client_line_id' => $lineMatch[1]];
+                        }
+                    }
+                }
+                $interpretTask['slots_json'] = json_encode($previewSlots, JSON_THROW_ON_ERROR);
+            }
+            $parsed = $interpreter->interpret($interpretTask, $selection['remaining_message'] ?? $message);
             if ($selection !== null) {
                 $parsed['corrections'] = [...$selection['corrections'], ...$parsed['corrections']];
             }
@@ -155,10 +148,37 @@ final class ConversationTurnRouter
         $task = $this->state->getTask($principal, $task['id']);
         if (($result['status'] ?? '') === 'needs_input' && $directoryTypes === []) {
             $missing = array_column(array_filter($result['required_inputs'] ?? [], fn ($issue) => ($issue['status'] ?? '') === 'missing'), 'field');
-            if (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
-                $result['message'] = 'Which supplier and products/quantities should I use?';
+            $missingQuantities = array_values(array_filter($missing, fn ($field) => str_ends_with((string) $field, '.qty')));
+            if ($missingQuantities !== []) {
+                $result['message'] = count($missingQuantities) === 1
+                    ? 'How many units of the selected product? You can reply “100 pairs at 500” or correct the rate separately.'
+                    : 'Please provide the quantities for the unresolved lines. Use Detail controls to identify a specific line.';
+                if (in_array('supplier_id', $missing, true)) {
+                    $result['message'] .= ' Choose a supplier from the available options as well.';
+                }
+            } elseif (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
+                $result['message'] = 'Choose a supplier and product, then tell me the quantity. You can also search or request a new record.';
             } elseif (in_array('payment_terms_type', $missing, true) && !in_array('supplier_id', $missing, true)) {
                 $result['message'] = 'Cash or Credit terms? For Credit, how many days? No payment is posted by an order.';
+            }
+            // On a new PO or after a record selection, offer the next available
+            // choices. Browsing itself remains read-only; only selection changes slots.
+            if ($tasks === [] || app(ConversationChoices::class)->isSelection($message, $input)) {
+                $next = [];
+                if (in_array('supplier_id', $missing, true)) {
+                    $next[] = 'supplier';
+                }
+                if (in_array('warehouse_id', $missing, true)) {
+                    $next[] = 'warehouse';
+                }
+                if (in_array('items', $missing, true) || collect($result['required_inputs'] ?? [])
+                    ->contains(fn ($issue) => str_ends_with((string) ($issue['field'] ?? ''), '.product_id')
+                        && ($issue['status'] ?? '') === 'missing')) {
+                    $next[] = 'product';
+                }
+                if ($next !== []) {
+                    $result = $this->withDirectories($principal, $task, $result, $next, '', true, 6);
+                }
             }
         }
         $result = app(ConversationChoices::class)->publish($principal, $task, $result);
@@ -219,6 +239,51 @@ final class ConversationTurnRouter
         if (($input['expected_task_revision'] ?? null) !== (int) $task['revision']) {
             throw new ConflictHttpException('Task revision changed. Reload the current draft before applying your reply.');
         }
+    }
+
+
+    /**
+     * Build scoped directory cards and server-versioned options without writing
+     * supplier, product or warehouse IDs into the draft.
+     */
+    private function withDirectories(
+        AiPrincipal $principal,
+        array $task,
+        array $result,
+        array $types,
+        string $message = '',
+        bool $append = false,
+        int $limit = 20,
+    ): array {
+        $issues = $append ? ($result['required_inputs'] ?? []) : [];
+        $directories = [];
+        foreach ($types as $type) {
+            $query = $message === '' ? '' : app(ConversationDirectoryIntent::class)->query($message, $type, count($types));
+            $issue = app(ConversationChoices::class)->directory($principal, $task, $type, $query);
+            $issue['candidates'] = array_slice($issue['candidates'], 0, $limit);
+            $hasMore = (bool) $issue['has_more'] || (int) $issue['total'] > count($issue['candidates']);
+            $directories[] = [
+                'entity_type' => $type,
+                'items' => array_map(static fn (array $candidate): array => [
+                    'name' => (string) ($candidate['name'] ?? $candidate['label'] ?? ''),
+                    'code' => (string) ($candidate['code'] ?? ''),
+                ], $issue['candidates']),
+                'total' => (int) $issue['total'],
+                'has_more' => $hasMore,
+                'can_create' => (bool) $issue['can_create'],
+                'create_disabled_reason' => $issue['create_disabled_reason'],
+            ];
+            if (in_array($type, ['supplier', 'warehouse'], true)
+                || str_starts_with($issue['field'], 'items[')) {
+                $issues[] = $issue;
+            }
+        }
+        $result['required_inputs'] = $issues;
+        $result['directories'] = $directories;
+        if (array_sum(array_map(static fn (array $directory): int => count($directory['items']), $directories)) === 0) {
+            $result['message'] = 'No eligible matches. Search another name or request approved creation of a new record.';
+        }
+        return $result;
     }
 
     private function summary(array $task, string $message): array

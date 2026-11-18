@@ -41,6 +41,18 @@ final class ConversationalSlotInterpreter
             } elseif (preg_match('/^(?:make (?:it|that)|increase quantity to|quantity|qty)\s+(\d+(?:\.\d+)?)\s*(?:instead)?$/i', $part, $m) && count($lines) === 1) {
                 $corrections[] = $this->correction('items['.$lines[0]['client_line_id'].'].qty', $m[1]);
                 $lines[0]['qty'] = $m[1];
+            } elseif (preg_match('/^(?:(?:qty|quantity|add)\s+)?(\d+(?:\.\d+)?)\s+(pairs?|pcs|pieces?|units?|kg|metres?|meters?|mtr)(?:\s+at\s+(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)(?:\s+each)?)?$/iu', $part, $m) && count($lines) === 1) {
+                // After selecting a catalogue product, the next spoken quantity
+                // and optional cost apply only to the one identified draft line.
+                $lineId = $lines[0]['client_line_id'];
+                $corrections[] = $this->correction('items['.$lineId.'].qty', $m[1]);
+                $corrections[] = $this->correction('items['.$lineId.'].uom', $m[2]);
+                $lines[0]['qty'] = $m[1];
+                $lines[0]['uom'] = $m[2];
+                if (isset($m[3]) && $m[3] !== '') {
+                    $corrections[] = $this->correction('items['.$lineId.'].net_unit_cost', $m[3]);
+                    $lines[0]['net_unit_cost'] = $m[3];
+                }
             } elseif (preg_match('/^remove (?:the )?(first|second|third|\d+) item$/i', $part, $m)) {
                 $index = ['first' => 0, 'second' => 1, 'third' => 2][strtolower($m[1])] ?? ((int) $m[1] - 1);
                 if (!isset($lines[$index])) {
@@ -58,6 +70,10 @@ final class ConversationalSlotInterpreter
                 $corrections[] = $this->correction('items', $lines);
             } elseif (preg_match('/^[₹$]?\s*(\d+(?:\.\d+)?)\s+each$/u', $part, $m) && count($lines) === 1) {
                 $corrections[] = $this->correction('items['.$lines[0]['client_line_id'].'].net_unit_cost', $m[1]);
+                $lines[0]['net_unit_cost'] = $m[1];
+            } elseif (preg_match('/^(?:rate|cost|purchase rate)\s*(?:is|:|=)?\s*(?:₹|rs\.?)?\s*(\d+(?:\.\d+)?)$/iu', $part, $m) && count($lines) === 1) {
+                $lineId = $lines[0]['client_line_id'];
+                $corrections[] = $this->correction('items['.$lineId.'].net_unit_cost', $m[1]);
                 $lines[0]['net_unit_cost'] = $m[1];
             } elseif (!isset($slots['supplier_id']) && !isset($slots['supplier_query']) && preg_match('/^[\pL][\pL\pN .&\-]{1,100}$/u', $part)) {
                 $corrections[] = $this->correction('supplier_query', $part);

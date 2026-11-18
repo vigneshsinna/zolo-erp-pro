@@ -18,7 +18,10 @@ final class ConversationChoices
 {
     public function isSelection(string $message, array $input): bool
     {
-        return !empty($input['choice_id']) || (bool) preg_match('/^(?:use |choose |select )?(?:the )?(first|second|third|\d+) (supplier|warehouse|product|unit|one)(?:[;,]|$)/i', trim($message));
+        return !empty($input['choice_id'])
+            || (bool) preg_match('/^(?:use |choose |select |pick )?(?:the )?(first|second|third|\d+) (supplier|warehouse|product|unit|one)(?:[;,\s]|$)/i', trim($message))
+            || (bool) preg_match('/^(?:select|choose|pick)\s+\S/iu', trim($message))
+            || (bool) preg_match('/^(?:use|add)\s+(?:(?:the|existing)\s+)?(?:supplier|warehouse|product|unit)\s+\S/iu', trim($message));
     }
 
     public function select(AiPrincipal $principal, array $task, array $input): array
@@ -35,10 +38,13 @@ final class ConversationChoices
         }
         $remaining = $input['message'];
         if (!empty($input['choice_id'])) {
+            // Clicked choices must carry their exact versioned set; never use an implicit latest set.
+            if (empty($input['choice_set_id'])) {
+                throw new ConflictHttpException('STALE_CHOICE_SET: Refresh the visible options.');
+            }
             $choice = collect($set['choices'])->firstWhere('choice_id', $input['choice_id']);
             $remaining = '';
-        } else {
-            preg_match('/^(?:use |choose |select )?(?:the )?(first|second|third|\d+) (supplier|warehouse|product|unit|one)\s*(?:[;,]\s*)?/i', trim($input['message']), $match);
+        } elseif (preg_match('/^(?:use |choose |select |pick )?(?:the )?(first|second|third|\d+) (supplier|warehouse|product|unit|one)\s*(?:[;,]\s*)?/i', trim($input['message']), $match)) {
             $index = ['first' => 0, 'second' => 1, 'third' => 2][strtolower($match[1])] ?? ((int) $match[1] - 1);
             $choices = array_values(array_filter($set['choices'], fn ($item) => strtolower($match[2]) === 'one' || $item['entity_type'] === strtolower($match[2])));
             if (count(array_unique(array_column($choices, 'field'))) !== 1) {
@@ -46,6 +52,29 @@ final class ConversationChoices
             }
             $choice = $choices[$index] ?? null;
             $remaining = trim(substr(trim($input['message']), strlen($match[0])));
+        } else {
+            // Exact names and displayed SKUs can be spoken without exposing ERP primary keys.
+            $parts = preg_split('/\s*[;,]\s*/u', trim($input['message']), 2);
+            if (!preg_match('/^(?:select|choose|pick|use|add)\s+(?:(?:the|existing)\s+)?(?:(supplier|warehouse|product|unit)\s+)?(.+)$/iu', $parts[0], $named)) {
+                throw ValidationException::withMessages(['choice' => 'Choose a visible record by name, number or button.']);
+            }
+            $type = strtolower((string) ($named[1] ?? ''));
+            $needle = Str::lower(trim($named[2]));
+            $matches = array_values(array_filter($set['choices'], static function (array $item) use ($type, $needle): bool {
+                if ($type !== '' && $item['entity_type'] !== $type) {
+                    return false;
+                }
+                return in_array($needle, array_filter([
+                    Str::lower((string) ($item['name'] ?? '')),
+                    Str::lower((string) ($item['label'] ?? '')),
+                    Str::lower((string) ($item['code'] ?? '')),
+                ]), true);
+            }));
+            if (count($matches) !== 1) {
+                throw ValidationException::withMessages(['choice' => 'The name is missing or ambiguous in the visible choices. Use a specific option button or SKU.']);
+            }
+            $choice = $matches[0];
+            $remaining = trim($parts[1] ?? '');
         }
         if (!$choice) {
             throw ValidationException::withMessages(['choice' => 'Select an option from the current displayed list.']);
@@ -65,6 +94,7 @@ final class ConversationChoices
     public function publish(AiPrincipal $principal, array $task, array $result): array
     {
         $choices = [];
+        $seen = [];
         foreach ($result['required_inputs'] ?? [] as $issue) {
             $field = $issue['field'];
             $type = $issue['entity_type'] ?? (str_contains($field, 'product_id') ? 'product' : str_replace('_id', '', $field));
@@ -72,8 +102,16 @@ final class ConversationChoices
                 continue;
             }
             foreach (array_slice($issue['candidates'] ?? [], 0, 20) as $candidate) {
+                $key = $type.':'.$field.':'.(int) $candidate['id'];
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $name = (string) ($candidate['name'] ?? $candidate['label'] ?? '');
+                $code = (string) ($candidate['code'] ?? '');
+                $label = (string) ($candidate['label'] ?? ($name.($type === 'product' && $code !== '' ? ' (SKU: '.$code.')' : '')));
                 $choices[] = ['choice_id' => (string) Str::uuid(), 'field' => $field, 'entity_type' => $type,
-                    'record_id' => (int) $candidate['id'], 'label' => (string) ($candidate['label'] ?? $candidate['name'])];
+                    'record_id' => (int) $candidate['id'], 'label' => $label, 'name' => $name, 'code' => $code];
             }
         }
         if ($choices === []) {
@@ -121,12 +159,16 @@ final class ConversationChoices
         $field = $type.'_id';
         if (in_array($type, ['product', 'unit'], true)) {
             $lines = json_decode($task['slots_json'], true)['items'] ?? [];
-            if (count($lines) === 1 && !empty($lines[0]['client_line_id'])) {
-                $lineId = $lines[0]['client_line_id'];
-                $field = "items[{$lineId}].".($type === 'unit' ? 'purchase_unit_id' : 'product_id');
+            if ($type === 'product') {
+                // A catalogue lookup never alters the draft. Explicit selection can add
+                // a new stable line, or complete the single unresolved draft line.
+                $unresolved = count($lines) === 1 && empty($lines[0]['product_id']) && !empty($lines[0]['client_line_id']);
+                $lineId = $unresolved ? $lines[0]['client_line_id'] : 'line-'.Str::uuid();
+                $field = "items[{$lineId}].product_id";
+            } elseif (count($lines) === 1 && !empty($lines[0]['client_line_id'])) {
+                $field = "items[{$lines[0]['client_line_id']}].purchase_unit_id";
             } else {
-                // Browsing a product/unit catalogue must not create a fake draft line
-                // or silently choose which of several existing lines to edit.
+                // Unit selection requires an identified draft line.
                 $field = 'items';
             }
         }
@@ -134,6 +176,8 @@ final class ConversationChoices
         $lookup->request->replace([]);
         $options = app(\App\Http\Controllers\Api\V1\AiEntityOptionsController::class)->index($lookup)->getData(true);
         return ['field' => $field, 'entity_type' => $type, 'status' => 'ambiguous', 'label' => ucfirst($type),
-            'candidates' => $options['items'], 'total' => $options['total'], 'has_more' => $options['has_more']];
+            'candidates' => $options['items'], 'total' => $options['total'], 'has_more' => $options['has_more'],
+            'can_create' => (bool) ($options['can_create'] ?? false),
+            'create_disabled_reason' => $options['create_disabled_reason'] ?? null];
     }
 }
