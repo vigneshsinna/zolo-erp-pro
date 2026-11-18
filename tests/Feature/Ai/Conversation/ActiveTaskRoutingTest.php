@@ -136,6 +136,81 @@ class ActiveTaskRoutingTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_natural_language_supplier_and_product_directory_keeps_the_draft_unchanged(): void
+    {
+        [$thread, $task] = $this->draft();
+        \App\Models\Supplier::create([
+            'company_id' => $this->company->id, 'name' => 'ABC Test Traders',
+            'phone_number' => '7000000011', 'is_active' => true,
+        ]);
+        $unit = \App\Models\Unit::forceCreate([
+            'company_id' => $this->company->id, 'unit_code' => 'PR'.strtoupper(Str::random(7)),
+            'unit_name' => 'Pairs', 'is_active' => true,
+        ]);
+        $category = \App\Models\Category::forceCreate([
+            'company_id' => $this->company->id, 'name' => 'Conversation Garments',
+            'is_active' => true,
+        ]);
+        \App\Models\Product::forceCreate([
+            'company_id' => $this->company->id, 'name' => 'Cotton Shirt Blue',
+            'code' => 'CSB-'.strtoupper(Str::random(6)),
+            'type' => 'standard', 'barcode_symbology' => 'code128',
+            'category_id' => $category->id, 'cost' => 500, 'price' => 590,
+            'unit_id' => $unit->id, 'purchase_unit_id' => $unit->id,
+            'sale_unit_id' => $unit->id, 'is_active' => true,
+        ]);
+
+        $response = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(),
+            'message' => 'can you tell me what are the suppliers and products available?',
+        ])->assertOk()
+            ->assertJsonPath('interaction_type', 'workflow_continuation')
+            ->assertJsonPath('workflow.task_id', $task['task_id'])
+            ->assertJsonPath('workflow.task_revision', $task['task_revision'])
+            ->assertJsonPath('workflow.directories.0.entity_type', 'supplier')
+            ->assertJsonPath('workflow.directories.1.entity_type', 'product');
+
+        $supplierNames = array_column($response->json('workflow.directories.0.items'), 'name');
+        $productNames = array_column($response->json('workflow.directories.1.items'), 'name');
+        $this->assertContains('ABC Test Traders', $supplierNames);
+        $this->assertContains('Cotton Shirt Blue', $productNames);
+        $this->assertSame($task['task_revision'], (int) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_product_directory_can_be_browsed_without_a_draft_item_or_side_effect(): void
+    {
+        [$thread, $task] = $this->draft();
+        $response = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(),
+            'message' => 'show products',
+        ])->assertOk()
+            ->assertJsonPath('workflow.task_revision', $task['task_revision'])
+            ->assertJsonPath('workflow.directories.0.entity_type', 'product');
+
+        $this->assertIsArray($response->json('workflow.directories.0.items'));
+        $this->assertSame([], $response->json('workflow.choices') ?? []);
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertEmpty($slots['items'] ?? []);
+        Http::assertNothingSent();
+    }
+
+    public function test_directory_intent_distinguishes_listing_from_other_read_only_questions(): void
+    {
+        $intent = app(\App\Ai\Conversation\ConversationDirectoryIntent::class);
+        $this->assertSame(['supplier', 'product'], $intent->types('Can you tell me what suppliers and products are available?'));
+        $this->assertSame(['warehouse'], $intent->types('Which warehouses can I use?'));
+        $this->assertSame([], $intent->types('Can you tell me the current stock of Cotton Shirt Blue?'));
+        $this->assertTrue($intent->isReadOnlyQuestion('Can you tell me the current stock of Cotton Shirt Blue?'));
+        $this->assertFalse($intent->isReadOnlyQuestion('Create a new supplier ABC Traders'));
+    }
+
     protected function draft(): array
     {
         $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
