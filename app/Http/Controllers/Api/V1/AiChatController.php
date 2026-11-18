@@ -769,6 +769,7 @@ class AiChatController extends Controller
             'expected_task_revision' => 'nullable|integer|min:1',
             'client_turn_id' => 'nullable|uuid',
             'choice_set_id' => 'nullable|uuid',
+            'choice_id' => 'nullable|uuid',
             'voice_extraction_revision' => 'nullable|integer|min:1',
         ]);
         $principal = $this->principal($request);

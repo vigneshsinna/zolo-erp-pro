@@ -69,13 +69,18 @@ final class ConversationTurnRouter
             $task = $tasks[0];
             app(ActionSecurity::class)->definition($task['action_key'], $principal);
         }
-        if (preg_match('/^(?:who|what|how|show|list|report)\b/i', $message)) {
+        $directory = preg_match('/^(?:show|list|find|search)\s+(suppliers?|warehouses?|products?|units?)(?:\s+(?:for\s+)?(.+))?$/i', $message, $directoryMatch);
+        if (!$directory && preg_match('/^(?:who|what|how|show|list|report)\b/i', $message)) {
             return null;
         }
         if (preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $message)) {
             return $this->summary($task, 'The purchase draft is preserved. Select or start a separate operation explicitly.');
         }
-        if (preg_match('/^cancel\b/i', $message)) {
+        if ($directory) {
+            $issue = app(ConversationChoices::class)->directory($principal, $task, rtrim(strtolower($directoryMatch[1]), 's'), $directoryMatch[2] ?? '');
+            $result = $this->summary($task, $issue['candidates'] === [] ? 'No eligible matches. Correct the name, search again, or request approved master creation.' : 'Choose an eligible record by name, number or option button.');
+            $result['required_inputs'] = [$issue];
+        } elseif (preg_match('/^cancel\b/i', $message)) {
             $this->assertRevision($task, $input);
             $this->state->updateTaskState($principal, $task['id'], (int) $task['revision'],
                 json_decode($task['slots_json'], true), status: 'cancelled');
@@ -83,7 +88,14 @@ final class ConversationTurnRouter
             $result['status'] = 'cancelled';
         } else {
             $interpreter = app(ConversationalSlotInterpreter::class);
-            $parsed = $interpreter->interpret($task, $message);
+            $selection = null;
+            if (app(ConversationChoices::class)->isSelection($message, $input)) {
+                $selection = app(ConversationChoices::class)->select($principal, $task, $input);
+            }
+            $parsed = $interpreter->interpret($task, $selection['remaining_message'] ?? $message);
+            if ($selection !== null) {
+                $parsed['corrections'] = [...$selection['corrections'], ...$parsed['corrections']];
+            }
             if ($interpretation !== null) {
                 if ($interpretation['task_id'] !== $task['id'] || $interpretation['revision'] !== (int) $task['revision']) {
                     throw new ConflictHttpException('Task changed while interpreting the reply. Reload the current draft.');
@@ -108,6 +120,7 @@ final class ConversationTurnRouter
             }
             $result['warnings'] = array_values(array_unique([...$parsed['warnings'], ...($input['voice_source']['warnings'] ?? [])]));
         }
+        $result = app(ConversationChoices::class)->publish($principal, $task, $result);
         DB::table('ai_workflow_task_events')->insert([
             'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
             'event_type' => 'conversation_turn', 'revision' => $result['task_revision'],
@@ -127,7 +140,9 @@ final class ConversationTurnRouter
         }
         $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
         if (count($tasks) !== 1 || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
-            || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])) {
+            || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])
+            || preg_match('/^(?:find|search)\s+(?:suppliers?|warehouses?|products?|units?)\b/i', $input['message'])
+            || app(ConversationChoices::class)->isSelection($input['message'], $input)) {
             return null;
         }
         $task = $tasks[0];
