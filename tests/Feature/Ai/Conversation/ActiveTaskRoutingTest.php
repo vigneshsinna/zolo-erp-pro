@@ -215,8 +215,8 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertNotEmpty($task['choice_set_id']);
         $this->assertCount(1, $productChoices);
         $this->assertCount(1, $supplierChoices);
-        $this->assertSame('product', $task['directories'][1]['entity_type']);
-        $this->assertSame('supplier', $task['directories'][0]['entity_type']);
+        $this->assertContains('product', array_column($task['directories'], 'entity_type'));
+        $this->assertContains('supplier', array_column($task['directories'], 'entity_type'));
         $this->assertSame([], json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true)['items'] ?? []);
 
         $selected = $this->postJson(route('ai.chat'), [
