@@ -182,6 +182,16 @@ class IndustryFlowIntegrationTest extends ReturnsDocumentTestCase
             'product_id' => $product->id, 'qty' => 1, 'purchase_unit_id' => $units['CASE'], 'net_unit_cost' => 144,
             'batch' => ['batch_no' => 'CASE-A', 'mfg_date' => '2026-09-01', 'expired_date' => '2027-09-01', 'mrp' => 5],
         ]]]), 'case-purchase', 1, $this->context()));
+        $batch = DB::table('product_batches')->where('product_id', $product->id)->where('batch_no', 'CASE-A')->first();
+        $this->assertNotNull($batch);
+        $this->assertSame('active', $batch->status);
+        $this->assertStringStartsWith('2027-09-01', $batch->expired_date);
+        $stock = DB::table('product_warehouse')->where('product_id', $product->id)->where('product_batch_id', $batch->id)->first();
+        $this->assertEquals(144, $stock->qty);
+        $this->assertNull($stock->variant_id);
+        $this->assertEquals(1, $stock->warehouse_id);
+        $this->assertEquals($this->company->id, $stock->company_id);
+        $this->assertEquals($this->company->id, $batch->company_id);
         $scheme = app(FmcgInventoryService::class)->configureScheme(['product_id' => $product->id, 'name' => '12+1',
             'buy_qty' => 12, 'free_qty' => 1, 'valid_from' => '2026-10-01', 'valid_to' => '2026-12-31'], $this->context(), 1);
         $sale = app(SaleApplicationService::class)->create(new SaleCommand($this->saleData($product, ['items' => [[

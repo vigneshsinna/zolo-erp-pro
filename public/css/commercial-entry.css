@@ -1779,3 +1779,8 @@ dialog .primary {
         grid-column: span 1;
     }
 }
+.optical-rx-strip { gap: 4px; font-size: 11px; }
+.optical-rx-strip .optical-rx-label { font-weight: 600; }
+.optical-rx-strip .form-control { width: 55px; height: 24px; font-size: 11px; }
+.optical-rx-strip .row-axis { width: 50px; }
+.optical-rx-strip .row-lr { width: 48px; }

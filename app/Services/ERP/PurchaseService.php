@@ -170,14 +170,9 @@ class PurchaseService
                 $batchId = $item['product_batch_id'] ?? null;
                 $batchNo = $item['batch']['batch_no'] ?? ($item['batch_no'] ?? ($data['lot_number'] ?? null));
                 if (!$batchId && !empty($batchNo)) {
-                    $batch = \App\Models\ProductBatch::firstOrCreate([
-                        'company_id' => $context->companyId,
-                        'product_id' => $productId,
-                        'batch_no' => $batchNo,
-                    ], [
+                    $batch = \App\Models\ProductBatch::firstOrCreateOwned($context->companyId, $productId, (string) $batchNo, [
                         'expired_date' => $item['batch']['expired_date'] ?? ($item['expired_date'] ?? null),
-                        'qty' => 0,
-                    ]);
+                    ] + (array) ($item['batch'] ?? []));
                     $batchId = $batch->id;
                 }
 
