@@ -28,7 +28,13 @@ await context.route('**/*', async route => {
         const body = request.postDataJSON(); requests.push(body);
         if (conflict) { conflict = false; revision++; return route.fulfill({status: 409, json: {error_code: 'TASK_REVISION_CONFLICT', error_message: 'Draft changed. Review current details.'}}); }
         const state = workflow();
-        if (body.message === 'ABC') {
+        if (body.message === 'can you tell me what are the suppliers and products available?') {
+            state.message = 'Here are the existing suppliers and products.';
+            state.directories = [
+                {entity_type: 'supplier', items: [{name: 'ABC Test Traders'}], total: 1, has_more: false},
+                {entity_type: 'product', items: [{name: 'Cotton Shirt Blue', code: 'CSB-001'}], total: 1, has_more: false},
+            ];
+        } else if (body.message === 'ABC') {
             state.task_revision = ++revision; state.choice_set_id = choiceSet;
             state.choices = ['ABC Chennai', 'ABC Erode'].map((label, index) => ({choice_id: `44444444-4444-4444-8444-44444444444${index}`, label, field: 'supplier_id', entity_type: 'supplier'}));
         } else if (body.choice_id) {
@@ -74,6 +80,15 @@ try {
     assert.equal(await page.locator('.ai-conversation-task').count(), 1);
     assert.equal(requests[0].thread_id, threadId);
     assert.ok(requests[0].client_turn_id);
+    const initialRevision = revision;
+    await page.locator('#chat-input').fill('can you tell me what are the suppliers and products available?');
+    await page.locator('#btn-send').click();
+    await page.locator('.ai-conversation-directory').first().getByText('ABC Test Traders').waitFor();
+    await page.locator('.ai-conversation-directory').last().getByText(/Cotton Shirt Blue/).waitFor();
+    assert.equal(await page.locator('.ai-conversation-directory').count(), 2, 'Both ERP directories appear in the same draft card');
+    assert.equal(revision, initialRevision, 'A read-only directory question must not update the PO');
+    assert.equal(requests.at(-1).active_task_id, taskId);
+    assert.equal(await page.locator('.ai-conversation-task').count(), 1);
     await page.locator('#chat-input').fill('ABC');
     await page.locator('#btn-send').click();
     await page.getByRole('button', {name: '2. ABC Erode', exact: true}).focus();
@@ -130,5 +145,5 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Long multi-line preview fits mobile');
     assert.ok((await page.locator('.ai-conversation-task .table-responsive').first().boundingBox()).height <= 360, 'Long preview has bounded scroll region');
     assert.deepEqual(errors, []);
-    console.log('PASS conversation desktop/mobile, keyboard choices, same-card updates, 409 recovery, confirmed voice, reload, explicit signed-version approval receipt and 25 long lines (mocked API)');
+    console.log('PASS read-only supplier/product directory, conversation desktop/mobile, keyboard choices, same-card updates, 409 recovery, confirmed voice, reload, explicit signed-version approval receipt and 25 long lines (mocked API)');
 } finally { await browser.close(); }
