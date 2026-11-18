@@ -65,7 +65,57 @@
                 await submit('resume', {}, {silent: true});
             },
         });
-        if (state.master_required_inputs) root.append($('<p class="small"></p>').text('Master details needed: ' + Object.keys(state.master_required_inputs).join(', ') + '. Reply with named fields, for example “address Erode” or “SKU CTN-001; unit Pairs; tax category GST 5%; HSN 5205”.'));
+        if (state.master_required_inputs && Object.keys(state.master_required_inputs).length > 0) {
+            const master = $('<section class="ai-po-section ai-po-master-form" aria-label="New master record details"></section>');
+            master.append($('<div class="ai-po-section-head"></div>').append(
+                $('<strong></strong>').text('New ' + (state.master_schema?.entity_type || 'Master') + ' — required details'),
+                $('<span class="ai-po-field-state ai-po-field-required"></span>').text('Separate approval required')
+            ));
+            master.append($('<p class="ai-po-hint"></p>').text(
+                'Enter all missing master fields together, or provide them through chat, dictation or a confirmed voice recording. Units and tax categories must match existing eligible records.'
+            ));
+            const fields = {
+                name: 'name', address: 'address', phone_number: 'phone', phone: 'phone',
+                email: 'email', city: 'city', state: 'state',
+                vat_number: 'gstin', gst_number: 'gstin', code: 'SKU',
+                hsn_code: 'HSN', unit_id: 'unit', tax_category_id: 'tax category',
+                category_id: 'category', cost: 'cost', price: 'price',
+            };
+            const form = $('<form class="ai-po-master-inputs"></form>');
+            const values = [];
+            Object.entries(state.master_required_inputs).forEach(([key, messages]) => {
+                const alias = fields[key];
+                if (!alias) {
+                    master.append($('<p class="ai-po-hint"></p>').text(
+                        'Additional validation for ' + key.replaceAll('_', ' ') + ': ' + (messages || []).join('; ')));
+                    return;
+                }
+                const wrap = $('<label class="ai-po-edit-field"></label>');
+                const input = $('<input class="form-control form-control-sm" autocomplete="off" maxlength="200">')
+                    .attr({type: ['price', 'cost'].includes(key) ? 'number' : 'text',
+                        'aria-label': 'New master ' + key.replaceAll('_', ' ')})
+                    .val(state.master_schema?.prefilled?.[key] ?? '');
+                wrap.append($('<span></span>').text(key.replaceAll('_', ' ') + ' *'), input);
+                wrap.append($('<small></small>').text((messages || []).join(' ') ||
+                    ('Enter the exact existing ' + alias + ' where applicable.')));
+                form.append(wrap);
+                values.push({alias, input});
+            });
+            if (values.length) {
+                form.append($('<button type="submit" class="btn btn-primary btn-sm" data-conversation-action>Submit master details for review</button>'));
+                form.on('submit', event => {
+                    event.preventDefault();
+                    const parts = [];
+                    values.forEach(({alias, input}) => {
+                        const val = input.val().trim();
+                        if (val) parts.push(alias + ' ' + val.replace(/[;\r\n]/g, ' '));
+                    });
+                    if (parts.length) submit(parts.join('; '));
+                });
+            }
+            master.append(form);
+            root.append(master);
+        }
         (state.warnings || []).forEach(warning => root.append($('<p class="small text-warning"></p>').text(warning)));
         if (state.master_proposal) {
             const proposal = state.master_proposal;
