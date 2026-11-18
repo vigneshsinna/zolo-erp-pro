@@ -185,7 +185,8 @@ final class ConversationTurnRouter
             }
             // On a new PO or after a record selection, offer the next available
             // choices. Browsing itself remains read-only; only selection changes slots.
-            if ($tasks === [] || app(ConversationChoices::class)->isSelection($message, $input)) {
+            if ($tasks === [] || app(ConversationChoices::class)->isSelection($message, $input)
+                || preg_match('/^(?:resume|continue)$/i', $message)) {
                 $next = [];
                 if (in_array('supplier_id', $missing, true)) {
                     $next[] = 'supplier';
