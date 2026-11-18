@@ -84,6 +84,9 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
 
             // 2. Prepare domain command data: status 4 = Purchase Order (Ordered)
             $data = $payload;
+            if (!empty($payload['date'])) {
+                $data['business_date'] = $payload['date'];
+            }
             $data['status'] = 4;
             $data['payment_status'] = 1; // Due / unpaid
             $data['paid_amount'] = 0;

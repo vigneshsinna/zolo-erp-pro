@@ -728,3 +728,17 @@ body.dark-mode .ai-workspace-container .text-muted { color: var(--ai-muted) !imp
     font-size: 13px;
 }
 
+/* Conversation additions reuse the existing workspace and review cards. */
+.ai-active-task-header { padding: .65rem 1rem; border-bottom: 1px solid var(--z-primary-border, #ddd); }
+.ai-conversation-task { width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.ai-conversation-summary { display: grid; grid-template-columns: minmax(6rem, 1fr) 2fr; gap: .25rem .75rem; }
+.ai-conversation-summary dt, .ai-conversation-summary dd { margin: 0; }
+.ai-conversation-task button:focus-visible { outline: 3px solid var(--z-primary, #7d287e); outline-offset: 2px; }
+.ai-conversation-details:empty, .ai-conversation-summary:empty { display: none; }
+.ai-conversation-task .ai-unified-workflow-wrap { margin-bottom: 0 !important; }
+.ai-conversation-details .table-responsive { min-height: 0 !important; height: auto !important; max-height: 360px; overflow: auto; }
+@media (max-width: 575px) {
+    .ai-active-task-header { padding: .5rem; font-size: .8rem; }
+    .ai-conversation-task { padding: .75rem !important; }
+    .ai-conversation-task button { min-height: 44px; }
+}
