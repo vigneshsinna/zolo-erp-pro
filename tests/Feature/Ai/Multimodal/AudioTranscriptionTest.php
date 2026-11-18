@@ -188,6 +188,133 @@ final class AudioTranscriptionTest extends TestCase
         @unlink($wavPath);
     }
 
+    public function test_first_voice_po_requires_transcript_confirmation_and_enters_only_one_po_conversation(): void
+    {
+        config()->set('erp_ai.conversation_enabled', true);
+        config()->set('ai_actions.foundation_enabled', true);
+        app(AiFeatureGate::class)->setCompanySetting($this->company->id, true, true, [
+            'multimodal_enabled' => true, 'daily_token_limit' => 200000,
+        ]);
+        $this->fakeVoiceTranscript('Please create a purchase order for ABC Traders', 'sales_order.create.v1');
+
+        $this->actingAs($this->admin)->withSession([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branchId,
+            'financial_year_id' => $this->fyId,
+        ]);
+        $thread = $this->postJson(route('api.v1.ai.threads.store'))->assertCreated()->json('id');
+        $wav = $this->createWav(1.3, 10000);
+        try {
+            $prepared = $this->postJson(route('api.v1.ai.media.prepare'), [
+                'file' => new UploadedFile($wav, 'voice_first_po.wav', 'audio/wav', null, true),
+                'thread_id' => $thread,
+                'companion_text' => 'Analyze this voice instruction',
+            ])->assertOk()
+                ->assertJsonPath('status', 'voice_intent_review_ready')
+                ->assertJsonPath('intent_key', 'purchase_order.create.v1');
+            $this->assertSame(0, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+            $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+
+            $mediaId = $prepared->json('media.id');
+            $revision = $prepared->json('extraction.revision');
+            $this->postJson(route('api.v1.ai.chat'), [
+                'thread_id' => $thread, 'message' => 'Please create a purchase order for ABC Traders',
+                'client_turn_id' => (string) \Illuminate\Support\Str::uuid(),
+                'media_ids' => [$mediaId], 'voice_extraction_revision' => $revision,
+            ])->assertStatus(422);
+            $this->assertSame(0, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+
+            $confirmed = $this->postJson(route('api.v1.ai.media.confirm', ['id' => $mediaId]), [
+                'expected_revision' => $revision,
+                'transcript_text' => 'Please create a purchase order for ABC Traders',
+            ])->assertOk();
+            $started = $this->postJson(route('api.v1.ai.chat'), [
+                'thread_id' => $thread, 'message' => 'Please create a purchase order for ABC Traders',
+                'client_turn_id' => (string) \Illuminate\Support\Str::uuid(),
+                'media_ids' => [$mediaId], 'voice_extraction_revision' => $confirmed->json('extraction.revision'),
+            ])->assertOk()
+                ->assertJsonPath('interaction_type', 'workflow_continuation')
+                ->assertJsonPath('workflow.action_key', 'purchase_order.create.v1');
+
+            $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+            $this->assertSame('purchase_order.create.v1',
+                DB::table('ai_workflow_tasks')->where('thread_id', $thread)->value('action_key'));
+            $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+            $this->assertNotEmpty($started->json('workflow.task_id'));
+            Http::assertSentCount(1);
+        } finally {
+            @unlink($wav);
+        }
+    }
+
+    public function test_unknown_and_wrong_transaction_voice_never_fall_back_to_purchase_bill_or_po(): void
+    {
+        config()->set('erp_ai.conversation_enabled', true);
+        config()->set('ai_actions.foundation_enabled', true);
+        app(AiFeatureGate::class)->setCompanySetting($this->company->id, true, true, [
+            'multimodal_enabled' => true, 'daily_token_limit' => 200000,
+        ]);
+        $this->actingAs($this->admin)->withSession([
+            'company_id' => $this->company->id, 'branch_id' => $this->branchId,
+            'financial_year_id' => $this->fyId,
+        ]);
+
+        foreach ([
+            ['Create an order', 'purchase_order.create.v1', null],
+            ['Create a purchase bill', 'purchase_order.create.v1', 'purchase_bill.create.v1'],
+            ['Create a purchase order and purchase bill', 'purchase_order.create.v1', null],
+        ] as [$transcript, $guessed, $expectedIntent]) {
+            $this->fakeVoiceTranscript($transcript, $guessed);
+            $thread = $this->postJson(route('api.v1.ai.threads.store'))->assertCreated()->json('id');
+            $wav = $this->createWav(1.2, 10000);
+            try {
+                $prepared = $this->postJson(route('api.v1.ai.media.prepare'), [
+                    'file' => new UploadedFile($wav, 'voice_ambiguous.wav', 'audio/wav', null, true),
+                    'thread_id' => $thread,
+                ])->assertOk()->assertJsonPath('status', 'voice_intent_review_ready')
+                    ->assertJsonPath('intent_key', $expectedIntent);
+                $confirmed = $this->postJson(route('api.v1.ai.media.confirm', ['id' => $prepared->json('media.id')]), [
+                    'expected_revision' => $prepared->json('extraction.revision'),
+                    'transcript_text' => $transcript,
+                ])->assertOk();
+                $this->postJson(route('api.v1.ai.chat'), [
+                    'thread_id' => $thread, 'message' => $transcript,
+                    'client_turn_id' => (string) \Illuminate\Support\Str::uuid(),
+                    'media_ids' => [$prepared->json('media.id')],
+                    'voice_extraction_revision' => $confirmed->json('extraction.revision'),
+                ])->assertStatus(422);
+                $this->assertSame(0, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+                $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+            } finally {
+                @unlink($wav);
+            }
+        }
+    }
+
+    public function test_voice_intent_resolver_does_not_use_model_guess_or_document_reference_as_action(): void
+    {
+        $resolver = app(\App\Ai\Conversation\VoiceIntentResolver::class);
+        $this->assertSame('purchase_order.create.v1', $resolver->resolve('I need a purchase order for ABC Traders'));
+        $this->assertSame('purchase_order.create.v1', $resolver->resolve('Create a PO'));
+        $this->assertSame('purchase_bill.create.v1', $resolver->resolve('Please create a purchase bill'));
+        $this->assertNull($resolver->resolve('What is the PO number on the supplier invoice?'));
+        $this->assertNull($resolver->resolve('Create an order'));
+        $this->assertNull($resolver->resolve('Create a purchase order and a purchase bill'));
+    }
+
+    private function fakeVoiceTranscript(string $text, string $intentGuess): void
+    {
+        Http::fake([
+            'integrate.api.nvidia.com/*' => Http::response([
+                'choices' => [['message' => ['content' => json_encode([
+                    'transcript_text' => $text, 'detected_language' => 'en',
+                    'intent_guess' => $intentGuess, 'confidence' => 0.94, 'items' => [],
+                ])], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 300, 'completion_tokens' => 55],
+            ], 200),
+        ]);
+    }
+
     private function createWav(float $durationSeconds, int $amplitude): string
     {
         $sampleRate = 8000;
