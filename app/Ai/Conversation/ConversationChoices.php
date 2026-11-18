@@ -121,15 +121,19 @@ final class ConversationChoices
         $field = $type.'_id';
         if (in_array($type, ['product', 'unit'], true)) {
             $lines = json_decode($task['slots_json'], true)['items'] ?? [];
-            if (count($lines) > 1 || ($type === 'unit' && count($lines) !== 1)) {
-                throw ValidationException::withMessages(['choice' => 'Specify a single draft line before searching this field.']);
+            if (count($lines) === 1 && !empty($lines[0]['client_line_id'])) {
+                $lineId = $lines[0]['client_line_id'];
+                $field = "items[{$lineId}].".($type === 'unit' ? 'purchase_unit_id' : 'product_id');
+            } else {
+                // Browsing a product/unit catalogue must not create a fake draft line
+                // or silently choose which of several existing lines to edit.
+                $field = 'items';
             }
-            $lineId = $lines[0]['client_line_id'] ?? 'line-'.Str::uuid();
-            $field = "items[{$lineId}].".($type === 'unit' ? 'purchase_unit_id' : 'product_id');
         }
         $lookup->query->replace(['type' => $type, 'q' => $query, 'task_id' => $task['id'], 'field' => $field, 'per_page' => 20]);
         $lookup->request->replace([]);
         $options = app(\App\Http\Controllers\Api\V1\AiEntityOptionsController::class)->index($lookup)->getData(true);
-        return ['field' => $field, 'entity_type' => $type, 'status' => 'ambiguous', 'label' => ucfirst($type), 'candidates' => $options['items']];
+        return ['field' => $field, 'entity_type' => $type, 'status' => 'ambiguous', 'label' => ucfirst($type),
+            'candidates' => $options['items'], 'total' => $options['total'], 'has_more' => $options['has_more']];
     }
 }
