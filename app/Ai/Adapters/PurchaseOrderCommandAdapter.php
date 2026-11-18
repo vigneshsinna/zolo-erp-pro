@@ -86,6 +86,7 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
             $data = $payload;
             $data['status'] = 4;
             $data['payment_status'] = 1; // Due / unpaid
+            $data['paid_amount'] = 0;
             unset($data['expected_totals']);
 
             // CommercialApplicationService rejects non-empty order_tax_rate, shipping_cost, or order_discount if zero
@@ -238,6 +239,7 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
                 'warehouse_id' => (int) $purchase->warehouse_id,
                 'grand_total' => sprintf('%.2f', (float) $purchase->grand_total),
                 'order_status' => 'ordered',
+                'payment_terms' => array_intersect_key($purchase->attributes_json ?? [], array_flip(['payment_terms_type', 'credit_days', 'due_date'])),
                 'items_count' => $purchase->productPurchases()->count(),
                 'source_type' => 'purchase_order',
             ],

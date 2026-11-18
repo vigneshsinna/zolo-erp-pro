@@ -22,7 +22,16 @@ final class ConversationalSlotInterpreter
             if ($part === '') {
                 continue;
             }
-            if (preg_match('/^(?:use\s+)?(?:supplier|from)\s+(.+)$/i', $part, $m)) {
+            if (preg_match('/^(?:use\s+)?cash(?:\s+terms)?$/i', $part)) {
+                $corrections[] = $this->correction('payment_terms_type', 'cash');
+                $corrections[] = $this->correction('credit_days', 0);
+            } elseif (preg_match('/^(?:use\s+)?credit(?:\s+for)?\s+(\d+|thirty|forty five|forty-five)\s+days?$/i', $part, $m)) {
+                $days = ['thirty' => 30, 'forty five' => 45, 'forty-five' => 45][strtolower($m[1])] ?? (int) $m[1];
+                $corrections[] = $this->correction('payment_terms_type', 'credit');
+                $corrections[] = $this->correction('credit_days', $days);
+            } elseif (preg_match('/\bcash\b.*\d+.*\bdays?\b/i', $part)) {
+                return $this->result([], ['Cash terms conflict with credit days. Choose Cash or Credit and confirm the days.']);
+            } elseif (preg_match('/^(?:use\s+)?(?:supplier|from)\s+(.+)$/i', $part, $m)) {
                 $corrections[] = $this->correction('supplier_query', trim($m[1]));
             } elseif (preg_match('/^(?:use\s+)?warehouse\s+(.+)$/i', $part, $m)) {
                 $corrections[] = $this->correction('warehouse_query', trim($m[1]));

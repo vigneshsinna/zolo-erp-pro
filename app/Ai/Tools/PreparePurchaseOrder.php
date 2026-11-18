@@ -105,6 +105,9 @@ final class PreparePurchaseOrder implements Tool
                 ->description('Explicit destination warehouse ID if known'),
             'date' => $schema->string()
                 ->description('Optional order date in YYYY-MM-DD format. Defaults to today.'),
+            'payment_terms_type' => $schema->string()->enum(['cash', 'credit'])
+                ->description('Commercial terms only; cash does not post a payment.'),
+            'credit_days' => $schema->integer()->description('Credit days, 0–3650. Cash terms require zero.'),
             'note' => $schema->string()
                 ->description('Optional overall order note or reference'),
             'order_discount' => $schema->number()

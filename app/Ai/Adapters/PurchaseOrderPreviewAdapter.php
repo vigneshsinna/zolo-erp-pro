@@ -287,6 +287,12 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ],
         ];
 
+        if (isset($slots['payment_terms_type'])) {
+            $terms = \App\Services\Commercial\CommercialApplicationService::purchaseOrderTerms($slots, $orderDate);
+            $normalizedPayload = array_replace($normalizedPayload, $terms);
+            $previewData['payment_terms'] = $terms;
+        }
+
         $sourceStateHash = self::computeSourceStateHash(
             $context,
             $supplierId,
@@ -315,7 +321,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
         $supplier = DB::table('suppliers')
             ->where('company_id', $context->companyId)
             ->where('id', $supplierId)
-            ->select(['id', 'is_active', 'vat_number', 'state', 'updated_at'])
+            ->select(['id', 'is_active', 'vat_number', 'state', 'credit_days', 'purchase_defaults', 'updated_at'])
             ->first();
 
         $partyTaxProfile = DB::table('party_tax_profiles')
