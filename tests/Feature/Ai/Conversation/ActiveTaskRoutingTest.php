@@ -158,4 +158,70 @@ class ActiveTaskRoutingTest extends TestCase
             ->assertUnprocessable();
         $this->assertSame($task['task_revision'], DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
     }
+
+    public function test_confirmed_voice_reply_updates_same_task_and_reuses_extraction(): void
+    {
+        [$thread, $task] = $this->draft();
+        [$media, $extraction] = $this->voice($thread, $task['task_id'], 'ABC Traders; add 100 pairs of Cotton Shirt Blue at 480');
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => $extraction->extracted_json['transcript_text'],
+            'media_ids' => [$media->id], 'voice_extraction_revision' => 1];
+        $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.task_id', $task['task_id']);
+        $this->postJson(route('ai.chat'), $input)->assertOk();
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        $this->assertSame(1, DB::table('ai_media_extractions')->where('media_id', $media->id)->count());
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame('100.00', $slots['items'][0]['qty']);
+        Http::assertNothingSent();
+    }
+
+    protected function voice(string $thread, string $taskId, string $transcript): array
+    {
+        config(['ai_multimodal.enabled' => true]);
+        app(AiFeatureGate::class)->setCompanyMultimodal($this->company->id, true);
+        $media = \App\Models\AiMediaAsset::create([
+            'company_id' => $this->company->id, 'branch_id' => $this->branchId, 'financial_year_id' => $this->fyId,
+            'actor_id' => $this->adminUser->id, 'thread_id' => $thread, 'workflow_task_id' => $taskId,
+            'source_kind' => 'audio', 'original_mime' => 'audio/wav', 'canonical_mime' => 'audio/wav',
+            'size_bytes' => 100, 'sha256' => hash('sha256', (string) Str::uuid()), 'private_disk' => 'local', 'private_key' => 'fixture.wav',
+            'state' => 'extracted', 'expires_at' => now()->addHour(),
+        ]);
+        $extraction = \App\Models\AiMediaExtraction::create([
+            'company_id' => $this->company->id, 'media_id' => $media->id, 'revision' => 1, 'model_provider' => 'fixture', 'model_key' => 'fixture',
+            'prompt_version' => 'fixture', 'extraction_schema_version' => 'media.transcript.v1',
+            'extracted_json' => ['transcript_text' => $transcript, 'warnings' => [], 'items' => [], 'intent_guess' => 'unknown'],
+            'confirmation_status' => 'confirmed', 'confirmed_by' => $this->adminUser->id, 'confirmed_at' => now(),
+        ]);
+        return [$media, $extraction];
+    }
+
+    public function test_voice_requires_current_confirmed_transcript_and_exact_workspace(): void
+    {
+        [$thread, $task] = $this->draft();
+        [$media, $extraction] = $this->voice($thread, $task['task_id'], 'quantity 50');
+        $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'quantity 50', 'media_ids' => [$media->id], 'voice_extraction_revision' => 1];
+        $extraction->update(['confirmation_status' => 'prepared', 'extracted_json' => ['transcript_text' => 'quantity 50', 'warnings' => ['15/50 ambiguity']]]);
+        $this->postJson(route('ai.chat'), $input)->assertUnprocessable();
+        $extraction->update(['confirmation_status' => 'confirmed']);
+        $input['voice_extraction_revision'] = 2;
+        $this->postJson(route('ai.chat'), $input)->assertConflict();
+        $input['voice_extraction_revision'] = 1;
+        $media->update(['branch_id' => $this->branchId + 100]);
+        $this->postJson(route('ai.chat'), $input)->assertForbidden();
+        $this->assertSame($task['task_revision'], DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('revision'));
+        Http::assertNothingSent();
+    }
+
+    public function test_preparing_existing_voice_for_draft_never_hands_off_new_task(): void
+    {
+        [$thread, $task] = $this->draft();
+        [$media] = $this->voice($thread, $task['task_id'], 'Credit 30 days');
+        $this->postJson(route('ai.media.prepare-existing', $media->id), ['thread_id' => $thread,
+            'workflow_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision']])
+            ->assertOk()->assertJsonPath('status', 'voice_reply_ready')->assertJsonPath('task_id', $task['task_id']);
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        $this->assertSame(1, DB::table('ai_media_extractions')->where('media_id', $media->id)->count());
+        Http::assertNothingSent();
+    }
 }
