@@ -867,16 +867,23 @@ class AiChatController extends Controller
         $question = $validated['message'];
         if (config('erp_ai.conversation_enabled', false) && $mediaIds === [] && $existingThreadId !== null) {
             try {
-                $conversation = DB::transaction(function () use ($principal, $threadId, $validated, $question): ?array {
+                if (!$this->ownedThreads($principal)->where('id', $threadId)->exists()) {
+                    return $this->threadNotFound();
+                }
+                $router = app(\App\Ai\Conversation\ConversationTurnRouter::class);
+                $interpretation = $router->interpretTurn($principal, $threadId, $validated);
+                $conversation = DB::transaction(function () use ($principal, $threadId, $validated, $question, $router, $interpretation): ?array {
                     if (!$this->ownedThreads($principal)->where('id', $threadId)->lockForUpdate()->first()) {
                         abort(404, 'Conversation is unavailable.');
                     }
-                    $result = app(\App\Ai\Conversation\ConversationTurnRouter::class)->route($principal, $threadId, $validated);
+                    $result = $router->route($principal, $threadId, $validated, $interpretation);
                     if ($result === null) {
                         return null;
                     }
                     if (empty($result['replayed'])) {
-                        $this->modelGateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
+                        if ($interpretation === null) {
+                            $this->modelGateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
+                        }
                         $evidence = ['facts' => [['tool' => 'workflow.clarification.v1', 'data' => $result]],
                             'sources' => [], 'warnings' => [], 'answer_status' => 'needs_input',
                             'workflow' => $result, 'interaction_type' => 'workflow_continuation'];

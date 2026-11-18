@@ -29,7 +29,7 @@ final class ConversationTurnRouter
     }
 
     // The caller holds the owned thread row lock until its messages are stored.
-    public function route(AiPrincipal $principal, string $threadId, array $input): ?array
+    public function route(AiPrincipal $principal, string $threadId, array $input, ?array $interpretation = null): ?array
     {
         $message = trim($input['message']);
         $hash = hash('sha256', json_encode($input, JSON_THROW_ON_ERROR));
@@ -81,12 +81,26 @@ final class ConversationTurnRouter
                 json_decode($task['slots_json'], true), status: 'cancelled');
             $result = $this->summary($this->state->getTask($principal, $task['id']), 'Draft cancelled. No ERP document was changed.');
             $result['status'] = 'cancelled';
-        } elseif ($tasks === []) {
-            $applied = $this->corrections->applyCorrections($principal, $task['id'], (int) $task['revision'], []);
-            $task = $applied['task'];
-            $result = $applied['clarification'] ?? $this->summary($task, 'Draft details are ready for ERP validation.');
         } else {
-            $result = $this->summary($task, 'Reply with the supplier and product quantities, or use the existing detail controls.');
+            $interpreter = app(ConversationalSlotInterpreter::class);
+            $parsed = $interpreter->interpret($task, $message);
+            if ($interpretation !== null) {
+                if ($interpretation['task_id'] !== $task['id'] || $interpretation['revision'] !== (int) $task['revision']) {
+                    throw new ConflictHttpException('Task changed while interpreting the reply. Reload the current draft.');
+                }
+                $parsed = $interpretation['parsed'];
+            }
+            if ($tasks !== [] && $parsed['corrections'] !== []) {
+                $this->assertRevision($task, $input);
+            }
+            if ($tasks === [] || $parsed['corrections'] !== [] || preg_match('/^(?:continue|resume|preview)$/i', $message)) {
+                $applied = $this->corrections->applyCorrections($principal, $task['id'], (int) $task['revision'], $parsed['corrections']);
+                $task = $applied['task'];
+                $result = $applied['clarification'] ?? $this->corrections->prepareProposal($principal, $task, $applied['evaluation']);
+            } else {
+                $result = $this->summary($task, 'Confirm the intended values or use the existing detail controls.');
+            }
+            $result['warnings'] = $parsed['warnings'];
         }
         DB::table('ai_workflow_task_events')->insert([
             'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
@@ -95,6 +109,42 @@ final class ConversationTurnRouter
             'created_at' => now(),
         ]);
         return $result;
+    }
+
+    // Provider billing must commit outside the draft transaction, including rejected or stale output.
+    public function interpretTurn(AiPrincipal $principal, string $threadId, array $input): ?array
+    {
+        if (DB::table('ai_workflow_task_events')->whereIn('task_id', $this->resolver->tasks($principal, $threadId)->select('id'))
+            ->where('event_type', 'conversation_turn')->where('metadata_json->client_turn_id', $input['client_turn_id'] ?? '')->exists()) {
+            return null;
+        }
+        $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
+        if (count($tasks) !== 1 || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
+            || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])) {
+            return null;
+        }
+        $task = $tasks[0];
+        app(ActionSecurity::class)->definition($task['action_key'], $principal);
+        $interpreter = app(ConversationalSlotInterpreter::class);
+        $parsed = $interpreter->interpret($task, $input['message']);
+        if ($parsed['turn_intent'] !== 'unknown') {
+            return null;
+        }
+        $this->assertRevision($task, $input);
+        $gateway = app(\App\Ai\Gateway\ApprovedModelGateway::class);
+        $model = $gateway->resolveApprovedModel();
+        $gateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
+        $slots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+        $response = (new ConversationParseAgent($principal))->prompt(json_encode(['utterance' => $input['message'],
+            'lines' => array_map(fn ($line) => array_intersect_key($line, array_flip(['client_line_id', 'product_query', 'qty'])), $slots['items'] ?? [])], JSON_THROW_ON_ERROR),
+            provider: $model['provider'], model: $model['model'], timeout: 20);
+        $raw = $response->toArray();
+        foreach ($raw['corrections'] ?? [] as $index => $correction) {
+            if (($correction['operation'] ?? '') === 'add_line' && is_string($correction['value'])) {
+                $raw['corrections'][$index]['value'] = json_decode($correction['value'], true, 8, JSON_THROW_ON_ERROR);
+            }
+        }
+        return ['task_id' => $task['id'], 'revision' => (int) $task['revision'], 'parsed' => $interpreter->validateModelResult($task, $raw)];
     }
 
     private function assertRevision(array $task, array $input): void
