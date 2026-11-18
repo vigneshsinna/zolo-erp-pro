@@ -172,6 +172,12 @@
         const date = fieldBlock('Order Date *', 'date', state);
         mount.append(date);
 
+        const extras = fieldBlock('Additional Purchase Order Details', 'note', state);
+        extras.append($('<p class="ai-po-hint"></p>').text(
+            'Optional. Tax and totals are calculated and validated by the ERP, not guessed by the AI.'
+        ));
+        mount.append(extras);
+
         const unresolved = $('<section class="ai-po-missing-list"></section>');
         if (missing.length) {
             unresolved.append($('<strong></strong>').text('Remaining questions'));
@@ -196,7 +202,7 @@
         const modes = $('<div class="ai-po-voice-tools"></div>');
         modes.append($('<strong></strong>').text('Or update through conversation'));
         modes.append($('<p class="ai-po-hint"></p>').text(
-            'Example: “Set rate to 600, quantity 10, use Main Warehouse and Credit 30 days.”'
+            'Example: “rate 600; quantity 10; warehouse Main Warehouse; Credit 30 days.”'
         ));
         const focus = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Type a correction</button>')
             .on('click', () => $('#chat-input').trigger('focus'));
@@ -239,6 +245,10 @@
                 oneInput(inputs, 'Rate (₹) *', line.net_unit_cost ?? line.net_unit_price,
                     {type:'number', min:'0', step:'any'}, val =>
                         change('items[' + lineId + '].net_unit_cost', val));
+                oneInput(inputs, 'Purchase Unit', line.uom ||
+                    labelFor('items[' + lineId + '].purchase_unit_id', state),
+                    {type:'text', placeholder:'e.g. Pairs'}, val =>
+                        change('items[' + lineId + '].uom', val));
                 panel.append(inputs);
                 panel.append($('<button type="button" class="btn btn-sm btn-link text-danger" data-conversation-action>Remove item</button>')
                     .on('click', () => change('items[' + lineId + ']._destroy', true)));
@@ -272,6 +282,12 @@
             }
             oneInput(date, 'Purchase Order date *', slots.date || labelFor('date', state),
                 {type:'date'}, val => change('date', val));
+            oneInput(extras, 'Order Discount (₹)', slots.order_discount ?? '',
+                {type:'number', min:'0', step:'any'}, val => change('order_discount', val));
+            oneInput(extras, 'Shipping / Freight (₹)', slots.shipping_cost ?? '',
+                {type:'number', min:'0', step:'any'}, val => change('shipping_cost', val));
+            oneInput(extras, 'Remarks / Reference', slots.note ?? '',
+                {type:'text', placeholder:'Optional order instructions'}, val => change('note', val));
         }).catch(() => status.text('Could not load the latest draft. Refresh before editing.'));
 
         update.on('click', async () => {
