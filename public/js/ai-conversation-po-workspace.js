@@ -163,6 +163,9 @@
         const cash = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Cash</button>')
             .on('click', () => submit('Cash'));
         const credit = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Credit</button>');
+        // Never accept a payment choice against an unloaded/stale draft.
+        cash.prop('disabled', true);
+        credit.prop('disabled', true);
         payments.append(cash, credit);
         terms.append(payments);
         const creditWrap = $('<div class="ai-po-credit-days"></div>');
@@ -255,6 +258,8 @@
                 lines.append(panel);
             });
             const currentTerms = String(slots.payment_terms_type || '');
+            cash.prop('disabled', false);
+            credit.prop('disabled', false);
             if (currentTerms === 'cash') cash.addClass('active');
             if (currentTerms === 'credit') credit.addClass('active');
             creditWrap.empty();
