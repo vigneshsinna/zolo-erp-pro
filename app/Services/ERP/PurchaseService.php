@@ -170,9 +170,10 @@ class PurchaseService
                 $batchId = $item['product_batch_id'] ?? null;
                 $batchNo = $item['batch']['batch_no'] ?? ($item['batch_no'] ?? ($data['lot_number'] ?? null));
                 if (!$batchId && !empty($batchNo)) {
+                    // The shared commercial path validates the optional batch metadata before deferring posting.
                     $batch = \App\Models\ProductBatch::firstOrCreateOwned($context->companyId, $productId, (string) $batchNo, [
                         'expired_date' => $item['batch']['expired_date'] ?? ($item['expired_date'] ?? null),
-                    ] + (array) ($item['batch'] ?? []));
+                    ] + ($deferPosting ? (array) ($item['batch'] ?? []) : []));
                     $batchId = $batch->id;
                 }
 
