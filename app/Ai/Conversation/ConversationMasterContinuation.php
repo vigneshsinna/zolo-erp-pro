@@ -36,10 +36,12 @@ final class ConversationMasterContinuation
             $field = $type.'_id';
             if ($type === 'product') {
                 $lines = json_decode($task['slots_json'], true)['items'] ?? [];
-                if (count($lines) > 1) {
-                    throw ValidationException::withMessages(['master' => 'Choose the unresolved product line before creating a product.']);
-                }
-                $field = 'items['.($lines[0]['client_line_id'] ?? 'line-'.Str::uuid()).'].product_id';
+                // Product creation may add a new line even if other PO lines exist.
+                // Reuse only the single unresolved line; never overwrite an existing
+                // selected product simply because there is exactly one line.
+                $unresolved = count($lines) === 1 && empty($lines[0]['product_id']) && !empty($lines[0]['client_line_id']);
+                $lineId = $unresolved ? $lines[0]['client_line_id'] : 'line-'.Str::uuid();
+                $field = 'items['.$lineId.'].product_id';
             }
             $meta = $orchestrator->resolveFieldEntity($field);
             app(CommercialPermission::class)->assert($meta['permission'], $context->context, $principal->actorId);
