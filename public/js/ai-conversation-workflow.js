@@ -57,30 +57,79 @@
         (state.confirmed_fields || []).forEach(field => summary.append($('<dt></dt>').text(field.label || field.field),
             $('<dd></dd>').text(field.display + (field.source === 'erp_default' ? ' (ERP default)' : ''))));
         root.append(summary);
-        const choices = $('<div class="ai-conversation-choices" role="group" aria-label="Eligible options"></div>');
-        (state.choices || []).forEach((choice, index) => choices.append($('<button type="button" data-conversation-action class="btn btn-sm btn-outline-primary mr-2 mb-2"></button>')
+        // Keep one verified choice set for both directory cards and ambiguity
+        // prompts. A displayed record is never an unverified client-side ID.
+        const directories = state.directories || [];
+        const directoryTypes = new Set(directories.map(directory => directory.entity_type));
+        const unmatchedChoices = (state.choices || []).filter(choice => !directoryTypes.has(choice.entity_type));
+        const choices = $('<div class="ai-conversation-choices" role="group" aria-label="Other eligible options"></div>');
+        unmatchedChoices.forEach((choice, index) => choices.append($('<button type="button" data-conversation-action class="btn btn-sm btn-outline-primary mr-2 mb-2"></button>')
             .text((index + 1) + '. ' + choice.label).on('click', () => submit('Select option', {choice_set_id: state.choice_set_id, choice_id: choice.choice_id}))));
         root.append(choices);
-        // A read-only directory enquiry can return several entity types at once.
-        // These records are informational until the user explicitly selects a
-        // valid choice or supplies the product and quantity for a draft line.
-        (state.directories || []).forEach(directory => {
+
+        directories.forEach(directory => {
             const names = {supplier: 'Suppliers', product: 'Products', warehouse: 'Warehouses', unit: 'Units'};
+            const plural = (names[directory.entity_type] || 'Records').toLowerCase();
             const panel = $('<section class="ai-conversation-directory border rounded p-2 mb-2"></section>');
             panel.append($('<strong class="d-block mb-1"></strong>').text(names[directory.entity_type] || 'Available records'));
+            const relatedChoices = (state.choices || []).filter(choice => choice.entity_type === directory.entity_type);
             const items = directory.items || [];
-            if (!items.length) {
-                panel.append($('<p class="small text-muted mb-0"></p>').text('No matching eligible records.'));
-            } else {
-                const list = $('<ul class="small mb-1 pl-3"></ul>');
-                items.forEach(item => {
-                    const label = item.name + (item.code && directory.entity_type !== 'supplier' ? ' (' + item.code + ')' : '');
-                    list.append($('<li></li>').text(label));
+            if (relatedChoices.length) {
+                const options = $('<div class="ai-conversation-directory-options" role="group"></div>')
+                    .attr('aria-label', (names[directory.entity_type] || 'Records') + ' you can select');
+                relatedChoices.forEach((choice, index) => {
+                    const action = directory.entity_type === 'product' ? 'Add product: ' : 'Use ';
+                    options.append($('<button type="button" data-conversation-action class="btn btn-sm btn-outline-primary ai-conversation-directory-option"></button>')
+                        .text((index + 1) + '. ' + action + choice.label)
+                        .on('click', () => submit('Select option', {
+                            choice_set_id: state.choice_set_id, choice_id: choice.choice_id,
+                        })));
                 });
+                panel.append(options);
+            } else if (!items.length) {
+                panel.append($('<p class="small text-muted mb-2"></p>').text('No matching eligible records.'));
+            } else {
+                // Unit directories without a selected line remain informational.
+                // All selectable product/supplier/warehouse records use signed choices.
+                const list = $('<ul class="small mb-2 pl-3"></ul>');
+                items.forEach(item => list.append($('<li></li>').text(item.name + (item.code ? ' (' + item.code + ')' : ''))));
                 panel.append(list);
             }
+            if (directory.total !== undefined) {
+                panel.append($('<p class="small text-muted mb-2"></p>').text('Showing ' + items.length + ' of ' + directory.total + ' eligible records.'));
+            }
+            const search = $('<form class="ai-conversation-directory-search mb-2"></form>');
+            const input = $('<input type="search" class="form-control form-control-sm" maxlength="120" autocomplete="off">')
+                .attr('aria-label', 'Search ' + plural)
+                .attr('placeholder', directory.entity_type === 'product' ? 'Search product name or SKU' : 'Search ' + plural);
+            const searchButton = $('<button type="submit" class="btn btn-sm btn-outline-secondary" data-conversation-action>Search</button>');
+            search.append(input, searchButton).on('submit', event => {
+                event.preventDefault();
+                const q = input.val().trim();
+                submit(q ? 'search ' + plural + ' for ' + q : 'show ' + plural);
+            });
+            panel.append(search);
             if (directory.has_more) {
-                panel.append($('<p class="small text-muted mb-0"></p>').text('Showing the first results. Use Detail controls to search further.'));
+                panel.append($('<p class="small text-muted mb-2"></p>').text('More records are available. Search by name or code to narrow the list.'));
+            }
+            if (directory.can_create && ['supplier', 'warehouse', 'product'].includes(directory.entity_type)) {
+                const create = $('<div class="ai-conversation-directory-create"></div>');
+                const toggle = $('<button type="button" class="btn btn-sm btn-outline-secondary mb-1" data-conversation-action></button>')
+                    .text('Create new ' + directory.entity_type);
+                const form = $('<form class="ai-conversation-directory-search mt-1" hidden></form>');
+                const newName = $('<input type="text" class="form-control form-control-sm" required maxlength="100" autocomplete="off">')
+                    .attr('aria-label', 'New ' + directory.entity_type + ' name')
+                    .attr('placeholder', 'Enter new ' + directory.entity_type + ' name');
+                form.append(newName, $('<button type="submit" class="btn btn-sm btn-primary" data-conversation-action>Continue</button>'))
+                    .on('submit', event => {
+                        event.preventDefault();
+                        const name = newName.val().trim();
+                        if (name) submit('create new ' + directory.entity_type + ' ' + name);
+                    });
+                toggle.on('click', () => { form.prop('hidden', !form.prop('hidden')); if (!form.prop('hidden')) newName.trigger('focus'); });
+                create.append(toggle, form,
+                    $('<p class="small text-muted mb-0"></p>').text('New master records require review and separate approval.'));
+                panel.append(create);
             }
             root.append(panel);
         });
