@@ -147,19 +147,41 @@ final class ConversationTurnRouter
         }
         $task = $this->state->getTask($principal, $task['id']);
         if (($result['status'] ?? '') === 'needs_input' && $directoryTypes === []) {
-            $missing = array_column(array_filter($result['required_inputs'] ?? [], fn ($issue) => ($issue['status'] ?? '') === 'missing'), 'field');
-            $missingQuantities = array_values(array_filter($missing, fn ($field) => str_ends_with((string) $field, '.qty')));
-            if ($missingQuantities !== []) {
-                $result['message'] = count($missingQuantities) === 1
-                    ? 'How many units of the selected product? You can reply “100 pairs at 500” or correct the rate separately.'
-                    : 'Please provide the quantities for the unresolved lines. Use Detail controls to identify a specific line.';
-                if (in_array('supplier_id', $missing, true)) {
-                    $result['message'] .= ' Choose a supplier from the available options as well.';
-                }
-            } elseif (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
-                $result['message'] = 'Choose a supplier and product, then tell me the quantity. You can also search or request a new record.';
-            } elseif (in_array('payment_terms_type', $missing, true) && !in_array('supplier_id', $missing, true)) {
-                $result['message'] = 'Cash or Credit terms? For Credit, how many days? No payment is posted by an order.';
+            $unresolved = array_values(array_filter($result['required_inputs'] ?? [], static fn (array $issue): bool =>
+                in_array(($issue['status'] ?? ''), ['missing', 'invalid', 'ambiguous', 'blocked_by_dependency'], true)));
+            $missing = array_column($unresolved, 'field');
+            $has = static fn (string $field): bool => in_array($field, $missing, true);
+            $hasLine = static fn (string $suffix): bool => count(array_filter($missing, static fn (string $field): bool =>
+                str_ends_with($field, $suffix))) > 0;
+            $remaining = [];
+            if ($has('supplier_id')) $remaining[] = 'Supplier';
+            if ($has('items') || $hasLine('.product_id')) $remaining[] = 'Product';
+            if ($hasLine('.qty')) $remaining[] = 'Quantity';
+            if ($hasLine('.net_unit_cost')) $remaining[] = 'Purchase Rate';
+            if ($has('warehouse_id')) $remaining[] = 'Destination Warehouse';
+            if ($has('payment_terms_type')) $remaining[] = 'Cash/Credit';
+            if ($has('credit_days')) $remaining[] = 'Credit Days';
+            if ($has('date')) $remaining[] = 'Order Date';
+
+            if ($has('items') || $hasLine('.product_id')) {
+                $result['message'] = 'Which product should I add to this Purchase Order? Choose an existing product or request a new one.';
+            } elseif ($hasLine('.qty')) {
+                $result['message'] = 'What quantity should I order? For one product, reply “100 pairs”.';
+            } elseif ($hasLine('.net_unit_cost')) {
+                $result['message'] = 'What purchase Rate should I use? Reply “rate 600” or “change the unit cost to 600”. This rate must be confirmed, not assumed from product master data.';
+            } elseif ($has('warehouse_id')) {
+                $result['message'] = 'Which Destination Warehouse should receive the goods? Choose an existing warehouse or request a new one.';
+            } elseif ($has('supplier_id')) {
+                $result['message'] = 'Which supplier should I use? Choose an existing supplier or request a new one.';
+            } elseif ($has('payment_terms_type')) {
+                $result['message'] = 'Should this Purchase Order use Cash or Credit terms? No payment is posted by creating an order.';
+            } elseif ($has('credit_days')) {
+                $result['message'] = 'How many credit days should I use for this Purchase Order?';
+            } elseif ($has('date')) {
+                $result['message'] = 'What Purchase Order date should I use?';
+            }
+            if ($remaining !== []) {
+                $result['message'] .= ' Remaining details: '.implode(', ', array_unique($remaining)).'.';
             }
             // On a new PO or after a record selection, offer the next available
             // choices. Browsing itself remains read-only; only selection changes slots.
