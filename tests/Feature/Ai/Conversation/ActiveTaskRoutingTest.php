@@ -637,7 +637,7 @@ class ActiveTaskRoutingTest extends TestCase
         $product = $this->createCatalogueFixtureProduct();
         $warehouse = \App\Models\Warehouse::forceCreate([
             'company_id' => $this->company->id, 'branch_id' => $this->branchId,
-            'name' => 'Only Warehouse', 'is_active' => true,
+            'name' => 'Only Warehouse', 'address' => 'Fixture branch', 'is_active' => true,
         ]);
         [$thread, $task] = $this->draft();
         $this->assertContains('warehouse_id', array_column($task['required_inputs'], 'field'),
@@ -711,7 +711,7 @@ class ActiveTaskRoutingTest extends TestCase
         $product = $this->createCatalogueFixtureProduct();
         $warehouse = \App\Models\Warehouse::forceCreate([
             'company_id' => $this->company->id, 'branch_id' => $this->branchId,
-            'name' => 'Warehouse for selection', 'is_active' => true,
+            'name' => 'Warehouse for selection', 'address' => 'Fixture branch', 'is_active' => true,
         ]);
         [$thread, $task] = $this->draft();
         $productChoice = collect($task['choices'])->firstWhere('entity_type', 'product');
