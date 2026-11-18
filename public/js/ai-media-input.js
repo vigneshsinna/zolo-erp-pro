@@ -365,13 +365,13 @@
         $('#chat-messages').append(loadingCard);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
+        function prepareInThread(effectiveThreadId) {
         const fd = new FormData();
         fd.append('file', targetStaged.file, targetStaged.fileName);
         fd.append('prepare_now', '1');
         if (companionText) {
             fd.append('companion_text', companionText);
         }
-        const effectiveThreadId = threadId || (ws && ws.getCurrentThreadId && ws.getCurrentThreadId());
         if (effectiveThreadId) {
             fd.append('thread_id', effectiveThreadId);
         }
@@ -394,15 +394,22 @@
                     try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
                 }
                 try {
-                    if (res.status === 'voice_reply_ready' && window.zoloAiConversation) window.zoloAiConversation.reviewVoice(res);
-                    else renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                    if (res.status === 'voice_intent_review_ready' && window.zoloAiConversation) {
+                        window.zoloAiConversation.reviewInitialVoice(res);
+                    } else if (res.status === 'voice_reply_ready' && window.zoloAiConversation) {
+                        window.zoloAiConversation.reviewVoice(res);
+                    } else if (targetStaged.isAudio && cfg.conversationEnabled) {
+                        throw new Error('Voice instruction requires explicit transcript review. No ERP action was staged.');
+                    } else {
+                        renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                    }
                     if (ws && ws.loadTelemetry) {
                         ws.loadTelemetry();
                     }
                 } catch (cardErr) {
                     console.error('Error rendering unified workflow card:', cardErr);
                     if (ws && ws.appendMessage) {
-                        ws.appendMessage('assistant', 'An unexpected error occurred while displaying the bill review: ' + (cardErr.message || 'Unknown error'));
+                        ws.appendMessage('assistant', 'Could not display the verified ERP workflow: ' + (cardErr.message || 'Unknown error'));
                     }
                 } finally {
                     if (callback) callback(null, res);
@@ -452,6 +459,34 @@
                 }
             }
         });
+        } // prepareInThread
+
+        const effectiveThreadId = threadId || (ws && ws.getCurrentThreadId && ws.getCurrentThreadId());
+        if (targetStaged.isAudio && cfg.conversationEnabled && !effectiveThreadId) {
+            $.ajax({
+                url: resolveAiBaseUrl() + '/threads',
+                method: 'POST',
+                headers: baseHeaders(true),
+                data: JSON.stringify({title: 'Voice instruction'}),
+                success: function (thread) {
+                    ws.setCurrentThreadId(thread.id);
+                    sessionStorage.setItem('ai_active_thread', thread.id);
+                    ws.loadThreads();
+                    prepareInThread(thread.id);
+                },
+                error: function (xhr) {
+                    $('#' + placeholderId).remove();
+                    stagedAttachment = targetStaged;
+                    renderAttachedChips();
+                    if (ws && ws.appendMessage) {
+                        ws.appendMessage('assistant', 'Unable to create a scoped conversation for this voice note. No ERP action was staged.');
+                    }
+                    if (callback) callback(xhr.responseJSON || new Error('Conversation creation failed'));
+                },
+            });
+            return;
+        }
+        prepareInThread(effectiveThreadId);
     }
 
     function retryPreparation(mediaId, companionText, onDone) {
