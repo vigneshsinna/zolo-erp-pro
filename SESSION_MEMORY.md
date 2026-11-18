@@ -1,3 +1,15 @@
+## PR #17 (D09 — Conversational ERP Read-Only Directories) Merged into feature/ai-unified-input-clarification — 2026-11-18
+
+- Stacked draft PR #17 (`origin/codex/d09-conversation-readonly-directories`, head `74c1d1c`) merged cleanly into `feature/ai-unified-input-clarification`:
+  - Recognizes conversational read-only directory inquiries (suppliers, products, warehouses, units) via `ConversationDirectoryIntent`.
+  - Routes enquiries without mutating the active workflow task or clearing pending order slots.
+  - Adds conversational directory card rendering in `public/js/ai-conversation-workflow.js` showing available matching records.
+  - Accepts empty parsed corrections as no-change results without validation errors.
+- Verification on updated `feature/ai-unified-input-clarification` head (`7cb6e58`):
+  - Browser Suite: `tests/Browser/Ai/conversation-workspace.spec.mjs` PASSED (verified read-only supplier/product directory browsing alongside full conversational PO flow).
+  - Live Staging Acceptance Runner: `scripts/run_live_staging_acceptance.php` PASSED (all 6 stages green, live NVIDIA Omni perception 5.975s, UOM lock avg 15.79ms).
+  - Pushed to `origin/feature/ai-unified-input-clarification`.
+
 ## Stacked PRs #8–#16 Sequential Merge into feature/ai-unified-input-clarification Complete — 2026-11-18
 
 - All 9 stacked PRs merged in strict dependency order into `feature/ai-unified-input-clarification`:

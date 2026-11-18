@@ -1,12 +1,12 @@
 {
-    "timestamp": "2026-11-18T07:04:09+00:00",
+    "timestamp": "2026-11-18T08:15:56+00:00",
     "environment": "isolated_staging_rehearsal",
     "provider": "nvidia",
     "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "stages": {
         "stage_1": {
             "status": "PASS",
-            "elapsed_seconds": 0.386,
+            "elapsed_seconds": 0.204,
             "company_id": 83,
             "branch_id": 63,
             "fiscal_year_id": 63,
@@ -16,23 +16,23 @@
         },
         "stage_2": {
             "status": "PASS",
-            "elapsed_seconds": 4.084,
-            "task_id": "af5d312f-5486-4460-a3bf-8e101b17d8bf",
+            "elapsed_seconds": 6.079,
+            "task_id": "d952afb9-14ff-488e-b217-e9a1920453c1",
             "final_revision": 4,
             "task_status": "ready",
             "purchases_pre_approval": 0
         },
         "stage_3": {
             "status": "PASS",
-            "elapsed_seconds": 0.365,
+            "elapsed_seconds": 0.095,
             "clerk_unauthorized_rejection": true,
-            "created_warehouse_id": 129,
+            "created_warehouse_id": 131,
             "parent_resumed_status": "resumed",
             "parent_resumed_revision": 5
         },
         "stage_4": {
             "status": "PASS",
-            "elapsed_seconds": 0.314,
+            "elapsed_seconds": 0.086,
             "cash_po_status": 4,
             "cash_po_paid_amount": 0,
             "cash_po_payments_count": 0,
@@ -41,31 +41,31 @@
         },
         "stage_5": {
             "status": "PASS",
-            "elapsed_seconds": 0.087,
-            "uom_lock_avg_ms": 17.26
+            "elapsed_seconds": 0.079,
+            "uom_lock_avg_ms": 15.79
         }
     },
     "uom_lock_metrics": {
         "iterations": 5,
         "timings_ms": [
-            20.27,
-            16.12,
-            17.23,
-            15.87,
-            16.82
+            14.2,
+            16.07,
+            16.02,
+            16.32,
+            16.35
         ],
-        "avg_ms": 17.26,
-        "max_ms": 20.27,
+        "avg_ms": 15.79,
+        "max_ms": 16.35,
         "threshold_ms": 250,
         "contention_acceptable": true
     },
     "provider_telemetry": {
         "voice_transcription": {
-            "latency_seconds": 3.764,
+            "latency_seconds": 5.975,
             "input_tokens": 313,
-            "output_tokens": 241,
+            "output_tokens": 226,
             "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-            "raw_text_length": 759
+            "raw_text_length": 736
         }
     },
     "financial_checks": {
@@ -141,5 +141,5 @@
             "title": "D08 Release Blocker Follow-up"
         }
     ],
-    "completed_at": "2026-11-18T07:04:14+00:00"
+    "completed_at": "2026-11-18T08:16:03+00:00"
 }
