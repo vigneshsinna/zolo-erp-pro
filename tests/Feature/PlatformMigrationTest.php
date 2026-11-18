@@ -17,11 +17,12 @@ class PlatformMigrationTest extends CompanyContextTestCase
             'company_id' => $this->company->id, 'capability_id' => $capability, 'enabled' => false,
         ]);
         $foreignCounts = [count(Schema::getForeignKeys('company_capabilities')), count(Schema::getForeignKeys('document_series'))];
+        $profiles = DB::table('business_profiles')->orderBy('id')->pluck('id')->all();
         (require database_path('migrations/2026_10_03_000004_create_capability_tables.php'))->up();
         (require database_path('migrations/2026_10_03_000005_create_document_numbering_tables.php'))->up();
         $this->assertSame($foreignCounts, [count(Schema::getForeignKeys('company_capabilities')), count(Schema::getForeignKeys('document_series'))]);
         $this->assertFalse((bool) DB::table('company_capabilities')->value('enabled'));
-        $this->assertSame(5, DB::table('business_profiles')->count());
+        $this->assertSame($profiles, DB::table('business_profiles')->orderBy('id')->pluck('id')->all());
     }
 
     public function test_committed_mysql_table_creation_recovers_missing_indexes_and_foreign_keys(): void

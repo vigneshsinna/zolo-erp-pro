@@ -2378,19 +2378,19 @@
             if (p.base !== undefined && p.base !== null && p.base !== '') {
                 tr.find('.row-base').val(p.base);
                 tr.find('.optical-base-text').text(p.base);
-                tr.find('.optical-base-badge').show();
+                tr.find('.optical-base-badge').removeClass('d-none');
             } else {
                 tr.find('.row-base').val('');
-                tr.find('.optical-base-badge').hide();
+                tr.find('.optical-base-badge').addClass('d-none');
             }
 
             if (p.dia !== undefined && p.dia !== null && p.dia !== '') {
                 tr.find('.row-dia').val(p.dia);
                 tr.find('.optical-dia-text').text(p.dia);
-                tr.find('.optical-dia-badge').show();
+                tr.find('.optical-dia-badge').removeClass('d-none');
             } else {
                 tr.find('.row-dia').val('');
-                tr.find('.optical-dia-badge').hide();
+                tr.find('.optical-dia-badge').addClass('d-none');
             }
 
             if (p.addition !== undefined && p.addition !== null && p.addition !== '') {
@@ -2404,9 +2404,9 @@
             var typeName = p.type_name || p.product_type_name || p.product_type || (p.product_type_id && window.productTypeMap && window.productTypeMap[p.product_type_id]);
             if (typeName) {
                 tr.find('.optical-type-text').text(typeName);
-                tr.find('.optical-type-badge').show();
+                tr.find('.optical-type-badge').removeClass('d-none');
             } else {
-                tr.find('.optical-type-badge').hide();
+                tr.find('.optical-type-badge').addClass('d-none');
             }
         }
 
@@ -2715,16 +2715,16 @@
                         </span>
                     </div>
                     ${window.isOpticalProfile ? `
-                    <div class="optical-rx-strip d-flex align-items-center mt-1 pt-1 border-top" style="gap: 4px; font-size: 11px;">
-                        <span class="badge badge-info text-white px-1 optical-type-badge" style="display: ${(item.type_name || item.product_type_name) ? 'inline-block' : 'none'};"><strong class="optical-type-text">${escapeHtml(item.type_name || item.product_type_name || '')}</strong></span>
-                        <span class="badge badge-light border text-muted px-1 optical-base-badge" style="display: ${item.base ? 'inline-block' : 'none'};">Base: <strong class="optical-base-text">${escapeHtml(item.base || '')}</strong></span>
-                        <span class="badge badge-light border text-muted px-1 optical-dia-badge" style="display: ${item.dia ? 'inline-block' : 'none'};">DIA: <strong class="optical-dia-text">${escapeHtml(item.dia || '')}</strong></span>
-                        <span class="text-muted ml-1" style="font-weight: 600;">Rx:</span>
-                        <input type="text" name="sph[]" class="form-control form-control-sm row-sph px-1 text-center" style="width: 55px; height: 24px; font-size: 11px;" placeholder="SPH" value="${escapeHtml(item.sph || '')}" title="Sphere (SPH)">
-                        <input type="text" name="cyl[]" class="form-control form-control-sm row-cyl px-1 text-center" style="width: 55px; height: 24px; font-size: 11px;" placeholder="CYL" value="${escapeHtml(item.cyl || '')}" title="Cylinder (CYL)">
-                        <input type="text" name="axis[]" class="form-control form-control-sm row-axis px-1 text-center" style="width: 50px; height: 24px; font-size: 11px;" placeholder="AXIS" value="${escapeHtml(item.axis || '')}" title="Axis (1-180)">
-                        <input type="text" name="addition[]" class="form-control form-control-sm row-addition px-1 text-center" style="width: 55px; height: 24px; font-size: 11px;" placeholder="ADD" value="${escapeHtml(item.addition || '')}" title="Addition (ADD)">
-                        <select name="lr[]" class="form-control form-control-sm custom-select-native row-lr px-1 text-center" style="width: 48px; height: 24px; font-size: 11px;" title="Eye (L/R/Pair)">
+                    <div class="optical-rx-strip d-flex align-items-center mt-1 pt-1 border-top">
+                        <span class="badge badge-info text-white px-1 optical-type-badge${(item.type_name || item.product_type_name) ? '' : ' d-none'}"><strong class="optical-type-text">${escapeHtml(item.type_name || item.product_type_name || '')}</strong></span>
+                        <span class="badge badge-light border text-muted px-1 optical-base-badge${item.base ? '' : ' d-none'}">Base: <strong class="optical-base-text">${escapeHtml(item.base || '')}</strong></span>
+                        <span class="badge badge-light border text-muted px-1 optical-dia-badge${item.dia ? '' : ' d-none'}">DIA: <strong class="optical-dia-text">${escapeHtml(item.dia || '')}</strong></span>
+                        <span class="text-muted ml-1 optical-rx-label">Rx:</span>
+                        <input type="text" name="sph[]" class="form-control form-control-sm row-sph px-1 text-center" placeholder="SPH" value="${escapeHtml(item.sph || '')}" title="Sphere (SPH)">
+                        <input type="text" name="cyl[]" class="form-control form-control-sm row-cyl px-1 text-center" placeholder="CYL" value="${escapeHtml(item.cyl || '')}" title="Cylinder (CYL)">
+                        <input type="text" name="axis[]" class="form-control form-control-sm row-axis px-1 text-center" placeholder="AXIS" value="${escapeHtml(item.axis || '')}" title="Axis (1-180)">
+                        <input type="text" name="addition[]" class="form-control form-control-sm row-addition px-1 text-center" placeholder="ADD" value="${escapeHtml(item.addition || '')}" title="Addition (ADD)">
+                        <select name="lr[]" class="form-control form-control-sm custom-select-native row-lr px-1 text-center" title="Eye (L/R/Pair)">
                             <option value="" ${!item.lr ? 'selected' : ''}>-</option>
                             <option value="L" ${item.lr === 'L' ? 'selected' : ''}>L</option>
                             <option value="R" ${item.lr === 'R' ? 'selected' : ''}>R</option>
