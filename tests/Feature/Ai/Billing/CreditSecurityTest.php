@@ -236,7 +236,8 @@ final class CreditSecurityTest extends TestCase
                 $paymentId,
                 $eventId,
                 'razorpay',
-                ['amount' => 49900]
+                ['status' => 'captured', 'amount' => $order->amount_minor_inr + $order->tax_minor_inr,
+                    'currency' => 'INR', 'order_id' => $order->provider_order_id, 'id' => $paymentId]
             );
         }
 
@@ -247,6 +248,51 @@ final class CreditSecurityTest extends TestCase
     /**
      * SEC-14: Concurrent credit holds exceeding wallet balance fail closed.
      */
+    public function test_only_bound_captured_full_payments_grant_credits(): void
+    {
+        $service = app(AiTopupService::class);
+        $order = $service->createOrder($this->companyA->id, 'PACK-5K', 'verified-capture');
+        $payment = ['status' => 'captured', 'amount' => $order->amount_minor_inr + $order->tax_minor_inr,
+            'currency' => 'INR', 'order_id' => $order->provider_order_id, 'id' => 'pay_verified'];
+        foreach ([['status' => 'authorized'], ['amount' => $order->amount_minor_inr],
+            ['order_id' => $order->id], ['currency' => 'USD'], ['id' => 'pay_other'], ['status' => null]] as $change) {
+            try {
+                $service->recordPaymentSuccess($order->id, 'pay_verified', 'evt_verified', 'razorpay', $change + $payment);
+                $this->fail('Invalid capture granted credits.');
+            } catch (\InvalidArgumentException) {
+                $this->assertDatabaseHas('ai_credit_topup_orders', ['id' => $order->id, 'status' => 'pending']);
+                $this->assertDatabaseMissing('ai_credit_ledger', ['source_id' => $order->id, 'kind' => 'topup_grant']);
+                $this->assertDatabaseMissing('ai_credit_payment_events', ['event_id' => 'evt_verified']);
+            }
+        }
+
+        $payload = ['event_id' => 'evt_verified', 'payload' => ['payment' => ['entity' => $payment]]];
+        $body = json_encode($payload, JSON_THROW_ON_ERROR);
+        config(['ai_credits.webhook_secret' => 'fixture-webhook-capture-secret']);
+        $url = route('api.v1.billing.webhooks', ['provider' => 'razorpay']);
+        $signature = hash_hmac('sha256', $body, 'fixture-webhook-capture-secret');
+        for ($i = 0; $i < 2; ++$i) {
+            $this->call('POST', $url, [], [], [], ['CONTENT_TYPE' => 'application/json',
+                'HTTP_ACCEPT' => 'application/json', 'HTTP_X_RAZORPAY_SIGNATURE' => $signature], $body)
+                ->assertOk()->assertJsonPath('order_id', $order->id)->assertJsonPath('status', 'paid');
+        }
+        foreach ([$order->provider_order_id, $order->id] as $identity) {
+            $this->assertSame($order->id, $service->recordPaymentSuccess($identity, 'pay_verified', 'evt_verified', 'razorpay', $payload)->id);
+        }
+        $this->assertSame(1, DB::table('ai_credit_ledger')->where('source_id', $order->id)->where('kind', 'topup_grant')->count());
+
+        $other = $service->createOrder($this->companyB->id, 'PACK-5K', 'second-verified-capture');
+        $otherPayment = ['order_id' => $other->provider_order_id, 'id' => 'pay_other'] + $payment;
+        try {
+            $service->recordPaymentSuccess($other->provider_order_id, 'pay_other', 'evt_verified', 'razorpay', $otherPayment);
+            $this->fail('An already processed event was accepted for another order.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Payment event identity was already used.', $e->getMessage());
+            $this->assertDatabaseHas('ai_credit_topup_orders', ['id' => $other->id, 'status' => 'pending']);
+            $this->assertDatabaseMissing('ai_credit_ledger', ['source_id' => $other->id, 'kind' => 'topup_grant']);
+        }
+    }
+
     public function test_sec_14_holds_exceeding_balance_fail_closed(): void
     {
         $creditMeter = app(AiCreditMeter::class);
