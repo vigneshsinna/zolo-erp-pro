@@ -48,7 +48,7 @@ final class InputCompletenessEvaluator
                 continue;
             }
 
-            $this->evaluateScalarRequirement($req, $taskContext, array_replace($slots, $cleanSlots), $batchResult, $issues, $confirmed, $cleanSlots);
+            $this->evaluateScalarRequirement($req, $taskContext, array_replace($slots, $cleanSlots), $batchResult, $issues, $confirmed, $cleanSlots, $provider->actionKey());
         }
 
         // Add downstream pending checks when prerequisite entities are unresolved
@@ -76,8 +76,8 @@ final class InputCompletenessEvaluator
 
                 if (preg_match('/^items\.(\d+)\.net_unit_cost$/', $field, $m)) {
                     $lineNum = ((int) $m[1]) + 1;
-                    $humanLabel = "Item {$lineNum} Unit Rate / Cost";
-                    $humanReason = "Please specify the unit purchase rate, or enter 0.00 if the cost is pending vendor confirmation.";
+                    $humanLabel = "Item {$lineNum} Rate";
+                    $humanReason = "Please confirm the purchase rate for this item.";
                 } elseif (preg_match('/^items\.(\d+)\.qty$/', $field, $m)) {
                     $lineNum = ((int) $m[1]) + 1;
                     $humanLabel = "Item {$lineNum} Quantity";
@@ -111,11 +111,22 @@ final class InputCompletenessEvaluator
         array &$issues,
         array &$confirmed,
         array &$cleanSlots,
+        string $actionKey,
     ): void {
         $field = $req->fieldPath;
         $resolvedId = $batchResult->getResolvedId($field);
         $entity = $batchResult->getEntity($field);
         $resolution = $batchResult->getResolution($field);
+
+        if ($field === 'warehouse_id' && $actionKey === 'purchase_order.create.v1'
+            && config('erp_ai.conversation_enabled', false)
+            && !isset($slots['warehouse_id'])
+            && trim((string) ($slots['warehouse_query'] ?? '')) === '') {
+            // A single branch warehouse is a useful candidate, not a user's
+            // authorization to select the destination for this purchase order.
+            $resolvedId = null;
+            $resolution = null;
+        }
 
         if ($resolvedId !== null) {
             $displayName = $entity && isset($entity->name) ? (string) $entity->name : (string) $resolvedId;
@@ -361,16 +372,31 @@ final class InputCompletenessEvaluator
                     $costVal = (float) $userCost;
                     $confirmed[] = [
                         'field' => $costFieldKey,
-                        'label' => "Line {$lineIndex} Unit Cost",
+                        'label' => "Line {$lineIndex} Rate",
                         'display' => '₹'.CommercialDecimal::format($costVal),
                         'source' => 'user',
                     ];
                     $cleanLine['net_unit_cost'] = CommercialDecimal::format($costVal);
+                } elseif ($provider?->actionKey() === 'purchase_order.create.v1'
+                    && config('erp_ai.conversation_enabled', false)) {
+                    // Product master cost/price are reference values. They are not
+                    // agreement to a Purchase Order rate and must not be silently used.
+                    $reference = ($productEntity && is_numeric($productEntity->cost ?? null) && (float) $productEntity->cost > 0)
+                        ? ' Product master cost is ₹'.CommercialDecimal::format((float) $productEntity->cost).'.'
+                        : '';
+                    $issues[] = new FieldIssue(
+                        field: $costFieldKey,
+                        label: "Line {$lineIndex} Rate",
+                        status: 'missing',
+                        reason: "Confirm the purchase rate for line {$lineIndex}.{$reference} Say 'rate 600' or choose another verified rate.",
+                        control: 'number',
+                        clientLineId: $clientLineId,
+                    );
                 } elseif ($productEntity && isset($productEntity->cost) && (float) $productEntity->cost > 0) {
                     $cleanLine['net_unit_cost'] = CommercialDecimal::format((float) $productEntity->cost);
                     $confirmed[] = [
                         'field' => $costFieldKey,
-                        'label' => "Line {$lineIndex} Unit Cost",
+                        'label' => "Line {$lineIndex} Rate",
                         'display' => sprintf('₹%.2f (Master Cost)', (float) $productEntity->cost),
                         'source' => 'erp_default',
                     ];
@@ -378,7 +404,7 @@ final class InputCompletenessEvaluator
                     $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $productEntity->price);
                     $confirmed[] = [
                         'field' => $costFieldKey,
-                        'label' => "Line {$lineIndex} Unit Cost",
+                        'label' => "Line {$lineIndex} Rate",
                         'display' => sprintf('₹%.2f (Master Price)', (float) $productEntity->price),
                         'source' => 'erp_default',
                     ];
@@ -387,7 +413,7 @@ final class InputCompletenessEvaluator
                     $cleanLine['net_unit_cost'] = '0.00';
                     $confirmed[] = [
                         'field' => $costFieldKey,
-                        'label' => "Line {$lineIndex} Unit Cost",
+                        'label' => "Line {$lineIndex} Rate",
                         'display' => '₹0.00 (Pending rate)',
                         'source' => 'erp_default',
                     ];
