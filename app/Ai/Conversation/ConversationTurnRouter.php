@@ -148,7 +148,15 @@ final class ConversationTurnRouter
         $task = $this->state->getTask($principal, $task['id']);
         if (($result['status'] ?? '') === 'needs_input' && $directoryTypes === []) {
             $missing = array_column(array_filter($result['required_inputs'] ?? [], fn ($issue) => ($issue['status'] ?? '') === 'missing'), 'field');
-            if (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
+            $missingQuantities = array_values(array_filter($missing, fn ($field) => str_ends_with((string) $field, '.qty')));
+            if ($missingQuantities !== []) {
+                $result['message'] = count($missingQuantities) === 1
+                    ? 'How many units of the selected product? You can reply “100 pairs at 500” or correct the rate separately.'
+                    : 'Please provide the quantities for the unresolved lines. Use Detail controls to identify a specific line.';
+                if (in_array('supplier_id', $missing, true)) {
+                    $result['message'] .= ' Choose a supplier from the available options as well.';
+                }
+            } elseif (in_array('supplier_id', $missing, true) && in_array('items', $missing, true)) {
                 $result['message'] = 'Choose a supplier and product, then tell me the quantity. You can also search or request a new record.';
             } elseif (in_array('payment_terms_type', $missing, true) && !in_array('supplier_id', $missing, true)) {
                 $result['message'] = 'Cash or Credit terms? For Credit, how many days? No payment is posted by an order.';
