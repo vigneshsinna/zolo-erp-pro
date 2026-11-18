@@ -770,3 +770,44 @@ body.dark-mode .ai-workspace-container .text-muted { color: var(--ai-muted) !imp
     .ai-conversation-task { padding: .75rem !important; }
     .ai-conversation-task button { min-height: 44px; }
 }
+
+
+/* Conversational PO: a single, editable ERP task workspace. */
+.ai-po-workspace { display: grid; gap: .85rem; padding: .5rem 0 1rem; }
+.ai-po-workspace-head { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; font-size: 1.05rem; }
+.ai-po-workspace-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.ai-po-section { min-width: 0; border: 1px solid #ddd8e7; background: var(--z-surface, #fff); padding: .8rem; border-radius: .65rem; }
+.ai-po-section-head { display: flex; justify-content: space-between; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+.ai-po-field-state { font-size: .72rem; border-radius: 1rem; padding: .17rem .55rem; background: #f0f0f4; color: #586071; white-space: nowrap; }
+.ai-po-field-required { background: #fff1d9; color: #8c5200; }
+.ai-po-field-set { background: #e6f4e9; color: #22613d; }
+.ai-po-hint { color: #657080; font-size: .8rem; margin: .35rem 0; overflow-wrap: anywhere; }
+.ai-po-selected { font-weight: 600; color: #292d39; margin: 0 0 .5rem; }
+.ai-po-status { margin: 0; font-size: .85rem; font-weight: 600; }
+.ai-po-record-picker, .ai-po-record-search { min-width: 0; }
+.ai-po-record-search { display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+.ai-po-record-search input { min-width: 8rem; flex: 1 1 14rem; }
+.ai-po-choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .5rem; }
+.ai-po-choice { white-space: normal; overflow-wrap: anywhere; text-align: left; min-height: 2.5rem; }
+.ai-po-lines { display: grid; gap: .6rem; margin-bottom: .5rem; }
+.ai-po-line { border: 1px solid #ece9f0; background: #fbfafc; border-radius: .5rem; padding: .7rem; }
+.ai-po-line-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.ai-po-edit-field { min-width: 0; display: grid; gap: .3rem; font-size: .82rem; font-weight: 600; margin: .4rem 0; }
+.ai-po-edit-field .form-control { width: 100%; min-width: 0; font-weight: 400; }
+.ai-po-edit-field small { color: #64748b; font-weight: 400; }
+.ai-po-payment-mode, .ai-po-workspace-actions, .ai-po-voice-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; }
+.ai-po-payment-mode .active { border-color: #7d287e; background: #f6eefa; font-weight: 700; }
+.ai-po-missing-list { font-size: .82rem; }
+.ai-po-missing-list ul { margin: .35rem 0; padding-left: 1.5rem; }
+.ai-po-missing-list li { padding: .12rem 0; }
+.ai-po-workspace-actions { border-top: 1px solid #ddd8e7; padding-top: .75rem; }
+.ai-po-voice-tools { border-top: 1px solid #eee8f0; padding-top: .7rem; }
+.ai-po-voice-tools strong, .ai-po-voice-tools .ai-po-hint { flex-basis: 100%; }
+.ai-po-workspace button:focus-visible, .ai-po-workspace input:focus-visible { outline: 3px solid #7d287e; outline-offset: 2px; }
+.ai-po-record-search[hidden] { display: none !important; }
+
+@media (max-width: 767px) {
+    .ai-po-workspace-grid, .ai-po-line-inputs { grid-template-columns: minmax(0, 1fr); }
+    .ai-po-section { padding: .65rem; }
+    .ai-po-workspace-actions button { width: 100%; }
+}
