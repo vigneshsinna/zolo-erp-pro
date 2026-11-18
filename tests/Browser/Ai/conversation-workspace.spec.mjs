@@ -65,7 +65,7 @@ await context.route('**/*', async route => {
         }
         return route.fulfill({json: {thread_id: threadId, interaction_type: 'workflow_continuation', workflow: state, message: state.message, sources: [], warnings: [], facts: []}});
     }
-    if (url.pathname === \`/ai/workflow-tasks/\${taskId}/inputs\` && request.method() === 'PATCH') {
+    if (url.pathname === `/ai/workflow-tasks/${taskId}/inputs` && request.method() === 'PATCH') {
         const body = request.postDataJSON();
         assert.equal(body.expected_revision, revision);
         patches.push(body);
@@ -77,7 +77,7 @@ await context.route('**/*', async route => {
         revision++;
         return route.fulfill({json: {task: {id: taskId, revision}, evaluation: {is_ready: false}, clarification: workflow()}});
     }
-    if (url.pathname === \`/ai/workflow-tasks/\${taskId}\`) return route.fulfill({json: {task: {id: taskId, revision, slots: taskSlots, status: readyWorkflow ? 'proposal_created' : 'collecting', action_key: 'purchase_order.create.v1'}, clarification: workflow(), evaluation: {is_ready: Boolean(readyWorkflow)}}});
+    if (url.pathname === `/ai/workflow-tasks/${taskId}`) return route.fulfill({json: {task: {id: taskId, revision, slots: taskSlots, status: readyWorkflow ? 'proposal_created' : 'collecting', action_key: 'purchase_order.create.v1'}, clarification: workflow(), evaluation: {is_ready: Boolean(readyWorkflow)}}});
     if (url.pathname === `/ai/workflow-tasks/${taskId}/prepare-proposal`) return route.fulfill({json: {task_revision: revision, proposal: {id: readyWorkflow.proposal_id, version: 1, preview: readyWorkflow.preview}}});
     if (url.pathname === '/ai/proposals/66666666-6666-4666-8666-666666666666/approve') {
         approvals++;
@@ -130,10 +130,9 @@ try {
     await page.locator('.ai-po-line-inputs input').first().waitFor();
     await page.locator('.ai-po-line-inputs input').first().fill('10');
     await page.locator('.ai-po-line-inputs input').nth(1).fill('600');
+    const saved = page.waitForResponse(response => response.url().endsWith('/inputs') && response.request().method() === 'PATCH');
     await page.getByRole('button', {name: 'Apply details & revalidate'}).click();
-    await page.waitForFunction(() => window.__poTestPatchCount?.() === 1, null, {timeout: 2000}).catch(async () => {
-        assert.equal(patches.length, 1);
-    });
+    await saved;
     assert.equal(patches.length, 1, 'Changes from the complete UI use one revisioned patch');
     assert.deepEqual(patches[0].corrections.map(x => x.field).sort(),
         ['items[line-fixture].net_unit_cost', 'items[line-fixture].qty']);
