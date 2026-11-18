@@ -29,6 +29,7 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
         protected readonly ?Closure $budgetStep = null,
         protected readonly array $activeEntities = [],
         protected readonly array $normalizedMediaContext = [],
+        protected readonly bool $readToolsOnly = false,
     ) {
     }
 
@@ -208,6 +209,9 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
     public function tools(): iterable
     {
         $tools = app(AiToolManifest::class)->sdkTools($this->principal);
+        if ($this->readToolsOnly) {
+            return $tools;
+        }
         if (
             config('ai_actions.foundation_enabled', false) && array_intersect(
                 $this->principal->permittedToolNames,

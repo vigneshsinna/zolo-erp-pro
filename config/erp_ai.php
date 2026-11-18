@@ -16,6 +16,8 @@ return [
 
     'enabled' => env('AI_ENABLED', false),
 
+    'conversation_enabled' => env('AI_CONVERSATION_ENABLED', false),
+
     /*
     |--------------------------------------------------------------------------
     | Global Read-Only Enforcement
