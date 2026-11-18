@@ -25,7 +25,7 @@ final class ConversationTurnRouter
 
     public function startsPurchaseOrder(string $message): bool
     {
-        return (bool) preg_match('/\b(?:create|prepare|raise|make|start)\s+(?:a\s+|an\s+|new\s+)?(?:purchase\s+order|po)\b/i', $message);
+        return app(VoiceIntentResolver::class)->resolve($message) === 'purchase_order.create.v1';
     }
 
     // The caller holds the owned thread row lock until its messages are stored.
