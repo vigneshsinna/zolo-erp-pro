@@ -222,9 +222,58 @@
             const result = await request('POST', '/chat', body);
             pending = null;
             if ($('#chat-input').val().trim() === message) $('#chat-input').val('').trigger('input');
-            $('.ai-conversation-voice').remove();
+            $('.ai-conversation-voice, .ai-conversation-initial-voice').remove();
             receive(result);
         } catch (error) { fail(error); } finally { setBusy(false); }
+    }
+
+    function reviewInitialVoice(result) {
+        if (!result?.media?.id || !result?.extraction?.revision
+            || !result.thread_id || result.thread_id !== ws.getCurrentThreadId()) {
+            errorBox.prop('hidden', false).text('The voice instruction is not bound to this conversation. No ERP task was staged.');
+            return;
+        }
+        $('.ai-conversation-initial-voice').remove();
+        const panel = $('<section class="ai-conversation-initial-voice card border rounded p-3 mb-3"></section>')
+            .attr('aria-label', 'Confirm voice transaction');
+        panel.append($('<h6 class="mb-2"></h6>').text('Review your voice instruction'));
+        const recognized = result.intent_key === 'purchase_order.create.v1';
+        panel.append($('<p class="small mb-2"></p>').text(recognized
+            ? 'I heard a request to create a Purchase Order. Confirm the wording below before Copilot finds suppliers, products and warehouses.'
+            : 'I cannot reliably confirm a Purchase Order request. Correct the transcript to state the intended transaction. No Purchase Bill or Purchase Order has been prepared.'));
+        const label = $('<label class="font-weight-bold small" for="ai-voice-initial-transcript"></label>').text('Transcribed instruction');
+        const input = $('<textarea class="form-control mb-2" id="ai-voice-initial-transcript" rows="3"></textarea>')
+            .val(result.extraction.extracted?.transcript_text || '');
+        panel.append(label, input);
+        (result.extraction.extracted?.warnings || []).forEach(warning =>
+            panel.append($('<p class="small text-warning mb-1"></p>').text(warning)));
+        const action = $('<button type="button" data-conversation-action class="btn btn-primary btn-sm"></button>')
+            .text('Confirm transcript & continue');
+        const hint = $('<p class="small text-muted mt-2 mb-0"></p>')
+            .text('Your confirmed words determine the action. Unclear or different document types will not be converted automatically.');
+        action.on('click', async () => {
+            const transcript = input.val().trim();
+            if (!transcript || busy) return;
+            setBusy(true);
+            errorBox.prop('hidden', true);
+            try {
+                const confirmed = await request('POST', '/media/' + result.media.id + '/confirm', {
+                    expected_revision: result.extraction.revision, transcript_text: transcript,
+                });
+                result.extraction = confirmed.extraction;
+                setBusy(false);
+                await submit(transcript, {media_ids: [result.media.id],
+                    voice_extraction_revision: confirmed.extraction.revision});
+            } catch (xhr) {
+                fail(xhr);
+            } finally {
+                setBusy(false);
+            }
+        });
+        panel.append(action, hint);
+        $('#chat-messages').append(panel);
+        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+        input[0].focus();
     }
 
     function reviewVoice(result) {
@@ -249,8 +298,14 @@
     }
 
     window.zoloAiConversation = {
-        getActiveTask: () => active, isBusy: () => busy, render, receive, reviewVoice, reload,
+        getActiveTask: () => active, isBusy: () => busy, render, receive, reviewVoice, reviewInitialVoice, reload,
         interceptSubmit(message) {
+            // First voice instructions must reach transcription review even if
+            // the typed companion text is generic or empty.
+            if (window.zoloAiMedia?.hasStagedVoiceAttachment()) {
+                if (!busy) { setBusy(true); window.zoloAiMedia.submitStagedAttachment(message, ws.getCurrentThreadId(), () => setBusy(false)); }
+                return true;
+            }
             if (!active && !/\b(?:create|prepare|raise|make|start)\s+(?:a\s+|new\s+)?(?:purchase\s+order|po)\b/i.test(message)) return false;
             if (window.zoloAiMedia?.hasStagedAttachment()) {
                 if (!busy) { setBusy(true); window.zoloAiMedia.submitStagedAttachment(message, ws.getCurrentThreadId(), () => setBusy(false)); }
