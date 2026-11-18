@@ -67,6 +67,8 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
             DB::table('party_tax_profiles')->where('company_id', $context->companyId)->where('party_type', 'supplier')->where('party_id', $supplierId)->lockForUpdate()->first();
             DB::table('warehouses')->where('company_id', $context->companyId)->where('id', $warehouseId)->lockForUpdate()->first();
             DB::table('products')->where('company_id', $context->companyId)->whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->get();
+            DB::table('units')->where('company_id', $context->companyId)->orderBy('id')->lockForUpdate()->get();
+            DB::table('product_uom_conversions')->where('company_id', $context->companyId)->whereIn('product_id', $productIds)->orderBy('id')->lockForUpdate()->get();
 
             // 1. Transactional source-state verification: verify underlying business conditions have not changed
             $currentSourceStateHash = PurchaseOrderPreviewAdapter::computeSourceStateHash(

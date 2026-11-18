@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Services;
 
+use App\Ai\Adapters\CommercialDecimal;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\DTOs\EvaluationResult;
 use App\Ai\DTOs\WorkflowTaskContext;
@@ -62,7 +63,8 @@ final class TaskCorrectionService
                 continue;
             }
             $schemaField = preg_replace('/^items(?:\[[^\]]+\]|\.[^.]+)\./', 'items.*.', $field);
-            $internalField = in_array($field, ['supplier_query', 'warehouse_query', 'customer_query'], true)
+            $internalField = (in_array($field, ['supplier_query', 'warehouse_query', 'customer_query'], true)
+                    && isset($rules[str_replace('_query', '_id', $field)]))
                 || preg_match('/^items\[[a-zA-Z0-9_-]+\]\.(?:_destroy|product_query|uom)$/D', $field);
             if (!isset($rules[$schemaField]) && !$internalField) {
                 throw ValidationException::withMessages(['corrections' => 'Unsupported field correction.']);
@@ -219,19 +221,19 @@ final class TaskCorrectionService
                         $cleanLine['product_query'] = trim((string) ($line['product_query'] ?? $line['product_name']));
                     }
                     if (isset($line['qty']) && is_numeric($line['qty'])) {
-                        $cleanLine['qty'] = sprintf('%.2f', (float) $line['qty']);
+                        $cleanLine['qty'] = CommercialDecimal::format((float) $line['qty']);
                     } else {
                         $cleanLine['qty'] = '1.00';
                     }
                     if (isset($line['net_unit_cost']) && is_numeric($line['net_unit_cost'])) {
-                        $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $line['net_unit_cost']);
-                        $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $line['net_unit_cost']);
+                        $cleanLine['net_unit_cost'] = CommercialDecimal::format((float) $line['net_unit_cost']);
+                        $cleanLine['net_unit_price'] = CommercialDecimal::format((float) $line['net_unit_cost']);
                     } elseif (isset($line['net_unit_price']) && is_numeric($line['net_unit_price'])) {
-                        $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $line['net_unit_price']);
-                        $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $line['net_unit_price']);
+                        $cleanLine['net_unit_cost'] = CommercialDecimal::format((float) $line['net_unit_price']);
+                        $cleanLine['net_unit_price'] = CommercialDecimal::format((float) $line['net_unit_price']);
                     } elseif (isset($line['rate']) && is_numeric($line['rate'])) {
-                        $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $line['rate']);
-                        $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $line['rate']);
+                        $cleanLine['net_unit_cost'] = CommercialDecimal::format((float) $line['rate']);
+                        $cleanLine['net_unit_price'] = CommercialDecimal::format((float) $line['rate']);
                     }
                     if (isset($line['purchase_unit_id']) && is_numeric($line['purchase_unit_id'])) {
                         $cleanLine['purchase_unit_id'] = (int) $line['purchase_unit_id'];
@@ -317,10 +319,16 @@ final class TaskCorrectionService
                 foreach (['uom', 'purchase_unit_id', 'sale_unit_id', 'net_unit_cost', 'net_unit_price', 'tax_rate', 'hsn_code'] as $dependent) {
                     unset($slots['items'][$lineIndex][$dependent]);
                 }
+            } elseif (in_array($property, ['purchase_unit_id', 'sale_unit_id'], true)) {
+                $slots['items'][$lineIndex][$property] = $value;
+                unset($slots['items'][$lineIndex]['uom']);
+            } elseif ($property === 'uom') {
+                $slots['items'][$lineIndex]['uom'] = $value;
+                unset($slots['items'][$lineIndex]['purchase_unit_id'], $slots['items'][$lineIndex]['sale_unit_id']);
             } elseif ($property === 'qty') {
-                $slots['items'][$lineIndex]['qty'] = is_numeric($value) ? sprintf('%.2f', (float) $value) : $value;
+                $slots['items'][$lineIndex]['qty'] = is_numeric($value) ? CommercialDecimal::format((float) $value) : $value;
             } elseif ($property === 'net_unit_cost' || $property === 'net_unit_price') {
-                $val = (is_numeric($value) && (float) $value >= 0) ? sprintf('%.2f', (float) $value) : '0.00';
+                $val = (is_numeric($value) && (float) $value >= 0) ? CommercialDecimal::format((float) $value) : '0.00';
                 $slots['items'][$lineIndex]['net_unit_cost'] = $val;
                 $slots['items'][$lineIndex]['net_unit_price'] = $val;
             } else {

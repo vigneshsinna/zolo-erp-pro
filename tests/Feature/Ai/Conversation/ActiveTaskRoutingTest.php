@@ -354,4 +354,106 @@ class ActiveTaskRoutingTest extends TestCase
         $this->postJson($url, $approval)->assertOk()->assertJsonPath('newly_created.resource_id', $result['newly_created']['resource_id']);
         $this->assertSame(1, \App\Models\Warehouse::where('company_id', $this->company->id)->where('name', 'Recovery')->count());
     }
+
+    public function test_resume_does_not_treat_command_as_supplier_name(): void
+    {
+        [$thread, $task] = $this->draft();
+        $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(), 'message' => 'resume'])->assertOk();
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertArrayNotHasKey('supplier_query', $slots);
+    }
+
+    public function test_stream_emits_one_workflow_state_without_duplicate_task(): void
+    {
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $response = $this->postJson(route('ai.chat.stream'), ['thread_id' => $thread, 'message' => 'Create purchase order',
+            'client_turn_id' => (string) Str::uuid()])->assertOk();
+        $body = $response->streamedContent();
+        $this->assertSame(1, substr_count($body, 'event: workflow_state'));
+        $this->assertSame(1, substr_count($body, 'event: complete'));
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_read_question_preserves_draft_and_exposes_only_manifest_read_tools(): void
+    {
+        [$thread, $task] = $this->draft();
+        $principal = new \App\Ai\DTOs\AiPrincipal($this->adminUser->id, $this->company->id, $this->branchId, $this->fyId,
+            ['purchase_order.create.v1', 'customer.outstanding.v1'], (string) Str::uuid(), threadId: $thread);
+        $before = (array) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->first();
+        $result = app(\App\Ai\Conversation\ConversationTurnRouter::class)->route($principal, $thread,
+            ['message' => 'What is customer outstanding?', 'client_turn_id' => (string) Str::uuid()]);
+        $this->assertNull($result);
+        $agent = new \App\Ai\Agents\ErpCopilot($principal, readToolsOnly: true);
+        $this->assertEquals(app(\App\Ai\Services\AiToolManifest::class)->sdkTools($principal), $agent->tools());
+        $this->assertSame($before, (array) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->first());
+        Http::assertNothingSent();
+    }
+
+    public function test_current_task_denies_wrong_actor_company_branch_and_fiscal_year(): void
+    {
+        [$thread, $task] = $this->draft();
+        $original = (array) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->first();
+        foreach (['actor_id', 'company_id', 'branch_id', 'financial_year_id'] as $field) {
+            DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->update([$field => $original[$field] + 100]);
+            $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
+                'client_turn_id' => (string) Str::uuid(), 'message' => 'Cash'])->assertForbidden();
+            DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->update([$field => $original[$field]]);
+        }
+        $this->assertSame($original, (array) DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->first());
+        Http::assertNothingSent();
+    }
+
+    public function test_model_query_cannot_smuggle_numeric_erp_id(): void
+    {
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(\App\Ai\Conversation\ConversationalSlotInterpreter::class)->validateModelResult(['slots_json' => '{}'], [
+            'turn_intent' => 'continue_task', 'warnings' => [], 'corrections' => [['operation' => 'set', 'field' => 'supplier_query', 'value' => '99']],
+        ]);
+    }
+
+    public function test_add_two_lines_and_remove_second_preserves_other_stable_ids_and_rates(): void
+    {
+        [$thread, $task] = $this->draft();
+        $send = function (string $message) use ($thread, &$task): array {
+            $task = $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['task_id'],
+                'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(), 'message' => $message])->assertOk()->json('workflow');
+            return json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true)['items'];
+        };
+        $first = $send('add 1 kg of Alpha yarn at 250');
+        $three = $send('add 2 kg of Beta yarn at 300; add 3 kg of Gamma yarn at 350');
+        $this->assertCount(3, $three);
+        $this->assertSame($first[0], $three[0]);
+        $this->assertCount(3, array_unique(array_column($three, 'client_line_id')));
+        $two = $send('remove the second item');
+        $this->assertSame([$three[0], $three[2]], $two);
+        Http::assertNothingSent();
+    }
+
+    public function test_model_product_change_then_add_does_not_restore_old_product_defaults(): void
+    {
+        $parsed = app(\App\Ai\Conversation\ConversationalSlotInterpreter::class)->validateModelResult([
+            'slots_json' => json_encode(['items' => [['client_line_id' => 'keep', 'product_id' => 8, 'qty' => '3.00', 'net_unit_cost' => '9.00', 'purchase_unit_id' => 1]]]),
+        ], ['turn_intent' => 'continue_task', 'warnings' => [], 'corrections' => [
+            ['operation' => 'change_line', 'line_id' => 'keep', 'field' => 'product_query', 'value' => 'Fresh product'],
+            ['operation' => 'add_line', 'field' => 'items', 'value' => ['product_query' => 'Extra product', 'qty' => '2', 'uom' => 'pairs']],
+        ]]);
+        $line = $parsed['corrections'][1]['value'][0];
+        $this->assertArrayNotHasKey('product_id', $line);
+        $this->assertArrayNotHasKey('net_unit_cost', $line);
+        $this->assertArrayNotHasKey('purchase_unit_id', $line);
+        $this->assertSame('3.00', $line['qty']);
+    }
+
+    public function test_conversation_preserves_domain_fractional_quantity_and_unit_cost(): void
+    {
+        [$thread, $task] = $this->draft();
+        $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'add 0.125 kg of Fractional yarn at 250.125'])->assertOk();
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame('0.125', $slots['items'][0]['qty']);
+        $this->assertSame('250.125', $slots['items'][0]['net_unit_cost']);
+    }
 }

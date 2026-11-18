@@ -14,6 +14,9 @@ final class ConversationalSlotInterpreter
         $lines = $slots['items'] ?? [];
         $corrections = [];
         $unknown = [];
+        if (preg_match('/^(?:continue|resume|preview)$/i', trim($message))) {
+            return $this->result([]);
+        }
         if (preg_match('/\b(?:not|or|maybe|perhaps|unclear)\b/i', $message) || preg_match('/^(?:yes|approve|do it|that one|new)$/i', trim($message))) {
             return $this->result([], ['Confirm the intended value or selection before changing the draft.']);
         }
@@ -83,6 +86,14 @@ final class ConversationalSlotInterpreter
         foreach ($result['corrections'] as $correction) {
             $field = $correction['field'];
             if (in_array($field, $allowed, true) && is_scalar($correction['value'])) {
+                $rules = match ($field) {
+                    'payment_terms_type' => 'required|in:cash,credit',
+                    'credit_days' => 'required|integer|min:0|max:3650',
+                    'date' => 'required|date_format:Y-m-d',
+                    'note' => 'string|max:2000',
+                    default => 'required|string|max:200|regex:/\pL/u',
+                };
+                \Illuminate\Support\Facades\Validator::make(['value' => $correction['value']], ['value' => $rules])->validate();
                 $corrections[] = $this->correction($field, $correction['value']);
                 continue;
             }
@@ -93,6 +104,17 @@ final class ConversationalSlotInterpreter
                 $corrections[] = $this->correction("items[{$lineId}]._destroy", true);
                 array_splice($lines, $index, 1);
             } elseif ($operation === 'change_line' && $index !== false && in_array($field, ['qty', 'net_unit_cost', 'product_query', 'uom'], true) && is_scalar($correction['value'])) {
+                $rules = match ($field) {
+                    'qty' => 'required|numeric|gt:0|max:100000000',
+                    'net_unit_cost' => 'required|numeric|min:0|max:100000000',
+                    default => 'required|string|max:200|regex:/\pL/u',
+                };
+                \Illuminate\Support\Facades\Validator::make(['value' => $correction['value']], ['value' => $rules])->validate();
+                if ($field === 'product_query') {
+                    foreach (['product_id', 'purchase_unit_id', 'sale_unit_id', 'uom', 'net_unit_cost', 'net_unit_price', 'tax_rate', 'hsn_code'] as $dependent) {
+                        unset($lines[$index][$dependent]);
+                    }
+                }
                 $corrections[] = $this->correction("items[{$lineId}].{$field}", $correction['value']);
                 $lines[$index][$field] = $correction['value'];
             } elseif ($operation === 'add_line' && $field === 'items' && is_array($correction['value'])) {
@@ -100,6 +122,12 @@ final class ConversationalSlotInterpreter
                 if (array_diff(array_keys($line), ['product_query', 'qty', 'uom', 'net_unit_cost']) !== []) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['corrections' => 'Model line contains unsupported fields.']);
                 }
+                \Illuminate\Support\Facades\Validator::make($line, [
+                    'product_query' => 'required|string|max:200|regex:/\pL/u',
+                    'qty' => 'required|numeric|gt:0|max:100000000',
+                    'uom' => 'sometimes|required|string|max:100|regex:/\pL/u',
+                    'net_unit_cost' => 'sometimes|required|numeric|min:0|max:100000000',
+                ])->validate();
                 $lines[] = ['client_line_id' => 'line-'.Str::uuid()] + $line;
                 $corrections[] = $this->correction('items', $lines);
             } else {

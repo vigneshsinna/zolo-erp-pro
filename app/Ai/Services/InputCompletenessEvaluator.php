@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Services;
 
+use App\Ai\Adapters\CommercialDecimal;
 use App\Ai\Contracts\ActionRequirementsProviderInterface;
 use App\Ai\DTOs\ActionFieldRequirement;
 use App\Ai\DTOs\BatchResolutionResult;
@@ -325,10 +326,10 @@ final class InputCompletenessEvaluator
                 $confirmed[] = [
                     'field' => $qtyFieldKey,
                     'label' => "Line {$lineIndex} Quantity",
-                    'display' => sprintf('%.2f units', $qtyVal),
+                    'display' => CommercialDecimal::format($qtyVal).' units',
                     'source' => 'user',
                 ];
-                $cleanLine['qty'] = sprintf('%.2f', $qtyVal);
+                $cleanLine['qty'] = CommercialDecimal::format($qtyVal);
             } else {
                 $issues[] = new FieldIssue(
                     field: $qtyFieldKey,
@@ -361,12 +362,12 @@ final class InputCompletenessEvaluator
                     $confirmed[] = [
                         'field' => $costFieldKey,
                         'label' => "Line {$lineIndex} Unit Cost",
-                        'display' => sprintf('₹%.2f', $costVal),
+                        'display' => '₹'.CommercialDecimal::format($costVal),
                         'source' => 'user',
                     ];
-                    $cleanLine['net_unit_cost'] = sprintf('%.2f', $costVal);
+                    $cleanLine['net_unit_cost'] = CommercialDecimal::format($costVal);
                 } elseif ($productEntity && isset($productEntity->cost) && (float) $productEntity->cost > 0) {
-                    $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $productEntity->cost);
+                    $cleanLine['net_unit_cost'] = CommercialDecimal::format((float) $productEntity->cost);
                     $confirmed[] = [
                         'field' => $costFieldKey,
                         'label' => "Line {$lineIndex} Unit Cost",
@@ -423,6 +424,11 @@ final class InputCompletenessEvaluator
             }
 
             // 4. Evaluate Unit for this line
+            $unitKey = "items[{$clientLineId}].".($isPurchase ? 'purchase_unit_id' : 'sale_unit_id');
+            if (($batchResult->getResolution($unitKey)['status'] ?? null) === 'none') {
+                $issues[] = new FieldIssue(field: $unitKey, label: "Line {$lineIndex} Unit of Measure", status: 'invalid',
+                    reason: $batchResult->getResolution($unitKey)['error'], control: 'entity_select', clientLineId: $clientLineId, entityType: 'unit');
+            }
             if ($isPurchase) {
                 $unitFieldKey = "items[{$clientLineId}].purchase_unit_id";
                 $resolvedUnitId = $batchResult->getResolvedId($unitFieldKey);

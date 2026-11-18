@@ -750,6 +750,9 @@ class AiChatController extends Controller
             $emit('start', ['status' => 'running']);
             try {
                 $result = $this->runChat($request, static fn(string $delta) => $emit('delta', ['text' => $delta]));
+                if ($result->isSuccessful() && isset($result->getData(true)['workflow'])) {
+                    $emit('workflow_state', $result->getData(true)['workflow']);
+                }
                 $emit($result->isSuccessful() ? 'complete' : 'error', $result->getData(true) + ['http_status' => $result->getStatusCode()]);
             } catch (\Throwable) {
                 $emit('error', ['error_code' => 'AI_STREAM_FAILED', 'error_message' => 'The response stream ended. Reload the conversation before retrying.']);
