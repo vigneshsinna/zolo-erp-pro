@@ -30,6 +30,8 @@ The repeated MySQL run finished in 132.4 seconds with 18 tests, 51 assertions an
 
 `tests/Feature/PlatformMigrationTest.php` expected five profiles even though the current capability migration seeds six. The test now records all profile IDs before re-running the migrations and asserts the same ordered IDs after the repeat. The existing adoption now passes the idempotency test without weakening its foreign-key and company decision checks. Rollback: revert the test change.
 
+The first Linux commercial run reported 160 tests and 976 assertions with one failure and one skip. `tests/Feature/ProductAliasTest.php` counted four lookup calls and two exact-match calls on each actual grid. The existing row-change fallback brought the counts to five and three. The targeted test reproduced the failure locally and passed six assertions with the corrected counts. Lookup behavior stays intact. Rollback: revert the test-only expectation change.
+
 ## Operations acceptance findings
 
 The first Linux operations run reported 81 tests and 670 assertions with one error and one failure.
