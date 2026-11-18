@@ -1,3 +1,21 @@
+## Stacked PRs #8–#16 Sequential Merge into feature/ai-unified-input-clarification Complete — 2026-11-18
+
+- All 9 stacked PRs merged in strict dependency order into `feature/ai-unified-input-clarification`:
+  1. PR #8 (`codex/d01-conversation-task-binding`, commit `9c8e1dd`)
+  2. PR #9 (`codex/d02-conversation-corrections`, commit `1de2d1e`)
+  3. PR #10 (`codex/d03-voice-continuation`, commit `7e8b09e`)
+  4. PR #11 (`codex/d04-purchase-order-terms`, commit `7a5b15e`)
+  5. PR #12 (`codex/d05-conversation-choices`, commit `dae2d2f`)
+  6. PR #13 (`codex/d06-conversation-master-continuation`, commit `3141800`)
+  7. PR #14 (`codex/d07-conversation-workspace`, commit `7c19935`)
+  8. PR #15 (`codex/d08-conversation-integration-evidence`, commit `166e74a`)
+  9. PR #16 (`codex/d08-release-blockers`, commit `85947a6` including card action_key fix and detail toggle)
+- `feature/ai-unified-input-clarification` pushed to `origin/feature/ai-unified-input-clarification` (HEAD `f0f9ed5`).
+- Preserved branch scope: Restored `ui` branch both locally and on origin to its exact prior commit (`e0475fd` local / `6b3abeb` remote); currently checked out on `feature/ai-unified-input-clarification`.
+- Verified integrated feature head:
+  - Playwright browser suite `tests/Browser/Ai/conversation-workspace.spec.mjs`: PASSED with zero errors.
+  - Live staging acceptance runner `scripts/run_live_staging_acceptance.php`: All 6 stages PASSED (Verdict: ACCEPTED).
+
 ## UI Clarification Card & Conversation Inspection — 2026-11-18
 
 - Diagnosed user screenshot showing the active conversational workflow with an expanded detail sub-card:
