@@ -1,3 +1,12 @@
+## PR #24 (Step-by-Step Progressive PO Conversation UI) Merged into feature/ai-unified-input-clarification — 2026-11-19
+
+- Merged PR #24 (`origin/codex/po-progressive-conversation-ui`, head commit `5ab6f70`) cleanly into base branch `feature/ai-unified-input-clarification` (merge commit `93f3d7b`):
+  - **Progressive Step-by-Step PO UI:** Replaces the tall consolidated view with a compact conversational experience showing one section at a time (Supplier, Products & Rate, Destination Warehouse, Cash/Credit, Order Date, or Optional Details) guided by the current conversational question.
+  - **Step Navigation Controls:** Adds Previous / Next navigation and a step selector bar positioned directly below the PO title, with opt-in "Show all fields" and "View outstanding checks" buttons for advanced inspection.
+  - **Concise Chat Prompts:** Removes the long repetitive missing-fields narrative from every turn's prompt while keeping backend `required_inputs` validation intact.
+  - **Documentation & Gap Analysis:** Added `docs/ai/conversation/D12-progressive-po-ui-and-deterministic-gaps.md` capturing deterministic-first structured conversational flow.
+  - **Verification:** All touched PHP and JavaScript files passed local lint and syntax checks (0 errors); all AI, static analysis, and clean database checks passed on CI.
+
 ## PR #22 (Complete Conversational Purchase Order Workspace) Merged into feature/ai-unified-input-clarification — 2026-11-19
 
 - Merged PR #22 (`origin/codex/voice-strict-intent-conversational-po`, head commit `a183c29`) cleanly into base branch `feature/ai-unified-input-clarification`:
