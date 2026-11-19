@@ -197,6 +197,25 @@ class VerifiedSummaryBuilder
 
     protected function summarizeInventoryStock(array $data, bool $reconciled): string
     {
+        if (($data['below_reorder_only'] ?? false) === true) {
+            $count = (int) ($data['below_reorder_count'] ?? 0);
+            $lines = ['### Products Below Reorder Level', '**Total matching products:** '.$count];
+            foreach (($data['below_reorder_products'] ?? []) as $product) {
+                $lines[] = '- '.($product['name'] ?? 'Product').' ('.($product['code'] ?? 'No code').')'
+                    .': available '.($product['available'] ?? 'unknown').' '
+                    .($product['unit'] ?? 'units').', reorder level '.($product['reorder_level'] ?? 'unknown')
+                    .', shortage '.($product['shortage'] ?? 'unknown');
+            }
+            if ($count === 0) {
+                $lines[] = 'No items with a configured positive alert quantity are currently below their reorder level.';
+            } elseif ($count > count($data['below_reorder_products'] ?? [])) {
+                $lines[] = 'Showing the first '.count($data['below_reorder_products']).' alerts. Open the stock report for more.';
+            }
+            if (!$reconciled) {
+                $lines[] = 'Warning: stock projections did not reconcile with the inventory movement ledger.';
+            }
+            return implode("\n", $lines);
+        }
         $currency = $this->formatCurrency($data['currency'] ?? 'INR');
         $wh = $data['warehouse'] ?? 'Active Warehouses';
         $tracked = (int) ($data['total_products_tracked'] ?? 0);
