@@ -160,7 +160,7 @@ try {
     await page.locator('#chat-input').fill('Cash');
     await page.locator('#btn-send').click();
     await page.locator('.ai-po-step-picker').selectOption('terms');
-    await page.locator('.ai-conversation-task').getByText('Cash / Credit', {exact: false}).first().waitFor();
+    await page.locator('.ai-po-section:visible .ai-po-section-head strong').getByText('Payment Terms *', {exact: true}).waitFor();
     assert.equal(await page.locator('.ai-po-section:visible').count(), 1,
         'Payment terms appear in the same compact step-by-step workspace');
     assert.equal(await page.locator('.ai-conversation-task').count(), 1, 'Replies update one task card');
