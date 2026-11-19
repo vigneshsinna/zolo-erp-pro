@@ -45,7 +45,7 @@ final class DeterministicReadRouter
                 '*' => $left->multipliedBy($right),
                 '/' => $left->dividedBy($right, 6, RoundingMode::HalfUp),
             };
-            return ['type' => 'answer', 'message' => 'Result: '.(string) $value->stripTrailingZeros()];
+            return ['type' => 'answer', 'message' => 'Result: '.(string) $value->strippedOfTrailingZeros()];
         }
 
         if (preg_match('/^(?:check|validate|verify)\s+(?:the\s+)?(?:gstin|gst\s+number)(?:\s+(?:of|for))?\s+(\S+)$/iu', $text, $m)) {
@@ -60,10 +60,10 @@ final class DeterministicReadRouter
         $lead = '(?:show|list|get|check|display|view|fetch|give me|what is|what are)';
         $optional = '(?:\s+(?:the|my|our|current|company|today(?:\x27s)?))?';
 
-        if (preg_match('/^'.$lead.$optional.'\s+(?:customer\s+)?(?:receivables?\s+ag(?:e|i)ing|accounts?\s+receivable\s+ag(?:e|i)ing|ar\s+ag(?:e|i)ing|outstanding\s+receivables?)\??$/iu', $text)) {
+        if (preg_match('/^'.$lead.$optional.'\s+(?:customer\s+)?(?:receivables?\s+ag(?:e)?ing|accounts?\s+receivable\s+ag(?:e)?ing|ar\s+ag(?:e)?ing|outstanding\s+receivables?)\??$/iu', $text)) {
             return ['type' => 'tool', 'tool' => 'receivables.outstanding.v1', 'input' => []];
         }
-        if (preg_match('/^'.$lead.$optional.'\s+(?:supplier\s+)?(?:payables?\s+ag(?:e|i)ing|accounts?\s+payable\s+ag(?:e|i)ing|ap\s+ag(?:e|i)ing|outstanding\s+payables?)\??$/iu', $text)) {
+        if (preg_match('/^'.$lead.$optional.'\s+(?:supplier\s+)?(?:payables?\s+ag(?:e)?ing|accounts?\s+payable\s+ag(?:e)?ing|ap\s+ag(?:e)?ing|outstanding\s+payables?)\??$/iu', $text)) {
             return ['type' => 'tool', 'tool' => 'payables.summary.v1', 'input' => []];
         }
         if (preg_match('/^'.$lead.$optional.'\s+(?:warehouse\s+)?(?:stock|inventory)(?:\s+summary|\s+levels?|\s+availability)?\??$/iu', $text)) {
