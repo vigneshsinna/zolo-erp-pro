@@ -133,6 +133,7 @@ class ReadInventoryStockSummary
                     // alert_quantity is the existing product reorder threshold.
                     // Compare branch-scoped available stock in the same base unit
                     // (raw stock quantities are stored at scale 10,000).
+                    if ($belowReorderOnly) {
                     $threshold = (string) ($product->alert_quantity ?? '0');
                     $availableBase = BigDecimal::of((string) $available)->dividedBy('10000', 4, RoundingMode::HalfUp);
                     $belowThreshold = is_numeric($threshold) && (float) $threshold > 0
@@ -150,6 +151,7 @@ class ReadInventoryStockSummary
                                 'shortage' => (string) BigDecimal::of($threshold)->minus($availableBase),
                             ];
                         }
+                    }
                     }
 
                     $top[] = [
