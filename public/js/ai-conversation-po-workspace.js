@@ -230,7 +230,7 @@
         const all = $('<button type="button" class="btn btn-sm btn-link" data-conversation-action>Show all fields</button>')
             .attr('aria-expanded', 'false');
         navigator.append(stepCounter, pickerLabel, previous, next, all);
-        mount.prepend(navigator);
+        heading.after(navigator);
 
         const issueFocus = (state.message || '').toLowerCase();
         const requestedTypes = (state.directories || []).map(item => item.entity_type);
