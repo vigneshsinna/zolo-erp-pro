@@ -34,6 +34,7 @@ class VerifiedSummaryBuilder
                 'receivables.invoices.v1' => $this->summarizeCustomerInvoices($data),
                 'receivables.invoice_allocations.v1' => $this->summarizeInvoiceAllocations($data),
                 'inventory.stock_summary.v1' => $this->summarizeInventoryStock($data, $reconciled),
+                'erp_checks.duplicate_purchase' => $this->summarizeDuplicatePurchase($data),
                 'sales.summary.v1' => $this->summarizeSales($data),
                 'payables.summary.v1' => $this->summarizePayables($data, $asOf, $reconciled),
                 'accounting.statements.v1' => $this->summarizeFinancialStatements($data),
@@ -79,6 +80,24 @@ class VerifiedSummaryBuilder
         }
         $timestamp = strtotime($asOf);
         return $timestamp ? date('j F Y', $timestamp) : $asOf;
+    }
+
+    protected function summarizeDuplicatePurchase(array $data): string
+    {
+        $number = (string) ($data['supplier_invoice_no'] ?? '');
+        $matches = $data['matches'] ?? [];
+        $count = (string) ($data['potential_match_count'] ?? count($matches));
+        $lines = ['### Possible Duplicate Supplier Invoice',
+            'Invoice number: **'.str_replace(['*', "\n", "\r"], '', $number).'**',
+            'Matching purchases in your authorized branch and financial year: **'.$count.'**'];
+        foreach ($matches as $item) {
+            $lines[] = '- '.($item['reference_no'] ?? 'Purchase #'.$item['id'])
+                .' — Supplier: '.($item['supplier'] ?? 'Unspecified')
+                .' — '.(!empty($item['is_reversed']) ? 'Reversed' :
+                    (!empty($item['is_posted']) ? 'Posted' : 'Not posted'));
+        }
+        $lines[] = 'A matching invoice number is a warning, not proof of a duplicate. Confirm supplier identity, original invoice and status before posting.';
+        return implode("\n", $lines);
     }
 
     protected function summarizeReceivablesOutstanding(array $data, ?string $asOf, bool $reconciled): string
