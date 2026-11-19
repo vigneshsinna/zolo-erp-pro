@@ -29,6 +29,7 @@ use App\Ai\Handlers\CopilotHelpHandler;
 use App\Ai\Handlers\CustomerInvoicesHandler;
 use App\Ai\Handlers\CustomerOutstandingHandler;
 use App\Ai\Handlers\DocumentPreviewHandler;
+use App\Ai\Handlers\DuplicatePurchaseInvoiceHandler;
 use App\Ai\Handlers\FinancialStatementsHandler;
 use App\Ai\Handlers\GstSummaryHandler;
 use App\Ai\Handlers\InventoryStockSummaryHandler;
@@ -75,6 +76,7 @@ class AiServiceProvider extends ServiceProvider
                 new AiToolRegistration($app->make(JobWorkStatusHandler::class), 'jobwork_status', ['job_work.read'], operationsCapability: 'operations.job_work'),
                 new AiToolRegistration($app->make(OpenOrdersHandler::class), 'orders_open', $orderPermissions),
                 new AiToolRegistration($app->make(DocumentPreviewHandler::class), 'document_preview', $orderPermissions),
+                new AiToolRegistration($app->make(DuplicatePurchaseInvoiceHandler::class), 'duplicate_purchase_invoice', ['purchases-index']),
                 new AiToolRegistration($app->make(CompanyKnowledgeHandler::class), 'company_knowledge', []),
                 new AiToolRegistration($app->make(CopilotHelpHandler::class), 'copilot_help', []),
             ] as $registration) {
