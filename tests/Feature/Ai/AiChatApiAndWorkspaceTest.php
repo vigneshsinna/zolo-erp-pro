@@ -183,6 +183,10 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertNull($router->plan('Create a purchase bill with 18% GST'));
         $this->assertNull($router->plan('Draft a supplier reminder based on aging'));
         $this->assertNull($router->plan('Show stock and then create a reorder'));
+        $this->assertSame(['type' => 'answer', 'message' => 'Result: 90'],
+            $router->plan('What is 18% of 500'));
+        $this->assertSame(['type' => 'answer', 'message' => 'True.'],
+            $router->plan('Is 5 < 10?'));
         $this->assertSame(['type' => 'tool', 'tool' => 'inventory.stock_summary.v1',
             'input' => ['below_reorder_only' => true]], $router->plan('Show products below reorder level'));
         $this->assertSame(['type' => 'tool', 'tool' => 'tax.gst_summary.v1', 'input' => []],
