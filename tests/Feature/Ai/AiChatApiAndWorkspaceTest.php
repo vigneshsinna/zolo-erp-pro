@@ -141,6 +141,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
             ['Show receivables aging', 'receivables.outstanding.v1'],
             ['Show open purchase orders', 'orders.open.v1'],
             ['Show low stock', 'inventory.stock_summary.v1'],
+            ['Check duplicate supplier invoice ABC-2026-100', 'erp_checks.duplicate_purchase'],
         ] as [$question, $tool]) {
             $response = $this->postJson(route('ai.chat'), ['message' => $question])
                 ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
@@ -186,6 +187,9 @@ class AiChatApiAndWorkspaceTest extends TestCase
             'input' => ['below_reorder_only' => true]], $router->plan('Show products below reorder level'));
         $this->assertSame(['type' => 'tool', 'tool' => 'tax.gst_summary.v1', 'input' => []],
             $router->plan('Show GST summary'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'erp_checks.duplicate_purchase',
+            'input' => ['supplier_invoice_no' => 'ABC-2026-100']],
+            $router->plan('Check duplicate supplier invoice ABC-2026-100'));
     }
 
     public function test_workspace_view_renders_for_authenticated_actor(): void
