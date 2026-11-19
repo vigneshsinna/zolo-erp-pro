@@ -112,10 +112,21 @@ try {
     await page.locator('#btn-send').click();
     const supplierPanel = page.locator('.ai-po-section').filter({has: page.getByText('Supplier *', {exact: true})}).first();
     const productPanel = page.locator('.ai-po-section').filter({has: page.getByText('Products, Quantities & Rates *', {exact: true})}).first();
+    assert.equal(await page.locator('.ai-po-workspace').count(), 1, 'One progressive Purchase Order workspace');
+    assert.equal(await page.locator('.ai-po-step-picker').count(), 1, 'One compact step selector');
+    assert.equal(await page.locator('.ai-po-section:visible').count(), 1,
+        'Only one editable section is shown, not the full form');
+    await page.locator('.ai-po-step-picker').selectOption('supplier');
     await supplierPanel.getByRole('button', {name: 'ABC Test Traders'}).waitFor();
+    assert.equal(await productPanel.isVisible(), false, 'Product details stay collapsed during supplier selection');
+    await page.locator('.ai-po-step-picker').selectOption('products');
     await productPanel.getByRole('button', {name: /Cotton Shirt Blue/}).waitFor();
-    assert.equal(await page.locator('.ai-po-workspace').count(), 1, 'One comprehensive Purchase Order workspace');
-    assert.equal(await page.locator('.ai-po-section').count() >= 5, true, 'Supplier, warehouse, items and terms visible together');
+    assert.equal(await supplierPanel.isVisible(), false, 'Supplier controls collapse when user selects products');
+    await page.getByRole('button', {name: 'Show all fields'}).click();
+    assert.equal(await supplierPanel.isVisible(), true, 'Full edit view is available on demand');
+    assert.equal(await productPanel.isVisible(), true, 'Full edit view preserves choices');
+    await page.getByRole('button', {name: 'Show one step'}).click();
+    assert.equal(await page.locator('.ai-po-section:visible').count(), 1);
     await productPanel.getByRole('button', {name: 'Create new product'}).click();
     await productPanel.getByRole('textbox', {name: 'New product name'}).waitFor();
     await productPanel.getByRole('button', {name: /Cotton Shirt Blue/}).click();
@@ -140,6 +151,7 @@ try {
     assert.equal(taskSlots.items[0].qty, '10');
     await page.locator('#chat-input').fill('ABC');
     await page.locator('#btn-send').click();
+    await page.locator('.ai-po-step-picker').selectOption('supplier');
     await page.getByRole('button', {name: 'ABC Erode', exact: true}).focus();
     await page.keyboard.press('Enter');
     await page.locator('.ai-conversation-task').getByText('ABC Erode', {exact: false}).waitFor();
@@ -147,7 +159,10 @@ try {
     assert.equal(requests.at(-1).active_task_id, taskId);
     await page.locator('#chat-input').fill('Cash');
     await page.locator('#btn-send').click();
-    await page.locator('.ai-conversation-task').getByText('cash', {exact: false}).waitFor();
+    await page.locator('.ai-po-step-picker').selectOption('terms');
+    await page.locator('.ai-conversation-task').getByText('Cash / Credit', {exact: false}).first().waitFor();
+    assert.equal(await page.locator('.ai-po-section:visible').count(), 1,
+        'Payment terms appear in the same compact step-by-step workspace');
     assert.equal(await page.locator('.ai-conversation-task').count(), 1, 'Replies update one task card');
     assert.equal(await page.locator('.ai-conversation-task').getByText('₹0.00', {exact: true}).count(), 0, 'No unvalidated zero totals');
     conflict = true;
