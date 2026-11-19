@@ -665,7 +665,8 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertContains('payment_terms_type', $fields);
         $this->assertTrue(collect($fields)->contains(fn ($field) => str_ends_with($field, '.net_unit_cost')));
         $this->assertStringContainsString('Rate', $qty['message']);
-        $this->assertStringContainsString('Destination Warehouse', $qty['message']);
+        $this->assertStringNotContainsString('Remaining details:', $qty['message']);
+        $this->assertContains('warehouse_id', array_column($qty['required_inputs'], 'field'));
         $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
         $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
         $this->assertArrayNotHasKey('net_unit_cost', $slots['items'][0]);
