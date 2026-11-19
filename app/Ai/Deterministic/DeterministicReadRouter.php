@@ -33,6 +33,19 @@ final class DeterministicReadRouter
             return null;
         }
 
+        if (preg_match('/^(?:calculate|what\s+is|what\x27s)\s+(\d{1,12}(?:\.\d{1,6})?)%\s+of\s+(\d{1,12}(?:\.\d{1,6})?)\??$/iu', $text, $percent)) {
+            $value = BigDecimal::of($percent[1])->multipliedBy(BigDecimal::of($percent[2]))
+                ->dividedBy('100', 6, RoundingMode::HalfUp);
+            return ['type' => 'answer', 'message' => 'Result: '.(string) $value->strippedOfTrailingZeros()];
+        }
+        if (preg_match('/^(?:is|check\s+whether)\s+(-?\d{1,12}(?:\.\d{1,6})?)\s*(<=|>=|==|=|<|>)\s*(-?\d{1,12}(?:\.\d{1,6})?)\??$/iu', $text, $compare)) {
+            $cmp = BigDecimal::of($compare[1])->compareTo(BigDecimal::of($compare[3]));
+            $yes = match ($compare[2]) {
+                '<' => $cmp < 0, '<=' => $cmp <= 0, '>' => $cmp > 0,
+                '>=' => $cmp >= 0, '=', '==' => $cmp === 0,
+            };
+            return ['type' => 'answer', 'message' => $yes ? 'True.' : 'False.'];
+        }
         if (preg_match('/^(?:calculate|what\s+is|what\x27s)\s+(-?\d{1,12}(?:\.\d{1,6})?)\s*([+*\/-])\s*(-?\d{1,12}(?:\.\d{1,6})?)\??$/iu', $text, $math)) {
             $left = BigDecimal::of($math[1]);
             $right = BigDecimal::of($math[3]);
@@ -87,6 +100,13 @@ final class DeterministicReadRouter
         if (preg_match('/^(?:check|verify|find|look\s+for)\s+(?:a\s+)?duplicate\s+(?:supplier|purchase|vendor)\s+(?:invoice|bill)(?:\s+(?:number|no\.?))?\s+([A-Z0-9][A-Z0-9\/._-]{0,79})\??$/iu', $text, $m)) {
             return ['type' => 'tool', 'tool' => 'erp_checks.duplicate_purchase.v1',
                 'input' => ['supplier_invoice_no' => $m[1]]];
+        }
+
+        // Requests that are visibly simple math but do not match a bounded,
+        // supported grammar must ask for clearer operands, not consume Nemotron.
+        if (preg_match('/^(?:calculate|compute|what\s+is|what\x27s)\s+.{0,100}\d.{0,100}(?:[+*\/%-]|\bpercent\b|\bdivided\b|\btimes\b|\bplus\b|\bminus\b)/iu', $text)) {
+            return ['type' => 'clarify', 'message' =>
+                'Enter the calculation with explicit numbers and an operator, for example “calculate 12.5 * 3” or “what is 18% of 500”. No model was used.'];
         }
 
         // These are deterministic ERP responsibilities, but a safe generic
