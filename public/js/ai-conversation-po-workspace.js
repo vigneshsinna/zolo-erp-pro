@@ -125,14 +125,14 @@
         heading.append($('<span class="ai-po-field-state"></span>').text('Unposted draft'));
         mount.append(heading,
             $('<p class="ai-po-hint"></p>').text(
-                'Complete any fields in any order. Select existing ERP records, request a new master, type values here, or use chat/dictation/recorded voice below.'
+                'One question at a time. Use the chat below to answer by typing, dictation or voice, including several details in one reply.'
             ));
 
         const missing = (state.required_inputs || []).filter(issue =>
             ['missing', 'ambiguous', 'invalid', 'blocked_by_dependency'].includes(issue.status));
         const count = $('<p class="ai-po-status" role="status"></p>')
-            .text(missing.length ? missing.length + ' details need attention before the PO proposal is ready.' :
-                'All visible requirements are satisfied. The ERP will validate the proposal before approval.');
+            .text(missing.length ? 'More details needed before review. Your answers stay saved in this draft.' :
+                'Required fields look complete. The ERP will validate the proposal before approval.');
         mount.append(count);
 
         const grid = $('<div class="ai-po-workspace-grid"></div>');
@@ -195,6 +195,91 @@
         }
         mount.append(unresolved);
 
+        // Progressive disclosure: only one editable section is visible by
+        // default. The underlying task, corrections and signed ERP options are
+        // unchanged; direct edits and multi-field spoken replies still work.
+        const stages = [
+            {id: 'supplier', title: 'Supplier', node: supplier,
+                matches: field => field === 'supplier_id' || field === 'supplier_query'},
+            {id: 'products', title: 'Products & Rate', node: product,
+                matches: field => field === 'items' || /^items(?:\[|\.)/.test(field)},
+            {id: 'warehouse', title: 'Warehouse', node: warehouse,
+                matches: field => field === 'warehouse_id' || field === 'warehouse_query'},
+            {id: 'terms', title: 'Cash / Credit', node: terms,
+                matches: field => field === 'payment_terms_type' || field === 'credit_days'},
+            {id: 'date', title: 'Order Date', node: date,
+                matches: field => field === 'date'},
+            {id: 'extras', title: 'Other details (optional)', node: extras,
+                matches: () => false},
+        ];
+        const isUnresolved = stage => missing.some(issue => stage.matches(String(issue.field || '')));
+        const countRequired = stages.slice(0, 5).filter(stage => isUnresolved(stage)).length;
+        const navigator = $('<nav class="ai-po-step-nav" aria-label="Purchase Order steps"></nav>');
+        const stepCounter = $('<span class="ai-po-step-counter"></span>');
+        const pickerLabel = $('<label class="ai-po-step-picker-label"></label>')
+            .append($('<span class="sr-only">Choose a Purchase Order step</span>'));
+        const picker = $('<select class="form-control form-control-sm ai-po-step-picker"></select>')
+            .attr('aria-label', 'Choose a Purchase Order step');
+        stages.forEach(stage => {
+            const suffix = isUnresolved(stage) ? ' • needed' : '';
+            picker.append($('<option></option>').val(stage.id).text(stage.title + suffix));
+        });
+        pickerLabel.append(picker);
+        const previous = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Previous</button>');
+        const next = $('<button type="button" class="btn btn-sm btn-outline-primary" data-conversation-action>Next</button>');
+        const all = $('<button type="button" class="btn btn-sm btn-link" data-conversation-action>Show all fields</button>')
+            .attr('aria-expanded', 'false');
+        navigator.append(stepCounter, pickerLabel, previous, next, all);
+        mount.prepend(navigator);
+
+        const issueFocus = (state.message || '').toLowerCase();
+        const requestedTypes = (state.directories || []).map(item => item.entity_type);
+        let currentId = requestedTypes.length === 1 && requestedTypes[0] === 'product' ? 'products'
+            : requestedTypes.length === 1 && requestedTypes[0] === 'warehouse' ? 'warehouse'
+            : requestedTypes.length === 1 && requestedTypes[0] === 'supplier' ? 'supplier'
+            : /which product|what quantity|purchase rate|product line|line item/.test(issueFocus) ? 'products'
+            : /destination warehouse/.test(issueFocus) ? 'warehouse'
+            : /cash or credit|credit days/.test(issueFocus) ? 'terms'
+            : /order date/.test(issueFocus) ? 'date'
+            : (stages.find(stage => isUnresolved(stage)) || stages[0]).id;
+        let expanded = false;
+        const showCurrent = () => {
+            const index = stages.findIndex(stage => stage.id === currentId);
+            stages.forEach(stage => stage.node.prop('hidden', !expanded && stage.id !== currentId));
+            grid.prop('hidden', !expanded && !['supplier', 'warehouse'].includes(currentId));
+            picker.val(currentId);
+            stepCounter.text(expanded
+                ? (countRequired ? countRequired + ' required sections remaining' : 'Ready to review')
+                : 'Step ' + (index + 1) + ' of ' + stages.length);
+            previous.prop('disabled', expanded || index <= 0);
+            next.prop('disabled', expanded || index === stages.length - 1);
+            all.text(expanded ? 'Show one step' : 'Show all fields')
+                .attr('aria-expanded', String(expanded));
+        };
+        picker.on('change', () => { currentId = picker.val(); expanded = false; showCurrent(); });
+        previous.on('click', () => { const index = stages.findIndex(x => x.id === currentId);
+            if (index > 0) { currentId = stages[index - 1].id; showCurrent(); } });
+        next.on('click', () => { const index = stages.findIndex(x => x.id === currentId);
+            if (index < stages.length - 1) { currentId = stages[index + 1].id; showCurrent(); } });
+        all.on('click', () => { expanded = !expanded; showCurrent(); });
+        showCurrent();
+
+        // Keep the detailed validation list available but not expanded by
+        // default; the current conversation question remains the primary guide.
+        if (missing.length) {
+            const detailsToggle = $('<button type="button" class="btn btn-sm btn-link ai-po-missing-toggle" data-conversation-action></button>')
+                .text('View ' + missing.length + ' outstanding checks')
+                .attr('aria-expanded', 'false')
+                .on('click', () => {
+                    const show = unresolved.prop('hidden');
+                    unresolved.prop('hidden', !show);
+                    detailsToggle.attr('aria-expanded', String(show))
+                        .text(show ? 'Hide outstanding checks' : 'View ' + missing.length + ' outstanding checks');
+                });
+            unresolved.prop('hidden', true);
+            mount.append(detailsToggle);
+        }
+
         const actions = $('<div class="ai-po-workspace-actions"></div>');
         const update = $('<button type="button" class="btn btn-primary" data-conversation-action>Apply details & revalidate</button>')
             .prop('disabled', true);
@@ -202,21 +287,11 @@
         actions.append(update, status);
         mount.append(actions);
 
-        const modes = $('<div class="ai-po-voice-tools"></div>');
-        modes.append($('<strong></strong>').text('Or update through conversation'));
-        modes.append($('<p class="ai-po-hint"></p>').text(
-            'Example: “rate 600; quantity 10; warehouse Main Warehouse; Credit 30 days.”'
+        // The sticky composer already provides Type, Dictate and Record;
+        // repeating its controls inside every question made the page too long.
+        mount.append($('<p class="ai-po-hint ai-po-composer-help"></p>').text(
+            'Reply below by typing, dictating or attaching a recording. You can provide several details together.'
         ));
-        const focus = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Type a correction</button>')
-            .on('click', () => $('#chat-input').trigger('focus'));
-        const dictate = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Dictate a correction</button>')
-            .on('click', () => $('#btn-dictate').trigger('click'));
-        const record = $('<button type="button" class="btn btn-sm btn-outline-secondary" data-conversation-action>Record a voice instruction</button>')
-            .on('click', () => $('#btn-ai-record-audio').trigger('click'));
-        modes.append(focus);
-        if ($('#btn-dictate').length && !$('#btn-dictate').prop('hidden')) modes.append(dictate);
-        if ($('#btn-ai-record-audio').length) modes.append(record);
-        mount.append(modes);
 
         const dirty = new Map();
         const change = (field, value) => {
