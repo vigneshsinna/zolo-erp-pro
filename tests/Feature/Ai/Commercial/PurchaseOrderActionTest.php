@@ -329,6 +329,8 @@ final class PurchaseOrderActionTest extends TestCase
         $reply->save();
         $send($transcript, ['media_ids' => [$media->id], 'voice_extraction_revision' => 2]);
         $this->assertSame('needs_input', $task['status']);
+        // Conversational PO now requires the explicit destination warehouse.
+        $send('warehouse '.$this->warehouse->name);
         $send('Credit 30 days');
         $this->assertSame('proposal_created', $task['status']);
         $this->assertSame('50400.00', $task['preview']['totals']['grand_total']);
@@ -337,7 +339,7 @@ final class PurchaseOrderActionTest extends TestCase
         $this->assertSame(1, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
         $this->assertSame(2, DB::table('ai_media_extractions')->where('media_id', $media->id)->count());
         $history = $this->getJson(route('ai.threads.show', $thread))->assertOk()->json('messages');
-        $this->assertCount(10, $history);
+        $this->assertCount(12, $history);
         foreach (array_filter($history, fn ($message) => $message['role'] === 'assistant') as $message) {
             $this->assertSame($task['task_id'], $message['facts'][0]['data']['task_id']);
         }

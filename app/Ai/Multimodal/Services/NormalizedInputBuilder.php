@@ -107,14 +107,31 @@ final class NormalizedInputBuilder
         ?string $companionText,
         ?string $overrideIntentKey,
     ): ?string {
+        if ($asset->source_kind === 'audio') {
+            $resolver = app(\App\Ai\Conversation\VoiceIntentResolver::class);
+            $spoken = $resolver->resolve((string) ($extracted['transcript_text'] ?? ''));
+            $typed = $resolver->resolve((string) ($companionText ?? ''));
+
+            // Explicit, conflicting instructions must be clarified by the user,
+            // never resolved through document-type precedence or a model guess.
+            if ($spoken !== null && $typed !== null && $spoken !== $typed) {
+                return null;
+            }
+            $intent = $typed ?? $spoken;
+            if ($overrideIntentKey !== null && trim($overrideIntentKey) !== ''
+                && $overrideIntentKey !== $intent) {
+                return null;
+            }
+
+            // Transcription intent_guess is deliberately NOT a fallback.
+            return $intent;
+        }
+
         if ($overrideIntentKey !== null && trim($overrideIntentKey) !== '') {
             return trim($overrideIntentKey);
         }
 
         $text = strtolower((string) $companionText);
-        if ($text === '' && $asset->source_kind === 'audio') {
-            $text = strtolower((string) ($extracted['transcript_text'] ?? ''));
-        }
         if ($text !== '') {
             if (preg_match('/\b(create|make|prepare|draft|raise|convert)\b.*\b(purchase\s*order|p\.?\s*o\.?)\b/', $text)
                 || preg_match('/\b(purchase\s*order|po)\b/', $text)) {
@@ -131,14 +148,6 @@ final class NormalizedInputBuilder
             if (preg_match('/\b(post|create|enter|book)\b.*\b(sales\s*invoice|tax\s*invoice)\b/', $text)) {
                 return 'sales_invoice.create.v1';
             }
-        }
-
-        if ($asset->source_kind === 'audio') {
-            $guess = (string) ($extracted['intent_guess'] ?? 'unknown');
-
-            return in_array($guess, ['purchase_order.create.v1', 'sales_order.create.v1', 'purchase_bill.create.v1', 'query_readonly'], true)
-                ? $guess
-                : null;
         }
 
         $docType = (string) ($extracted['document_type'] ?? 'unknown');

@@ -417,9 +417,11 @@ class ActiveTaskRoutingTest extends TestCase
         $input = ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'expected_task_revision' => $task['task_revision'],
             'client_turn_id' => (string) Str::uuid(), 'message' => 'Terms Supplier'];
         $result = $this->postJson(route('ai.chat'), $input)->assertOk()->json('workflow');
-        $default = collect($result['confirmed_fields'])->firstWhere('field', 'credit_days');
-        $this->assertSame('30', $default['display']);
-        $this->assertSame('erp_default', $default['source']);
+        $this->assertNull(collect($result['confirmed_fields'])->firstWhere('field', 'credit_days'),
+            'Supplier defaults are suggestions, not confirmed purchase terms.');
+        $this->assertContains('payment_terms_type', array_column($result['required_inputs'], 'field'));
+        $this->assertArrayNotHasKey('credit_days',
+            json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true));
         $input['expected_task_revision'] = $result['task_revision'];
         $input['client_turn_id'] = (string) Str::uuid();
         $input['message'] = 'Credit 45 days';
@@ -628,6 +630,138 @@ class ActiveTaskRoutingTest extends TestCase
         $this->assertArrayNotHasKey('net_unit_cost', $line);
         $this->assertArrayNotHasKey('purchase_unit_id', $line);
         $this->assertSame('3.00', $line['qty']);
+    }
+
+    public function test_one_branch_warehouse_never_auto_selects_and_unconfirmed_master_rate_is_missing(): void
+    {
+        $product = $this->createCatalogueFixtureProduct();
+        $warehouse = \App\Models\Warehouse::forceCreate([
+            'company_id' => $this->company->id, 'branch_id' => $this->branchId,
+            'name' => 'Only Warehouse', 'address' => 'Fixture branch', 'is_active' => true,
+        ]);
+        [$thread, $task] = $this->draft();
+        $this->assertContains('warehouse_id', array_column($task['required_inputs'], 'field'),
+            'A single warehouse must still require confirmation.');
+        $this->assertNull(collect($task['confirmed_fields'])->firstWhere('field', 'warehouse_id'));
+        $this->assertArrayNotHasKey('warehouse_id',
+            json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true));
+        $this->assertContains('warehouse', array_column($task['directories'], 'entity_type'));
+
+        $choice = collect($task['choices'])->firstWhere('entity_type', 'product');
+        $this->assertNotNull($choice);
+        $selected = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select option', 'choice_set_id' => $task['choice_set_id'],
+            'choice_id' => $choice['choice_id'],
+        ])->assertOk()->json('workflow');
+        $qty = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $selected['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => '10 pairs',
+        ])->assertOk()->json('workflow');
+        $fields = array_column($qty['required_inputs'], 'field');
+        $this->assertContains('warehouse_id', $fields);
+        $this->assertContains('payment_terms_type', $fields);
+        $this->assertTrue(collect($fields)->contains(fn ($field) => str_ends_with($field, '.net_unit_cost')));
+        $this->assertStringContainsString('Rate', $qty['message']);
+        $this->assertStringContainsString('Destination Warehouse', $qty['message']);
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertArrayNotHasKey('net_unit_cost', $slots['items'][0]);
+        $this->assertArrayNotHasKey('warehouse_id', $slots);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        Http::assertNothingSent();
+    }
+
+    public function test_speaking_change_that_unit_cost_to_600_sets_exact_po_rate_and_preserves_quantity(): void
+    {
+        $product = $this->createCatalogueFixtureProduct();
+        [$thread, $task] = $this->draft();
+        $choice = collect($task['choices'])->firstWhere('entity_type', 'product');
+        $selected = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select option', 'choice_set_id' => $task['choice_set_id'], 'choice_id' => $choice['choice_id'],
+        ])->assertOk()->json('workflow');
+        $initial = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $selected['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => '10 pairs at 500',
+        ])->assertOk()->json('workflow');
+        $fixed = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $initial['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'change that unit cost to 600',
+        ])->assertOk()->json('workflow');
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])->value('slots_json'), true);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        $this->assertSame('10.00', $slots['items'][0]['qty']);
+        $this->assertSame('600.00', $slots['items'][0]['net_unit_cost']);
+        $rateField = collect($fixed['confirmed_fields'])->firstWhere('field',
+            'items['.$slots['items'][0]['client_line_id'].'].net_unit_cost');
+        $this->assertSame('Line 1 Rate', $rateField['label']);
+        $this->assertSame('user', $rateField['source']);
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_complete_po_workspace_can_patch_several_fields_together_and_still_requires_approval(): void
+    {
+        $product = $this->createCatalogueFixtureProduct();
+        $warehouse = \App\Models\Warehouse::forceCreate([
+            'company_id' => $this->company->id, 'branch_id' => $this->branchId,
+            'name' => 'Warehouse for selection', 'address' => 'Fixture branch', 'is_active' => true,
+        ]);
+        [$thread, $task] = $this->draft();
+        $productChoice = collect($task['choices'])->firstWhere('entity_type', 'product');
+        $selected = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $task['task_id'],
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) Str::uuid(),
+            'message' => 'Select option',
+            'choice_set_id' => $task['choice_set_id'], 'choice_id' => $productChoice['choice_id'],
+        ])->assertOk()->json('workflow');
+
+        $lineId = collect(json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])
+            ->value('slots_json'), true)['items'])->first()['client_line_id'];
+        $patch = $this->patchJson('/ai/workflow-tasks/'.$task['task_id'].'/inputs', [
+            'expected_revision' => $selected['task_revision'],
+            'corrections' => [
+                ['field' => 'items['.$lineId.'].qty', 'value' => '10', 'confirmation' => 'user_edited'],
+                ['field' => 'items['.$lineId.'].net_unit_cost', 'value' => '600', 'confirmation' => 'user_edited'],
+                ['field' => 'warehouse_id', 'value' => $warehouse->id, 'confirmation' => 'user_edited'],
+                ['field' => 'date', 'value' => '2026-11-18', 'confirmation' => 'user_edited'],
+                ['field' => 'payment_terms_type', 'value' => 'credit', 'confirmation' => 'user_edited'],
+                ['field' => 'credit_days', 'value' => 30, 'confirmation' => 'user_edited'],
+            ],
+        ])->assertOk()->json();
+        $this->assertSame($selected['task_revision'] + 1, $patch['task']['revision']);
+        $slots = json_decode(DB::table('ai_workflow_tasks')->where('id', $task['task_id'])
+            ->value('slots_json'), true);
+        $this->assertSame($product->id, $slots['items'][0]['product_id']);
+        $this->assertSame('10.00', $slots['items'][0]['qty']);
+        $this->assertSame('600.00', $slots['items'][0]['net_unit_cost']);
+        $this->assertSame($warehouse->id, $slots['warehouse_id']);
+        $this->assertSame('credit', $slots['payment_terms_type']);
+        $this->assertSame(30, $slots['credit_days']);
+        $this->assertSame('2026-11-18', $slots['date']);
+        $this->assertContains('supplier_id', array_column($patch['evaluation']['required_inputs'], 'field'));
+        $this->assertSame(0, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_rate_correction_requires_exactly_one_line_and_never_invents_amounts(): void
+    {
+        $interpreter = app(\App\Ai\Conversation\ConversationalSlotInterpreter::class);
+        $one = ['slots_json' => json_encode(['items' => [['client_line_id' => 'line-a', 'qty' => '10']]])];
+        $this->assertSame([['field' => 'items[line-a].net_unit_cost', 'value' => '600', 'confirmation' => 'user_text']],
+            $interpreter->interpret($one, 'change the rate to ₹600')['corrections']);
+        $two = ['slots_json' => json_encode(['items' => [
+            ['client_line_id' => 'line-a', 'qty' => '10'], ['client_line_id' => 'line-b', 'qty' => '1'],
+        ]])];
+        $ambiguous = $interpreter->interpret($two, 'change that unit cost to 600');
+        $this->assertSame([], $ambiguous['corrections']);
+        $this->assertNotEmpty($ambiguous['warnings']);
     }
 
     public function test_conversation_preserves_domain_fractional_quantity_and_unit_cost(): void

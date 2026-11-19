@@ -76,7 +76,8 @@ final class TaskCorrectionService
                     try {
                         $value = json_decode($value, true, 32, JSON_THROW_ON_ERROR);
                     } catch (\JsonException) {
-                        if ($field === 'items' && trim($value) !== '') {
+                        if ($field === 'items' && trim($value) !== ''
+                            && !config('erp_ai.conversation_enabled', false)) {
                             $value = [
                                 [
                                     'client_line_id' => 'line-0',
@@ -328,7 +329,12 @@ final class TaskCorrectionService
             } elseif ($property === 'qty') {
                 $slots['items'][$lineIndex]['qty'] = is_numeric($value) ? CommercialDecimal::format((float) $value) : $value;
             } elseif ($property === 'net_unit_cost' || $property === 'net_unit_price') {
-                $val = (is_numeric($value) && (float) $value >= 0) ? CommercialDecimal::format((float) $value) : '0.00';
+                if (!is_numeric($value) || !is_finite((float) $value) || (float) $value < 0) {
+                    throw ValidationException::withMessages([
+                        'rate' => 'Enter a valid, nonnegative Purchase Order Rate. No amount was changed.',
+                    ]);
+                }
+                $val = CommercialDecimal::format((float) $value);
                 $slots['items'][$lineIndex]['net_unit_cost'] = $val;
                 $slots['items'][$lineIndex]['net_unit_price'] = $val;
             } else {

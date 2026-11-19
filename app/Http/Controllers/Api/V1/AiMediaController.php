@@ -104,6 +104,10 @@ class AiMediaController extends Controller
                     throw new MultimodalException($me->errorCode, $me->getMessage(), $me->httpStatus, $details);
                 }
 
+                if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
+                    return $this->initialVoiceReview($principal, $asset, $extraction, $request->input('thread_id'), $alreadyExisted ? 200 : 201);
+                }
+
                 $result = $this->workflowBridge->handoff(
                     principal: $principal,
                     asset: $asset->fresh(),
@@ -474,6 +478,10 @@ class AiMediaController extends Controller
                     'message' => 'Review and confirm the transcript, then send it as an answer to this draft.']);
             }
 
+            if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
+                return $this->initialVoiceReview($principal, $asset, $extraction, $threadId);
+            }
+
             // Orchestrate automatic preparation into workflow proposal
             $result = $this->workflowBridge->handoff(
                 principal: $principal,
@@ -500,6 +508,40 @@ class AiMediaController extends Controller
         } catch (Throwable $e) {
             return $this->handleException($e);
         }
+    }
+
+    /**
+     * First-turn audio is reviewed as a conversation, never staged as a bill,
+     * PO or other ERP action just because a model supplied an intent guess.
+     */
+    private function initialVoiceReview(
+        AiPrincipal $principal,
+        AiMediaAsset $asset,
+        AiMediaExtraction $extraction,
+        mixed $threadId,
+        int $status = 200,
+    ): JsonResponse {
+        if (! is_string($threadId) || ! \Illuminate\Support\Str::isUuid($threadId)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'thread_id' => 'An owned conversation thread is required for a voice instruction.',
+            ]);
+        }
+        app(\App\Ai\Conversation\VoiceWorkflowReply::class)
+            ->assertInitialAsset($principal, $asset, $threadId);
+
+        $transcript = (string) ($extraction->extracted_json['transcript_text'] ?? '');
+        $intent = app(\App\Ai\Conversation\VoiceIntentResolver::class)->resolve($transcript);
+
+        return response()->json([
+            'status' => 'voice_intent_review_ready',
+            'thread_id' => $threadId,
+            'media' => $this->presentAsset($asset->fresh()),
+            'extraction' => $this->presentExtraction($extraction->fresh()),
+            'intent_key' => $intent,
+            'message' => $intent === 'purchase_order.create.v1'
+                ? 'Review and confirm the transcription to start a Purchase Order conversation.'
+                : 'Review the transcription and specify the intended transaction. Nothing was staged.',
+        ], $status);
     }
 
     public function prepareExisting(Request $request, string $id): JsonResponse

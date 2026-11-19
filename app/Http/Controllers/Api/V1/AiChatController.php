@@ -827,11 +827,16 @@ class AiChatController extends Controller
             $builder = app(NormalizedInputBuilder::class);
             foreach ($assets as $asset) {
                 $latest = $extractionsByAssetId[$asset->id];
-                if (config('erp_ai.conversation_enabled', false) && !empty($validated['active_task_id'])) {
+                if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
                     if (count($mediaIds) !== 1 || empty($validated['thread_id'])) {
-                        return $this->error('VOICE_REPLY_CONTEXT_REQUIRED', 'Send one confirmed voice transcript with its active draft and thread.', 422);
+                        return $this->error('VOICE_CONTEXT_REQUIRED', 'Send one confirmed voice instruction in its original conversation thread.', 422);
                     }
-                    $validated['voice_source'] = app(\App\Ai\Conversation\VoiceWorkflowReply::class)->consume($principal, $asset, $latest, $validated);
+                    $voice = app(\App\Ai\Conversation\VoiceWorkflowReply::class);
+                    // A first instruction must be verified just as strictly as
+                    // a follow-up, but it cannot have an active task ID yet.
+                    $validated['voice_source'] = !empty($validated['active_task_id'])
+                        ? $voice->consume($principal, $asset, $latest, $validated)
+                        : $voice->consumeInitial($principal, $asset, $latest, $validated);
                     continue;
                 }
                 $companionExtracted = null;

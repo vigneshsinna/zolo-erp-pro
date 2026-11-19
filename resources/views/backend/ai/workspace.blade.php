@@ -2180,6 +2180,7 @@
             <script src="{{ versioned_asset('js/ai-media-input.js') }}"></script>
         @endif
         @if (config('erp_ai.conversation_enabled', false) && $canUseCopilot)
+            <script src="{{ versioned_asset('js/ai-conversation-po-workspace.js') }}"></script>
             <script src="{{ versioned_asset('js/ai-conversation-workflow.js') }}"></script>
         @endif
 @endpush

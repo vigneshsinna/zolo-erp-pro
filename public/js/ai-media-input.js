@@ -365,13 +365,13 @@
         $('#chat-messages').append(loadingCard);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
+        function prepareInThread(effectiveThreadId) {
         const fd = new FormData();
         fd.append('file', targetStaged.file, targetStaged.fileName);
         fd.append('prepare_now', '1');
         if (companionText) {
             fd.append('companion_text', companionText);
         }
-        const effectiveThreadId = threadId || (ws && ws.getCurrentThreadId && ws.getCurrentThreadId());
         if (effectiveThreadId) {
             fd.append('thread_id', effectiveThreadId);
         }
@@ -394,15 +394,22 @@
                     try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
                 }
                 try {
-                    if (res.status === 'voice_reply_ready' && window.zoloAiConversation) window.zoloAiConversation.reviewVoice(res);
-                    else renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                    if (res.status === 'voice_intent_review_ready' && window.zoloAiConversation) {
+                        window.zoloAiConversation.reviewInitialVoice(res);
+                    } else if (res.status === 'voice_reply_ready' && window.zoloAiConversation) {
+                        window.zoloAiConversation.reviewVoice(res);
+                    } else if (targetStaged.isAudio && cfg.conversationEnabled) {
+                        throw new Error('Voice instruction requires explicit transcript review. No ERP action was staged.');
+                    } else {
+                        renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                    }
                     if (ws && ws.loadTelemetry) {
                         ws.loadTelemetry();
                     }
                 } catch (cardErr) {
                     console.error('Error rendering unified workflow card:', cardErr);
                     if (ws && ws.appendMessage) {
-                        ws.appendMessage('assistant', 'An unexpected error occurred while displaying the bill review: ' + (cardErr.message || 'Unknown error'));
+                        ws.appendMessage('assistant', 'Could not display the verified ERP workflow: ' + (cardErr.message || 'Unknown error'));
                     }
                 } finally {
                     if (callback) callback(null, res);
@@ -452,6 +459,34 @@
                 }
             }
         });
+        } // prepareInThread
+
+        const effectiveThreadId = threadId || (ws && ws.getCurrentThreadId && ws.getCurrentThreadId());
+        if (targetStaged.isAudio && cfg.conversationEnabled && !effectiveThreadId) {
+            $.ajax({
+                url: resolveAiBaseUrl() + '/threads',
+                method: 'POST',
+                headers: baseHeaders(true),
+                data: JSON.stringify({title: 'Voice instruction'}),
+                success: function (thread) {
+                    ws.setCurrentThreadId(thread.id);
+                    sessionStorage.setItem('ai_active_thread', thread.id);
+                    ws.loadThreads();
+                    prepareInThread(thread.id);
+                },
+                error: function (xhr) {
+                    $('#' + placeholderId).remove();
+                    stagedAttachment = targetStaged;
+                    renderAttachedChips();
+                    if (ws && ws.appendMessage) {
+                        ws.appendMessage('assistant', 'Unable to create a scoped conversation for this voice note. No ERP action was staged.');
+                    }
+                    if (callback) callback(xhr.responseJSON || new Error('Conversation creation failed'));
+                },
+            });
+            return;
+        }
+        prepareInThread(effectiveThreadId);
     }
 
     function retryPreparation(mediaId, companionText, onDone) {
@@ -558,6 +593,26 @@
     function renderUnifiedWorkflowCard(res, companionText, stagedRef, mount) {
         const ws = getWs();
         const aiBaseUrl = resolveAiBaseUrl();
+        const actionCandidates = [
+            res.action_key,
+            res.task?.action_key,
+            res.clarification?.action_key,
+            res.proposal?.action_key,
+            res.proposal?.preview?.action_key,
+            res.normalized_input?.intent_key,
+        ].filter(Boolean);
+        const actionTypes = new Set(actionCandidates);
+        const allowedActions = new Set([
+            'purchase_order.create.v1', 'purchase_bill.create.v1',
+            'sales_order.create.v1', 'sales_invoice.create.v1',
+        ]);
+        if (actionTypes.size !== 1 || !allowedActions.has(actionCandidates[0])) {
+            const warning = $('<section class="alert alert-warning my-3" role="alert"></section>')
+                .text('The requested ERP transaction type is missing or conflicting. Nothing was prepared or approved. Confirm the intended transaction in chat.');
+            (mount || $('#chat-messages')).append(warning);
+            return;
+        }
+        const verifiedActionKey = actionCandidates[0];
         const media = res.media || {};
         const extraction = res.extraction || {};
         const taskId = res.task_id || (res.task && res.task.id) || media.workflow_task_id;
@@ -611,7 +666,7 @@
             payload = payload || {};
 
             const ext = (currentRes.extraction && currentRes.extraction.extracted) || (res.extraction && res.extraction.extracted) || {};
-            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');
@@ -782,7 +837,7 @@
 
         function renderBookedView(receipt) {
             const refNo = (receipt && receipt.details && receipt.details.reference_no) || (receipt && receipt.resource_id) || 'PR-BOOKED';
-            const actionKey = currentRes.action_key || (currentRes.proposal && currentRes.proposal.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || (currentRes.proposal && currentRes.proposal.action_key) || verifiedActionKey;
             const isPo = (actionKey === 'purchase_order.create.v1');
             const resId = (receipt && receipt.resource_id) || (receipt && receipt.details && (receipt.details.purchase_id || receipt.details.purchase_order_id || receipt.details.id)) || (receipt && receipt.details && receipt.details.reference_no);
             const docLabel = isPo ? 'Purchase Order' : 'Purchase Bill';
@@ -826,7 +881,7 @@
             const mediaObj = currentRes.media || res.media || {};
             const confirmed = clarifyObj.confirmed_fields || (taskObj && taskObj.confirmed_fields) || {};
             const norm = (taskObj && taskObj.normalized_input) || {};
-            const actionKey = currentRes.action_key || proposal.action_key || (taskObj && (taskObj.action_key || taskObj.intent_action)) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (taskObj && (taskObj.action_key || taskObj.intent_action)) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.indexOf('purchase') !== -1;
@@ -1638,7 +1693,7 @@
             preview = preview || {};
             const ext = (currentRes.extraction && currentRes.extraction.extracted) || (res.extraction && res.extraction.extracted) || {};
             const currentTaskId = currentRes.task_id || (currentRes.task && currentRes.task.id) || taskId;
-            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || 'purchase_bill.create.v1';
+            const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');
@@ -2665,6 +2720,9 @@
         },
         hasStagedAttachment: function () {
             return stagedAttachment !== null;
+        },
+        hasStagedVoiceAttachment: function () {
+            return stagedAttachment !== null && stagedAttachment.isAudio === true;
         },
         clearStagedAttachment: clearStagedAttachment,
         stageFile: stageFile,

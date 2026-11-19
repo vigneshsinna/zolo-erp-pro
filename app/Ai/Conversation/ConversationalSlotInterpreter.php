@@ -68,6 +68,14 @@ final class ConversationalSlotInterpreter
                 $lines[] = $line;
                 $corrections = array_values(array_filter($corrections, fn ($c) => $c['field'] !== 'items'));
                 $corrections[] = $this->correction('items', $lines);
+            } elseif (preg_match('/^(?:(?:please\s+)?(?:change|set|update|make|correct|adjust|increase|decrease)\s+(?:(?:the|that|this)\s+)?|(?:the|that|this)\s+)?(?:(?:purchase|unit)\s+)?(?:rate|cost|price)(?:\s+(?:of|for)\s+(?:the\s+)?(?:selected\s+)?(?:product|item))?\s*(?:to|as|is|at|=|:)?\s*(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)(?:\s*(?:per\s+unit|each))?$/iu', $part, $m)) {
+                if (count($lines) !== 1 || empty($lines[0]['client_line_id'])) {
+                    return $this->result([], ['Please identify the product line before changing its purchase rate.']);
+                }
+                // "Rate" is the ERP-facing label; net_unit_cost is its internal PO field.
+                $lineId = $lines[0]['client_line_id'];
+                $corrections[] = $this->correction('items['.$lineId.'].net_unit_cost', $m[1]);
+                $lines[0]['net_unit_cost'] = $m[1];
             } elseif (preg_match('/^[₹$]?\s*(\d+(?:\.\d+)?)\s+each$/u', $part, $m) && count($lines) === 1) {
                 $corrections[] = $this->correction('items['.$lines[0]['client_line_id'].'].net_unit_cost', $m[1]);
                 $lines[0]['net_unit_cost'] = $m[1];
