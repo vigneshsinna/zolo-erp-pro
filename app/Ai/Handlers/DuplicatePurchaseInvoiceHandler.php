@@ -15,7 +15,7 @@ final class DuplicatePurchaseInvoiceHandler implements ErpToolHandlerInterface
 
     public function key(): string
     {
-        return 'erp_checks.duplicate_purchase';
+        return 'erp_checks.duplicate_purchase.v1';
     }
 
     public function description(): string
