@@ -153,8 +153,6 @@ final class ConversationTurnRouter
             $has = static fn (string $field): bool => in_array($field, $missing, true);
             $hasLine = static fn (string $suffix): bool => count(array_filter($missing, static fn (string $field): bool =>
                 str_ends_with($field, $suffix))) > 0;
-            $remaining = [];
-            if ($has('supplier_id')) $remaining[] = 'Supplier';
             if ($has('items') || $hasLine('.product_id')) $remaining[] = 'Product';
             if ($hasLine('.qty')) $remaining[] = 'Quantity';
             if ($hasLine('.net_unit_cost')) $remaining[] = 'Purchase Rate';
@@ -180,9 +178,8 @@ final class ConversationTurnRouter
             } elseif ($has('date')) {
                 $result['message'] = 'What Purchase Order date should I use?';
             }
-            if ($remaining !== []) {
-                $result['message'] .= ' Remaining details: '.implode(', ', array_unique($remaining)).'.';
-            }
+            // Ask one actionable question at a time. The complete unresolved
+            // list remains in required_inputs for progress and optional review.
             // On a new PO or after a record selection, offer the next available
             // choices. Browsing itself remains read-only; only selection changes slots.
             if ($tasks === [] || app(ConversationChoices::class)->isSelection($message, $input)
