@@ -84,6 +84,11 @@ final class DeterministicReadRouter
             return ['type' => 'tool', 'tool' => 'sales.summary.v1', 'input' => []];
         }
 
+        if (preg_match('/^(?:check|verify|find|look\s+for)\s+(?:a\s+)?duplicate\s+(?:supplier|purchase|vendor)\s+(?:invoice|bill)(?:\s+(?:number|no\.?))?\s+([A-Z0-9][A-Z0-9\/._-]{0,79})\??$/iu', $text, $m)) {
+            return ['type' => 'tool', 'tool' => 'erp_checks.duplicate_purchase',
+                'input' => ['supplier_invoice_no' => $m[1]]];
+        }
+
         // These are deterministic ERP responsibilities, but a safe generic
         // chat-layer implementation needs actual document/party identifiers
         // and the existing posting-domain validation. Do not ask a model to
