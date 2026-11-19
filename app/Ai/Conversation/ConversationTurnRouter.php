@@ -153,8 +153,6 @@ final class ConversationTurnRouter
             $has = static fn (string $field): bool => in_array($field, $missing, true);
             $hasLine = static fn (string $suffix): bool => count(array_filter($missing, static fn (string $field): bool =>
                 str_ends_with($field, $suffix))) > 0;
-            $remaining = [];
-            if ($has('supplier_id')) $remaining[] = 'Supplier';
             if ($has('items') || $hasLine('.product_id')) $remaining[] = 'Product';
             if ($hasLine('.qty')) $remaining[] = 'Quantity';
             if ($hasLine('.net_unit_cost')) $remaining[] = 'Purchase Rate';
