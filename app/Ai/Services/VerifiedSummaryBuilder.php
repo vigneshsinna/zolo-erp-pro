@@ -34,7 +34,7 @@ class VerifiedSummaryBuilder
                 'receivables.invoices.v1' => $this->summarizeCustomerInvoices($data),
                 'receivables.invoice_allocations.v1' => $this->summarizeInvoiceAllocations($data),
                 'inventory.stock_summary.v1' => $this->summarizeInventoryStock($data, $reconciled),
-                'erp_checks.duplicate_purchase' => $this->summarizeDuplicatePurchase($data),
+                'erp_checks.duplicate_purchase.v1' => $this->summarizeDuplicatePurchase($data),
                 'sales.summary.v1' => $this->summarizeSales($data),
                 'payables.summary.v1' => $this->summarizePayables($data, $asOf, $reconciled),
                 'accounting.statements.v1' => $this->summarizeFinancialStatements($data),
