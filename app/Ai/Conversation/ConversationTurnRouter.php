@@ -180,9 +180,8 @@ final class ConversationTurnRouter
             } elseif ($has('date')) {
                 $result['message'] = 'What Purchase Order date should I use?';
             }
-            if ($remaining !== []) {
-                $result['message'] .= ' Remaining details: '.implode(', ', array_unique($remaining)).'.';
-            }
+            // Ask one actionable question at a time. The complete unresolved
+            // list remains in required_inputs for progress and optional review.
             // On a new PO or after a record selection, offer the next available
             // choices. Browsing itself remains read-only; only selection changes slots.
             if ($tasks === [] || app(ConversationChoices::class)->isSelection($message, $input)
