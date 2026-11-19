@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Ai\Deterministic;
 
 use App\Services\Tax\Gstin;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -29,6 +31,21 @@ final class DeterministicReadRouter
         if (preg_match('/\b(?:draft|compose|write|why|explain|analyse|analyze|diagnose|recommend|predict|forecast)\b/iu', $text)
             || preg_match('/(?:\band\b|\bthen\b|\bafter\b).*(?:\bcreate\b|\bpost\b|\bupdate\b|\bpay\b)/iu', $text)) {
             return null;
+        }
+
+        if (preg_match('/^(?:calculate|what\s+is|what\x27s)\s+(-?\d{1,12}(?:\.\d{1,6})?)\s*([+*\/-])\s*(-?\d{1,12}(?:\.\d{1,6})?)\??$/iu', $text, $math)) {
+            $left = BigDecimal::of($math[1]);
+            $right = BigDecimal::of($math[3]);
+            if ($math[2] === '/' && $right->isZero()) {
+                return ['type' => 'clarify', 'message' => 'Division by zero is undefined; the calculation was not performed.'];
+            }
+            $value = match ($math[2]) {
+                '+' => $left->plus($right),
+                '-' => $left->minus($right),
+                '*' => $left->multipliedBy($right),
+                '/' => $left->dividedBy($right, 6, RoundingMode::HalfUp),
+            };
+            return ['type' => 'answer', 'message' => 'Result: '.(string) $value->stripTrailingZeros()];
         }
 
         if (preg_match('/^(?:check|validate|verify)\s+(?:the\s+)?(?:gstin|gst\s+number)(?:\s+(?:of|for))?\s+(\S+)$/iu', $text, $m)) {
