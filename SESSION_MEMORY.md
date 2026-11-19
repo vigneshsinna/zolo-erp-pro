@@ -1,3 +1,12 @@
+## PR #22 (Complete Conversational Purchase Order Workspace) Merged into feature/ai-unified-input-clarification — 2026-11-19
+
+- Merged PR #22 (`origin/codex/voice-strict-intent-conversational-po`, head commit `a183c29`) cleanly into base branch `feature/ai-unified-input-clarification`:
+  - **Strict Voice Intent (No Fallback):** New voice requests are transcribed, reviewed, and confirmed within an owned conversation before task creation. Explicit PO speech initiates conversational PO flow; ambiguous or conflicting intents fail closed without model guessing or automatic bill fallback.
+  - **Consolidated Conversational PO Workspace:** Replaces sequential prompts with a unified interactive chat card displaying supplier, line items (qty, rate, purchase unit), destination warehouse, order date, and cash/credit terms with credit days.
+  - **Atomic Revision-Checked Corrections:** Supports single-turn consolidated corrections and conversational voice/text modifications under optimistic concurrency locks.
+  - **Governed New Master & Choice Flow:** Exposes missing master review inline, preserving draft continuity and choices.
+  - **Verification & CI Acceptance:** All 13 GitHub Actions check runs passed on head commit `a183c29` (including ERP acceptance gate, clean database MySQL 8.0 & 8.4, 250-scenario corpus, syntax, and delivery/compliance/legacy suites). Local PHP and Node lint checks clean across all 22 touched files.
+
 ## UI PR #18 CI Acceptance Suite Fixes Pushed to origin/ui — 2026-11-18
 
 - Diagnosed merge blocker on GitHub PR #18 (`ui` -> `main`):
