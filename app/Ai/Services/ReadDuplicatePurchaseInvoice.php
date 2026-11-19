@@ -41,7 +41,7 @@ final class ReadDuplicatePurchaseInvoice
         ])->all();
 
         return ErpToolResult::ok(
-            toolKey: 'erp_checks.duplicate_purchase',
+            toolKey: 'erp_checks.duplicate_purchase.v1',
             scope: [
                 'company_id' => $context->companyId, 'branch_id' => $context->branchId,
                 'financial_year_id' => $context->financialYearId,
