@@ -922,6 +922,19 @@ class AiChatController extends Controller
                 return $this->error('TASK_REVISION_CONFLICT', $error->getMessage(), 409);
             }
         }
+        // Strict, read-only and rules-only turns should not spend model RPM,
+        // tokens or credits. All ERP reads still pass ErpToolExecutor policies.
+        if ($mediaIds === [] && blank($validated['image'] ?? null)
+            && empty($validated['choice_set_id']) && empty($validated['choice_id'])) {
+            $deterministic = app(\App\Ai\Deterministic\DeterministicReadRouter::class)
+                ->plan($question);
+            if ($deterministic !== null) {
+                return $this->runDeterministicTurn(
+                    $principal, $threadId, $existingThreadId, $question, $deterministic
+                );
+            }
+        }
+
         $principal = new AiPrincipal(...array_replace(get_object_vars($principal), ['threadId' => $threadId]));
         $imageInput = $validated['image'] ?? null;
         $quotaDate = now('UTC')->toDateString();
@@ -1087,6 +1100,141 @@ class AiChatController extends Controller
                 'error_message' => $message,
                 'answer_status' => $code === 'AI_PROVIDER_UNAVAILABLE' ? 'provider_error' : 'tool_error',
             ], $status);
+        }
+    }
+
+    /**
+     * Run trusted PHP/SQL operations before the LLM path. No gateway admission,
+     * provider dispatch, token reservation or credit-meter call is made.
+     *
+     * These are still normal audited ERP runs and authorized tool invocations.
+     *
+     * @param array{type:string,tool?:string,input?:array,message?:string} $plan
+     */
+    private function runDeterministicTurn(
+        AiPrincipal $principal,
+        string $threadId,
+        ?string $existingThreadId,
+        string $question,
+        array $plan
+    ): JsonResponse {
+        try {
+            $available = DB::transaction(function () use ($principal, $threadId, $existingThreadId, $question): bool {
+                if ($existingThreadId !== null) {
+                    if (!$this->ownedThreads($principal)->where('id', $threadId)->lockForUpdate()->first()) {
+                        return false;
+                    }
+                } else {
+                    $this->insertThread($principal, $threadId, Str::limit($question, 60));
+                }
+
+                DB::table('ai_runs')->insert([
+                    'id' => $principal->requestId,
+                    'thread_id' => $threadId,
+                    'actor_id' => $principal->actorId,
+                    ...$this->scope($principal),
+                    'agent_key' => 'erp_copilot',
+                    'model_provider' => 'deterministic',
+                    'model_key' => 'php_sql.v1',
+                    'prompt_version' => 'rules-v1',
+                    'status' => 'running',
+                    'request_hash' => hash('sha256', $question),
+                    'started_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                return true;
+            }, 3);
+            if (!$available) {
+                return $this->threadNotFound();
+            }
+        } catch (Throwable $error) {
+            Log::warning('Deterministic ERP run could not be admitted.', [
+                'company_id' => $principal->companyId, 'exception_type' => $error::class,
+            ]);
+            return $this->error('ERP_READ_UNAVAILABLE', 'The ERP could not start this authorized check.', 503);
+        }
+
+        try {
+            $facts = $sources = $warnings = [];
+            $answerStatus = 'verified';
+            $toolCount = 0;
+            $answer = (string) ($plan['message'] ?? '');
+            if ($plan['type'] === 'tool') {
+                $toolCount = 1;
+                $tool = app(\App\Ai\Services\ErpToolExecutor::class)->execute(
+                    $principal->requestId,
+                    $principal,
+                    (string) $plan['tool'],
+                    (array) ($plan['input'] ?? []),
+                );
+
+                if ($tool->status !== 'ok') {
+                    $answerStatus = 'tool_error';
+                    $answer = $tool->status === 'denied'
+                        ? 'This ERP report is unavailable under your current permissions or scope.'
+                        : 'The ERP could not complete the requested report. Check the selected company, branch and financial year.';
+                    $warnings[] = $tool->errorCode ?? 'ERP_READ_FAILED';
+                } else {
+                    $facts[] = [
+                        'tool' => $tool->toolKey,
+                        'as_of' => $tool->asOf,
+                        'data' => $tool->data,
+                        'reconciled' => $tool->reconciled,
+                    ];
+                    $warnings = $tool->warnings;
+                    $answerStatus = $tool->reconciled ? 'verified' : 'unreconciled';
+                    $answer = app(VerifiedSummaryBuilder::class)->build($facts, $warnings);
+                    foreach ($tool->sourceRefs as $href) {
+                        if (count($sources) >= 20) break;
+                        if (is_string($href) && preg_match('~^/[a-z0-9][^\\\\\x00-\x20]*$~iD', $href)) {
+                            $sources[$href] = ['title' => 'Authoritative ERP report', 'href' => $href];
+                        }
+                    }
+                }
+            } elseif ($plan['type'] === 'clarify') {
+                $answerStatus = 'needs_input';
+            }
+
+            $evidence = [
+                'facts' => $facts,
+                'sources' => array_values($sources),
+                'warnings' => $warnings,
+                'answer_status' => $answerStatus,
+                'interaction_type' => 'deterministic_erp',
+            ];
+            $response = new AgentResponse(
+                $principal->requestId,
+                $answer,
+                new \Laravel\Ai\Responses\Data\TextUsage,
+                new \Laravel\Ai\Responses\Data\Meta,
+            );
+            DB::transaction(function () use ($principal, $threadId, $question, $answer, $response, $evidence): void {
+                $this->storeTurn($principal, $threadId, $question, $answer, $response, $evidence);
+                $this->ownedThreads($principal)->where('id', $threadId)->update(['updated_at' => now()]);
+                DB::table('ai_runs')->where('id', $principal->requestId)->where('company_id', $principal->companyId)
+                    ->update(['status' => 'completed', 'completed_at' => now(), 'updated_at' => now()]);
+            }, 3);
+
+            return response()->json([
+                'run_id' => $principal->requestId,
+                'thread_id' => $threadId,
+                'status' => 'completed',
+                'message' => $answer,
+                ...$evidence,
+                'scope' => $this->scope($principal),
+                'usage' => ['input_tokens' => 0, 'output_tokens' => 0,
+                    'tool_count' => $toolCount, 'credits_debited' => 0, 'model_calls' => 0],
+            ]);
+        } catch (Throwable $error) {
+            DB::table('ai_runs')->where('id', $principal->requestId)->where('company_id', $principal->companyId)
+                ->update(['status' => 'failed', 'error_code' => 'ERP_READ_UNAVAILABLE', 'completed_at' => now(), 'updated_at' => now()]);
+            Log::warning('Deterministic ERP run failed.', [
+                'run_id' => $principal->requestId,
+                'company_id' => $principal->companyId,
+                'exception_type' => $error::class,
+            ]);
+            return $this->error('ERP_READ_UNAVAILABLE', 'The ERP could not complete this verified check.', 503);
         }
     }
 

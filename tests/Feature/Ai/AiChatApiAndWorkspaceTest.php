@@ -102,6 +102,100 @@ class AiChatApiAndWorkspaceTest extends TestCase
         app(AiFeatureGate::class)->setCompanySetting($this->company->id, true, true);
     }
 
+    public function test_deterministic_gstin_and_arithmetic_never_call_or_bill_model(): void
+    {
+        config()->set('erp_ai.conversation_enabled', false);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+
+        $valid = \App\Services\Tax\Gstin::make('33AVMPK0140L1Z');
+        $first = $this->postJson(route('ai.chat'), ['message' => 'Validate GSTIN '.$valid])
+            ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+            ->assertJsonPath('usage.model_calls', 0)
+            ->assertJsonPath('usage.credits_debited', 0)
+            ->assertJsonPath('usage.input_tokens', 0)
+            ->assertJsonPath('usage.output_tokens', 0);
+        $this->assertStringContainsString('format and checksum are valid', $first->json('message'));
+        $run = $first->json('run_id');
+        $this->assertDatabaseHas('ai_runs', [
+            'id' => $run, 'model_provider' => 'deterministic', 'model_key' => 'php_sql.v1',
+        ]);
+        $this->assertSame(0, DB::table('ai_model_invocations')->where('run_id', $run)->count());
+
+        $second = $this->postJson(route('ai.chat'), [
+            'thread_id' => $first->json('thread_id'),
+            'message' => 'Calculate 12.50 * 3',
+        ])->assertOk()->assertJsonPath('message', 'Result: 37.5')
+            ->assertJsonPath('usage.model_calls', 0);
+        $this->assertSame(0, DB::table('ai_model_invocations')
+            ->whereIn('run_id', [$first->json('run_id'), $second->json('run_id')])->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_deterministic_financial_reports_use_authorized_tools_without_nemotron(): void
+    {
+        config()->set('erp_ai.conversation_enabled', false);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        foreach ([
+            ['Show receivables aging', 'receivables.outstanding.v1'],
+            ['Show open purchase orders', 'orders.open.v1'],
+            ['Show low stock', 'inventory.stock_summary.v1'],
+            ['Check duplicate supplier invoice ABC-2026-100', 'erp_checks.duplicate_purchase.v1'],
+        ] as [$question, $tool]) {
+            $response = $this->postJson(route('ai.chat'), ['message' => $question])
+                ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+                ->assertJsonPath('usage.model_calls', 0)
+                ->assertJsonPath('usage.credits_debited', 0);
+            $run = $response->json('run_id');
+            $this->assertDatabaseHas('ai_tool_invocations', ['run_id' => $run, 'tool_key' => $tool]);
+            $this->assertSame(0, DB::table('ai_model_invocations')->where('run_id', $run)->count());
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_deterministic_business_rule_checks_never_guess_or_fall_back_to_model(): void
+    {
+        config()->set('erp_ai.conversation_enabled', false);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        foreach ([
+            'Calculate GST for a purchase bill',
+            'Check duplicate supplier invoice',
+            'Compare PO vs GRN vs Bill',
+            'Calculate 1 / 0',
+        ] as $question) {
+            $response = $this->postJson(route('ai.chat'), ['message' => $question])
+                ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+                ->assertJsonPath('answer_status', 'needs_input')
+                ->assertJsonPath('usage.model_calls', 0);
+            $run = $response->json('run_id');
+            $this->assertSame(0, DB::table('ai_model_invocations')->where('run_id', $run)->count());
+            $this->assertSame(0, DB::table('ai_tool_invocations')->where('run_id', $run)->count());
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_deterministic_router_never_converts_ambiguous_language_to_erp_write_or_read(): void
+    {
+        $router = app(\App\Ai\Deterministic\DeterministicReadRouter::class);
+        $this->assertNull($router->plan('Why did the three-way match fail?'));
+        $this->assertNull($router->plan('Create a purchase bill with 18% GST'));
+        $this->assertNull($router->plan('Draft a supplier reminder based on aging'));
+        $this->assertNull($router->plan('Show stock and then create a reorder'));
+        $this->assertSame(['type' => 'answer', 'message' => 'Result: 90'],
+            $router->plan('What is 18% of 500'));
+        $this->assertSame(['type' => 'answer', 'message' => 'True.'],
+            $router->plan('Is 5 < 10?'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'inventory.stock_summary.v1',
+            'input' => ['below_reorder_only' => true]], $router->plan('Show products below reorder level'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'tax.gst_summary.v1', 'input' => []],
+            $router->plan('Show GST summary'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'erp_checks.duplicate_purchase.v1',
+            'input' => ['supplier_invoice_no' => 'ABC-2026-100']],
+            $router->plan('Check duplicate supplier invoice ABC-2026-100'));
+    }
+
     public function test_workspace_view_renders_for_authenticated_actor(): void
     {
         DB::table('general_settings')->insert([

@@ -33,7 +33,8 @@ class ReadInventoryStockSummary
         AiPrincipal $principal,
         ?string $productQuery = null,
         ?int $warehouseId = null,
-        int $limit = 10
+        int $limit = 10,
+        bool $belowReorderOnly = false
     ): ErpToolResult {
         $limit = max(1, min(50, $limit));
         $companyId = $principal->companyId;
@@ -94,9 +95,10 @@ class ReadInventoryStockSummary
         $currency = Currency::find($company->base_currency_id)?->code ?? 'INR';
 
         $totals = ['tracked' => 0, 'in_stock' => 0, 'value' => BigDecimal::zero(), 'unreconciled' => false];
-        $units = $top = [];
+        $units = $top = $reorderAlerts = [];
+        $reorderCount = 0;
         $productsQuery->with(['unit' => fn ($q) => $q->where('company_id', $companyId)])
-            ->chunkById(250, function ($products) use ($context, $warehouseIds, $canSeeCost, $valuation, $limit, &$totals, &$units, &$top): void {
+            ->chunkById(250, function ($products) use ($context, $warehouseIds, $canSeeCost, $valuation, $limit, $belowReorderOnly, &$reorderAlerts, &$reorderCount, &$totals, &$units, &$top): void {
                 $stock = $this->availabilityService->forCatalogBatch($context, $products, $warehouseIds);
                 foreach ($products as $product) {
                     $balance = $stock[$product->id] ?? [];
@@ -126,6 +128,30 @@ class ReadInventoryStockSummary
                             $unitCost = $onHand > 0 ? $value->dividedBy(LedgerAmount::decimal($onHand), 6, RoundingMode::HalfUp) : null;
                         }
                         $totals['value'] = $totals['value']->plus($value);
+                    }
+
+                    // alert_quantity is the existing product reorder threshold.
+                    // Compare branch-scoped available stock in the same base unit
+                    // (raw stock quantities are stored at scale 10,000).
+                    if ($belowReorderOnly) {
+                    $threshold = (string) ($product->alert_quantity ?? '0');
+                    $availableBase = BigDecimal::of((string) $available)->dividedBy('10000', 4, RoundingMode::HalfUp);
+                    $belowThreshold = is_numeric($threshold) && (float) $threshold > 0
+                        && $availableBase->isLessThan(BigDecimal::of($threshold));
+                    if ($belowThreshold) {
+                        $reorderCount++;
+                        if (count($reorderAlerts) < $limit) {
+                            $reorderAlerts[] = [
+                                'product_id' => $product->id,
+                                'code' => $product->code,
+                                'name' => $product->name,
+                                'unit' => $unitCode,
+                                'available' => (string) $availableBase,
+                                'reorder_level' => $threshold,
+                                'shortage' => (string) BigDecimal::of($threshold)->minus($availableBase),
+                            ];
+                        }
+                    }
                     }
 
                     $top[] = [
@@ -173,13 +199,16 @@ class ReadInventoryStockSummary
                     }
                     return $unit;
                 }, array_slice($units, 0, 50))),
-                'top_products' => $top,
+                'top_products' => $belowReorderOnly ? [] : $top,
+                'below_reorder_only' => $belowReorderOnly,
+                'below_reorder_count' => $belowReorderOnly ? $reorderCount : null,
+                'below_reorder_products' => $belowReorderOnly ? $reorderAlerts : [],
             ],
             sourceRefs: in_array('warehouse-stock-report', $allowed, true) ? [route('report.warehouseStock', absolute: false)] : [],
             warnings: $warnings,
             asOf: now($company->timezone)->toDateString(),
             reconciled: !$totals['unreconciled'],
-            rowCount: count($top),
+            rowCount: $belowReorderOnly ? count($reorderAlerts) : count($top),
         );
     }
 }

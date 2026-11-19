@@ -34,6 +34,7 @@ class VerifiedSummaryBuilder
                 'receivables.invoices.v1' => $this->summarizeCustomerInvoices($data),
                 'receivables.invoice_allocations.v1' => $this->summarizeInvoiceAllocations($data),
                 'inventory.stock_summary.v1' => $this->summarizeInventoryStock($data, $reconciled),
+                'erp_checks.duplicate_purchase.v1' => $this->summarizeDuplicatePurchase($data),
                 'sales.summary.v1' => $this->summarizeSales($data),
                 'payables.summary.v1' => $this->summarizePayables($data, $asOf, $reconciled),
                 'accounting.statements.v1' => $this->summarizeFinancialStatements($data),
@@ -79,6 +80,24 @@ class VerifiedSummaryBuilder
         }
         $timestamp = strtotime($asOf);
         return $timestamp ? date('j F Y', $timestamp) : $asOf;
+    }
+
+    protected function summarizeDuplicatePurchase(array $data): string
+    {
+        $number = (string) ($data['supplier_invoice_no'] ?? '');
+        $matches = $data['matches'] ?? [];
+        $count = (string) ($data['potential_match_count'] ?? count($matches));
+        $lines = ['### Possible Duplicate Supplier Invoice',
+            'Invoice number: **'.str_replace(['*', "\n", "\r"], '', $number).'**',
+            'Matching purchases in your authorized branch and financial year: **'.$count.'**'];
+        foreach ($matches as $item) {
+            $lines[] = '- '.($item['reference_no'] ?? 'Purchase #'.$item['id'])
+                .' — Supplier: '.($item['supplier'] ?? 'Unspecified')
+                .' — '.(!empty($item['is_reversed']) ? 'Reversed' :
+                    (!empty($item['is_posted']) ? 'Posted' : 'Not posted'));
+        }
+        $lines[] = 'A matching invoice number is a warning, not proof of a duplicate. Confirm supplier identity, original invoice and status before posting.';
+        return implode("\n", $lines);
     }
 
     protected function summarizeReceivablesOutstanding(array $data, ?string $asOf, bool $reconciled): string
@@ -197,6 +216,25 @@ class VerifiedSummaryBuilder
 
     protected function summarizeInventoryStock(array $data, bool $reconciled): string
     {
+        if (($data['below_reorder_only'] ?? false) === true) {
+            $count = (int) ($data['below_reorder_count'] ?? 0);
+            $lines = ['### Products Below Reorder Level', '**Total matching products:** '.$count];
+            foreach (($data['below_reorder_products'] ?? []) as $product) {
+                $lines[] = '- '.($product['name'] ?? 'Product').' ('.($product['code'] ?? 'No code').')'
+                    .': available '.($product['available'] ?? 'unknown').' '
+                    .($product['unit'] ?? 'units').', reorder level '.($product['reorder_level'] ?? 'unknown')
+                    .', shortage '.($product['shortage'] ?? 'unknown');
+            }
+            if ($count === 0) {
+                $lines[] = 'No items with a configured positive alert quantity are currently below their reorder level.';
+            } elseif ($count > count($data['below_reorder_products'] ?? [])) {
+                $lines[] = 'Showing the first '.count($data['below_reorder_products']).' alerts. Open the stock report for more.';
+            }
+            if (!$reconciled) {
+                $lines[] = 'Warning: stock projections did not reconcile with the inventory movement ledger.';
+            }
+            return implode("\n", $lines);
+        }
         $currency = $this->formatCurrency($data['currency'] ?? 'INR');
         $wh = $data['warehouse'] ?? 'Active Warehouses';
         $tracked = (int) ($data['total_products_tracked'] ?? 0);
