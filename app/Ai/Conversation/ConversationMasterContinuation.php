@@ -121,7 +121,8 @@ final class ConversationMasterContinuation
             $result['master_required_inputs'] = $validator->errors()->toArray();
             return $result;
         }
-        if ($type === 'supplier') {
+        if ($type === 'supplier' && config('ai_business_knowledge.enabled', false)
+            && config('ai_business_knowledge.semantic_enabled', false)) {
             $question = app(ConversationQuestionPlanner::class)->next(
                 \App\Ai\Requirements\SupplierSetupRequirementsProvider::KEY, $data);
             if ($question !== null) {
