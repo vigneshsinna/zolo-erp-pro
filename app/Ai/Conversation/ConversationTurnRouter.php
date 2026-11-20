@@ -55,9 +55,15 @@ final class ConversationTurnRouter
                 'question_type' => 'party_direction', 'can_prepare_proposal' => false];
         }
         if ($semantic !== null && $semantic['role'] === 'both') {
+            app(PendingPartyIntentService::class)->ask($principal, $threadId);
             return ['status' => 'needs_input', 'message' =>
                 'Supplier and customer are separate ERP roles with separate approvals. Which role should I create first?',
                 'question_type' => 'party_role', 'can_prepare_proposal' => false];
+        }
+        if ($semantic !== null && $semantic['role'] === 'unsupported') {
+            return ['status' => 'needs_input', 'message' =>
+                'I could not safely identify a supported party-creation action. Please specify supplier or customer.',
+                'can_prepare_proposal' => false];
         }
         if ($semantic !== null && $semantic['role'] === 'customer') {
             if (($semantic['continuation'] ?? null) === 'pending_party') {
