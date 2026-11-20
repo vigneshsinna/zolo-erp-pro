@@ -277,7 +277,7 @@
 
                 // Transport only: both routes retain the same ERP permissions,
                 // provider metering, source checks and signed approvals.
-                window.ZoloAiStreamEnabled = @json((bool) ($streamingEnabled ?? false));
+                window.ZoloAiStreamEnabled = @json($streamingEnabled ?? false);
                 const workspace = $('.ai-workspace-container');
                 const welcomeMarkup = $('.ai-welcome-box').prop('outerHTML');
                 function fitWorkspace() {

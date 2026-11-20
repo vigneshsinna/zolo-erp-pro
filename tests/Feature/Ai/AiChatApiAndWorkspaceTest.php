@@ -220,6 +220,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $response->assertSee($this->company->legal_name ?? $this->company->name);
         $response->assertSee('Search conversations');
         $response->assertSee('AI engine');
+        $response->assertSee('window.ZoloAiStreamEnabled = false;', false);
         $response->assertSee('Provider requests / minute');
         $response->assertDontSee('RPM: --/35');
 
