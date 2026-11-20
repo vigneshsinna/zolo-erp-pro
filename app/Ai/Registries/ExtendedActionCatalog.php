@@ -37,12 +37,40 @@ final class ExtendedActionCatalog
             ['setup.opening_balance.create.v1', 'opening_balance', 'r3_financial', 'accounting.voucher.post', ExtendedOpeningInputSchema::class],
         ];
 
-        return array_map(static fn (array $row): ActionDefinition => new ActionDefinition(
+        $definitions = array_map(static fn (array $row): ActionDefinition => new ActionDefinition(
             key: $row[0], businessModule: $row[1], riskTier: $row[2],
             requiredPermissions: ['ai.use', $row[3]], inputSchemaClass: $row[4],
             previewAdapterClass: ExtendedActionAdapter::class, commandAdapterClass: ExtendedActionAdapter::class,
             enabledByDefault: false,
         ), $rows);
+
+        if (config('ai_business_knowledge.job_work_enabled', false)) {
+            $definitions[] = new ActionDefinition(
+                key: 'job_work.order.create.v1', businessModule: 'job_work',
+                riskTier: 'r2_operational', requiredPermissions: ['ai.use', 'job_work.manage'],
+                inputSchemaClass: \App\Ai\Schemas\CreateJobWorkOrderInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\JobWorkOrderActionAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\JobWorkOrderActionAdapter::class,
+                requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
+            );
+            $definitions[] = new ActionDefinition(
+                key: 'job_work.service_bill.create.v1', businessModule: 'job_work',
+                riskTier: 'r3_financial', requiredPermissions: ['ai.use', 'job_work.manage'],
+                inputSchemaClass: \App\Ai\Schemas\CreateJobWorkServiceBillInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\JobWorkServiceBillActionAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\JobWorkServiceBillActionAdapter::class,
+                requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
+            );
+            $definitions[] = new ActionDefinition(
+                key: 'principal_job.service_invoice.create.v1', businessModule: 'job_work',
+                riskTier: 'r3_financial', requiredPermissions: ['ai.use', 'sales-add'],
+                inputSchemaClass: \App\Ai\Schemas\CreatePrincipalJobServiceInvoiceInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\PrincipalJobInvoiceActionAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\PrincipalJobInvoiceActionAdapter::class,
+                requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
+            );
+        }
+        return $definitions;
     }
 
     public static function register(ActionCapabilityRegistry $registry): void
