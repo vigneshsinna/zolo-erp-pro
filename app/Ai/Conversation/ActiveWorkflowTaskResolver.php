@@ -34,7 +34,7 @@ final class ActiveWorkflowTaskResolver
             return DB::table('ai_action_proposals')->where('company_id', $principal->companyId)
                 ->where('branch_id', $principal->branchId)->where('financial_year_id', $principal->financialYearId)
                 ->where('actor_id', $principal->actorId)->where('id', $task['linked_proposal_id'])
-                ->whereIn('status', ['pending', 'approved'])->exists();
+                ->whereIn('status', ['pending', 'approved', 'editing'])->exists();
         }));
         if ($taskId !== null && $tasks === []) {
             throw new AuthorizationException('Active workflow task is unavailable in this conversation.');

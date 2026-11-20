@@ -55,7 +55,7 @@ final class AiOperationsController extends Controller
             $summary['completed'] = (int) ($totals->completed_count ?? 0);
             $summary['attention'] = (int) ($totals->reconciliation_count ?? 0);
             $recent = (clone $base)
-                ->whereIn('status', ['pending', 'approved', 'completed', 'requires_reconciliation'])
+                ->whereIn('status', ['pending', 'approved', 'editing', 'completed', 'requires_reconciliation'])
                 ->select(['id', 'action_key', 'status', 'risk_tier', 'updated_at'])
                 ->orderByDesc('updated_at')->limit(8)->get();
         }

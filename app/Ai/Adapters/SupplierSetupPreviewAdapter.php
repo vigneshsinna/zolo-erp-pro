@@ -41,6 +41,18 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
             }
         }
 
+        // GSTIN state prefix is authoritative for registered suppliers.
+        $state = trim((string) ($slots['state'] ?? ''));
+        if ($vatNumber !== '') {
+            $gstState = substr($vatNumber, 0, 2);
+            if ($state !== '' && app(\App\Services\Tax\GstSetupService::class)->stateCode($state) !== $gstState) {
+                throw ValidationException::withMessages([
+                    'state' => 'Supplier state does not match the GSTIN prefix.',
+                ]);
+            }
+            $state = $state !== '' ? $state : (string) (\App\Services\Tax\Gstin::$states[$gstState] ?? '');
+        }
+
         $existing = Supplier::where('company_id', $context->companyId)
             ->where(function ($q) use ($name, $companyName, $vatNumber) {
                 $q->where('name', $name);
@@ -57,7 +69,7 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'company_name' => $companyName !== '' ? $companyName : null,
             'phone_number' => (string) ($slots['phone_number'] ?? ''),
             'vat_number' => $vatNumber !== '' ? $vatNumber : null,
-            'state' => (string) ($slots['state'] ?? 'Tamil Nadu'),
+            'state' => $state !== '' ? $state : 'Tamil Nadu',
             'city' => (string) ($slots['city'] ?? ''),
             'address' => (string) ($slots['address'] ?? ''),
             'email' => !empty($slots['email']) ? (string) $slots['email'] : null,

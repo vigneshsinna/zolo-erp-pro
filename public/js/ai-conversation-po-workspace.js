@@ -115,17 +115,19 @@
     }
 
     function render({state, mount, request, submit, fail, setBusy, isBusy, refreshAfterPatch}) {
-        if (state.action_key && state.action_key !== 'purchase_order.create.v1') {
-            mount.append($('<p role="alert"></p>').text('The current draft is not a Purchase Order. No PO fields were updated.'));
+        const isBill = state.action_key === 'purchase_bill.create.v1';
+        if (state.action_key && !['purchase_order.create.v1', 'purchase_bill.create.v1'].includes(state.action_key)) {
+            mount.append($('<p role="alert"></p>').text('Only PO and purchase-bill proposals are editable here.'));
             return;
         }
+        const label = isBill ? 'Purchase Bill' : 'Purchase Order';
 
         const heading = $('<div class="ai-po-workspace-head"></div>');
-        heading.append($('<strong></strong>').text('Purchase Order Workspace'));
+        heading.append($('<strong></strong>').text(label + ' Workspace'));
         heading.append($('<span class="ai-po-field-state"></span>').text('Unposted draft'));
         mount.append(heading,
             $('<p class="ai-po-hint"></p>').text(
-                'One question at a time. Use the chat below to answer by typing, dictation or voice, including several details in one reply.'
+                'Edit supplier, warehouse, quantities and rates here or in chat. GST/RCM is determined by ERP, not a chat-set zero rate.'
             ));
 
         const missing = (state.required_inputs || []).filter(issue =>
@@ -151,7 +153,7 @@
 
         const product = fieldBlock('Products, Quantities & Rates *', 'items', state);
         product.append($('<p class="ai-po-hint"></p>').text(
-            'Rate is the purchase rate per unit used on the normal ERP Purchase Order screen. Existing master costs are reference information, not approved rates.'
+            'ERP validates purchase rates and determines tax from supplier GST status and product classification.'
         ));
         const lines = $('<div class="ai-po-lines" role="group" aria-label="Purchase Order items"></div>');
         product.append(lines);
@@ -170,16 +172,30 @@
         terms.append(payments);
         const creditWrap = $('<div class="ai-po-credit-days"></div>');
         terms.append(creditWrap);
-        mount.append(terms);
+        if (!isBill) mount.append(terms);
 
-        const date = fieldBlock('Order Date *', 'date', state);
+        const date = fieldBlock(isBill ? 'Bill Date *' : 'Order Date *', 'date', state);
         mount.append(date);
+        const billFields = isBill ? fieldBlock('Purchase Bill References', 'supplier_invoice_no', state) : null;
+        if (billFields) {
+            billFields.append($('<p class="ai-po-hint"></p>').text('Invoice number, optional linked PO/GRN and due date are validated against ERP records.'));
+            mount.append(billFields);
+        }
 
         const extras = fieldBlock('Additional Purchase Order Details', 'note', state);
         extras.append($('<p class="ai-po-hint"></p>').text(
-            'Optional. Tax and totals are calculated and validated by the ERP, not guessed by the AI.'
+            'ERP validates discounts, freight, GST and reverse charge. Chat cannot bypass tax checks.'
         ));
         mount.append(extras);
+        if (isBill) {
+            const tax = $('<section class="ai-po-section" aria-label="GST determination"></section>');
+            tax.append($('<div class="ai-po-section-head"></div>').append($('<strong></strong>').text('GST / Non-GST / Reverse Charge')));
+            tax.append($('<p class="ai-po-hint"></p>').text('Ask “GST bill” or “non-GST bill” in chat to review classification. An unregistered supplier may still have RCM. This editor cannot force GST to zero.'));
+            if (state.preview?.totals) {
+                tax.append($('<p class="ai-po-selected"></p>').text('Last ERP-validated tax: ₹' + (state.preview.totals.tax_total ?? '0.00')));
+            }
+            mount.append(tax);
+        }
 
         const unresolved = $('<section class="ai-po-missing-list"></section>');
         if (missing.length) {
@@ -205,21 +221,23 @@
                 matches: field => field === 'items' || /^items(?:\[|\.)/.test(field)},
             {id: 'warehouse', title: 'Warehouse', node: warehouse,
                 matches: field => field === 'warehouse_id' || field === 'warehouse_query'},
-            {id: 'terms', title: 'Cash / Credit', node: terms,
-                matches: field => field === 'payment_terms_type' || field === 'credit_days'},
-            {id: 'date', title: 'Order Date', node: date,
+            ...(!isBill ? [{id: 'terms', title: 'Cash / Credit', node: terms,
+                matches: field => field === 'payment_terms_type' || field === 'credit_days'}] : []),
+            {id: 'date', title: isBill ? 'Bill Date' : 'Order Date', node: date,
                 matches: field => field === 'date'},
+            ...(isBill ? [{id: 'references', title: 'Invoice / PO / GRN', node: billFields,
+                matches: field => ['supplier_invoice_no', 'due_date', 'purchase_order_id', 'grn_id'].includes(field)}] : []),
             {id: 'extras', title: 'Other details (optional)', node: extras,
                 matches: () => false},
         ];
         const isUnresolved = stage => missing.some(issue => stage.matches(String(issue.field || '')));
-        const countRequired = stages.slice(0, 5).filter(stage => isUnresolved(stage)).length;
-        const navigator = $('<nav class="ai-po-step-nav" aria-label="Purchase Order steps"></nav>');
+        const countRequired = stages.filter(stage => isUnresolved(stage)).length;
+        const navigator = $('<nav class="ai-po-step-nav" aria-label="Purchase document steps"></nav>');
         const stepCounter = $('<span class="ai-po-step-counter"></span>');
         const pickerLabel = $('<label class="ai-po-step-picker-label"></label>')
-            .append($('<span class="sr-only">Choose a Purchase Order step</span>'));
+            .append($('<span class="sr-only">Choose a purchase document step</span>'));
         const picker = $('<select class="form-control form-control-sm ai-po-step-picker"></select>')
-            .attr('aria-label', 'Choose a Purchase Order step');
+            .attr('aria-label', 'Choose a purchase document step');
         stages.forEach(stage => {
             const suffix = isUnresolved(stage) ? ' • needed' : '';
             picker.append($('<option></option>').val(stage.id).text(stage.title + suffix));
@@ -240,7 +258,8 @@
             : /which product|what quantity|purchase rate|product line|line item/.test(issueFocus) ? 'products'
             : /destination warehouse/.test(issueFocus) ? 'warehouse'
             : /cash or credit|credit days/.test(issueFocus) ? 'terms'
-            : /order date/.test(issueFocus) ? 'date'
+            : /order date|bill date|invoice date/.test(issueFocus) ? 'date'
+            : /invoice number|grn|purchase order reference|due date/.test(issueFocus) && isBill ? 'references'
             : (stages.find(stage => isUnresolved(stage)) || stages[0]).id;
         let expanded = false;
         const showCurrent = () => {
@@ -333,8 +352,8 @@
                 lines.append(panel);
             });
             const currentTerms = String(slots.payment_terms_type || '');
-            cash.prop('disabled', false);
-            credit.prop('disabled', false);
+            cash.prop('disabled', isBill);
+            credit.prop('disabled', isBill);
             if (currentTerms === 'cash') cash.addClass('active');
             if (currentTerms === 'credit') credit.addClass('active');
             creditWrap.empty();
@@ -360,8 +379,17 @@
             } else {
                 creditWrap.append($('<p class="ai-po-hint"></p>').text('Select Credit to enter credit days.'));
             }
-            oneInput(date, 'Purchase Order date *', slots.date || labelFor('date', state),
+            oneInput(date, isBill ? 'Supplier Bill Date *' : 'Purchase Order date *', slots.date || labelFor('date', state),
                 {type:'date'}, val => change('date', val));
+            if (isBill) {
+                oneInput(billFields, 'Supplier Invoice Number', slots.supplier_invoice_no ?? '',
+                    {type:'text', placeholder:'Invoice reference'}, val => change('supplier_invoice_no', val));
+                oneInput(billFields, 'Due Date', slots.due_date ?? '', {type:'date'}, val => change('due_date', val));
+                oneInput(billFields, 'Linked PO ID (optional)', slots.purchase_order_id ?? '',
+                    {type:'number', min:'1', step:'1'}, val => change('purchase_order_id', val));
+                oneInput(billFields, 'Linked GRN ID (optional)', slots.grn_id ?? '',
+                    {type:'number', min:'1', step:'1'}, val => change('grn_id', val));
+            }
             oneInput(extras, 'Order Discount (₹)', slots.order_discount ?? '',
                 {type:'number', min:'0', step:'any'}, val => change('order_discount', val));
             oneInput(extras, 'Shipping / Freight (₹)', slots.shipping_cost ?? '',

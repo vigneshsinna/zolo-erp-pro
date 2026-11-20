@@ -170,7 +170,7 @@ final class ScheduledRuleRunner
     {
         $runs = DB::table('ai_schedule_runs')->where('company_id', $companyId)->where('rule_id', $ruleId);
         if (DB::table('ai_action_proposals')->where('company_id', $companyId)->whereIn('id', (clone $runs)->whereNotNull('proposal_id')->select('proposal_id'))
-            ->whereIn('status', ['pending', 'approved', 'executing', 'requires_reconciliation'])->where('expires_at', '>', now('UTC'))->exists()) return true;
+            ->whereIn('status', ['pending', 'approved', 'editing', 'executing', 'requires_reconciliation'])->where('expires_at', '>', now('UTC'))->exists()) return true;
         return DB::table('ai_workflow_tasks')->where('company_id', $companyId)->whereIn('id', (clone $runs)->whereNotNull('task_id')->select('task_id'))
             ->whereIn('status', ['collecting', 'ready'])->where('expires_at', '>', now('UTC'))->exists();
     }

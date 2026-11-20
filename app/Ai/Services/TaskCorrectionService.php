@@ -12,6 +12,7 @@ use App\Ai\Registries\ActionRequirementsRegistry;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 final class TaskCorrectionService
 {
@@ -42,6 +43,7 @@ final class TaskCorrectionService
             || $task['expires_at'] <= now('UTC')->toDateTimeString()) {
             throw ValidationException::withMessages(['task' => 'This draft is no longer editable.']);
         }
+        $this->assertLinkedEditorFresh($principal, $task);
         $actionKey = (string) $task['action_key'];
         $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get($actionKey);
         if ($principal instanceof AiPrincipal)
@@ -114,7 +116,15 @@ final class TaskCorrectionService
 
         $newStatus = $evaluation->isReady() ? 'ready' : 'collecting';
 
-        $updatedTask = $this->taskState->updateTaskState(
+        // Prevent a previously approved (or still pending) preview from being
+        // executed while amended supplier, warehouse, rate or GST fields are
+        // being resolved. Keep task revision and suspension atomic.
+        $updatedTask = DB::transaction(function () use ($principal, $task, $taskId, $expectedRevision, $slots, $batchResult, $evaluation, $newStatus, $corrections): array {
+            if ($principal instanceof AiPrincipal && $task['linked_proposal_id']
+                && $corrections !== []) {
+                app(ActionProposalService::class)->suspendForEditing($principal, $task['linked_proposal_id']);
+            }
+            return $this->taskState->updateTaskState(
             principal: $principal,
             taskId: $taskId,
             expectedRevision: $expectedRevision,
@@ -125,7 +135,8 @@ final class TaskCorrectionService
             issues: $evaluation->issuesArray(),
             status: $newStatus,
             patch: $corrections,
-        );
+            );
+        }, 3);
 
         $clarification = null;
         if (!$evaluation->isReady()) {
@@ -142,6 +153,7 @@ final class TaskCorrectionService
     public function prepareProposal(AiPrincipal $principal, array $task, EvaluationResult $evaluation): array
     {
         $current = $this->taskState->getTask($principal, $task['id']);
+        $this->assertLinkedEditorFresh($principal, $current);
         if ((int) $current['revision'] !== (int) $task['revision']) {
             throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException('Draft changed before proposal preparation.');
         }
@@ -155,6 +167,26 @@ final class TaskCorrectionService
         if ($task['linked_proposal_id']) {
             $old = $service->getOwned($principal, $task['linked_proposal_id']);
             $proposal = $service->applyChangeRequest($principal, $old['id'], $evaluation->validatedSlots, (int) $old['version'], reuseUnchanged: true);
+            $provenance = json_decode((string) ($current['provenance_json'] ?? '{}'), true);
+            if (($provenance['source'] ?? null) === 'proposal_edit') {
+                // The same editing conversation must continue against its own
+                // newly sealed version, not a stale version from before this
+                // successful preview. Only server-owned linkage is updated.
+                $provenance['source_version'] = (int) $proposal['version'];
+                $changed = DB::table('ai_workflow_tasks')
+                    ->where('id', $task['id'])->where('actor_id', $principal->actorId)
+                    ->where('company_id', $principal->companyId)
+                    ->where('branch_id', $principal->branchId)
+                    ->where('financial_year_id', $principal->financialYearId)
+                    ->where('revision', $task['revision'])
+                    ->where('linked_proposal_id', $proposal['id'])
+                    ->update(['provenance_json' => json_encode($provenance, JSON_THROW_ON_ERROR),
+                        'updated_at' => now('UTC')]);
+                if ($changed !== 1) {
+                    throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException(
+                        'Draft changed while sealing the proposal. Reload its current version.');
+                }
+            }
         } else {
             $proposal = $service->create($principal, $task['action_key'], $evaluation->validatedSlots, $task['thread_id']);
             $this->taskState->linkProposal($task['id'], $proposal['id']);
@@ -166,15 +198,40 @@ final class TaskCorrectionService
             'can_prepare_proposal' => true];
     }
 
+    private function assertLinkedEditorFresh(
+        AiPrincipal|BootstrapSetupPrincipal $principal,
+        array $task
+    ): void {
+        if (!($principal instanceof AiPrincipal) || !$task['linked_proposal_id']) return;
+        $source = json_decode((string) ($task['provenance_json'] ?? '{}'), true);
+        if (($source['source'] ?? null) !== 'proposal_edit') return;
+        $proposal = app(ActionProposalService::class)->getOwned($principal, $task['linked_proposal_id']);
+        if ((int) ($source['source_version'] ?? 0) !== (int) $proposal['version']) {
+            throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException(
+                'This proposal has a newer version. Reopen Edit with Ask Zolo from the review queue.'
+            );
+        }
+    }
+
     private function applyFieldCorrection(array &$slots, string $field, mixed $value): void
     {
         if (in_array($field, ['supplier_query', 'warehouse_query', 'customer_query'], true)) {
+            if ($field === 'supplier_query') {
+                foreach ($slots['items'] ?? [] as &$item) {
+                    unset($item['tax_rate'], $item['tax_rate_override']);
+                }
+                unset($item, $slots['expected_totals']);
+            }
             $slots[$field] = trim((string) $value);
             unset($slots[str_replace('_query', '_id', $field)]);
             return;
         }
         // 1. Direct scalar / entity fields
         if ($field === 'supplier_id') {
+            foreach ($slots['items'] ?? [] as &$item) {
+                unset($item['tax_rate'], $item['tax_rate_override']);
+            }
+            unset($item, $slots['expected_totals']);
             if (is_numeric($value) && (int) $value > 0) {
                 $slots['supplier_id'] = (int) $value;
                 unset($slots['supplier_query']);

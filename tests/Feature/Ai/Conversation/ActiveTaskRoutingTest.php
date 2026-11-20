@@ -42,6 +42,31 @@ class ActiveTaskRoutingTest extends TestCase
         ]);
     }
 
+    public function test_purchase_bill_chat_starts_a_typed_draft_and_gst_question_does_not_call_a_model(): void
+    {
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $initial = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'message' => 'Create a purchase bill',
+            'client_turn_id' => (string) Str::uuid(),
+        ])->assertOk()->assertJsonPath('workflow.action_key', 'purchase_bill.create.v1')
+            ->assertJsonPath('interaction_type', 'workflow_continuation')->json('workflow');
+        $taskId = $initial['task_id'];
+        $this->assertSame('purchase_bill.create.v1', DB::table('ai_workflow_tasks')
+            ->where('id', $taskId)->value('action_key'));
+
+        $explanation = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $taskId,
+            'expected_task_revision' => $initial['task_revision'],
+            'client_turn_id' => (string) Str::uuid(),
+            'message' => 'This is a non-GST bill',
+        ])->assertOk()->json('workflow');
+        $this->assertSame($taskId, $explanation['task_id']);
+        $this->assertStringContainsString('ERP will determine GST', $explanation['message']);
+        $this->assertSame(0, DB::table('ai_action_proposals')
+            ->where('thread_id', $thread)->count());
+        Http::assertNothingSent();
+    }
+
     public function test_stream_reports_missing_workflow_turn_id_as_validation_not_generic_stream_failure(): void
     {
         $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
