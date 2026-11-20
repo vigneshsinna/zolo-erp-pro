@@ -38,7 +38,9 @@ final class BusinessWorkflowProgress
                 throw ValidationException::withMessages(['proposal' => 'Proposal does not match the planned step.']);
             }
             $this->assertDependencies($workflow->id, $step);
-            if (!in_array($proposal['status'], ['pending', 'approved', 'executing', 'completed'], true)) {
+            if (!in_array($proposal['status'], ['pending', 'approved', 'executing', 'completed'], true)
+                || ($proposal['status'] !== 'completed'
+                    && $proposal['expires_at'] <= now('UTC')->toDateTimeString())) {
                 throw ValidationException::withMessages(['proposal' => 'Proposal is not in a reviewable or completed state.']);
             }
             $status = match ($proposal['status']) {
@@ -83,6 +85,17 @@ final class BusinessWorkflowProgress
             $dispatchStep = DB::table('ai_business_workflow_steps')->where([
                 'workflow_id' => $workflow->id, 'step_key' => 'dispatch', 'status' => 'completed',
             ])->first();
+            $grnStep = DB::table('ai_business_workflow_steps')->where([
+                'workflow_id' => $workflow->id, 'step_key' => 'receipt', 'status' => 'completed',
+            ])->first();
+            if (!$grnStep || !$grnStep->proposal_id
+                || !DB::table('ai_action_executions')->where([
+                    'proposal_id' => $grnStep->proposal_id, 'company_id' => $principal->companyId,
+                    'branch_id' => $principal->branchId, 'financial_year_id' => $principal->financialYearId,
+                    'status' => 'completed', 'erp_resource_type' => 'job_work_receipt',
+                ])->where('erp_resource_id', $receipt->id)->exists()) {
+                throw ValidationException::withMessages(['evidence' => 'No approved posted GRN is linked to this workflow.']);
+            }
             if (!$dispatchStep || !$dispatchStep->proposal_id) {
                 throw ValidationException::withMessages(['evidence' => 'No completed dispatch is linked to this workflow.']);
             }
