@@ -60,12 +60,17 @@ jobs:
           php -l app/Ai/Evaluation/AutonomyReleaseGate.php
           php -l app/Ai/Services/AiActionReversalRequestService.php
           php -l app/Ai/Events/AiEventInboxService.php
+          php -l app/Ai/Scheduling/AiAutomationPerformanceService.php
+          php -l app/Ai/Scheduling/AiAutomationReviewService.php
+          php -l app/Http/Controllers/Ai/AiAutomationBuilderController.php
+          php -l app/Http/Controllers/Ai/AiAutomationPerformanceController.php
+          node --check public/js/ai-automation-builder.js
           php vendor/bin/phpunit tests/Unit/DesignTokensTest.php
       - name: Clean database migration
         run: php artisan migrate --force
       - name: Focused AI autonomy regression suites
         run: |
-          php vendor/bin/phpunit -c phpunit.ai.xml --filter 'AiOperationsPageTest|AiAutonomyPolicyTest|AiEventInboxTest|AiActionReversalRequestTest'
+          php vendor/bin/phpunit -c phpunit.ai.xml --filter 'AiOperationsPageTest|AiAutonomyPolicyTest|AiEventInboxTest|AiActionReversalRequestTest|AiAutomationBuilderAndPerformanceTest|ScheduledRulesTest'
           php vendor/bin/phpunit tests/Unit/AiExceptionClassifierTest.php
           php vendor/bin/phpunit tests/Unit/AutonomyExecutionPreflightTest.php
           php vendor/bin/phpunit tests/Unit/Ai/AutonomyReleaseGateTest.php
