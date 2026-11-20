@@ -90,26 +90,110 @@
         const input = event.target.closest('.ai-builder-lookup');
         if (input && !input.value) lookup(input);
     });
+    function commitOption(select, option) {
+        if (!select || !option) return false;
+        const target = document.getElementById(select.dataset.target);
+        if (!target) return false;
+        target.value = option.value;
+        const group = select.closest('.ai-builder-lookup-group');
+        const input = group ? group.querySelector('.ai-builder-lookup') : null;
+        if (input) {
+            input.value = option.textContent;
+            input.dataset.lookupVersion = String(Number(input.dataset.lookupVersion || 0) + 1);
+            input.setAttribute('aria-expanded', 'false');
+        }
+        select.hidden = true;
+        feedback.textContent = '';
+        return true;
+    }
+
+    function autoCommitGroup(group) {
+        const select = group.querySelector('.ai-builder-options');
+        const target = select ? document.getElementById(select.dataset.target) : null;
+        if (!select || !target || target.value) return false;
+        if (select.options.length === 0) return false;
+
+        if (select.selectedIndex >= 0 && select.options[select.selectedIndex]) {
+            return commitOption(select, select.options[select.selectedIndex]);
+        }
+
+        if (select.options.length === 1) {
+            return commitOption(select, select.options[0]);
+        }
+
+        const input = group.querySelector('.ai-builder-lookup');
+        const query = (input ? input.value : '').trim().toLowerCase();
+        if (query) {
+            for (let i = 0; i < select.options.length; i++) {
+                const opt = select.options[i];
+                const text = opt.textContent.toLowerCase();
+                if (text === query || text.startsWith(query) || text.includes(query)) {
+                    return commitOption(select, opt);
+                }
+            }
+        }
+
+        if (!select.hidden && select.options.length > 0) {
+            return commitOption(select, select.options[0]);
+        }
+
+        return false;
+    }
+
     form.addEventListener('change', event => {
         const select = event.target.closest('.ai-builder-options');
         if (!select) return;
         const option = select.options[select.selectedIndex];
-        const target = document.getElementById(select.dataset.target);
-        if (!option || !target) return;
-        target.value = option.value;
-        const input = select.closest('.ai-builder-lookup-group').querySelector('.ai-builder-lookup');
-        input.value = option.textContent;
-        // A prior in-flight search cannot overwrite the chosen value.
-        input.dataset.lookupVersion = String(Number(input.dataset.lookupVersion || 0) + 1);
-        select.hidden = true;
-        input.setAttribute('aria-expanded', 'false');
-        feedback.textContent = '';
+        commitOption(select, option);
     });
     form.addEventListener('click', event => {
         const remove = event.target.closest('.ai-builder-remove');
         if (remove && items.querySelectorAll('.ai-builder-item').length > 1) {
             remove.closest('.ai-builder-item').remove();
             updateProducts();
+            return;
+        }
+
+        const option = event.target.closest('option');
+        if (option) {
+            const select = option.closest('.ai-builder-options');
+            if (select) {
+                commitOption(select, option);
+                return;
+            }
+        }
+
+        const select = event.target.closest('.ai-builder-options');
+        if (select && select.options.length > 0) {
+            const chosen = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : select.options[0];
+            commitOption(select, chosen);
+        }
+    });
+    form.addEventListener('keydown', event => {
+        const input = event.target.closest('.ai-builder-lookup');
+        if (input) {
+            const group = input.closest('.ai-builder-lookup-group');
+            const select = group ? group.querySelector('.ai-builder-options') : null;
+            if (event.key === 'Enter') {
+                if (select && !select.hidden && select.options.length > 0) {
+                    event.preventDefault();
+                    autoCommitGroup(group);
+                }
+            } else if (event.key === 'ArrowDown') {
+                if (select && !select.hidden && select.options.length > 0) {
+                    event.preventDefault();
+                    select.focus();
+                    if (select.selectedIndex < 0) select.selectedIndex = 0;
+                }
+            }
+            return;
+        }
+
+        const select = event.target.closest('.ai-builder-options');
+        if (select && event.key === 'Enter') {
+            event.preventDefault();
+            const chosen = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : select.options[0];
+            commitOption(select, chosen);
         }
     });
     document.getElementById('ai-builder-add-item').addEventListener('click', () => {
@@ -123,6 +207,10 @@
     });
     action.addEventListener('change', syncSupplier);
     form.addEventListener('submit', event => {
+        form.querySelectorAll('.ai-builder-lookup-group').forEach(group => {
+            autoCommitGroup(group);
+        });
+
         const lookups = [...form.querySelectorAll('.ai-builder-item input[type="hidden"][name$="[product_id]"]')];
         const ids = lookups.map(input => input.value);
         if (ids.some(value => !value) || new Set(ids).size !== ids.length) {

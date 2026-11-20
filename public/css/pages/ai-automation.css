@@ -17,6 +17,8 @@
 .ai-automation legend{font-size:.95rem;margin-bottom:6px}
 .ai-automation .form-control{font-size:.89rem}
 .ai-automation .ai-builder-options{height:auto;min-height:90px;max-height:190px;margin-top:4px;overflow:auto}
+.ai-automation .ai-builder-options option{padding:6px 10px;cursor:pointer}
+.ai-automation .ai-builder-options option:hover{background-color:var(--zolo-surface-muted,#eef3ff)}
 .ai-automation [hidden]{display:none!important}
 .ai-builder-products{border:1px solid var(--zolo-border,#dde2ea);border-radius:12px;padding:15px;margin:14px 0 20px;min-width:0}
 .ai-builder-item{padding:15px 0;border-top:1px solid var(--zolo-border,#dde2ea)}

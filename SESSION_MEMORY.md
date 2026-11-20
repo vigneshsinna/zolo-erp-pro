@@ -1,3 +1,116 @@
+## Fix: Automation Builder Product Selection & Scheduled PO Draft Preparation — 2026-11-20
+
+- **Context & User Bug Report:**
+  - On `/ai/operations/builder`, users searching for stock products (e.g. `Cotton Shirt Blue`) received the error: `"Choose a distinct catalogue product for each line before saving"` upon submitting, even though the product was found in the catalogue.
+- **Root Cause Analysis:**
+  - *Frontend Selection Binding:* The catalogue search populated a `<select class="ai-builder-options" size="5">` with entries. Previously, `ai-automation-builder.js` solely listened to the `change` event on the form. If a single item returned (or was already default-selected at index 0 by the browser), clicking the option fired `click` but not `change`, leaving the hidden `product_id` field empty. Furthermore, pressing `Enter` prematurely submitted the form without selecting, and clicking outside/submitting did not auto-commit single unambiguous matches.
+  - *Scheduled PO Payment Terms Dependency:* In `ScheduledRuleRunner.php`, `ActionPreparationService::prepare('purchase_order.create.v1')` required `payment_terms_type` and `credit_days` when conversational features are enabled. Omitting these caused scheduled PO draft creation to return `needs_input` instead of generating the pending proposal.
+- **Changes Applied:**
+  - `public/js/ai-automation-builder.js`:
+    - Added `commitOption(select, option)` and `autoCommitGroup(group)`.
+    - Added `click` listeners on `option` and select container to immediately commit clicked items.
+    - Added `keydown` listener to handle `Enter` and `ArrowDown` inside lookups without prematurely submitting.
+    - Added auto-commit on form submission for single/unambiguous matches across warehouse, supplier, and products.
+  - `public/css/pages/ai-automation.css`: Added pointer cursor and hover highlight styling (`:hover { background-color: var(--zolo-surface-muted, #eef3ff) }`) on `.ai-builder-options option` compliant with design tokens.
+  - `app/Ai/Scheduling/ScheduledRuleRunner.php`: Added `'payment_terms_type' => 'credit'` and `'credit_days' => 30` to `ActionPreparationService::prepare()` for automated low-stock PO draft generation.
+- **Automated Verification:**
+  - `AiAutomationBuilderAndPerformanceTest`: 7 tests, 55 assertions, 100% OK.
+  - `ScheduledRulesTest`: 6 tests, 32 assertions, 100% OK.
+  - `DesignTokensTest`: 4 tests, 4 assertions, 100% OK.
+  - Playwright real browser interaction test (`test-full-interaction.mjs`): 100% passed for option clicking, Enter keyboard navigation, and submit auto-commit.
+  - `node --check public/js/ai-automation-builder.js`: 0 syntax errors.
+
+## PR #38 (AI Operations Automation Builder & Measured Performance Dashboard) Merged & Background Checks Enabled — 2026-11-20
+
+- **Context & Requirement:** Merged PR #38 (`origin/codex/ai-automation-builder-performance`, head commit `f395ac8`) into base branch `feature/ai-unified-input-clarification` per test guide `docs/ai/autonomy/PR08-automation-builder-performance-test-guide.md`, and enabled background scheduling checks.
+- **Architectural Scope & Deliverables:**
+  - *Automation Builder (`/ai/operations/builder`):* Responsive UI for actor-owned low-stock schedule creation and active catalog discovery (warehouses scoped to branch, products and suppliers scoped to company). Up to 50 products per rule; base unit minimum qty and purchase unit reorder qty; alert-only or unapproved PO-draft mode. Zero autonomous financial posting or approval bypass.
+  - *Agent Performance Dashboard (`/ai/operations/performance`):* Scoped 7/30/90-day execution metrics (completed, failed, queued, cancelled runs, flagged alerts, PO drafts, elapsed timing with sample p95). Exact-run-linked token and credit costs.
+  - *Immutable Human Outcome Reviews (`ai_automation_reviews`):* One immutable approver review per completed run with reviewer-entered gross labour savings calculated strictly by PHP in integer paise.
+  - *Database Queue Support for Local Scheduler:* Added additive migration `database/migrations/2026_11_20_105308_create_jobs_table.php` and migrated both `zoloerp` (dev) and `zolo_test_ai_release` (test).
+  - *Background Scheduling Configuration:* Added `AI_SCHEDULING_ENABLED=true` and `AI_QUEUE_CONNECTION=database` to `.env`.
+- **Verification:**
+  - `AiAutomationBuilderAndPerformanceTest.php` & `AiOperationsPageTest.php`: 9 tests, 67 assertions, 100% OK.
+  - `DesignTokensTest.php`: 4 tests, 4 assertions, 100% OK.
+  - `node --check public/js/ai-automation-builder.js`: 0 syntax errors.
+  - `php artisan ai:run-schedules`: executed successfully ("Dispatched 0 bounded AI schedule runs").
+  - `php artisan queue:work database --queue=ai-scheduled --once`: executed cleanly with code 0.
+- **Merge Status:**
+  - Merged into base branch `feature/ai-unified-input-clarification` in merge commit `9628228`.
+  - Pushed to `origin/feature/ai-unified-input-clarification`. GitHub officially marked PR #38 as merged (`merged: true`, `merge_commit_sha: 9628228d5674d42434b75b82fbe38afc4ffc6e13`).
+
+## PR #37 (Fix Copilot Stream Errors & Use Reliable Chat Transport) Merged & Verified via Test Guide — 2026-11-20
+
+- **Context & Problem Analysis:**
+  - When users initiated requests such as "create a purchase bill" in the AI workspace, Copilot occasionally failed with an opaque UI message: `[AI_STREAM_FAILED] The response stream ended`.
+  - The browser chat was forced to unverified SSE streaming rather than using the robust, session-authenticated `POST /ai/chat` JSON endpoint, while error catches in the SSE generator did not distinguish client validation, conflict, or permission errors.
+- **Architectural Solutions & Changes Implemented:**
+  - *Default to Session-Authenticated JSON Transport:* In `resources/views/backend/ai/workspace.blade.php` and `config/erp_ai.php`, browser chat defaults to session-authenticated `POST /ai/chat` JSON. Streaming is opt-in via `AI_CHAT_STREAMING_ENABLED=true`.
+  - *Environment Configuration:* Added `AI_CHAT_STREAMING_ENABLED=false` to `.env` and `.env.example`. Executed `php artisan optimize:clear` and verified `config('erp_ai.streaming_enabled') === false`.
+  - *Scoped Stream Diagnostics & Incident IDs:* In `app/Http/Controllers/Api/V1/AiChatController.php`, catches `\Throwable` in the SSE generator, generates a traceable `incident_id` UUID, logs file/line server-side without exposing prompts or customer data, and maps errors specifically to `AI_TURN_VALIDATION_FAILED` (422), `AI_TASK_REVISION_CONFLICT` (409), `AI_FORBIDDEN` (403), `AI_QUOTA_EXCEEDED` (429), `AI_DISABLED` (503), or `AI_STREAM_FAILED` (500).
+  - *Client Turn UUID Generation:* Generated `client_turn_id` via `window.crypto.randomUUID()` in chat requests, preventing conversational turn state conflicts.
+  - *Documentation:* Followed `docs/ZoloERP_PR37_AI_STREAM_ERROR_FIX_TEST_GUIDE.md` and `docs/ai/autonomy/PR07-copilot-stream-failure-fix-test-guide.md`.
+- **Automated Verification:**
+  - `AiChatApiAndWorkspaceTest.php` & `ActiveTaskRoutingTest.php`: 71 tests, 651 assertions, 100% OK.
+  - Playwright browser suite `tests/Browser/Ai/drift-workspace.spec.mjs`: PASSED (verified default reliable JSON transport, client turn UUID, and opt-in SSE regression).
+  - Clean database CI checks on MySQL 8.0 & MySQL 8.4 passed.
+- **Merge Status:**
+  - Merged into base branch `feature/ai-unified-input-clarification` in merge commit `b91d9e4` and pushed to origin.
+  - GitHub officially marked PR #37 as merged (`merged: true`, `merge_commit_sha: b91d9e4dbcb5015320b4bd2e8c649ffd31621f1b`).
+
+## AI Operations Autonomy Foundation PRs #30, #31, #33, #34, #35, #36 Sequential Review, Test & Merge Complete — 2026-11-20
+
+- **Context & Requirement:** Reviewed and merged stacked pull requests #30, #31, #33, #34, #35, and #36 in strict recommended dependency order after validating each PR's required automated test suite from `docs/ZoloERP_AI_Autonomy_PR01_to_PR06_Test_Guides/`. Preserved all dependency hierarchies, multi-tenant boundaries, and signed human approval protections (zero autonomous financial posting).
+- **Sequential Execution & Verification Log:**
+  1. **PR #30 (`origin/codex/ai-operations-ui-foundation`, merge commit `c101726`):**
+     - *Scope:* Permission-scoped `/ai/operations` landing page, single **AI Operations** left-navigation link, and global **Ask Zolo** header shortcut. Read-only summary cards without executing or mutating any business records.
+     - *Automated Tests Passed:* `tests/Feature/Ai/Infrastructure/AiOperationsPageTest.php` (2 tests, 12 assertions, 100% OK). Syntax check: 0 errors across touched files.
+     - *Merge:* Cleanly merged into `feature/ai-unified-input-clarification`. GitHub auto-closed PR #30 as merged.
+  2. **PR #31 (`origin/codex/ai-autonomy-policy-foundation`, merge commit `7abe369`):**
+     - *Scope:* Tenant and action autonomy policy foundation (`ai_autonomy_policies`, `ai_autonomy_policy_events`). Saved preferences only; evaluation strictly returns `effective_execution_authorization: 'signed_human_approval'` and `automatic_execution_allowed: false`.
+     - *Migration:* `2026_11_20_000001_create_ai_autonomy_policy_tables.php` executed cleanly on isolated MySQL test database (`zolo_test_ai_release`).
+     - *Automated Tests Passed:* `tests/Feature/Ai/Infrastructure/AiAutonomyPolicyTest.php`, `tests/Feature/Ai/Infrastructure/AiOperationsPageTest.php`, `tests/Unit/DesignTokensTest.php` (10 tests, 28 assertions, 100% OK), and `tests/Feature/Ai/Commercial/PurchaseBillActionTest.php` (9 tests, 60 assertions, 100% OK).
+     - *Merge:* Cleanly merged into `feature/ai-unified-input-clarification`. Commented and closed PR #31 on GitHub.
+  3. **PR #33 (`origin/codex/ai-exception-triage`, merge commit `5722c7d`):**
+     - *Scope:* Deterministic exception triage (`/ai/operations/exceptions`, `AiExceptionClassifier`). Deterministic priority assignment (critical for uncertain execution, high for expired proposals/warnings, normal otherwise). Read-only; preserves signed Action Review Center gating without auto-retry.
+     - *Automated Tests Passed:* `tests/Unit/AiExceptionClassifierTest.php`, `tests/Feature/Ai/Infrastructure/AiOperationsPageTest.php`, `tests/Unit/DesignTokensTest.php` (8 tests, 20 assertions, 100% OK).
+     - *Merge:* Cleanly merged into `feature/ai-unified-input-clarification`. Commented and closed PR #33 on GitHub.
+  4. **PR #34 (`origin/codex/ai-events-inbox`, merge commit `d10fa3b`):**
+     - *Scope:* Internal event inbox and deterministic stock alerts (`ai_event_inbox`, `AiEventInboxService`, `AiEventInboxController`). Event idempotency per scheduled run; rule-derived tenant/branch/FY/actor validation.
+     - *Migration:* `2026_11_20_000002_create_ai_event_inbox_table.php` executed cleanly on test DB.
+     - *Automated Tests Passed:* `tests/Feature/Ai/Infrastructure/AiEventInboxTest.php`, `tests/Unit/DesignTokensTest.php` (5 tests, 7 assertions, 100% OK).
+     - *Merge:* Cleanly merged into `feature/ai-unified-input-clarification`. Commented and closed PR #34 on GitHub.
+  5. **PR #35 (`origin/codex/ai-reversal-governance`, merge commit `92ffa30`):**
+     - *Scope:* Governed execution preflight and manual reversal requests (`ai_action_reversal_requests`, `AutonomyExecutionPreflight`, `AiActionReversalRequestService`). `AutonomyExecutionPreflight` guarantees `can_auto_execute_erp_command: false` and `requires_signed_human_approval: true`. Reversal request records audit request without executing reverse postings.
+     - *Migration:* `2026_11_20_000003_create_ai_reversal_requests_table.php` executed cleanly on test DB.
+     - *Automated Tests Passed:* `tests/Unit/AutonomyExecutionPreflightTest.php`, `tests/Feature/Ai/Infrastructure/AiAutonomyPolicyTest.php`, `tests/Feature/Ai/Infrastructure/AiActionReversalRequestTest.php` (7 tests, 24 assertions, 100% OK).
+     - *Merge:* Cleanly merged into `feature/ai-unified-input-clarification`. Commented and closed PR #35 on GitHub.
+  6. **PR #36 (`origin/codex/ai-autonomy-release-gates`, merge commit `7b231f8`):**
+     - *Scope:* Autonomy evaluation release gates (`AutonomyReleaseGate`, `.github/workflows/ai-autonomy-safety.yml`, `scripts/verify_ai_autonomy_release.php`). Fail-closed evaluator distinguishing static dataset validations from 250 executed ERP workflows; validates 9 security controls and 5/10/20 user load before any autonomous release. Returns `status: BLOCKED` and `production_approved: false`.
+     - *Automated Tests Passed:* Feature suite (`AiOperationsPageTest`, `AiAutonomyPolicyTest`, `AiEventInboxTest`, `AiActionReversalRequestTest` — 9 tests, 35 assertions, 100% OK), Unit suite (`AiExceptionClassifierTest`, `AutonomyExecutionPreflightTest`, `AiAutonomyReleaseGateTest`, `DesignTokensTest` — 10 tests, 20 assertions, 100% OK).
+     - *Gate Verification:* `scripts/verify_ai_autonomy_release.php --output=artifacts/ai-evaluation/autonomy-release.json` produced valid blocked evidence report; `scripts/verify_ai_autonomy_release.php --require-production-ready` exited 1 confirming the fail-closed release gate.
+     - *Merge:* Cleanly merged into `feature/ai-unified-input-clarification`. Commented and closed PR #36 on GitHub.
+- **Pushed to Origin & GitHub Official Merge Status:**
+  - All 6 PRs on GitHub are officially in `merged: true` (purple merged badge) state into their respective base branches:
+    - **PR #30:** Merged into `feature/ai-unified-input-clarification` (`merged: true`)
+    - **PR #31:** Merged into `codex/ai-operations-ui-foundation` (`merged: true`)
+    - **PR #33:** Merged into `codex/ai-autonomy-policy-foundation` (`merged: true`)
+    - **PR #34:** Merged into `codex/ai-exception-triage` (`merged: true`)
+    - **PR #35:** Merged into `codex/ai-events-inbox` (`merged: true`)
+    - **PR #36:** Merged into `codex/ai-reversal-governance` (`merged: true`)
+  - Root feature base branch `origin/feature/ai-unified-input-clarification` is fully integrated and updated to HEAD `7b231f8`.
+
+## CI-Gated Auto-Deploy to VPS via GitHub Actions workflow_run — 2026-11-20
+
+- **Context & Requirement:** Configured automated VPS deployment triggered immediately when push/merge to `main` completes the full CI acceptance suite with 100% green status.
+- **Workflow Architecture (`.github/workflows/deploy.yml`):**
+  - **`workflow_run` Trigger:** Watches completion of workflow `"ERP completion acceptance"` (`company-foundation.yml`) on branch `main`.
+  - **Job Execution Gate:** `(github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'preflight' || (github.ref == 'refs/heads/main' && inputs.approved)))`.
+  - **Auto-Resolved Environment:** When triggered via `workflow_run`, dynamically sets `OPERATION=deploy`, `REF=${{ github.event.workflow_run.head_sha }}`, `PHP_VERSION=8.5`, and `CURRENT_PHP_VERSION=8.5`.
+  - **Verification Step:** Verifies commit SHA format, logs auto-deploy trigger, and bypasses redundant `gh api` calls during `workflow_run` while enforcing them during manual dispatches.
+  - **Retained Manual Override:** Preserves `workflow_dispatch` with options for `preflight`, `deploy`, and `rollback`.
+- **Documentation (`deploy/README.md`):** Updated production deployment guide detailing the automatic CI-gated deployment path and manual emergency rollback procedures.
+
 ## PR #24 (Step-by-Step Progressive PO Conversation UI) Merged into feature/ai-unified-input-clarification — 2026-11-19
 
 - Merged PR #24 (`origin/codex/po-progressive-conversation-ui`, head commit `5ab6f70`) cleanly into base branch `feature/ai-unified-input-clarification` (merge commit `93f3d7b`):

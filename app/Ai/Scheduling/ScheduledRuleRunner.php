@@ -130,6 +130,7 @@ final class ScheduledRuleRunner
                             }
                             $prepared = app(ActionPreparationService::class)->prepare($principal, 'purchase_order.create.v1', [
                                 'supplier_id' => (int) $input['supplier_id'], 'warehouse_id' => (int) $warehouse->id,
+                                'payment_terms_type' => 'credit', 'credit_days' => 30,
                                 'date' => $date, 'items' => $items, 'note' => 'Prepared by opt-in low-stock schedule '.$rule->id.'. Human approval is required.',
                             ]);
                             $proposalId = $prepared['data']['proposal_id'] ?? null;
