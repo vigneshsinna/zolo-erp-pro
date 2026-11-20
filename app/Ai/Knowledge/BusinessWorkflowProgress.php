@@ -50,7 +50,6 @@ final class BusinessWorkflowProgress
             };
             if ($status === 'completed' && !DB::table('ai_action_executions')->where([
                 'proposal_id' => $proposal['id'], 'company_id' => $principal->companyId,
-                'branch_id' => $principal->branchId, 'financial_year_id' => $principal->financialYearId,
                 'status' => 'completed',
             ])->whereNotNull('erp_resource_id')->exists()) {
                 throw ValidationException::withMessages(['proposal' => 'No verified ERP execution receipt for this proposal.']);
@@ -89,21 +88,29 @@ final class BusinessWorkflowProgress
                 'workflow_id' => $workflow->id, 'step_key' => 'receipt', 'status' => 'completed',
             ])->first();
             if (!$grnStep || !$grnStep->proposal_id
-                || !DB::table('ai_action_executions')->where([
-                    'proposal_id' => $grnStep->proposal_id, 'company_id' => $principal->companyId,
-                    'branch_id' => $principal->branchId, 'financial_year_id' => $principal->financialYearId,
-                    'status' => 'completed', 'erp_resource_type' => 'job_work_receipt',
-                ])->where('erp_resource_id', $receipt->id)->exists()) {
+                || !DB::table('ai_action_executions as e')
+                    ->join('ai_action_proposals as p', 'p.id', '=', 'e.proposal_id')
+                    ->where('p.id', $grnStep->proposal_id)
+                    ->where('p.company_id', $principal->companyId)
+                    ->where('p.branch_id', $principal->branchId)
+                    ->where('p.financial_year_id', $principal->financialYearId)
+                    ->where('p.actor_id', $principal->actorId)
+                    ->where('e.status', 'completed')->where('e.erp_resource_type', 'job_work_receipt')
+                    ->where('e.erp_resource_id', $receipt->id)->exists()) {
                 throw ValidationException::withMessages(['evidence' => 'No approved posted GRN is linked to this workflow.']);
             }
             if (!$dispatchStep || !$dispatchStep->proposal_id) {
                 throw ValidationException::withMessages(['evidence' => 'No completed dispatch is linked to this workflow.']);
             }
-            $dispatchReceipt = DB::table('ai_action_executions')->where([
-                'proposal_id' => $dispatchStep->proposal_id, 'company_id' => $principal->companyId,
-                'branch_id' => $principal->branchId, 'financial_year_id' => $principal->financialYearId,
-                'status' => 'completed', 'erp_resource_type' => 'job_work_dispatch',
-            ])->where('erp_resource_id', $receipt->dispatch_id)->first();
+            $dispatchReceipt = DB::table('ai_action_executions as e')
+                ->join('ai_action_proposals as p', 'p.id', '=', 'e.proposal_id')
+                ->where('p.id', $dispatchStep->proposal_id)
+                ->where('p.company_id', $principal->companyId)
+                ->where('p.branch_id', $principal->branchId)
+                ->where('p.financial_year_id', $principal->financialYearId)
+                ->where('p.actor_id', $principal->actorId)
+                ->where('e.status', 'completed')->where('e.erp_resource_type', 'job_work_dispatch')
+                ->where('e.erp_resource_id', $receipt->dispatch_id)->select('e.*')->first();
             if (!$dispatchReceipt) {
                 throw ValidationException::withMessages(['evidence' => 'Physical return does not belong to the workflow dispatch.']);
             }
