@@ -80,7 +80,10 @@ final class PrincipalJobInvoiceActionAdapter implements ActionPreviewAdapterInte
             'service' => $service->only(['id', 'type', 'is_active', 'tax_category_id', 'updated_at']),
             'priced' => $priced,
         ];
-        return new ActionPreviewResult($slots, [
+        $canonicalSlots = $slots;
+        $canonicalSlots['qty'] = CommercialDecimal::format((float) $slots['qty'], 6);
+        $canonicalSlots['rate'] = CommercialDecimal::format((float) $slots['rate']);
+        return new ActionPreviewResult($canonicalSlots, [
             'document_type' => 'Customer Job Work Service Invoice',
             'customer_id' => (int) $customer->id,
             'order_id' => (int) $order->id,
