@@ -69,7 +69,9 @@ final class SupplierSetupConversation
         }
         $patch = [];
         foreach ($changes as $field => $value) {
-            $patch[] = ['field' => $field, 'value' => $value, 'confirmation' => 'user_edited'];
+            $origin = array_key_exists($field, $semanticFacts) ? 'model_extracted'
+                : (array_key_exists($field, $photo) ? 'photo_extracted' : 'user_edited');
+            $patch[] = ['field' => $field, 'value' => $value, 'confirmation' => $origin];
         }
         $applied = $corrections->applyCorrections($principal, $task['id'], (int) $task['revision'], $patch);
         $task = $applied['task'];
