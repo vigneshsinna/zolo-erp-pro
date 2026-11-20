@@ -105,6 +105,15 @@ final class ConversationMasterContinuation
             $data['barcode_symbology'] = 'code128';
         }
         $spawn['prefilled'] = $data;
+        if ($type === 'supplier' && empty($data['vat_number'])) {
+            // An unregistered supplier still needs an actual state for place
+            // of supply/RCM. Never silently assume Tamil Nadu from AI defaults.
+            $rules['state'] = ['required', 'string', 'max:100'];
+            if (isset($data['state'])
+                && app(\App\Services\Tax\GstSetupService::class)->stateCode((string) $data['state']) === null) {
+                throw ValidationException::withMessages(['state' => 'Enter a valid Indian state for this unregistered supplier.']);
+            }
+        }
         $validator = Validator::make($data, $rules);
         $result = ['status' => 'master_needs_input', 'task_id' => $task['id'], 'task_revision' => (int) $task['revision'],
             'action_key' => $task['action_key'], 'master_schema' => $spawn, 'required_inputs' => [],

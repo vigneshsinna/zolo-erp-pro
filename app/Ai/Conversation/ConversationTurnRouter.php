@@ -23,9 +23,11 @@ final class ConversationTurnRouter
         private readonly TaskCorrectionService $corrections,
     ) {}
 
-    public function startsPurchaseOrder(string $message): bool
+    public function purchaseDocumentIntent(string $message): ?string
     {
-        return app(VoiceIntentResolver::class)->resolve($message) === 'purchase_order.create.v1';
+        $action = app(VoiceIntentResolver::class)->resolve($message);
+        return in_array($action, ['purchase_order.create.v1', 'purchase_bill.create.v1'], true)
+            ? $action : null;
     }
 
     // The caller holds the owned thread row lock until its messages are stored.
@@ -48,7 +50,8 @@ final class ConversationTurnRouter
             return $metadata['result'] + ['replayed' => true];
         }
         $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
-        if (!$this->startsPurchaseOrder($message) && $tasks === []) {
+        $requestedAction = $this->purchaseDocumentIntent($message);
+        if ($requestedAction === null && $tasks === []) {
             return null;
         }
         if (empty($input['client_turn_id'])) {
@@ -59,12 +62,12 @@ final class ConversationTurnRouter
                 'tasks' => array_map(fn ($task) => ['task_id' => $task['id'], 'action_key' => $task['action_key'], 'task_revision' => (int) $task['revision']], $tasks)];
         }
         if ($tasks === []) {
-            app(ActionSecurity::class)->definition('purchase_order.create.v1', $principal);
+            app(ActionSecurity::class)->definition($requestedAction, $principal);
             $task = $this->state->createTask(new WorkflowTaskContext(
                 principal: $principal,
                 context: new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
                 threadId: $threadId,
-            ), 'purchase_order.create.v1');
+            ), $requestedAction);
         } else {
             $task = $tasks[0];
             app(ActionSecurity::class)->definition($task['action_key'], $principal);
@@ -173,7 +176,7 @@ final class ConversationTurnRouter
             if ($has('date')) $remaining[] = 'Order Date';
 
             if ($has('items') || $hasLine('.product_id')) {
-                $result['message'] = 'Which product should I add to this Purchase Order? Choose an existing product or request a new one.';
+                $result['message'] = 'Which product should I add to this '.($task['action_key'] === 'purchase_bill.create.v1' ? 'Purchase Bill' : 'Purchase Order').'? Choose an existing product or request a new one.';
             } elseif ($hasLine('.qty')) {
                 $result['message'] = 'What quantity should I order? For one product, reply “100 pairs”.';
             } elseif ($hasLine('.net_unit_cost')) {
@@ -187,7 +190,9 @@ final class ConversationTurnRouter
             } elseif ($has('credit_days')) {
                 $result['message'] = 'How many credit days should I use for this Purchase Order?';
             } elseif ($has('date')) {
-                $result['message'] = 'What Purchase Order date should I use?';
+                $result['message'] = $task['action_key'] === 'purchase_bill.create.v1'
+                    ? 'What supplier invoice date should I use for the Purchase Bill?'
+                    : 'What Purchase Order date should I use?';
             }
             // Ask one actionable question at a time. The complete unresolved
             // list remains in required_inputs for progress and optional review.
@@ -232,6 +237,7 @@ final class ConversationTurnRouter
         }
         $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
         if (count($tasks) !== 1 || app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($input['message'])
+            || app(\App\Ai\Services\PurchaseBillGstIntentService::class)->detect($input['message']) !== null
             || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
             || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])
             || preg_match('/^(?:find|search)\s+(?:suppliers?|warehouses?|products?|units?)\b/i', $input['message'])

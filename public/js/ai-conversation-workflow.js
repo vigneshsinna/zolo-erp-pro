@@ -221,9 +221,10 @@
         const panel = $('<section class="ai-conversation-initial-voice card border rounded p-3 mb-3"></section>')
             .attr('aria-label', 'Confirm voice transaction');
         panel.append($('<h6 class="mb-2"></h6>').text('Review your voice instruction'));
-        const recognized = result.intent_key === 'purchase_order.create.v1';
+        const recognized = ['purchase_order.create.v1', 'purchase_bill.create.v1'].includes(result.intent_key);
         panel.append($('<p class="small mb-2"></p>').text(recognized
-            ? 'I heard a request to create a Purchase Order. Confirm the wording below before Copilot finds suppliers, products and warehouses.'
+            ? 'I heard a request to create a ' + (result.intent_key === 'purchase_bill.create.v1' ? 'Purchase Bill' : 'Purchase Order') +
+                '. Confirm the wording before Copilot checks supplier, products, warehouse and GST.'
             : 'I cannot reliably confirm a Purchase Order request. Correct the transcript to state the intended transaction. No Purchase Bill or Purchase Order has been prepared.'));
         const label = $('<label class="font-weight-bold small" for="ai-voice-initial-transcript"></label>').text('Transcribed instruction');
         const input = $('<textarea class="form-control mb-2" id="ai-voice-initial-transcript" rows="3"></textarea>')
@@ -290,7 +291,7 @@
                 if (!busy) { setBusy(true); window.zoloAiMedia.submitStagedAttachment(message, ws.getCurrentThreadId(), () => setBusy(false)); }
                 return true;
             }
-            if (!active && !/\b(?:create|prepare|raise|make|start)\s+(?:a\s+|new\s+)?(?:purchase\s+order|po)\b/i.test(message)) return false;
+            if (!active && !/\b(?:create|prepare|raise|make|start|draft)\s+(?:a\s+|new\s+)?(?:purchase\s+order|purchase\s+bill|supplier\s+invoice|po)\b/i.test(message)) return false;
             if (window.zoloAiMedia?.hasStagedAttachment()) {
                 if (!busy) { setBusy(true); window.zoloAiMedia.submitStagedAttachment(message, ws.getCurrentThreadId(), () => setBusy(false)); }
             } else submit(message);
@@ -316,8 +317,8 @@
         if (!active || state.task_id !== active.task_id) return;
         if (state.status === 'completed') {
             const root = $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === state.task_id);
-            root.children('div').first().text('Step 3/3 · Purchase order created');
-            root.find('.ai-conversation-question').text('Purchase order created. Review the receipt below.');
+            root.children('div').first().text('Step 3/3 · Purchase document created');
+            root.find('.ai-conversation-question').text('Purchase document created. Review the receipt below.');
             root.find('[data-conversation-action]').prop('disabled', true);
             reset();
         }
