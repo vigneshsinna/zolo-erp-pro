@@ -93,7 +93,10 @@
             @empty
                 <p class="ai-ops-empty">No active schedules to show.</p>
             @endforelse
-            <div class="ai-ops-note">Autonomous posting and per-action autonomy policies are not enabled by this UI.</div>
+            @if($canApprove && $foundation)
+                <a href="{{ route('ai.reversals.index') }}" class="btn btn-outline-secondary btn-sm mt-3">Reversal review requests</a>
+            @endif
+            <div class="ai-ops-note mt-2">Autonomous posting and one-click ERP reversal are not enabled by this UI.</div>
         </section>
     </div>
 </main>
