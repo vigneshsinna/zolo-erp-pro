@@ -27,11 +27,14 @@ final class AiEventInboxService
         $run = DB::table('ai_schedule_runs')->where('id', $runId)
             ->where('rule_id', $ruleId)
             ->where('company_id', $principal->companyId)
-            ->where('branch_id', $principal->branchId)
-            ->where('financial_year_id', $principal->financialYearId)
             ->where('actor_id', $principal->actorId)
             ->where('status', 'completed')->first();
-        if (!$run) throw new LogicException('A completed scoped run is required for event ingestion.');
+        $rule = DB::table('ai_scheduled_rules')->where('id', $ruleId)
+            ->where('company_id', $principal->companyId)
+            ->where('branch_id', $principal->branchId)
+            ->where('financial_year_id', $principal->financialYearId)
+            ->where('actor_id', $principal->actorId)->first();
+        if (!$run || !$rule) throw new LogicException('A completed scoped run and its parent rule are required for event ingestion.');
 
         $summary = [
             'alert_count' => count($alerts),

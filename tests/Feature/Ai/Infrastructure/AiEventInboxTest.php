@@ -44,8 +44,7 @@ final class AiEventInboxTest extends TestCase
             'created_at' => now('UTC'), 'updated_at' => now('UTC'),
         ]);
         DB::table('ai_schedule_runs')->insert([
-            'id' => $runId, 'company_id' => $company->id, 'branch_id' => $branch,
-            'financial_year_id' => $year, 'actor_id' => $user->id,
+            'id' => $runId, 'company_id' => $company->id, 'actor_id' => $user->id,
             'rule_id' => $ruleId, 'rule_revision' => 1, 'scheduled_for' => now('UTC'),
             'quota_date' => now('UTC')->toDateString(), 'status' => 'completed',
             'created_at' => now('UTC'), 'updated_at' => now('UTC'),
