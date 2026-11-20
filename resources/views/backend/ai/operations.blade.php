@@ -31,7 +31,8 @@
             <p>Pending approval and exceptions that require a decision.</p>
             <strong class="ai-ops-metric">{{ $summary['pending'] + $summary['attention'] }}</strong>
             @if($foundation)
-                <a href="{{ route('ai.actions.review', ['status' => 'pending', 'scope' => $canApprove ? 'all' : 'mine']) }}">Open review queue <span aria-hidden="true">&rarr;</span></a>
+                <a href="{{ route('ai.exceptions.index') }}">Triage exceptions <span aria-hidden="true">&rarr;</span></a>
+                <a href="{{ route('ai.actions.review', ['status' => 'pending', 'scope' => $canApprove ? 'all' : 'mine']) }}" class="mt-2">Open review queue <span aria-hidden="true">&rarr;</span></a>
             @else
                 <span class="ai-ops-note">Action foundation not enabled</span>
             @endif
