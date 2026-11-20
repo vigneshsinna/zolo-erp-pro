@@ -100,6 +100,11 @@ final class ConversationTurnRouter
                 && ($interpretation['revision'] ?? null) !== (int) $task['revision']) {
                 throw new ConflictHttpException('Supplier draft changed while parsing; reload and retry.');
             }
+            if (isset($interpretation['supplier_role'])
+                && $interpretation['supplier_role'] !== 'supplier') {
+                return $this->summary($task,
+                    'This draft is for a supplier. Start a separate customer draft or confirm the supplier details.');
+            }
             $semanticFacts = $interpretation['supplier_facts'] ?? $semantic['facts'] ?? [];
             $result = $supplier->reply($principal, $task, $message, $supplierName, $input['supplier_photo'] ?? [], $semanticFacts);
             if ($result !== null) {
@@ -300,9 +305,12 @@ final class ConversationTurnRouter
         }
         $task = $tasks[0];
         if ($task['action_key'] === SupplierSetupConversation::KEY) {
-            $details = app(BusinessIntentInterpreter::class)->supplierDetails($principal, $threadId, $input['message']);
+            $draftSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+            $details = app(BusinessIntentInterpreter::class)->supplierDetails(
+                $principal, $threadId, $input['message'], empty($draftSlots['name']));
             return $details === null ? null : [
-                'task_id' => $task['id'], 'revision' => (int) $task['revision'], 'supplier_facts' => $details['facts'],
+                'task_id' => $task['id'], 'revision' => (int) $task['revision'],
+                'supplier_facts' => $details['facts'], 'supplier_role' => $details['role'],
             ];
         }
         if (app(ConversationMasterContinuation::class)->handles($task, $input['message'])) return null;
