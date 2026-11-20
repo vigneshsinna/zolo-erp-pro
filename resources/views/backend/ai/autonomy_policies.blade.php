@@ -41,7 +41,7 @@
                 $version = $policy['version'] ?? 0;
             @endphp
             <details class="border rounded mb-2 p-3">
-                <summary class="d-flex justify-content-between align-items-center" style="cursor:pointer">
+                <summary class="d-flex justify-content-between align-items-center ai-ops-disclosure">
                     <span><strong>{{ $key }}</strong><span class="badge badge-light ml-2">{{ $definition['risk_tier'] }}</span></span>
                     <span class="text-muted small">Requested: {{ str_replace('_', ' ', $level) }} · v{{ $version }}</span>
                 </summary>

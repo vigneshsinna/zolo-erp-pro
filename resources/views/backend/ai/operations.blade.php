@@ -12,7 +12,7 @@
             <h1 id="ai-ops-heading">AI Operations</h1>
             <p>Manage governed actions, review exceptions, and follow your scheduled work.</p>
         </div>
-        <div class="d-flex flex-wrap align-items-center" style="gap:8px">
+        <div class="d-flex flex-wrap align-items-center ai-ops-actions">
             @if($canManagePolicies)
                 <a class="btn btn-outline-secondary" href="{{ route('ai.autonomy.index') }}">Autonomy policies</a>
             @endif
