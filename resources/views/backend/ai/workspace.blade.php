@@ -2206,4 +2206,11 @@
             <script src="{{ versioned_asset('js/ai-conversation-po-workspace.js') }}"></script>
             <script src="{{ versioned_asset('js/ai-conversation-workflow.js') }}"></script>
         @endif
+        @if ($canUseCopilot && config('ai_business_knowledge.enabled', false)
+            && config('ai_business_knowledge.planner_enabled', false))
+            <script>
+                window.zoloAiBusinessWorkflowConfig = { enabled: true };
+            </script>
+            <script src="{{ versioned_asset('js/ai-business-workflow.js') }}"></script>
+        @endif
 @endpush
