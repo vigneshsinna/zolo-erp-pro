@@ -630,6 +630,108 @@
         "app/Services/JobWork/JobWorkCosting.php"
       ],
       "enforcer_ref": "app/Services/JobWork/JobWorkCosting.php"
+    },
+    {
+      "id": "action.purchase_bill.service.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Distinct catalog-service payable using original tax and posting services; requires business signoff and feature flag",
+      "source_refs": [
+        "app/Ai/Adapters/ServicePurchaseBillAdapter.php"
+      ],
+      "action_key": "purchase_bill.service.create.v1",
+      "approval": "explicit_per_bill"
+    },
+    {
+      "id": "process.direct_goods_bill.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Direct goods bill with verified supplier and available stock catalog; no PO required",
+      "source_refs": [
+        "app/Ai/Adapters/PurchaseBillPreviewAdapter.php"
+      ],
+      "steps": [
+        {
+          "id": "supplier_and_goods",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "bill",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "supplier_and_goods"
+          ],
+          "action_key": "purchase_bill.create.v1"
+        }
+      ]
+    },
+    {
+      "id": "process.service_payable.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "No-stock service catalog purchase bill with branch accounting location; pending business signoff",
+      "source_refs": [
+        "app/Ai/Adapters/ServicePurchaseBillAdapter.php"
+      ],
+      "steps": [
+        {
+          "id": "supplier_service_location",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "bill",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "supplier_service_location"
+          ],
+          "action_key": "purchase_bill.service.create.v1"
+        }
+      ]
+    },
+    {
+      "id": "process.expense_payable.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "accounting",
+      "summary": "General ledger expense-only payable without service catalog remains unsupported by AI; no dummy product",
+      "source_refs": [
+        "app/Ai/Knowledge/PurchaseDocumentClassifier.php"
+      ],
+      "steps": [
+        {
+          "id": "identify_expense",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "expense_posting",
+          "kind": "unsupported_action",
+          "depends_on": [
+            "identify_expense"
+          ]
+        }
+      ]
     }
   ]
 }
