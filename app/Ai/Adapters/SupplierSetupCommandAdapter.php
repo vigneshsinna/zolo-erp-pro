@@ -67,22 +67,11 @@ final class SupplierSetupCommandAdapter implements ActionCommandAdapterInterface
                     'is_active' => true,
                 ]);
 
-                if (!empty($payload['vat_number'])) {
-                    DB::table('party_tax_profiles')->updateOrInsert(
-                        [
-                            'company_id' => $context->companyId,
-                            'party_type' => 'supplier',
-                            'party_id' => $row->id,
-                        ],
-                        [
-                            'gstin' => $payload['vat_number'],
-                            'state_code' => substr($payload['vat_number'], 0, 2),
-                            'registration_type' => 'regular',
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ]
-                    );
-                }
+                // Registered GST suppliers and explicitly state-qualified
+                // unregistered suppliers both need a scoped tax profile.
+                // Without it the purchase-bill preview would block or tempt
+                // clients to guess 0% tax. Domain GST logic decides RCM.
+                app(\App\Services\Tax\GstSetupService::class)->syncParty('supplier', $row);
             }
 
             return $row;
