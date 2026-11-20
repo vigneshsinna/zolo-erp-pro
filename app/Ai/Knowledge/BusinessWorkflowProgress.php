@@ -50,7 +50,7 @@ final class BusinessWorkflowProgress
             };
             if ($status === 'completed' && !DB::table('ai_action_executions')->where([
                 'proposal_id' => $proposal['id'], 'company_id' => $principal->companyId,
-                'status' => 'completed',
+                'version' => (int) $proposal['version'], 'status' => 'completed',
             ])->whereNotNull('erp_resource_id')->exists()) {
                 throw ValidationException::withMessages(['proposal' => 'No verified ERP execution receipt for this proposal.']);
             }
@@ -95,6 +95,7 @@ final class BusinessWorkflowProgress
                     ->where('p.branch_id', $principal->branchId)
                     ->where('p.financial_year_id', $principal->financialYearId)
                     ->where('p.actor_id', $principal->actorId)
+                    ->whereColumn('e.version', 'p.version')
                     ->where('e.status', 'completed')->where('e.erp_resource_type', 'job_work_receipt')
                     ->where('e.erp_resource_id', $receipt->id)->exists()) {
                 throw ValidationException::withMessages(['evidence' => 'No approved posted GRN is linked to this workflow.']);
@@ -109,6 +110,7 @@ final class BusinessWorkflowProgress
                 ->where('p.branch_id', $principal->branchId)
                 ->where('p.financial_year_id', $principal->financialYearId)
                 ->where('p.actor_id', $principal->actorId)
+                ->whereColumn('e.version', 'p.version')
                 ->where('e.status', 'completed')->where('e.erp_resource_type', 'job_work_dispatch')
                 ->where('e.erp_resource_id', $receipt->dispatch_id)->select('e.*')->first();
             if (!$dispatchReceipt) {
@@ -132,6 +134,44 @@ final class BusinessWorkflowProgress
                 throw ValidationException::withMessages(['workflow' => 'Pause/cancelled workflows cannot progress.']);
             }
             $steps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->orderBy('created_at')->get();
+            // Refresh linked actions from the exact current proposal version.
+            // Neither user chat nor a model response is sufficient proof of execution.
+            foreach ($steps as $step) {
+                if ($step->kind !== 'reviewed_action' || !$step->proposal_id
+                    || !in_array($step->status, ['awaiting_approval', 'awaiting_execution'], true)) continue;
+                $proposal = DB::table('ai_action_proposals')->where([
+                    'id' => $step->proposal_id, 'actor_id' => $principal->actorId,
+                    'company_id' => $principal->companyId, 'branch_id' => $principal->branchId,
+                    'financial_year_id' => $principal->financialYearId,
+                    'action_key' => $step->action_key,
+                ])->first();
+                if (!$proposal || in_array($proposal->status, ['cancelled', 'rejected', 'expired', 'failed'], true)
+                    || ($proposal->status === 'pending'
+                        && $proposal->expires_at <= now('UTC')->toDateTimeString())) {
+                    DB::table('ai_business_workflow_steps')->where('id', $step->id)->update([
+                        'status' => 'awaiting_proposal', 'proposal_id' => null,
+                        'evidence_hash' => null, 'updated_at' => now('UTC'),
+                    ]);
+                    $step->status = 'awaiting_proposal';
+                    continue;
+                }
+                $receipt = DB::table('ai_action_executions')->where([
+                    'proposal_id' => $proposal->id, 'version' => $proposal->version,
+                    'company_id' => $principal->companyId, 'status' => 'completed',
+                ])->whereNotNull('erp_resource_id')->first();
+                if ($proposal->status === 'completed' && $receipt) {
+                    DB::table('ai_business_workflow_steps')->where('id', $step->id)->update([
+                        'status' => 'completed',
+                        'evidence_hash' => hash('sha256', $proposal->id.':'.$proposal->payload_hash.':'.$receipt->id),
+                        'updated_at' => now('UTC'),
+                    ]);
+                    $step->status = 'completed';
+                } elseif (in_array($proposal->status, ['approved', 'executing'], true)) {
+                    DB::table('ai_business_workflow_steps')->where('id', $step->id)
+                        ->update(['status' => 'awaiting_execution', 'updated_at' => now('UTC')]);
+                    $step->status = 'awaiting_execution';
+                }
+            }
             $byKey = $steps->keyBy('step_key');
             foreach ($steps as $step) {
                 if ($step->status !== 'blocked') continue;
