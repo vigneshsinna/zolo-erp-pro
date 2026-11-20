@@ -30,9 +30,11 @@ final class ServicePurchaseBillAdapter implements ActionPreviewAdapterInterface,
     ): ActionPreviewResult {
         $this->assertServiceOnly($slots, $context);
         $result = $this->previewAdapter->preview($definition, $slots, $context);
+        $display = $result->preview;
+        $display['policy']['inventory_impact'] = 'Service-only payable: zero inventory movements.';
         return new ActionPreviewResult(
             payload: $result->payload,
-            preview: $result->preview + [
+            preview: $display + [
                 'classification' => 'service_only',
                 'inventory_effect' => 'no_stock_receipt',
                 'warehouse_role' => 'accounting_branch_location',
