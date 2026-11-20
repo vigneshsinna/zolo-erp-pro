@@ -28,7 +28,7 @@ frames = 'event: error\ndata: {"http_status":429,"error_code":"AI_QUOTA_EXCEEDED
 await assert.rejects(parserWindow.ZoloAiStream.request('/fixture', {}, {}, () => {}), error => error.status === 429);
 
 const origin = 'http://erp-fixture.local', root = path.resolve('public');
-const errors = [], patches = [], chatRequests = [];
+const errors = [], patches = [], chatRequests = [], jsonRequests = [];
 let conflict = true, revision = 3, streamFailure = false;
 const taskId = '33333333-3333-4333-8333-333333333333';
 const clarification = (withSecond = true) => ({task_id: taskId, task_revision: revision, action_key: 'purchase_order.create.v1',
@@ -51,6 +51,11 @@ await context.route('**/*', async route => {
         .replace(/https?:\/\/(?:localhost|127\.0\.0\.1|zolo-erp-pro\.test)(?::\d+)?/g, origin)});
     if (url.pathname === '/ai/threads') return route.fulfill({json: {threads: []}});
     if (url.pathname === '/ai/credits/balance') return route.fulfill({json: {data: {available_credits: 10000, included_granted: 10000, topups_granted: 0, spent_credits: 0, reserved_credits: 0}}});
+    if (url.pathname === '/ai/chat') {
+        jsonRequests.push(request.postDataJSON());
+        return route.fulfill({json: {thread_id: '11111111-1111-4111-8111-111111111111',
+            message: 'Verified reliable chat response.', facts: [], sources: []}});
+    }
     if (url.pathname === '/ai/chat/stream') {
         chatRequests.push({body: request.postDataJSON(), headers: request.headers()});
         const final = {thread_id: '11111111-1111-4111-8111-111111111111', message: 'Verified stream finished.', facts: [], sources: []};
@@ -77,6 +82,16 @@ page.setDefaultTimeout(10000);
 page.on('pageerror', error => errors.push(error.message));
 try {
     await page.goto(origin + '/ai', {waitUntil: 'networkidle'});
+    assert.equal(await page.evaluate(() => window.ZoloAiStreamEnabled), false,
+        'Default browser transport should not require provider streaming');
+    await page.locator('#chat-input').fill('Check stable JSON transport');
+    await page.locator('#btn-send').click();
+    await page.getByText('Verified reliable chat response.', {exact: true}).waitFor();
+    assert.equal(jsonRequests.length, 1);
+    assert.equal(chatRequests.length, 0, 'JSON transport must never duplicate the request on SSE');
+    assert.ok(jsonRequests[0].client_turn_id, 'Normal chat must send a unique client turn UUID');
+    // Opt in to exercise the existing SSE protocol regression.
+    await page.evaluate(() => { window.ZoloAiStreamEnabled = true; });
     await page.getByRole('button', {name: 'Start voice input'}).click();
     await page.evaluate(() => {
         const result = [{transcript: 'Review customer balances'}]; result.isFinal = true;
@@ -88,6 +103,7 @@ try {
     await page.locator('#btn-send').click();
     await page.getByText('Verified stream finished.', {exact: true}).waitFor();
     assert.equal(chatRequests[0].body.message, 'Review customer balances');
+    assert.match(chatRequests[0].body.client_turn_id, /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i);
     assert.ok(chatRequests[0].headers['x-csrf-token']);
     assert.ok(chatRequests[0].headers['x-ai-scope']);
     assert.equal(await page.evaluate(() => window.__xss), undefined);

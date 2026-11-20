@@ -42,6 +42,26 @@ class ActiveTaskRoutingTest extends TestCase
         ]);
     }
 
+    public function test_stream_reports_missing_workflow_turn_id_as_validation_not_generic_stream_failure(): void
+    {
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'message' => 'Create a purchase order',
+            'client_turn_id' => (string) Str::uuid(),
+        ])->assertOk()->assertJsonPath('workflow.status', 'needs_input');
+
+        $content = $this->postJson(route('ai.chat.stream'), [
+            'thread_id' => $thread, 'message' => 'Create a purchase bill',
+        ])->assertOk()->streamedContent();
+
+        $this->assertStringContainsString('event: error', $content);
+        $this->assertStringContainsString('"error_code":"AI_TURN_VALIDATION_FAILED"', $content);
+        $this->assertStringContainsString('"http_status":422', $content);
+        $this->assertStringContainsString('"incident_id":"', $content);
+        $this->assertStringNotContainsString('AI_STREAM_FAILED', $content);
+        Http::assertNothingSent();
+    }
+
     public function test_bare_po_and_retry_bind_one_collecting_task_to_owned_thread(): void
     {
         $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
