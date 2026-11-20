@@ -139,6 +139,11 @@ final class ScheduledRuleRunner
                         }
                     }
                     $this->finish($companyId, $runId, 'completed', $result, $proposalId, $taskId);
+                    if ($alerts && config('ai_events.internal_schedule_ingestion_enabled', false)) {
+                        app(\App\Ai\Events\AiEventInboxService::class)->recordScheduledAlert(
+                            $principal, (string) $rule->id, $runId, $alerts, $proposalId,
+                        );
+                    }
                 });
             });
         } catch (Throwable $error) {
