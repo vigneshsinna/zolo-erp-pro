@@ -147,12 +147,12 @@ final class JobWorkServiceBillActionAdapter implements ActionPreviewAdapterInter
     ): string {
         $taxAndProduct = PurchaseBillPreviewAdapter::computeSourceStateHash(
             $context, (int) $order->job_worker_party_id, (int) $receipt->warehouse_id, $ids, null, null);
-        return CanonicalActionPayload::hash([
+        return hash('sha256', json_encode([
             'tax_and_products' => $taxAndProduct,
             'receipt' => $receipt->only(['id', 'dispatch_id', 'posted_at', 'reversed_at', 'service_purchase_id', 'updated_at', 'receipt_kind']),
             'dispatch' => $dispatch->only(['id', 'job_work_order_id', 'posted_at', 'reversed_at', 'updated_at']),
             'order' => $order->only(['id', 'job_worker_party_id', 'posted_at', 'reversed_at', 'updated_at']),
-        ]);
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     }
 
     private function context(CompanyContext|BootstrapSetupPrincipal $context): CompanyContext
