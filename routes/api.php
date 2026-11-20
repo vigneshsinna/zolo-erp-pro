@@ -268,6 +268,22 @@ Route::prefix('v1')->group(function () {
             // Task T03: Scoped ERP Entity Directory Lookup
             Route::get('entity-lookup', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-lookup');
 
+            // Reviewed business processes: scoped plan previews, human-driven steps and readonly status.
+            Route::prefix('business-workflows')->controller(\App\Http\Controllers\Api\V1\AiBusinessWorkflowController::class)->group(function () {
+                Route::get('/', 'index')->name('api.v1.ai.business-workflows.index');
+                Route::get('metrics', 'metrics')->name('api.v1.ai.business-workflows.metrics');
+                Route::get('definitions/{processId}', 'preview')->where('processId', '[a-z0-9_.]+')->name('api.v1.ai.business-workflows.preview');
+                Route::post('/', 'store')->name('api.v1.ai.business-workflows.store');
+                Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.business-workflows.show');
+                Route::patch('{id}/facts', 'correct')->whereUuid('id')->name('api.v1.ai.business-workflows.correct');
+                Route::post('{id}/pause', 'pause')->whereUuid('id')->name('api.v1.ai.business-workflows.pause');
+                Route::post('{id}/resume', 'resume')->whereUuid('id')->name('api.v1.ai.business-workflows.resume');
+                Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('api.v1.ai.business-workflows.cancel');
+                Route::post('{id}/link-proposal', 'linkProposal')->whereUuid('id')->name('api.v1.ai.business-workflows.link-proposal');
+                Route::post('{id}/verify-return', 'verifyReturn')->whereUuid('id')->name('api.v1.ai.business-workflows.verify-return');
+                Route::post('{id}/reconcile', 'reconcile')->whereUuid('id')->name('api.v1.ai.business-workflows.reconcile');
+            });
+
             // Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine
             Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {
                 Route::post('/', 'store')->name('api.v1.ai.workflow-tasks.store');
