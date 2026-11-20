@@ -47,8 +47,33 @@ final class ConversationTurnRouter
             }
             return $metadata['result'] + ['replayed' => true];
         }
+        $semantic = $interpretation['business_intent'] ?? null;
+        if ($semantic !== null && $semantic['role'] === 'ambiguous') {
+            app(PendingPartyIntentService::class)->ask($principal, $threadId);
+            return ['status' => 'needs_input', 'message' =>
+                'Will you buy from this party (supplier), or will the party buy from you (customer)?',
+                'question_type' => 'party_direction', 'can_prepare_proposal' => false];
+        }
+        if ($semantic !== null && $semantic['role'] === 'both') {
+            return ['status' => 'needs_input', 'message' =>
+                'Supplier and customer are separate ERP roles with separate approvals. Which role should I create first?',
+                'question_type' => 'party_role', 'can_prepare_proposal' => false];
+        }
+        if ($semantic !== null && $semantic['role'] === 'customer') {
+            if (($semantic['continuation'] ?? null) === 'pending_party') {
+                app(PendingPartyIntentService::class)->resolve($principal, $threadId);
+            }
+            return ['status' => 'needs_input', 'message' =>
+                'This is a customer, not a supplier. Customer creation through this guided chat is not yet enabled. Use the Customer setup screen; no customer was created.',
+                'action_key' => 'setup.customer.create.v1', 'can_prepare_proposal' => false];
+        }
         $supplier = app(SupplierSetupConversation::class);
-        $supplierName = $supplier->start($message);
+        $supplierName = ($semantic !== null && $semantic['role'] === 'supplier')
+            ? (string) ($semantic['facts']['name'] ?? '')
+            : $supplier->start($message);
+        if (($semantic['continuation'] ?? null) === 'pending_party' && $semantic['role'] === 'supplier') {
+            app(PendingPartyIntentService::class)->resolve($principal, $threadId);
+        }
         $requestedTask = $supplierName === null ? ($input['active_task_id'] ?? null) : null;
         $tasks = $this->resolver->resolve($principal, $threadId, $requestedTask);
         $supplierTasks = array_values(array_filter($tasks, fn (array $task): bool => $task['action_key'] === SupplierSetupConversation::KEY));
@@ -67,7 +92,16 @@ final class ConversationTurnRouter
             if ($supplierTasks !== [] && $requestedTask !== null) {
                 $this->assertRevision($task, $input);
             }
-            $result = $supplier->reply($principal, $task, $message, $supplierName, $input['supplier_photo'] ?? []);
+            if (isset($interpretation['supplier_facts'])
+                && ($interpretation['task_id'] ?? null) !== $task['id']) {
+                throw new ConflictHttpException('Supplier task changed while interpreting the reply.');
+            }
+            if (isset($interpretation['supplier_facts'])
+                && ($interpretation['revision'] ?? null) !== (int) $task['revision']) {
+                throw new ConflictHttpException('Supplier draft changed while parsing; reload and retry.');
+            }
+            $semanticFacts = $interpretation['supplier_facts'] ?? $semantic['facts'] ?? [];
+            $result = $supplier->reply($principal, $task, $message, $supplierName, $input['supplier_photo'] ?? [], $semanticFacts);
             if ($result !== null) {
                 $this->saveReceipt($principal, $task, $input, $hash, $result);
             }
@@ -253,6 +287,10 @@ final class ConversationTurnRouter
             return null;
         }
         $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
+        if ($tasks === []) {
+            $semantic = app(BusinessIntentInterpreter::class)->start($principal, $threadId, $input['message']);
+            return $semantic === null ? null : ['business_intent' => $semantic];
+        }
         if (count($tasks) !== 1 || app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($input['message'])
             || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
             || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])
@@ -261,10 +299,13 @@ final class ConversationTurnRouter
             return null;
         }
         $task = $tasks[0];
-        if ($task['action_key'] === SupplierSetupConversation::KEY
-            || app(ConversationMasterContinuation::class)->handles($task, $input['message'])) {
-            return null;
+        if ($task['action_key'] === SupplierSetupConversation::KEY) {
+            $details = app(BusinessIntentInterpreter::class)->supplierDetails($principal, $threadId, $input['message']);
+            return $details === null ? null : [
+                'task_id' => $task['id'], 'revision' => (int) $task['revision'], 'supplier_facts' => $details['facts'],
+            ];
         }
+        if (app(ConversationMasterContinuation::class)->handles($task, $input['message'])) return null;
         app(ActionSecurity::class)->definition($task['action_key'], $principal);
         $interpreter = app(ConversationalSlotInterpreter::class);
         $parsed = $interpreter->interpret($task, $input['message']);
