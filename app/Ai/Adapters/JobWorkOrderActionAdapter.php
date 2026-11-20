@@ -100,11 +100,11 @@ final class JobWorkOrderActionAdapter implements ActionPreviewAdapterInterface, 
 
     private function hash(CompanyContext $context, Supplier $supplier, object $process): string
     {
-        return CanonicalActionPayload::hash([
+        return hash('sha256', json_encode([
             'scope' => [$context->companyId, $context->branchId, $context->financialYearId],
             'supplier' => $supplier->only(['id', 'name', 'is_active', 'address', 'updated_at']),
             'process' => (array) $process,
-        ]);
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     }
 
     private function context(CompanyContext|BootstrapSetupPrincipal $context): CompanyContext
