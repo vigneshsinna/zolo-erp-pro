@@ -77,6 +77,8 @@ final class AiOperationsController extends Controller
             'foundation' => $foundation,
             'scheduling' => $scheduling,
             'canApprove' => $canApprove,
+            'canManagePolicies' => $enabled && (bool) config('ai_autonomy.policy_management_enabled', false)
+                && $canApprove && $resolver->canManageFinancialYears($actorId, $companyId),
             'summary' => $summary,
             'recent' => $recent,
             'rules' => $rules,
