@@ -1,3 +1,35 @@
+## Live Verification: Low-Stock Automation Monitoring & Unapproved PO Proposal Generation — 2026-11-20
+
+- **Context & User Request:**
+  - Create a new Product and Supplier in the live database.
+  - Create a formal Purchase Order and a Purchase Bill for this product.
+  - Set up low-stock background automation monitoring.
+  - Verify that within the scheduled cycle, stock monitoring detects low inventory and pops up the draft Purchase Order proposal in the Action Review Center.
+- **Entities Created in Live Database (`zoloerp`, Company 80 `lenz`):**
+  - **Supplier:** `Royal Textiles Supply Co` (ID `169`, GSTIN `33AABCR1234F1Z5`).
+  - **Product:** `Linen Shirt Olive` (ID `819`, SKU `SKU-LINENSHIR-OLIVE`, Cost ₹650, Price ₹850, Unit `54` Pieces, GST 18%).
+  - **Purchase Order (Ordered):** `PO-00003` (ID `204`), 15 Pieces @ ₹650 = ₹9,750.00, Status 4 (Ordered).
+  - **Purchase Bill (Received):** `PUR-00003` (ID `205`), 15 Pieces received into Warehouse `124` (`lenz - Main`), Status 1 (Received).
+  - **Physical & Posted Inventory:** 15.0000 units in `product_warehouse` and `stock_movement_lines` (`reconciled = true`).
+- **Low-Stock Automation Configured:**
+  - **Rule ID:** `7b37281c-8017-4b16-9c94-5c665fb332e1`
+  - **Name:** "Low Stock Reorder - Linen Shirt Olive"
+  - **Scope:** Company 80, Branch 61, FY 61, Warehouse 124, Supplier 169.
+  - **Threshold:** Minimum available `50.0000` pieces; Draft order qty `25.0000` pieces.
+  - **Action:** `prepare_purchase_order = 1` (Draft unapproved PO for review).
+- **Execution & Queue Verification:**
+  - Dispatched via `ScheduledRuleRunner::dispatchDue` (Run ID `55b722bf-4366-4bb5-a4a8-b29503b28561`).
+  - Executed via queue worker: `php artisan queue:work database --queue=ai-scheduled --once`.
+  - Result: Evaluated available stock (`15.0000` <= `50.0000`), triggered low-stock alert, and prepared unapproved PO draft proposal.
+- **Generated Proposal & Human Governance:**
+  - **Proposal ID:** `dd53f416-ac97-4771-93f5-e1f7bb144ca0`
+  - **Action Key:** `purchase_order.create.v1`
+  - **Status:** `pending` (valid for 24 hours, expires `2026-11-21 12:41:32 UTC`).
+  - **Payload:** 25 Pieces Linen Shirt Olive @ ₹650 = ₹16,250.00, Credit 30 days.
+  - **Human Review Center:** Visible at `https://httpzolo-erp-pro.test.test/ai/action-review`.
+  - **Performance Dashboard:** Reflected on `https://httpzolo-erp-pro.test.test/ai/operations/performance` (2 completed runs, 1 low-stock alert, 1 draft PO).
+  - **Integrity Guarantee:** Zero autonomous ledger mutations or direct purchase records booked prior to human sign-off.
+
 ## Fix: Automation Builder Product Selection & Bootstrap-Select Conflict Resolution — 2026-11-20
 
 - **Context & User Bug Report:**
