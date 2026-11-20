@@ -16,7 +16,11 @@ final class AutonomyExecutionPreflight
 
     public function inspect(CompanyContext $context, string $actionKey): array
     {
-        $policy = $this->policies->evaluate($context, $actionKey);
+        return self::fromEvaluatedPolicy($actionKey, $this->policies->evaluate($context, $actionKey));
+    }
+
+    public static function fromEvaluatedPolicy(string $actionKey, array $policy): array
+    {
         return [
             'action_key' => $actionKey,
             'requested_level' => $policy['requested_level'],
