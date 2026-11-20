@@ -29,8 +29,10 @@ final class SupplierSetupConversation
         $cancel = (bool) preg_match('/^cancel(?: (?:this |the )?supplier(?: draft)?)?[.!]?$/i', $message);
         $preview = (bool) preg_match('/^(?:show |prepare )?preview(?: (?:the )?supplier(?: proposal)?)?[.!]?$/i', $message);
         $planner = app(ConversationQuestionPlanner::class);
-        $skipGroups = $planner->skipGroups($message);
-        $gstStatus = $semanticFacts['_gst_status'] ?? null;
+        $guided = config('ai_business_knowledge.enabled', false)
+            && config('ai_business_knowledge.semantic_enabled', false);
+        $skipGroups = $guided ? $planner->skipGroups($message) : [];
+        $gstStatus = $guided ? ($semanticFacts['_gst_status'] ?? null) : null;
         $allowedFields = ['name', 'company_name', 'phone_number', 'vat_number', 'state', 'city', 'address', 'email'];
         $changes = array_replace($photo, array_intersect_key($semanticFacts, array_flip($allowedFields)));
         if ($start !== null && $start !== '') {
@@ -43,14 +45,14 @@ final class SupplierSetupConversation
                 return null;
             }
         }
-        if (preg_match('/\b(?:unregistered|not\s+(?:gst\s+)?registered)\b/i', $message)) {
+        if ($guided && preg_match('/\b(?:unregistered|not\s+(?:gst\s+)?registered)\b/i', $message)) {
             $gstStatus = 'unregistered';
             $changes['vat_number'] = null;
-        } elseif (preg_match('/\bno\s+gstin\b/i', $message)) {
+        } elseif ($guided && preg_match('/\bno\s+gstin\b/i', $message)) {
             // No number is not evidence of a legally unregistered tax profile.
             $gstStatus = 'unknown';
             $changes['vat_number'] = null;
-        } elseif (preg_match('/\bgst\s+registered\b/i', $message) || !empty($changes['vat_number'])) {
+        } elseif ($guided && (preg_match('/\bgst\s+registered\b/i', $message) || !empty($changes['vat_number']))) {
             $gstStatus = 'registered';
         }
 
@@ -98,11 +100,12 @@ final class SupplierSetupConversation
             return array_replace($corrections->prepareProposal($principal, $task, $applied['evaluation']),
                 ['message' => 'Review the supplier details before approving creation.']);
         }
-        $question = $planner->next(self::KEY, $currentSlots);
+        $question = $guided ? $planner->next(self::KEY, $currentSlots) : null;
         if ($question !== null) return $this->result($task, 'needs_input', $question);
         $name = $currentSlots['name'] ?? '';
-        return $this->result($task, 'needs_input',
-            'Supplier draft: '.$name.'. The guided details are collected or skipped. Say “preview supplier” to review before approval, or correct any field in chat.');
+        return $this->result($task, 'needs_input', $guided
+            ? 'Supplier draft: '.$name.'. The guided details are collected or skipped. Say “preview supplier” to review before approval, or correct any field in chat.'
+            : 'Supplier draft: '.$name.'. Add or correct details in chat, or say “preview supplier” when ready.');
     }
 
     private function result(array $task, string $status, string $message): array
