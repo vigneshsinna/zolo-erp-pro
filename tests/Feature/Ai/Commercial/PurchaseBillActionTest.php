@@ -220,6 +220,113 @@ final class PurchaseBillActionTest extends TestCase
         ];
     }
 
+    public function test_copilot_bill_edit_suspends_signed_approval_then_requires_new_preview(): void
+    {
+        config(['erp_ai.conversation_enabled' => true, 'ai_actions.execution_enabled' => false]);
+        $this->actingAs($this->adminUser)->withSession([
+            'company_id' => $this->company->id, 'branch_id' => $this->branch->id,
+            'financial_year_id' => $this->fiscalYear->id,
+        ]);
+        $principal = app(\App\Ai\Services\AiPrincipalFactory::class)->createForUser(
+            $this->adminUser->id, $this->company->id, $this->branch->id, $this->fiscalYear->id);
+        $original = app(\App\Ai\Services\ActionProposalService::class)->create(
+            $principal, 'purchase_bill.create.v1', [
+                'supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id,
+                'date' => '2026-11-18', 'supplier_invoice_no' => 'COP-INV-A1',
+                'items' => [['product_id' => $this->productA->id,
+                    'qty' => '50.00', 'net_unit_cost' => '200.00']],
+            ]);
+        app(\App\Ai\Services\ActionApprovalService::class)
+            ->approve($principal, $original['id'], 1);
+        $editor = app(\App\Ai\Services\AiPurchaseProposalEditService::class);
+        $link = $editor->open($principal, $original['id']);
+        $this->assertSame($link, $editor->open($principal, $original['id']));
+        $this->assertSame('editing', DB::table('ai_action_proposals')
+            ->where('id', $original['id'])->value('status'));
+        $this->assertSame(1, DB::table('ai_workflow_tasks')
+            ->where('linked_proposal_id', $original['id'])->count());
+        $this->assertSame(1, DB::table('ai_thread_scopes')
+            ->where('id', $link['thread_id'])->count());
+
+        $this->get(route('ai.workspace', ['edit_thread' => $link['thread_id'],
+            'edit_task' => $link['task_id']]))->assertOk()
+            ->assertSee('zoloAiPurchaseEditContext');
+
+        try {
+            app(\App\Ai\Services\ActionApprovalService::class)
+                ->approve($principal, $original['id'], 1);
+            $this->fail('An editing proposal must never accept its prior approval.');
+        } catch (\Illuminate\Validation\ValidationException $expected) {
+            $this->assertNotEmpty($expected->errors()['proposal'] ?? []);
+        }
+        {
+            $task = app(\App\Ai\Services\WorkflowTaskStateService::class)->getTask($principal, $link['task_id']);
+            $applied = app(\App\Ai\Services\TaskCorrectionService::class)->applyCorrections(
+                $principal, $link['task_id'], (int) $task['revision'], [
+                    ['field' => 'items[line-0].qty', 'value' => '20', 'confirmation' => 'user_edited'],
+                    ['field' => 'supplier_invoice_no', 'value' => 'COP-INV-A2', 'confirmation' => 'user_edited'],
+                ]);
+            $this->assertTrue($applied['evaluation']->isReady(), json_encode($applied['evaluation']->issuesArray()));
+            $prepared = app(\App\Ai\Services\TaskCorrectionService::class)
+                ->prepareProposal($principal, $applied['task'], $applied['evaluation']);
+            $this->assertSame($original['id'], $prepared['proposal_id']);
+            $this->assertSame(2, $prepared['version']);
+            $this->assertSame('4200.00', $prepared['preview']['totals']['grand_total']);
+            $this->assertSame('200.00', $prepared['preview']['totals']['tax_total']);
+            $this->assertSame('pending', DB::table('ai_action_proposals')
+                ->where('id', $original['id'])->value('status'));
+            $this->assertSame(0, Purchase::where('company_id', $this->company->id)->count());
+        }
+    }
+
+    public function test_copilot_bill_supplier_change_recomputes_unregistered_tax_without_override(): void
+    {
+        config(['erp_ai.conversation_enabled' => true, 'ai_actions.execution_enabled' => false]);
+        $this->actingAs($this->adminUser)->withSession([
+            'company_id' => $this->company->id, 'branch_id' => $this->branch->id,
+            'financial_year_id' => $this->fiscalYear->id,
+        ]);
+        $supplier = Supplier::create(['name' => 'Local Non GST Bill Supplier',
+            'company_id' => $this->company->id, 'is_active' => true,
+            'state' => 'Tamil Nadu', 'address' => 'Coimbatore']);
+        DB::table('party_tax_profiles')->insert([
+            'company_id' => $this->company->id, 'party_type' => 'supplier',
+            'party_id' => $supplier->id, 'gstin' => null,
+            'state_code' => '33', 'registration_type' => 'unregistered',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $principal = app(\App\Ai\Services\AiPrincipalFactory::class)->createForUser(
+            $this->adminUser->id, $this->company->id, $this->branch->id, $this->fiscalYear->id);
+        $original = app(\App\Ai\Services\ActionProposalService::class)->create(
+            $principal, 'purchase_bill.create.v1', [
+                'supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id,
+                'date' => '2026-11-18', 'supplier_invoice_no' => 'COP-INV-UNREG',
+                'items' => [['product_id' => $this->productA->id,
+                    'qty' => '5.00', 'net_unit_cost' => '200.00']],
+            ]);
+        $link = app(\App\Ai\Services\AiPurchaseProposalEditService::class)
+            ->open($principal, $original['id']);
+        $task = app(\App\Ai\Services\WorkflowTaskStateService::class)->getTask($principal, $link['task_id']);
+        $applied = app(\App\Ai\Services\TaskCorrectionService::class)->applyCorrections(
+            $principal, $link['task_id'], (int) $task['revision'],
+            [['field' => 'supplier_id', 'value' => $supplier->id, 'confirmation' => 'user_edited']]);
+        $this->assertTrue($applied['evaluation']->isReady(), json_encode($applied['evaluation']->issuesArray()));
+        $prepared = app(\App\Ai\Services\TaskCorrectionService::class)
+            ->prepareProposal($principal, $applied['task'], $applied['evaluation']);
+        $this->assertSame($supplier->id, $prepared['preview']['supplier']['id']);
+        $this->assertSame('0.00', $prepared['preview']['totals']['tax_total']);
+        $this->assertSame('1000.00', $prepared['preview']['totals']['grand_total']);
+        $payload = json_decode(DB::table('ai_action_proposals')
+            ->where('id', $original['id'])->value('payload_json'), true);
+        $this->assertSame($supplier->id, $payload['supplier_id']);
+        $this->assertSame(0, Purchase::where('company_id', $this->company->id)->count());
+        $tax = app(\App\Ai\Services\PurchaseBillGstIntentService::class)
+            ->describe($principal, app(\App\Ai\Services\ActionProposalService::class)->getOwned(
+                $principal, $original['id']), 'non_gst');
+        $this->assertStringContainsString('unregistered', $tax['message']);
+        $this->assertStringContainsString('reverse charge', $tax['message']);
+    }
+
     public function test_unauthorized_user_cannot_create_purchase_bill_proposal(): void
     {
         $this->actingAs($this->restrictedUser, 'sanctum');
