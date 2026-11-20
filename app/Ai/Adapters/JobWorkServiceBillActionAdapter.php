@@ -69,8 +69,15 @@ final class JobWorkServiceBillActionAdapter implements ActionPreviewAdapterInter
             'items' => $slots['items'],
         ], purchase: true, context: $context);
         $hash = $this->sourceHash($context, $receipt, $dispatch, $order, $ids);
+        $normalized = $slots;
+        foreach ($normalized['items'] as &$item) {
+            $item['qty'] = CommercialDecimal::format((float) $item['qty'], 6);
+            $item['net_unit_cost'] = CommercialDecimal::format((float) $item['net_unit_cost']);
+            if (isset($item['discount'])) $item['discount'] = CommercialDecimal::format((float) $item['discount']);
+        }
+        unset($item);
         return new ActionPreviewResult(
-            payload: $slots,
+            payload: $normalized,
             preview: [
                 'document_type' => 'Job Work Processing Service Bill',
                 'job_work_receipt_id' => (int) $receipt->id,
