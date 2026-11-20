@@ -54,6 +54,7 @@
             <p>Opted-in low-stock checks and purchase-order preparation.</p>
             <strong class="ai-ops-metric">{{ $rules->count() }}</strong>
             <span class="ai-ops-note">{{ $scheduling ? 'Your active schedules' : 'Scheduling is disabled' }}</span>
+            <a href="{{ route('ai.events.index') }}" class="mt-2">Event inbox <span aria-hidden="true">&rarr;</span></a>
         </section>
         <section class="ai-ops-card" aria-labelledby="ai-ops-copilot-title">
             <div class="ai-ops-card-icon"><i class="dripicons-conversation" aria-hidden="true"></i></div>
