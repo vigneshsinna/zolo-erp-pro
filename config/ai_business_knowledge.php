@@ -1,0 +1,8 @@
+<?php
+
+return [
+    // Read-only contextual facts are unavailable until an operator explicitly opts in.
+    'enabled' => (bool) env('AI_BUSINESS_KNOWLEDGE_ENABLED', false),
+    // PR 3: semantic language interpretation; independent rollout switch.
+    'semantic_enabled' => (bool) env('AI_BUSINESS_SEMANTIC_ENABLED', false),
+];
