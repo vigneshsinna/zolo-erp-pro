@@ -169,12 +169,22 @@ final class TaskCorrectionService
     private function applyFieldCorrection(array &$slots, string $field, mixed $value): void
     {
         if (in_array($field, ['supplier_query', 'warehouse_query', 'customer_query'], true)) {
+            if ($field === 'supplier_query') {
+                foreach ($slots['items'] ?? [] as &$item) {
+                    unset($item['tax_rate'], $item['tax_rate_override']);
+                }
+                unset($item, $slots['expected_totals']);
+            }
             $slots[$field] = trim((string) $value);
             unset($slots[str_replace('_query', '_id', $field)]);
             return;
         }
         // 1. Direct scalar / entity fields
         if ($field === 'supplier_id') {
+            foreach ($slots['items'] ?? [] as &$item) {
+                unset($item['tax_rate'], $item['tax_rate_override']);
+            }
+            unset($item, $slots['expected_totals']);
             if (is_numeric($value) && (int) $value > 0) {
                 $slots['supplier_id'] = (int) $value;
                 unset($slots['supplier_query']);

@@ -20,7 +20,8 @@ final class ConversationalSlotInterpreter
         if (preg_match('/\b(?:not|or|maybe|perhaps|unclear)\b/i', $message) || preg_match('/^(?:yes|approve|do it|that one|new)$/i', trim($message))) {
             return $this->result([], ['Confirm the intended value or selection before changing the draft.']);
         }
-        $message = preg_replace('/^\s*(?:create|prepare|raise|start|make)\s+(?:a\s+|new\s+)?(?:purchase\s+order|po)\s*(?:for\s+)?/i', '', $message);
+        $message = preg_replace('/^\s*(?:create|prepare|raise|start|make)\s+(?:a\s+|new\s+)?(?:purchase\s+order|purchase\s+bill|po|bill)\s*(?:for\s+)?/i', '', $message);
+        $message = preg_replace('/\s+and\s+(?=(?:change|set|update|use|supplier|warehouse|quantity|qty|rate|cost|price|invoice|due\s+date|bill\s+date|discount|freight|shipping|item\s+\d+)\b)/iu', '; ', $message);
         foreach (preg_split('/\s*[;,]\s*/u', trim($message)) as $part) {
             if ($part === '') {
                 continue;
@@ -34,11 +35,33 @@ final class ConversationalSlotInterpreter
                 $corrections[] = $this->correction('credit_days', $days);
             } elseif (preg_match('/\bcash\b.*\d+.*\bdays?\b/i', $part)) {
                 return $this->result([], ['Cash terms conflict with credit days. Choose Cash or Credit and confirm the days.']);
-            } elseif (preg_match('/^(?:use\s+)?(?:supplier|from)\s+(.+)$/i', $part, $m)) {
+            } elseif (preg_match('/^(?:(?:change|set|update|replace)\s+)?(?:supplier|vendor)(?:\s+to|\s+as|\s+named)?\s+(.+)$/iu', $part, $m)
+                || preg_match('/^(?:use\s+)?from\s+(.+)$/iu', $part, $m)) {
                 $corrections[] = $this->correction('supplier_query', trim($m[1]));
-            } elseif (preg_match('/^(?:use\s+)?warehouse\s+(.+)$/i', $part, $m)) {
+            } elseif (preg_match('/^(?:(?:change|set|update|replace)\s+)?warehouse(?:\s+to|\s+as)?\s+(.+)$/iu', $part, $m)) {
                 $corrections[] = $this->correction('warehouse_query', trim($m[1]));
-            } elseif (preg_match('/^(?:make (?:it|that)|increase quantity to|quantity|qty)\s+(\d+(?:\.\d+)?)\s*(?:instead)?$/i', $part, $m) && count($lines) === 1) {
+            } elseif (preg_match('/^(?:(?:change|set|update)\s+)?(?:supplier\s+invoice(?:\s+number)?|invoice\s+(?:no|number|reference))\s+(?:to\s+)?([a-zA-Z0-9][a-zA-Z0-9\/_-]{0,99})$/iu', $part, $m)) {
+                $corrections[] = $this->correction('supplier_invoice_no', $m[1]);
+            } elseif (preg_match('/^(?:(?:change|set|update)\s+)?(?:bill\s+date|invoice\s+date)\s+(?:to\s+)?(\d{4}-\d{2}-\d{2})$/iu', $part, $m)) {
+                $corrections[] = $this->correction('date', $m[1]);
+            } elseif (preg_match('/^(?:(?:change|set|update)\s+)?due\s+date\s+(?:to\s+)?(\d{4}-\d{2}-\d{2})$/iu', $part, $m)) {
+                $corrections[] = $this->correction('due_date', $m[1]);
+            } elseif (preg_match('/^(?:po|purchase\s+order)\s+(?:reference\s+|id\s+)?(?:to\s+)?(\d+)$/iu', $part, $m)) {
+                $corrections[] = $this->correction('purchase_order_id', (int) $m[1]);
+            } elseif (preg_match('/^grn\s+(?:reference\s+|id\s+)?(?:to\s+)?(\d+)$/iu', $part, $m)) {
+                $corrections[] = $this->correction('grn_id', (int) $m[1]);
+            } elseif (preg_match('/^(?:(?:change|set|update)\s+)?(?:order\s+)?discount\s+(?:to\s+)?(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)$/iu', $part, $m)) {
+                $corrections[] = $this->correction('order_discount', $m[1]);
+            } elseif (preg_match('/^(?:(?:change|set|update)\s+)?(?:freight|shipping(?:\s+cost)?)\s+(?:to\s+)?(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)$/iu', $part, $m)) {
+                $corrections[] = $this->correction('shipping_cost', $m[1]);
+            } elseif (preg_match('/^(?:(?:change|set|update)\s+)?item\s+(\d+)\s+(?:quantity|qty)\s+(?:to\s+)?(\d+(?:\.\d+)?)$/iu', $part, $m)) {
+                $idx = (int) $m[1] - 1;
+                if ($idx < 0 || !isset($lines[$idx]['client_line_id'])) {
+                    return $this->result([], ['Choose a valid line number; no quantity was changed.']);
+                }
+                $corrections[] = $this->correction('items['.$lines[$idx]['client_line_id'].'].qty', $m[2]);
+                $lines[$idx]['qty'] = $m[2];
+            } elseif (preg_match('/^(?:(?:change|set|update|increase|decrease)\s+)?(?:the\s+)?(?:quantity|qty)(?:\s+to)?\s+(\d+(?:\.\d+)?)\s*(?:instead)?$/iu', $part, $m) && count($lines) === 1) {
                 $corrections[] = $this->correction('items['.$lines[0]['client_line_id'].'].qty', $m[1]);
                 $lines[0]['qty'] = $m[1];
             } elseif (preg_match('/^(?:(?:qty|quantity|add)\s+)?(\d+(?:\.\d+)?)\s+(pairs?|pcs|pieces?|units?|kg|metres?|meters?|mtr)(?:\s+at\s+(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)(?:\s+each)?)?$/iu', $part, $m) && count($lines) === 1) {
@@ -104,7 +127,8 @@ final class ConversationalSlotInterpreter
             'corrections.*.value' => 'present', 'corrections.*.operation' => 'nullable|in:set,add_line,change_line,remove_line',
             'corrections.*.line_id' => 'nullable|string|max:100', 'warnings' => 'present|array|max:10', 'warnings.*' => 'string|max:300',
         ])->validate();
-        $allowed = ['supplier_query', 'warehouse_query', 'date', 'note', 'payment_terms_type', 'credit_days'];
+        $allowed = ['supplier_query', 'warehouse_query', 'date', 'note', 'payment_terms_type', 'credit_days',
+            'supplier_invoice_no', 'due_date', 'purchase_order_id', 'grn_id', 'order_discount', 'shipping_cost'];
         $lines = json_decode($task['slots_json'], true)['items'] ?? [];
         $corrections = [];
         foreach ($result['corrections'] as $correction) {
@@ -113,7 +137,10 @@ final class ConversationalSlotInterpreter
                 $rules = match ($field) {
                     'payment_terms_type' => 'required|in:cash,credit',
                     'credit_days' => 'required|integer|min:0|max:3650',
-                    'date' => 'required|date_format:Y-m-d',
+                    'date', 'due_date' => 'required|date_format:Y-m-d',
+                    'purchase_order_id', 'grn_id' => 'required|integer|min:1',
+                    'order_discount', 'shipping_cost' => 'required|numeric|min:0|max:100000000',
+                    'supplier_invoice_no' => 'required|string|max:100',
                     'note' => 'string|max:2000',
                     default => 'required|string|max:200|regex:/\pL/u',
                 };

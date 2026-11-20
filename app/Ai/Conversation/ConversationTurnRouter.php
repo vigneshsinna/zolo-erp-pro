@@ -74,7 +74,18 @@ final class ConversationTurnRouter
         if ($directoryTypes === [] && app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
             return null;
         }
-        if (preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $message)) {
+        if ($task['action_key'] === 'purchase_bill.create.v1'
+            && ($taxIntent = app(\App\Ai\Services\PurchaseBillGstIntentService::class)->detect($message))) {
+            if ($task['linked_proposal_id']) {
+                $proposal = app(\App\Ai\Services\ActionProposalService::class)->getOwned($principal, $task['linked_proposal_id']);
+                $explanation = app(\App\Ai\Services\PurchaseBillGstIntentService::class)
+                    ->describe($principal, $proposal, $taxIntent);
+                return $this->summary($task, $explanation['message']);
+            }
+            return $this->summary($task, 'First select the supplier, warehouse and items. ERP will determine GST and reverse charge without any forced tax-rate override.');
+        }
+        if ($task['action_key'] === 'purchase_order.create.v1'
+            && preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $message)) {
             return $this->summary($task, 'The purchase draft is preserved. Select or start a separate operation explicitly.');
         }
         if ($directoryTypes !== []) {
