@@ -220,6 +220,55 @@ final class PurchaseBillActionTest extends TestCase
         ];
     }
 
+    public function test_copilot_editor_denies_cross_branch_and_expired_bill_proposals(): void
+    {
+        config(['erp_ai.conversation_enabled' => true, 'ai_actions.execution_enabled' => false]);
+        $this->actingAs($this->adminUser)->withSession([
+            'company_id' => $this->company->id, 'branch_id' => $this->branch->id,
+            'financial_year_id' => $this->fiscalYear->id,
+        ]);
+        $factory = app(\App\Ai\Services\AiPrincipalFactory::class);
+        $principal = $factory->createForUser(
+            $this->adminUser->id, $this->company->id, $this->branch->id, $this->fiscalYear->id);
+        $proposal = app(\App\Ai\Services\ActionProposalService::class)->create(
+            $principal, 'purchase_bill.create.v1', [
+                'supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id,
+                'date' => '2026-11-18', 'supplier_invoice_no' => 'COP-ACCESS-1',
+                'items' => [['product_id' => $this->productA->id,
+                    'qty' => '5.00', 'net_unit_cost' => '200.00']],
+            ]);
+        $otherBranch = $this->company->branches()->create([
+            'name' => 'Isolated Branch', 'code' => 'ISO-'.\Illuminate\Support\Str::random(6),
+            'branch_type' => 'branch',
+        ]);
+        DB::table('company_user_branches')->updateOrInsert([
+            'company_id' => $this->company->id, 'branch_id' => $otherBranch->id,
+            'user_id' => $this->adminUser->id,
+        ]);
+        $otherPrincipal = $factory->createForUser(
+            $this->adminUser->id, $this->company->id, $otherBranch->id, $this->fiscalYear->id);
+        try {
+            app(\App\Ai\Services\AiPurchaseProposalEditService::class)
+                ->open($otherPrincipal, $proposal['id']);
+            $this->fail('A proposal must not be opened from another branch.');
+        } catch (\Illuminate\Auth\Access\AuthorizationException $expected) {
+            $this->assertNotEmpty($expected->getMessage());
+        }
+        DB::table('ai_action_proposals')->where('id', $proposal['id'])
+            ->update(['expires_at' => now('UTC')->subMinute()]);
+        try {
+            app(\App\Ai\Services\AiPurchaseProposalEditService::class)
+                ->open($principal, $proposal['id']);
+            $this->fail('Expired proposals must not be edited.');
+        } catch (\Illuminate\Validation\ValidationException $expected) {
+            $this->assertArrayHasKey('proposal', $expected->errors());
+        }
+        $this->assertSame(0, DB::table('ai_workflow_tasks')
+            ->where('linked_proposal_id', $proposal['id'])->count());
+        $this->assertSame('pending', DB::table('ai_action_proposals')
+            ->where('id', $proposal['id'])->value('status'));
+    }
+
     public function test_copilot_bill_edit_suspends_signed_approval_then_requires_new_preview(): void
     {
         config(['erp_ai.conversation_enabled' => true, 'ai_actions.execution_enabled' => false]);
