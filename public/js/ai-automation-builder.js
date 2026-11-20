@@ -35,7 +35,17 @@
         }
     }
 
+    function stripSelectpicker(el) {
+        if (window.jQuery && el) {
+            const $el = window.jQuery(el);
+            if ($el.data('selectpicker')) {
+                $el.selectpicker('destroy');
+            }
+        }
+    }
+
     function showResults(input, select, entries) {
+        stripSelectpicker(select);
         select.replaceChildren();
         for (const item of entries) {
             const option = document.createElement('option');
@@ -140,33 +150,34 @@
         return false;
     }
 
-    form.addEventListener('change', event => {
-        const select = event.target.closest('.ai-builder-options');
+    function handleSelectActivation(event) {
+        const target = event.target;
+        if (!target) return;
+        const select = target.closest ? target.closest('.ai-builder-options') : null;
         if (!select) return;
-        const option = select.options[select.selectedIndex];
-        commitOption(select, option);
-    });
+
+        if (target.tagName === 'OPTION') {
+            commitOption(select, target);
+            return;
+        }
+
+        if (select.options && select.options.length > 0) {
+            const chosen = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : select.options[0];
+            if (chosen) {
+                commitOption(select, chosen);
+            }
+        }
+    }
+
+    document.addEventListener('click', handleSelectActivation, true);
+    document.addEventListener('change', handleSelectActivation, true);
+    document.addEventListener('input', handleSelectActivation, true);
+
     form.addEventListener('click', event => {
         const remove = event.target.closest('.ai-builder-remove');
         if (remove && items.querySelectorAll('.ai-builder-item').length > 1) {
             remove.closest('.ai-builder-item').remove();
             updateProducts();
-            return;
-        }
-
-        const option = event.target.closest('option');
-        if (option) {
-            const select = option.closest('.ai-builder-options');
-            if (select) {
-                commitOption(select, option);
-                return;
-            }
-        }
-
-        const select = event.target.closest('.ai-builder-options');
-        if (select && select.options.length > 0) {
-            const chosen = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : select.options[0];
-            commitOption(select, chosen);
         }
     });
     form.addEventListener('keydown', event => {
@@ -231,6 +242,7 @@
             if (!window.confirm('Cancel this automation? Queued checks will be revalidated.')) event.preventDefault();
         });
     });
+    document.querySelectorAll('.ai-builder-options').forEach(stripSelectpicker);
     syncSupplier();
     updateProducts();
 })(window, document);

@@ -1,23 +1,21 @@
-## Fix: Automation Builder Product Selection & Scheduled PO Draft Preparation — 2026-11-20
+## Fix: Automation Builder Product Selection & Bootstrap-Select Conflict Resolution — 2026-11-20
 
 - **Context & User Bug Report:**
-  - On `/ai/operations/builder`, users searching for stock products (e.g. `Cotton Shirt Blue`) received the error: `"Choose a distinct catalogue product for each line before saving"` upon submitting, even though the product was found in the catalogue.
+  - On `/ai/operations/builder`, users searching for stock products (e.g. `Cotton Shirt Blue`) found that clicking the search results in the dropdown still failed to select the product.
 - **Root Cause Analysis:**
-  - *Frontend Selection Binding:* The catalogue search populated a `<select class="ai-builder-options" size="5">` with entries. Previously, `ai-automation-builder.js` solely listened to the `change` event on the form. If a single item returned (or was already default-selected at index 0 by the browser), clicking the option fired `click` but not `change`, leaving the hidden `product_id` field empty. Furthermore, pressing `Enter` prematurely submitted the form without selecting, and clicking outside/submitting did not auto-commit single unambiguous matches.
-  - *Scheduled PO Payment Terms Dependency:* In `ScheduledRuleRunner.php`, `ActionPreparationService::prepare('purchase_order.create.v1')` required `payment_terms_type` and `credit_days` when conversational features are enabled. Omitting these caused scheduled PO draft creation to return `needs_input` instead of generating the pending proposal.
+  - *Bootstrap-Select Hijacking:* In `public/js/front.js` (line 62), a global jQuery script unconditionally initializes Bootstrap Selectpicker (`$.fn.selectpicker`) on all `select` elements across the layout *unless* they possess the explicit class `.custom-select-native`.
+  - Because `.ai-builder-options` lacked `.custom-select-native`, `bootstrap-select` intercepted the `<select>` elements upon DOM ready, wrapped them in a `.bootstrap-select` container, applied `display: none` to the native select, and decoupled user clicks from the native `<select>` DOM tree.
+  - Furthermore, Bootstrap/jQuery components stop event bubbling in the bubbling phase, preventing standard form-level click delegation.
 - **Changes Applied:**
+  - `resources/views/backend/ai/automation_builder.blade.php`: Added `custom-select-native` to warehouse, supplier, product, and dynamic row template `<select class="ai-builder-options">` elements.
   - `public/js/ai-automation-builder.js`:
-    - Added `commitOption(select, option)` and `autoCommitGroup(group)`.
-    - Added `click` listeners on `option` and select container to immediately commit clicked items.
-    - Added `keydown` listener to handle `Enter` and `ArrowDown` inside lookups without prematurely submitting.
-    - Added auto-commit on form submission for single/unambiguous matches across warehouse, supplier, and products.
-  - `public/css/pages/ai-automation.css`: Added pointer cursor and hover highlight styling (`:hover { background-color: var(--zolo-surface-muted, #eef3ff) }`) on `.ai-builder-options option` compliant with design tokens.
-  - `app/Ai/Scheduling/ScheduledRuleRunner.php`: Added `'payment_terms_type' => 'credit'` and `'credit_days' => 30` to `ActionPreparationService::prepare()` for automated low-stock PO draft generation.
+    - Added `stripSelectpicker(el)` to proactively destroy any hijacked selectpicker instance on initialization and before rendering results.
+    - Switched activation listeners (`click`, `change`, `input`) to the **DOM Capturing Phase** (`addEventListener(..., true)`) so no external library (Bootstrap, Popper, jQuery) can stop event delivery.
 - **Automated Verification:**
+  - Playwright real browser interaction test with `front.js` and `bootstrap-select.js` active: 100% passed (clicking option directly sets hidden product ID `42`, updates input text, and hides select).
   - `AiAutomationBuilderAndPerformanceTest`: 7 tests, 55 assertions, 100% OK.
   - `ScheduledRulesTest`: 6 tests, 32 assertions, 100% OK.
   - `DesignTokensTest`: 4 tests, 4 assertions, 100% OK.
-  - Playwright real browser interaction test (`test-full-interaction.mjs`): 100% passed for option clicking, Enter keyboard navigation, and submit auto-commit.
   - `node --check public/js/ai-automation-builder.js`: 0 syntax errors.
 
 ## PR #38 (AI Operations Automation Builder & Measured Performance Dashboard) Merged & Background Checks Enabled — 2026-11-20

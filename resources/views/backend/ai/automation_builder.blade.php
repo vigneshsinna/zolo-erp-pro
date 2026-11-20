@@ -81,7 +81,7 @@
                         <label for="builder-warehouse-query">Warehouse <span class="text-danger">*</span></label>
                         <input id="builder-warehouse-query" type="search" class="form-control ai-builder-lookup" data-kind="warehouse"
                             data-target="builder-warehouse-id" autocomplete="off" placeholder="Search and select your branch warehouse" aria-controls="builder-warehouse-options">
-                        <select id="builder-warehouse-options" class="form-control ai-builder-options" data-target="builder-warehouse-id"
+                        <select id="builder-warehouse-options" class="form-control ai-builder-options custom-select-native" data-target="builder-warehouse-id"
                             aria-label="Warehouse search results" size="5" hidden></select>
                         <input type="hidden" id="builder-warehouse-id" name="warehouse_id" value="">
                         <small class="form-text text-muted">Only active warehouses in your selected ERP branch can be used.</small>
@@ -105,7 +105,7 @@
                         <label for="builder-supplier-query">Supplier for draft PO <span class="text-danger">*</span></label>
                         <input id="builder-supplier-query" type="search" class="form-control ai-builder-lookup" data-kind="supplier"
                             data-target="builder-supplier-id" autocomplete="off" placeholder="Search and select an active supplier" aria-controls="builder-supplier-options">
-                        <select id="builder-supplier-options" class="form-control ai-builder-options" data-target="builder-supplier-id"
+                        <select id="builder-supplier-options" class="form-control ai-builder-options custom-select-native" data-target="builder-supplier-id"
                             aria-label="Supplier search results" size="5" hidden></select>
                         <input type="hidden" id="builder-supplier-id" name="supplier_id" value="">
                     </div>
@@ -121,7 +121,7 @@
                                     <input id="builder-product-query-0" type="search" class="form-control ai-builder-lookup" data-kind="product"
                                         data-target="builder-product-0" autocomplete="off" placeholder="Find product by name or SKU"
                                         aria-controls="builder-product-results-0">
-                                    <select id="builder-product-results-0" class="form-control ai-builder-options" data-target="builder-product-0"
+                                    <select id="builder-product-results-0" class="form-control ai-builder-options custom-select-native" data-target="builder-product-0"
                                         aria-label="Product search results" size="5" hidden></select>
                                     <input type="hidden" id="builder-product-0" name="items[0][product_id]" value="">
                                 </div>
@@ -228,7 +228,7 @@
             <input id="builder-product-query-__INDEX__" type="search" class="form-control ai-builder-lookup" data-kind="product"
                 data-target="builder-product-__INDEX__" autocomplete="off" placeholder="Find product by name or SKU"
                 aria-controls="builder-product-results-__INDEX__">
-            <select id="builder-product-results-__INDEX__" class="form-control ai-builder-options" data-target="builder-product-__INDEX__"
+            <select id="builder-product-results-__INDEX__" class="form-control ai-builder-options custom-select-native" data-target="builder-product-__INDEX__"
                 aria-label="Product search results" size="5" hidden></select>
             <input type="hidden" id="builder-product-__INDEX__" name="items[__INDEX__][product_id]" value="">
         </div>
