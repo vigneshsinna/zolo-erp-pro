@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "source_commit": "d0c39454c86a54526dc714bcaed6c349dddc7148",
+  "sources": [
+    "app/Ai/Registries/ActionCapabilityRegistry.php",
+    "app/Ai/Registries/ActionRequirementsRegistry.php",
+    "app/Ai/Registries/ExtendedActionCatalog.php",
+    "app/Ai/Requirements/GoodsReceivedNoteRequirementsProvider.php",
+    "app/Ai/Requirements/PurchaseBillRequirementsProvider.php",
+    "app/Ai/Requirements/PurchaseOrderRequirementsProvider.php",
+    "app/Ai/Requirements/SupplierSetupRequirementsProvider.php",
+    "app/Models/Customer.php",
+    "app/Models/GoodsReceivedNote.php",
+    "app/Models/Operations/JobWorkDispatch.php",
+    "app/Models/Operations/JobWorkOrder.php",
+    "app/Models/Operations/JobWorkReceipt.php",
+    "app/Models/Product.php",
+    "app/Models/Purchase.php",
+    "app/Models/Supplier.php",
+    "app/Models/Warehouse.php",
+    "app/Services/Commercial/OrderLifecycleService.php",
+    "app/Services/JobWork/JobWorkCosting.php",
+    "app/Services/JobWork/JobWorkService.php",
+    "app/Services/JobWork/PrincipalJobService.php",
+    "app/Services/Tax/TaxDeterminationService.php"
+  ],
+  "review_note": "Code evidence mapping only; not business owner signoff or authorization."
+}
