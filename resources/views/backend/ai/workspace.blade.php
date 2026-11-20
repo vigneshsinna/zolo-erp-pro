@@ -2175,6 +2175,7 @@
             })(jQuery);
         </script>
         <script>
+            window.zoloAiPurchaseEditContext = {!! \Illuminate\Support\Js::from($purchaseEditContext ?? null) !!};
             window.zoloAiMultimodalConfig = {!! \Illuminate\Support\Js::from([
                 'enabled' => (bool) ($isMultimodalEnabled ?? false),
                 'conversationEnabled' => (bool) config('erp_ai.conversation_enabled', false),

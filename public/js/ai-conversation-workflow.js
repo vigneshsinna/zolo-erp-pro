@@ -36,24 +36,26 @@
         if (active?.task_id === state.task_id && state.task_revision < active.task_revision) { reload(); return; }
         const log = $('#chat-messages');
         const wasAtEnd = log[0].scrollHeight - log.scrollTop() - log.innerHeight() < 80;
+        const isBill = state.action_key === 'purchase_bill.create.v1';
+        const documentLabel = isBill ? 'purchase bill' : 'purchase order';
         let root = $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === state.task_id).first();
         const hadFocus = root.length && root[0].contains(document.activeElement);
-        if (!root.length) root = $('<section class="ai-conversation-task card p-3 mb-3" aria-label="Purchase order draft"></section>').attr('data-task-id', state.task_id).appendTo(log);
+        if (!root.length) root = $('<section class="ai-conversation-task card p-3 mb-3" aria-label="Purchase document draft"></section>').attr('data-task-id', state.task_id).appendTo(log);
         root.empty().appendTo(log);
         const terminal = ['cancelled', 'completed'].includes(state.status);
         if (terminal) {
-            root.append($('<p class="mb-0"></p>').text(state.status === 'completed' ? 'Purchase order created. See the order register for its receipt.' : 'Draft cancelled.'));
+            root.append($('<p class="mb-0"></p>').text(state.status === 'completed' ? 'Purchase document created. See the register for its receipt.' : 'Draft cancelled.'));
             if (active?.task_id === state.task_id) reset();
             return;
         }
         active = {...state};
-        header.empty().prop('hidden', false).append($('<strong></strong>').text('Preparing purchase order — unposted draft'));
+        header.empty().prop('hidden', false).append($('<strong></strong>').text('Editing ' + documentLabel + ' — unposted proposal'));
         header.append($('<button type="button" data-conversation-action class="btn btn-sm btn-link ml-2">Resume</button>').on('click', () => submit('resume')));
-        header.append($('<button type="button" data-conversation-action class="btn btn-sm btn-link">Discard draft</button>').on('click', () => submit('Cancel this purchase order')));
-        root.append($('<div class="small text-muted mb-2"></div>').text(state.status === 'proposal_created' ? 'Proposal ready · Explicit approval required' : 'Complete any required Purchase Order details · ERP validation pending'));
+        header.append($('<button type="button" data-conversation-action class="btn btn-sm btn-link">Discard draft</button>').on('click', () => submit('Cancel this draft')));
+        root.append($('<div class="small text-muted mb-2"></div>').text(state.status === 'proposal_created' ? 'Proposal ready · Explicit approval required' : 'Complete the required ' + documentLabel + ' details · ERP validation pending'));
         const question = $('<h6 tabindex="-1" class="ai-conversation-question"></h6>').text(state.message || 'Which remaining details would you like to provide?');
         root.append(question);
-        const workspace = $('<section class="ai-po-workspace" aria-label="Complete Purchase Order workspace"></section>');
+        const workspace = $('<section class="ai-po-workspace" aria-label="Complete purchase document workspace"></section>');
         root.append(workspace);
         window.zoloAiPoWorkspace?.render({
             state, mount: workspace, request, submit, fail, setBusy, isBusy: () => busy,
@@ -152,9 +154,9 @@
             window.zoloAiMedia?.renderUnifiedWorkflowCard({status: 'proposal_created', task_id: state.task_id, task_revision: state.task_revision,
                 action_key: state.action_key, proposal: {id: state.proposal_id, version: state.version, action_key: state.action_key, preview: state.preview}}, '', null, details);
         }
-        $('#chat-input').attr('placeholder', 'Answer or correct this purchase order…');
-        $('#btn-ai-record-audio').attr('aria-label', 'Record answer for purchase order');
-        $('#btn-dictate').attr('aria-label', 'Dictate answer for purchase order');
+        $('#chat-input').attr('placeholder', 'Answer or correct this ' + documentLabel + '…');
+        $('#btn-ai-record-audio').attr('aria-label', 'Record answer for ' + documentLabel);
+        $('#btn-dictate').attr('aria-label', 'Dictate answer for ' + documentLabel);
         if (hadFocus) question[0].focus({preventScroll: true});
         if (wasAtEnd) log.scrollTop(log[0].scrollHeight);
     }
@@ -295,6 +297,20 @@
             return true;
         },
     };
+    // A scheduled PO or manually prepared bill can be opened as a dedicated,
+    // server-authenticated conversation. No proposal is modified on opening.
+    const linked = window.zoloAiPurchaseEditContext;
+    if (linked?.thread_id && linked?.task_id && linked?.proposal_id) {
+        ws.setCurrentThreadId(linked.thread_id);
+        sessionStorage.setItem('ai_active_thread', linked.thread_id);
+        $('#active-thread-title').text(linked.action_key === 'purchase_bill.create.v1'
+            ? 'Edit purchase bill proposal' : 'Edit purchase order proposal');
+        render({
+            ...linked, status: 'proposal_created',
+            message: 'This existing proposal is ready to edit. Tell Ask Zolo what to change. A new ERP preview and fresh approval are required after edits.',
+        });
+        ws.loadThreads();
+    }
     $(document).on('ai:conversation:reset', reset).on('ai:conversation:history', reload);
     $(document).on('ai:workflow:card-state', (_, state) => {
         if (!active || state.task_id !== active.task_id) return;

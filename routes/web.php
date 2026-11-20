@@ -181,6 +181,9 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
     // AI Operating Layer Workspace
     Route::get('ai', [\App\Http\Controllers\Ai\AiWorkspaceController::class, 'index'])->name('ai.workspace');
     Route::get('ai/operations', [\App\Http\Controllers\Ai\AiOperationsController::class, 'index'])->name('ai.operations');
+    Route::post('ai/operations/purchase-proposals/{id}/edit-with-copilot',
+        [\App\Http\Controllers\Ai\AiPurchaseCopilotEditorController::class, 'open'])
+        ->whereUuid('id')->middleware('throttle:10,1')->name('ai.purchase.edit-copilot');
     Route::get('ai/operations/exceptions', [\App\Http\Controllers\Ai\AiExceptionTriageController::class, 'index'])->name('ai.exceptions.index');
     Route::get('ai/operations/events', [\App\Http\Controllers\Ai\AiEventInboxController::class, 'index'])->name('ai.events.index');
     Route::get('ai/operations/builder', [\App\Http\Controllers\Ai\AiAutomationBuilderController::class, 'index'])->name('ai.builder.index');
