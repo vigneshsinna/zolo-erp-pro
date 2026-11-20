@@ -37,7 +37,8 @@ final class BusinessWorkflowPlanner
         foreach ($definition->data['steps'] as $step) {
             $supported = $step['kind'] !== 'unsupported_action';
             if ($step['kind'] === 'reviewed_action') {
-                $supported = $this->capabilities->has($step['action_key']);
+                $supported = $this->capabilities->has($step['action_key'])
+                    && $this->knowledge->forAction($step['action_key'], reviewedOnly: true) !== [];
                 if ($supported) {
                     try {
                         $this->security->definition($step['action_key'], $principal);
