@@ -32,6 +32,7 @@ class PrincipalJobService
             \App\Models\Company::whereKey($context->companyId)->lockForUpdate()->firstOrFail();
             $next = DB::table('principal_job_orders')->where('company_id', $context->companyId)->count() + 1;
             return DB::table('principal_job_orders')->insertGetId(['company_id' => $context->companyId, 'branch_id' => $context->branchId,
+                'financial_year_id' => $context->financialYearId,
                 'customer_id' => $data['customer_id'], 'reference_no' => 'PJO-'.str_pad((string) $next, 5, '0', STR_PAD_LEFT), 'business_date' => $data['business_date'],
                 'process' => $data['process'], 'service_product_id' => $data['service_product_id'], 'rate' => $data['rate'],
                 'max_loss_percent' => $data['max_loss_percent'] ?? 0, 'notes' => $data['notes'] ?? null, 'created_by' => $actor, 'created_at' => now(), 'updated_at' => now()]);
