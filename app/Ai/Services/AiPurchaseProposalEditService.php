@@ -33,7 +33,7 @@ final class AiPurchaseProposalEditService
 
         return DB::transaction(function () use ($principal, $proposalId): array {
             // Lock only a proposal that belongs to the current ERP actor/context.
-            $proposal = $this->proposals->getOwned($principal, $proposalId);
+            $this->proposals->getOwned($principal, $proposalId);
             $locked = DB::table('ai_action_proposals')
                 ->where('id', $proposalId)->where('actor_id', $principal->actorId)
                 ->where('company_id', $principal->companyId)->where('branch_id', $principal->branchId)
@@ -52,7 +52,12 @@ final class AiPurchaseProposalEditService
                 ->where('financial_year_id', $principal->financialYearId)->where('actor_id', $principal->actorId)
                 ->whereIn('status', ['collecting', 'ready', 'proposal_created', 'awaiting_master'])
                 ->where('expires_at', '>', now('UTC')->toDateTimeString())
-                ->whereNotNull('thread_id')->orderByDesc('created_at')->first();
+                ->whereNotNull('thread_id')
+                // A previously opened editor is reusable only while bound
+                // to this exact proposal version. Never resurrect old slots.
+                ->where('provenance_json->source', 'proposal_edit')
+                ->where('provenance_json->source_version', (int) $locked->version)
+                ->orderByDesc('created_at')->first();
             if ($existing && DB::table('ai_thread_scopes')->where('id', $existing->thread_id)
                 ->where('user_id', $principal->actorId)->where('company_id', $principal->companyId)
                 ->where('branch_id', $principal->branchId)

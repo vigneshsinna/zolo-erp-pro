@@ -29,7 +29,7 @@ final class ActionProposalService
         $count = DB::table('ai_action_proposals')
             ->where('actor_id', $principal->actorId)
             ->where('company_id', $principal->companyId)
-            ->whereIn('status', ['pending', 'approved', 'executing'])
+            ->whereIn('status', ['pending', 'approved', 'editing', 'executing'])
             ->count();
         if ($count >= (int) config('ai_actions.max_pending_per_actor', 25)) {
             throw ValidationException::withMessages(['action' => 'Too many pending proposals.']);

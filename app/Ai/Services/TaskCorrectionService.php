@@ -43,6 +43,7 @@ final class TaskCorrectionService
             || $task['expires_at'] <= now('UTC')->toDateTimeString()) {
             throw ValidationException::withMessages(['task' => 'This draft is no longer editable.']);
         }
+        $this->assertLinkedEditorFresh($principal, $task);
         $actionKey = (string) $task['action_key'];
         $definition = app(\App\Ai\Registries\ActionCapabilityRegistry::class)->get($actionKey);
         if ($principal instanceof AiPrincipal)
@@ -152,6 +153,7 @@ final class TaskCorrectionService
     public function prepareProposal(AiPrincipal $principal, array $task, EvaluationResult $evaluation): array
     {
         $current = $this->taskState->getTask($principal, $task['id']);
+        $this->assertLinkedEditorFresh($principal, $current);
         if ((int) $current['revision'] !== (int) $task['revision']) {
             throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException('Draft changed before proposal preparation.');
         }
@@ -174,6 +176,21 @@ final class TaskCorrectionService
             'preview' => json_decode($proposal['preview_json'], true, flags: JSON_THROW_ON_ERROR),
             'message' => 'ERP validation passed. Review this proposal and use the explicit approval control to create the order.',
             'can_prepare_proposal' => true];
+    }
+
+    private function assertLinkedEditorFresh(
+        AiPrincipal|BootstrapSetupPrincipal $principal,
+        array $task
+    ): void {
+        if (!($principal instanceof AiPrincipal) || !$task['linked_proposal_id']) return;
+        $source = json_decode((string) ($task['provenance_json'] ?? '{}'), true);
+        if (($source['source'] ?? null) !== 'proposal_edit') return;
+        $proposal = app(ActionProposalService::class)->getOwned($principal, $task['linked_proposal_id']);
+        if ((int) ($source['source_version'] ?? 0) !== (int) $proposal['version']) {
+            throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException(
+                'This proposal has a newer version. Reopen Edit with Ask Zolo from the review queue.'
+            );
+        }
     }
 
     private function applyFieldCorrection(array &$slots, string $field, mixed $value): void
