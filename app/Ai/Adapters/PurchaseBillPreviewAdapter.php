@@ -365,6 +365,8 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             ],
         ];
 
+        $previewData['match_audit'] = app(\App\Ai\Knowledge\PurchaseBillMatchAudit::class)
+            ->inspect($context, $normalizedPayload);
         $sourceStateHash = self::computeSourceStateHash(
             $context,
             $supplierId,
