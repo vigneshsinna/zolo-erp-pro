@@ -77,6 +77,8 @@ page.setDefaultTimeout(10000);
 page.on('pageerror', error => errors.push(error.message));
 try {
     await page.goto(origin + '/ai', {waitUntil: 'networkidle'});
+    // SSE regression is opt-in; production Copilot uses JSON by default.
+    await page.evaluate(() => { window.ZoloAiStreamEnabled = true; });
     await page.getByRole('button', {name: 'Start voice input'}).click();
     await page.evaluate(() => {
         const result = [{transcript: 'Review customer balances'}]; result.isFinal = true;
@@ -88,6 +90,7 @@ try {
     await page.locator('#btn-send').click();
     await page.getByText('Verified stream finished.', {exact: true}).waitFor();
     assert.equal(chatRequests[0].body.message, 'Review customer balances');
+    assert.match(chatRequests[0].body.client_turn_id, /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i);
     assert.ok(chatRequests[0].headers['x-csrf-token']);
     assert.ok(chatRequests[0].headers['x-ai-scope']);
     assert.equal(await page.evaluate(() => window.__xss), undefined);

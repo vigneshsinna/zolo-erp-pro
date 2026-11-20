@@ -57,6 +57,7 @@ class AiWorkspaceController extends Controller
             ],
             'canUseCopilot' => $isAiEnabled && $principal->permittedToolNames !== [],
             'isReadOnly' => $isReadOnly,
+            'streamingEnabled' => (bool) config('erp_ai.streaming_enabled', false),
             'isAdmin' => in_array((int) ($user->role_id ?? 0), [1, 2], true),
             'model' => $approvedModel['model'] ?? null,
             'provider' => $approvedModel['provider'] ?? null,

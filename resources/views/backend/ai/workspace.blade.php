@@ -275,6 +275,9 @@
               (function ($) {
                 'use strict';
 
+                // Transport only: both routes retain the same ERP permissions,
+                // provider metering, source checks and signed approvals.
+                window.ZoloAiStreamEnabled = @json((bool) ($streamingEnabled ?? false));
                 const workspace = $('.ai-workspace-container');
                 const welcomeMarkup = $('.ai-welcome-box').prop('outerHTML');
                 function fitWorkspace() {
@@ -1904,6 +1907,11 @@
 
                     const mediaIds = window.zoloAiMedia?.getAttachedMediaIds() || [];
                     const chatBody = { message: message, thread_id: currentThreadId };
+                    // A normal turn may encounter an existing action draft.
+                    // Never replay a failed submission automatically.
+                    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                        chatBody.client_turn_id = window.crypto.randomUUID();
+                    }
                     if (mediaIds.length > 0) chatBody.media_ids = mediaIds;
 
                     appendMessage('user', message);
@@ -1944,6 +1952,7 @@
 
                             let errMsg = err.error_message || err.message;
                             let errCode = err.error_code;
+                            if (err.incident_id) errMsg = (errMsg || 'Request failed.') + ' Reference: ' + err.incident_id;
 
                             if (!errMsg) {
                                 if (xhr.status === 504) {
@@ -1980,7 +1989,7 @@
                             $('#btn-send').prop('disabled', false);
                         }
                     };
-                    if (window.ZoloAiStream && window.ReadableStream && window.TextDecoder) {
+                    if (window.ZoloAiStreamEnabled && window.ZoloAiStream && window.ReadableStream && window.TextDecoder) {
                         let draftText = '';
                         window.ZoloAiStream.request('{{ route("ai.chat.stream") }}', headers, chatBody, function (delta) {
                             draftText += delta;

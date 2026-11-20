@@ -754,8 +754,40 @@ class AiChatController extends Controller
                     $emit('workflow_state', $result->getData(true)['workflow']);
                 }
                 $emit($result->isSuccessful() ? 'complete' : 'error', $result->getData(true) + ['http_status' => $result->getStatusCode()]);
-            } catch (\Throwable) {
-                $emit('error', ['error_code' => 'AI_STREAM_FAILED', 'error_message' => 'The response stream ended. Reload the conversation before retrying.']);
+            } catch (\Throwable $error) {
+                // Do not expose provider exception messages or invoice data to the client.
+                $incidentId = (string) Str::uuid();
+                [$code, $message, $httpStatus] = match (true) {
+                    $error instanceof \Illuminate\Validation\ValidationException => [
+                        'AI_TURN_VALIDATION_FAILED', 'The conversation needs updated workflow details. Reload it before continuing.', 422,
+                    ],
+                    $error instanceof \Symfony\Component\HttpKernel\Exception\ConflictHttpException => [
+                        'AI_TASK_REVISION_CONFLICT', 'The workflow changed. Reload the latest details before continuing.', 409,
+                    ],
+                    $error instanceof \Illuminate\Auth\Access\AuthorizationException => [
+                        'AI_FORBIDDEN', 'You are not authorized to continue this AI workflow.', 403,
+                    ],
+                    $error instanceof TooManyRequestsHttpException => [
+                        'AI_QUOTA_EXCEEDED', 'AI request limits have been reached. Please try again later.', 429,
+                    ],
+                    $error instanceof ServiceUnavailableHttpException => [
+                        'AI_DISABLED', 'AI is unavailable for the current company.', 503,
+                    ],
+                    default => [
+                        'AI_STREAM_FAILED', 'The AI request could not finish. Check the incident reference with your administrator.', 500,
+                    ],
+                };
+                Log::warning('AI chat stream terminated unexpectedly.', [
+                    'incident_id' => $incidentId,
+                    'exception_type' => $error::class,
+                    'exception_location' => $error->getFile() . ':' . $error->getLine(),
+                    'error_code' => $code,
+                    'http_status' => $httpStatus,
+                ]);
+                $emit('error', [
+                    'error_code' => $code, 'error_message' => $message,
+                    'http_status' => $httpStatus, 'incident_id' => $incidentId,
+                ]);
             }
         }, 200, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'no-cache, no-store, no-transform', 'X-Accel-Buffering' => 'no']);
     }
