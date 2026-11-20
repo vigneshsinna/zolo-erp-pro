@@ -130,6 +130,7 @@ final class BusinessWorkflowProgress
         DB::transaction(function () use ($principal, $workflowId, $revision): void {
             $workflow = $this->owned($principal, $workflowId)->lockForUpdate()->first();
             $this->assertRevision($workflow, $revision);
+            $this->assertProcessEnabled($workflow);
             if ($workflow->status !== 'planned') {
                 throw ValidationException::withMessages(['workflow' => 'Pause/cancelled workflows cannot progress.']);
             }
@@ -201,6 +202,7 @@ final class BusinessWorkflowProgress
         DB::transaction(function () use ($principal, $workflowId, $revision, $stepKey, $update, $event): void {
             $workflow = $this->owned($principal, $workflowId)->lockForUpdate()->first();
             $this->assertRevision($workflow, $revision);
+            $this->assertProcessEnabled($workflow);
             if ($workflow->status !== 'planned') {
                 throw ValidationException::withMessages(['workflow' => 'Only active planned workflows can advance.']);
             }
@@ -267,12 +269,19 @@ final class BusinessWorkflowProgress
         ]);
     }
 
+    private function assertProcessEnabled(object $workflow): void
+    {
+        if (str_contains((string) $workflow->process_id, 'job_work')
+            && !config('ai_business_knowledge.job_work_enabled', false)) {
+            throw new AuthorizationException('Job-work workflow tracking is disabled.');
+        }
+    }
+
     private function enabled(AiPrincipal $principal): void
     {
         if (!config('ai_business_knowledge.enabled', false)
-            || !config('ai_business_knowledge.planner_enabled', false)
-            || !config('ai_business_knowledge.job_work_enabled', false)) {
-            throw new AuthorizationException('Job-work workflow tracking is disabled.');
+            || !config('ai_business_knowledge.planner_enabled', false)) {
+            throw new AuthorizationException('Business workflow tracking is disabled.');
         }
         $this->security->assertEnabled($principal);
     }
