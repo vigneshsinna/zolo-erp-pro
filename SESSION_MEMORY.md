@@ -1,3 +1,33 @@
+## Merge: Branch 'ui' Integrated into 'feature/ai-unified-input-clarification' — 2026-11-20
+
+- **Context & User Request:**
+  - The `ui` branch received numerous latest non-AI updates (including PRs #23, #26, #27, #28, #29, #32 with Product Lifecycle tracking, slim pill catalog capsules, hover auto-scrolling, godown stock balance fixes, high-concurrency performance architecture, and modern workspace enhancements).
+  - Merged all latest updates from `ui` (`4c82307`) into the AI feature branch `feature/ai-unified-input-clarification`.
+- **Merge & Conflict Resolution Summary:**
+  - Resolved conflicts cleanly across:
+    1. `.github/workflows/company-foundation.yml`: Preserved GitHub Actions matrix database expressions for both concurrency and AI test databases.
+    2. `app/Ai/Requirements/PurchaseBillRequirementsProvider.php` & `PurchaseOrderRequirementsProvider.php`: Applied enhanced warehouse scoping allowing unassigned company-wide warehouses (`orWhereNull('branch_id')`).
+    3. `app/Ai/Services/BatchRecordResolutionService.php` & `RecordResolutionService.php`: Integrated deterministic candidate warehouse resolution, inactive/wrong-branch diagnostics, and backwards-compatible recommendation/reason metadata.
+    4. `app/Services/Commercial/CommercialApplicationService.php`: Consolidated commercial attributes (`payment_terms_type`, `is_non_gst`, `bill_type`, optical and delivery metadata).
+    5. `app/Services/ERP/PurchaseService.php` & `SaleService.php`: Retained optional batch metadata along with `mfg_date`, `mrp`, and expiry capability validation.
+    6. `app/Models/Warehouse.php`: Eliminated duplicate `branch()` method definition.
+    7. `public/css/pages/ai-workspace.css`: Retained both two-column clarification/conversation workspace styles and Task T04 Entity Picker styles.
+    8. `public/js/ai-media-input.js`: Harmonized interactive line items builder, entity picker integration, proposal editing, and revision conflict (409) handling.
+    9. `resources/views/backend/ai/workspace.blade.php`: Retained design token styling, modal sizing, and conditional script loading (`ai-entity-picker.js`, `ai-master-create.js`, `ai-conversation-po-workspace.js`, `ai-conversation-workflow.js`).
+    10. `resources/views/backend/sale/index.blade.php`: Aligned optical type badge conditional styling.
+    11. `tests/Unit/Ai/Billing/SubscriptionAndPaymentHardeningTest.php`: Aligned boolean subscription assertion.
+    12. `SESSION_MEMORY.md`: Preserved complete history and session memories from both branches.
+- **Verification:**
+  - `php -l`: 0 syntax errors across all touched PHP files.
+  - `node --check`: 0 syntax errors across all touched JavaScript files.
+  - `DesignTokensTest`: 4/4 passed (100% OK).
+  - `SimplifiedStockAndTimelineTest`: 5/5 passed (57 assertions, 100% OK).
+  - `AiEntityLookupTest`, `SafeWarehouseResolutionTest`, `EntityOptionsTest`: 31/31 passed (124 assertions, 100% OK with `ERP_TEST_MYSQL=1`).
+  - `AiAutomationBuilderAndPerformanceTest`: 7/7 passed (55 assertions, 100% OK).
+  - `SubscriptionAndPaymentHardeningTest`: 6/6 passed (23 assertions, 100% OK).
+
+---
+
 ## Live Verification: Low-Stock Automation Monitoring & Unapproved PO Proposal Generation — 2026-11-20
 
 - **Context & User Request:**
