@@ -54,7 +54,7 @@ final class SupplierSetupConversation
             $gstStatus = 'registered';
         }
 
-        if ($task['linked_proposal_id'] && ($cancel || $changes !== [])) {
+        if ($task['linked_proposal_id'] && ($cancel || $changes !== [] || $gstStatus !== null)) {
             $proposals = app(ActionProposalService::class);
             $proposal = $proposals->getOwned($principal, $task['linked_proposal_id']);
             $proposals->reject($principal, $proposal['id'], (int) $proposal['version']);
