@@ -54,6 +54,7 @@
             <p>Opted-in low-stock checks and purchase-order preparation.</p>
             <strong class="ai-ops-metric">{{ $rules->count() }}</strong>
             <span class="ai-ops-note">{{ $scheduling ? 'Your active schedules' : 'Scheduling is disabled' }}</span>
+            <a href="{{ route('ai.builder.index') }}" class="mt-2">Manage automations <span aria-hidden="true">&rarr;</span></a>
             <a href="{{ route('ai.events.index') }}" class="mt-2">Event inbox <span aria-hidden="true">&rarr;</span></a>
         </section>
         <section class="ai-ops-card" aria-labelledby="ai-ops-copilot-title">
@@ -93,6 +94,7 @@
             @empty
                 <p class="ai-ops-empty">No active schedules to show.</p>
             @endforelse
+            <a href="{{ route('ai.performance.index') }}" class="btn btn-outline-primary btn-sm mt-3">Agent performance</a>
             @if($canApprove && $foundation)
                 <a href="{{ route('ai.reversals.index') }}" class="btn btn-outline-secondary btn-sm mt-3">Reversal review requests</a>
             @endif
