@@ -58,7 +58,11 @@ final class BusinessIntentInterpreter
         if (preg_match('/\b(?:name|supplier name|company name|phone|mobile|email|gstin|gst number|city|state|address)\s*(?:[:=]|\s+(?:is|to)\b)/i', $message)) return null;
         if ($needsName && preg_match('/^[\pL\pN][\pL\pN &.,\x27()-]{1,180}$/uD', trim($message))
             && !preg_match('/\b(?:from|at|in|our|their|they|he|she|unregistered|registered|gst)\b/i', $message)) return null;
-        return $this->modelParse($principal, $threadId, $message, 'supplier_fields', 'supplier');
+        $parsed = $this->modelParse($principal, $threadId, $message, 'supplier_fields', 'supplier');
+        if (!$needsName && !preg_match('/\b(?:change|update|correct|rename)\s+(?:the\s+)?(?:supplier\s+)?name\b/i', $message)) {
+            unset($parsed['facts']['name']);
+        }
+        return $parsed;
     }
 
     /** Strict direction references: "buying linen" alone is not sufficient. */
