@@ -42,11 +42,13 @@ final class BusinessWorkflowMetrics
             'scope' => 'current_actor_company_branch_fy',
             'workflow_status_counts' => array_map('intval', $rows),
             'step_status_counts' => array_map('intval', $stepRows),
-            'completed_erp_actions' => (int) DB::table('ai_action_executions')
-                ->where('company_id', $principal->companyId)
-                ->where('branch_id', $principal->branchId)
-                ->where('financial_year_id', $principal->financialYearId)
-                ->where('status', 'completed')->count(),
+            'completed_erp_actions' => (int) DB::table('ai_action_executions as e')
+                ->join('ai_action_proposals as p', 'p.id', '=', 'e.proposal_id')
+                ->where('p.company_id', $principal->companyId)
+                ->where('p.branch_id', $principal->branchId)
+                ->where('p.financial_year_id', $principal->financialYearId)
+                ->where('p.actor_id', $principal->actorId)
+                ->where('e.status', 'completed')->count(),
             'model_tokens' => null, 'model_credits' => null,
             'model_usage_source' => 'existing AI credit metering and provider telemetry; never estimated from plan count',
             'as_of' => now('UTC')->toIso8601String(),
