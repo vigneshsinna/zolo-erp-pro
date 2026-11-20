@@ -2,6 +2,9 @@
   "schema_version": 1,
   "source_commit": "d0c39454c86a54526dc714bcaed6c349dddc7148",
   "sources": [
+    "app/Ai/Adapters/JobWorkOrderActionAdapter.php",
+    "app/Ai/Adapters/JobWorkServiceBillActionAdapter.php",
+    "app/Ai/Adapters/PrincipalJobInvoiceActionAdapter.php",
     "app/Ai/Adapters/PurchaseBillPreviewAdapter.php",
     "app/Ai/Adapters/ServicePurchaseBillAdapter.php",
     "app/Ai/Knowledge/PurchaseDocumentClassifier.php",
