@@ -375,8 +375,8 @@
         if (effectiveThreadId) {
             fd.append('thread_id', effectiveThreadId);
         }
-        const replyTask = targetStaged.isAudio && window.zoloAiConversation?.getActiveTask();
-        if (replyTask) {
+        const replyTask = window.zoloAiConversation?.getActiveTask();
+        if (replyTask && (targetStaged.isAudio || replyTask.action_key === 'setup.supplier.create.v1')) {
             fd.append('workflow_task_id', replyTask.task_id);
             fd.append('expected_task_revision', replyTask.task_revision);
         }
@@ -398,6 +398,8 @@
                         window.zoloAiConversation.reviewInitialVoice(res);
                     } else if (res.status === 'voice_reply_ready' && window.zoloAiConversation) {
                         window.zoloAiConversation.reviewVoice(res);
+                    } else if (res.status === 'supplier_photo_review_ready' && window.zoloAiConversation) {
+                        window.zoloAiConversation.reviewSupplierPhoto(res);
                     } else if (targetStaged.isAudio && cfg.conversationEnabled) {
                         throw new Error('Voice instruction requires explicit transcript review. No ERP action was staged.');
                     } else {
@@ -628,6 +630,7 @@
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
         let currentRes = res;
+        let reviewedPreview = {};
 
         function refreshView(stateName, stateData) {
             card.empty();
@@ -656,6 +659,7 @@
                 } catch (_) { preview = {}; }
             }
             preview = preview || {};
+            reviewedPreview = preview;
 
             let payload = proposal.payload;
             if (!payload && proposal.payload_json) {
@@ -855,8 +859,8 @@
             const body = $('<div class="card-body p-3 bg-white"></div>');
             const successBox = $('<div class="alert alert-success p-3 border-success mb-2"></div>');
             successBox.append('<h6 class="font-weight-bold text-success mb-1">Voucher Booked: ' + escapeText(refNo) + '</h6>');
-            const bookedWarehouse = (receipt && receipt.details && receipt.details.warehouse_name) || (currentRes && currentRes.proposal && currentRes.proposal.preview && currentRes.proposal.preview.warehouse && currentRes.proposal.preview.warehouse.name) || (preview && preview.warehouse && preview.warehouse.name) || 'warehouse';
-            const impactDesc = isPo ? ('Status: Successfully posted to Purchase Orders, allocations updated in ' + escapeText(bookedWarehouse) + '.') : ('Status: Successfully posted to Accounts Payable, inventory updated in ' + escapeText(bookedWarehouse) + '.');
+            const bookedWarehouse = receipt?.details?.warehouse_name || reviewedPreview.warehouse?.name || 'warehouse';
+            const impactDesc = isPo ? ('Status: Successfully posted to Purchase Orders, allocations updated in ' + bookedWarehouse + '.') : ('Status: Successfully posted to Accounts Payable, inventory updated in ' + bookedWarehouse + '.');
             successBox.append('<div class="small text-muted mb-3">' + escapeText(impactDesc) + '</div>');
 
             const btnRow = $('<div class="d-flex align-items-center flex-wrap"></div>');
@@ -1130,7 +1134,7 @@
                                         },
                                         success: function (resOpts) {
                                             prodDropdown.empty();
-                                            const items = resOpts.items || [];
+                                            const items = (resOpts.items || []).filter(opt => opt.eligible !== false);
                                             if (items.length === 0) {
                                                 const noMatch = $('<div class="p-2 small text-muted"></div>');
                                                 noMatch.append('<div>No products match "<strong>' + escapeText(q) + '</strong>".</div>');
@@ -1257,11 +1261,15 @@
                                             initialName: inp.current_value || '',
                                             aiBaseUrl: aiBaseUrl,
                                             baseHeaders: baseHeaders,
+                                            onUseExisting: function (entity) {
+                                                hiddenInput.val(entity.id);
+                                                renderSummaryView(entity);
+                                            },
                                             onCompleted: function (res) {
                                                 if (res && res.proposal) {
-                                                    renderProposalView(res);
+                                                    refreshView('proposal', res);
                                                 } else if (res && res.task) {
-                                                    renderClarificationView(res);
+                                                    refreshView('clarification', res);
                                                 } else {
                                                     $.ajax({
                                                         url: aiBaseUrl + '/workflow-tasks/' + currentTaskId,
@@ -1278,10 +1286,10 @@
                                                                     headers: baseHeaders(true),
                                                                     dataType: 'json'
                                                                 }).done(function (pRes) {
-                                                                    renderProposalView(pRes);
+                                                                    refreshView('proposal', pRes);
                                                                 });
                                                             } else {
-                                                                renderClarificationView(latestTaskRes);
+                                                                refreshView('clarification', latestTaskRes);
                                                             }
                                                         }
                                                     });
@@ -1385,7 +1393,7 @@
                                 },
                                 success: function (resOpts) {
                                     optionsList.empty();
-                                    const items = resOpts.items || [];
+                                    const items = (resOpts.items || []).filter(opt => opt.eligible !== false);
                                     if (items.length === 0) {
                                         optionsList.html('<div class="text-center text-muted small py-3"><i class="dripicons-information mr-1"></i>No matching ' + escapeText(entityType) + 's found in active branch.</div>');
                                         return;
@@ -1741,7 +1749,7 @@
                                             proposal: resPrep.proposal,
                                             task: resPrep.task,
                                             media: mediaObj,
-                                            extraction: ext
+                                            extraction: currentRes.extraction || extraction
                                         });
                                     } else if (resPrep && resPrep.status === 'needs_input') {
                                         refreshView('clarification', resPrep);
@@ -1814,12 +1822,17 @@
             const formGrid = $('<div class="form-row mb-3"></div>');
 
             formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">' + escapeText(isPurchase ? 'Supplier' : 'Customer') + '</label><input type="text" class="form-control form-control-sm ai-edit-supplier" value="' + escapeText((preview.supplier && (preview.supplier.name || preview.supplier.company_name)) || ext.supplier_name || '') + '"></div>');
-            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">' + escapeText(isPb ? 'Invoice Number' : (isPo ? 'Order Reference' : 'Reference Number')) + '</label><input type="text" class="form-control form-control-sm ai-edit-invoice-no" value="' + escapeText(preview.supplier_invoice_no || preview.reference_no || ext.invoice_number || '') + '"></div>');
+            if (!isPo) {
+                formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">' + escapeText(isPb ? 'Invoice Number' : 'Reference Number') + '</label><input type="text" class="form-control form-control-sm ai-edit-invoice-no" value="' + escapeText(preview.supplier_invoice_no || preview.reference_no || ext.invoice_number || '') + '"></div>');
+            }
             formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Document Date</label><input type="date" class="form-control form-control-sm ai-edit-date" value="' + escapeText(preview.date || ext.invoice_date || '') + '"></div>');
             formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Warehouse</label><div class="input-group input-group-sm"><input type="hidden" class="ai-edit-warehouse-id" value="' + escapeText((preview.warehouse && preview.warehouse.id) || '') + '"><input type="text" class="form-control form-control-sm ai-edit-warehouse" value="' + escapeText((preview.warehouse && preview.warehouse.name) || '') + '" placeholder="Enter warehouse name or ID"><div class="input-group-append"><button type="button" class="btn btn-outline-secondary ai-btn-browse-warehouse" title="Browse warehouses"><i class="dripicons-search"></i></button></div></div><div class="ai-edit-picker-container mt-2" style="display: none;"></div></div>');
             body.append(formGrid);
 
             const editPickerBox = body.find('.ai-edit-picker-container');
+            body.find('.ai-edit-warehouse').on('input', function () {
+                body.find('.ai-edit-warehouse-id').val('');
+            });
             body.find('.ai-btn-browse-warehouse').on('click', function () {
                 if (editPickerBox.is(':visible')) {
                     editPickerBox.slideUp('fast').empty();
@@ -1851,7 +1864,7 @@
             const tbody = $('<tbody></tbody>');
 
             const items = preview.items || ext.lines || [];
-            items.forEach(function (item, idx) {
+            items.forEach(function (item) {
                 const tr = $('<tr></tr>');
                 tr.append('<td><input type="text" class="form-control form-control-sm ai-edit-item-desc" value="' + escapeText(item.product_name || item.description || '') + '"></td>');
                 tr.append('<td><input type="number" step="any" class="form-control form-control-sm ai-edit-item-qty text-right" value="' + (item.qty ?? item.quantity ?? 1) + '"></td>');
@@ -1880,69 +1893,70 @@
 
                 const corrections = [];
 
-                const supplierVal = body.find('.ai-edit-supplier').val();
-                if (supplierVal !== undefined && supplierVal.trim() !== '') {
+                const supplierInput = body.find('.ai-edit-supplier');
+                const supplierVal = supplierInput.val().trim();
+                if (supplierVal !== '' && supplierVal !== supplierInput.prop('defaultValue').trim()) {
                     corrections.push({
                         field: isPurchase ? 'supplier_id' : 'customer_id',
-                        value: supplierVal.trim(),
+                        value: supplierVal,
                         confirmation: 'user_edited'
                     });
                 }
 
-                const invoiceNoVal = body.find('.ai-edit-invoice-no').val();
-                if (invoiceNoVal !== undefined && invoiceNoVal.trim() !== '') {
+                const invoiceNoInput = body.find('.ai-edit-invoice-no');
+                const invoiceNoVal = invoiceNoInput.val()?.trim();
+                if (invoiceNoVal !== undefined && invoiceNoVal !== invoiceNoInput.prop('defaultValue').trim()) {
                     corrections.push({
-                        field: isPb ? 'supplier_invoice_no' : (isPo ? 'reference_no' : 'invoice_no'),
-                        value: invoiceNoVal.trim(),
+                        field: isPb ? 'supplier_invoice_no' : 'customer_reference_no',
+                        value: invoiceNoVal,
                         confirmation: 'user_edited'
                     });
                 }
 
-                const dateVal = body.find('.ai-edit-date').val();
-                if (dateVal !== undefined && dateVal.trim() !== '') {
+                const dateInput = body.find('.ai-edit-date');
+                const dateVal = dateInput.val();
+                if (dateVal !== '' && dateVal !== dateInput.prop('defaultValue')) {
                     corrections.push({
                         field: 'date',
-                        value: dateVal.trim(),
+                        value: dateVal,
                         confirmation: 'user_edited'
                     });
                 }
 
-                const whIdVal = body.find('.ai-edit-warehouse-id').val();
-                const warehouseVal = body.find('.ai-edit-warehouse').val();
-                if (whIdVal && !isNaN(whIdVal) && Number(whIdVal) > 0) {
+                const warehouseIdInput = body.find('.ai-edit-warehouse-id');
+                const warehouseInput = body.find('.ai-edit-warehouse');
+                const whIdVal = warehouseIdInput.val();
+                const warehouseVal = warehouseInput.val().trim();
+                if (Number(whIdVal) > 0 && whIdVal !== warehouseIdInput.prop('defaultValue')) {
                     corrections.push({
                         field: 'warehouse_id',
                         value: Number(whIdVal),
                         confirmation: 'user_selected'
                     });
-                } else if (warehouseVal !== undefined && warehouseVal.trim() !== '') {
+                } else if (!whIdVal && warehouseVal !== '' && warehouseVal !== warehouseInput.prop('defaultValue').trim()) {
                     corrections.push({
                         field: 'warehouse_id',
-                        value: warehouseVal.trim(),
+                        value: warehouseVal,
                         confirmation: 'user_edited'
                     });
                 }
 
-                const updatedItems = [];
                 tbody.find('tr').each(function (idx) {
-                    const desc = $(this).find('.ai-edit-item-desc').val().trim();
-                    const qty = parseFloat($(this).find('.ai-edit-item-qty').val()) || 1;
-                    const rate = parseFloat($(this).find('.ai-edit-item-rate').val()) || 0;
-                    updatedItems.push({
-                        client_line_id: 'line-' + idx,
-                        product_query: desc,
-                        qty: qty,
-                        net_unit_cost: rate
-                    });
+                    const line = $(this);
+                    const lineId = items[idx].client_line_id || idx;
+                    const fields = [
+                        ['product_query', '.ai-edit-item-desc'],
+                        ['qty', '.ai-edit-item-qty'],
+                        [isPurchase ? 'net_unit_cost' : 'net_unit_price', '.ai-edit-item-rate']
+                    ];
+                    for (const [field, selector] of fields) {
+                        const input = line.find(selector);
+                        const value = input.val().trim();
+                        if (value !== input.prop('defaultValue').trim()) {
+                            corrections.push({ field: 'items[' + lineId + '].' + field, value: value, confirmation: 'user_edited' });
+                        }
+                    }
                 });
-
-                if (updatedItems.length > 0) {
-                    corrections.push({
-                        field: 'items',
-                        value: updatedItems,
-                        confirmation: 'user_edited'
-                    });
-                }
 
                 if (corrections.length === 0) {
                     btnSave.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Update & Revalidate');
@@ -1950,7 +1964,7 @@
                     return;
                 }
 
-                const expectedRevision = (currentRes.task && currentRes.task.revision) || (currentRes.task_revision) || (taskObj && taskObj.revision) || 1;
+                const expectedRevision = currentRes.task?.revision || currentRes.task_revision || 1;
 
                 $.ajax({
                     url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/inputs',
@@ -1963,9 +1977,6 @@
                     success: function (resPatch) {
                         if (resPatch && resPatch.task) {
                             currentRes.task = resPatch.task;
-                            if (taskObj) {
-                                taskObj.revision = resPatch.task.revision;
-                            }
                         }
                         const isReady = !!(resPatch && resPatch.evaluation && resPatch.evaluation.is_ready);
                         if (isReady) {
@@ -1979,8 +1990,8 @@
                                         status: 'proposal_created',
                                         proposal: resPrep.proposal,
                                         task: resPrep.task,
-                                        media: mediaObj,
-                                        extraction: ext
+                                        media: currentRes.media || media,
+                                        extraction: currentRes.extraction || extraction
                                     });
                                 },
                                 error: function (xhrPrep) {

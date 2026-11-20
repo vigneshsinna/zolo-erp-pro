@@ -77,7 +77,7 @@ final class VoiceWorkflowReply
                 'voice' => 'The requested transaction is unclear. Say or type "Create a purchase order" explicitly.',
             ]);
         }
-        if ($intent !== 'purchase_order.create.v1') {
+        if (!in_array($intent, ['purchase_order.create.v1', SupplierSetupConversation::KEY], true)) {
             throw ValidationException::withMessages([
                 'voice' => 'This conversational workflow supports Purchase Orders. The request for a different transaction was not converted or staged.',
             ]);

@@ -379,6 +379,45 @@ class ActiveTaskRoutingTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_supplier_draft_accepts_confirmed_recording_and_photo_in_the_same_thread(): void
+    {
+        $thread = $this->postJson(route('ai.threads.store'), ['title' => 'Supplier media'])->assertCreated()->json('id');
+        $draft = $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'client_turn_id' => (string) Str::uuid(), 'message' => 'create a supplier',
+        ])->assertOk()->json('workflow');
+        [$voice] = $this->voice($thread, $draft['task_id'], 'Supplier name is Recorded Supplier. Email is media@example.com.');
+        $input = ['thread_id' => $thread, 'active_task_id' => $draft['task_id'], 'expected_task_revision' => $draft['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'Supplier name is Recorded Supplier. Email is media@example.com.',
+            'media_ids' => [$voice->id], 'voice_extraction_revision' => 1];
+        $draft = $this->postJson(route('ai.chat'), $input)->assertOk()->assertJsonPath('workflow.task_id', $draft['task_id'])->json('workflow');
+        $photo = $voice->replicate(['id', 'sha256']);
+        $photo->fill(['source_kind' => 'image', 'original_mime' => 'image/png', 'canonical_mime' => 'image/png',
+            'sha256' => hash('sha256', (string) Str::uuid()), 'private_key' => 'fixture.png'])->save();
+        \App\Models\AiMediaExtraction::create([
+            'company_id' => $this->company->id, 'media_id' => $photo->id, 'revision' => 1, 'model_provider' => 'fixture',
+            'model_key' => 'fixture', 'prompt_version' => 'fixture', 'extraction_schema_version' => 'media.invoice.v1',
+            'extracted_json' => ['supplier_name' => 'Photographed Supplier', 'supplier_phone' => '9876543210'],
+            'confirmation_status' => 'confirmed', 'confirmed_by' => $this->adminUser->id, 'confirmed_at' => now(),
+        ]);
+        $this->postJson(route('ai.media.prepare'), ['media_id' => $photo->id, 'thread_id' => $thread,
+            'workflow_task_id' => $draft['task_id'], 'expected_task_revision' => $draft['task_revision']])
+            ->assertOk()->assertJsonPath('status', 'supplier_photo_review_ready');
+        $input = ['thread_id' => $thread, 'active_task_id' => $draft['task_id'], 'expected_task_revision' => $draft['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'Use confirmed supplier details', 'media_ids' => [$photo->id]];
+        $this->postJson(route('ai.chat'), $input + ['supplier_photo_revision' => 2])
+            ->assertConflict()->assertJsonPath('error_code', 'SUPPLIER_PHOTO_CHANGED');
+        $draft = $this->postJson(route('ai.chat'), $input + ['supplier_photo_revision' => 1])
+            ->assertOk()->assertJsonPath('workflow.task_id', $draft['task_id'])->json('workflow');
+        $this->postJson(route('ai.chat'), [
+            'thread_id' => $thread, 'active_task_id' => $draft['task_id'], 'expected_task_revision' => $draft['task_revision'],
+            'client_turn_id' => (string) Str::uuid(), 'message' => 'preview supplier',
+        ])->assertOk()->assertJsonPath('workflow.preview.name', 'Photographed Supplier')
+            ->assertJsonPath('workflow.preview.phone_number', '9876543210')
+            ->assertJsonPath('workflow.preview.email', 'media@example.com');
+        $this->assertDatabaseMissing('suppliers', ['name' => 'Photographed Supplier']);
+        Http::assertNothingSent();
+    }
+
     protected function voice(string $thread, string $taskId, string $transcript): array
     {
         config(['ai_multimodal.enabled' => true]);

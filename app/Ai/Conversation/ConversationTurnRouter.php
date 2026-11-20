@@ -47,7 +47,32 @@ final class ConversationTurnRouter
             }
             return $metadata['result'] + ['replayed' => true];
         }
-        $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
+        $supplier = app(SupplierSetupConversation::class);
+        $supplierName = $supplier->start($message);
+        $requestedTask = $supplierName === null ? ($input['active_task_id'] ?? null) : null;
+        $tasks = $this->resolver->resolve($principal, $threadId, $requestedTask);
+        $supplierTasks = array_values(array_filter($tasks, fn (array $task): bool => $task['action_key'] === SupplierSetupConversation::KEY));
+        if ($supplierName !== null || ($supplierTasks !== [] && ($requestedTask !== null || count($tasks) === 1))) {
+            if (app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
+                return null;
+            }
+            if (empty($input['client_turn_id'])) {
+                throw ValidationException::withMessages(['client_turn_id' => 'A conversation turn UUID is required.']);
+            }
+            app(ActionSecurity::class)->definition(SupplierSetupConversation::KEY, $principal);
+            $task = $supplierTasks[0] ?? $this->state->createTask(new WorkflowTaskContext(
+                $principal, new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
+                threadId: $threadId,
+            ), SupplierSetupConversation::KEY);
+            if ($supplierTasks !== [] && $requestedTask !== null) {
+                $this->assertRevision($task, $input);
+            }
+            $result = $supplier->reply($principal, $task, $message, $supplierName, $input['supplier_photo'] ?? []);
+            if ($result !== null) {
+                $this->saveReceipt($principal, $task, $input, $hash, $result);
+            }
+            return $result;
+        }
         if (!$this->startsPurchaseOrder($message) && $tasks === []) {
             return null;
         }
@@ -202,6 +227,12 @@ final class ConversationTurnRouter
             }
         }
         $result = app(ConversationChoices::class)->publish($principal, $task, $result);
+        $this->saveReceipt($principal, $task, $input, $hash, $result);
+        return $result;
+    }
+
+    private function saveReceipt(AiPrincipal $principal, array $task, array $input, string $hash, array $result): void
+    {
         DB::table('ai_workflow_task_events')->insert([
             'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
             'event_type' => 'conversation_turn', 'revision' => $result['task_revision'],
@@ -209,12 +240,14 @@ final class ConversationTurnRouter
                 'source' => isset($input['voice_source']) ? array_diff_key($input['voice_source'], ['warnings' => true]) : ['kind' => 'text'], 'result' => $result], JSON_THROW_ON_ERROR),
             'created_at' => now(),
         ]);
-        return $result;
     }
 
     // Provider billing must commit outside the draft transaction, including rejected or stale output.
     public function interpretTurn(AiPrincipal $principal, string $threadId, array $input): ?array
     {
+        if (app(SupplierSetupConversation::class)->start($input['message']) !== null) {
+            return null;
+        }
         if (DB::table('ai_workflow_task_events')->whereIn('task_id', $this->resolver->tasks($principal, $threadId)->select('id'))
             ->where('event_type', 'conversation_turn')->where('metadata_json->client_turn_id', $input['client_turn_id'] ?? '')->exists()) {
             return null;
@@ -228,7 +261,8 @@ final class ConversationTurnRouter
             return null;
         }
         $task = $tasks[0];
-        if (app(ConversationMasterContinuation::class)->handles($task, $input['message'])) {
+        if ($task['action_key'] === SupplierSetupConversation::KEY
+            || app(ConversationMasterContinuation::class)->handles($task, $input['message'])) {
             return null;
         }
         app(ActionSecurity::class)->definition($task['action_key'], $principal);

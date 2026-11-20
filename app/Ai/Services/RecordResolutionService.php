@@ -218,24 +218,28 @@ class RecordResolutionService
                 }
             }
 
-            // 2. Exact match on Name
-            $exactBranchMatch = Warehouse::where('company_id', $context->companyId)
+            $eligibleWarehouses = Warehouse::where('company_id', $context->companyId)
                 ->where('is_active', true)
-                ->where('name', $trimmed)
                 ->when($context->branchId, function ($q) use ($context) {
                     $q->where(function ($sub) use ($context) {
                         $sub->where('branch_id', $context->branchId)
                             ->orWhereNull('branch_id');
                     });
-                })
-                ->first();
+                });
 
-            if ($exactBranchMatch) {
+            $exactMatches = (clone $eligibleWarehouses)
+                ->where(fn ($q) => $q->where('name', $trimmed)->orWhere('address', $trimmed))
+                ->orderBy('id')
+                ->limit(5)
+                ->get();
+
+            if ($exactMatches->isNotEmpty()) {
+                $unique = $exactMatches->count() === 1;
                 return [
-                    'status' => 'exact',
-                    'warehouse' => $exactBranchMatch,
-                    'candidates' => collect([$exactBranchMatch]),
-                    'reason' => 'exact_name',
+                    'status' => $unique ? 'exact' : 'candidates',
+                    'warehouse' => $unique ? $exactMatches->first() : null,
+                    'candidates' => $exactMatches,
+                    'reason' => $unique ? 'exact_name' : 'ambiguous_candidates',
                 ];
             }
 
@@ -254,21 +258,23 @@ class RecordResolutionService
                 ];
             }
 
-            // 3. Substring matching within eligible branch
-            $candidatesQuery = Warehouse::where('company_id', $context->companyId)
-                ->where('is_active', true)
-                ->where(function ($q) use ($trimmed) {
-                    $q->where('name', 'LIKE', "%{$trimmed}%")
-                        ->orWhere('address', 'LIKE', "%{$trimmed}%");
-                })
-                ->when($context->branchId, function ($q) use ($context) {
-                    $q->where(function ($sub) use ($context) {
-                        $sub->where('branch_id', $context->branchId)
-                            ->orWhereNull('branch_id');
-                    });
-                });
-
-            $candidates = $candidatesQuery->limit(5)->get();
+            $search = static fn (string $pattern) => (clone $eligibleWarehouses)
+                ->where(fn ($q) => $q->where('name', 'LIKE', $pattern)->orWhere('address', 'LIKE', $pattern))
+                ->orderBy('id')
+                ->limit(5)
+                ->get();
+            $escaped = addcslashes($trimmed, '\\%_');
+            $candidates = $search("{$escaped}%");
+            if ($candidates->isEmpty()) {
+                $candidates = $search("%{$escaped}%");
+            }
+            if ($candidates->isEmpty()) {
+                $cleaned = trim((string) preg_replace('/\b(warehouse|wh|godown|store|depot)\b/i', '', $trimmed));
+                if ($cleaned !== $trimmed && mb_strlen($cleaned) >= 2) {
+                    $cleaned = addcslashes($cleaned, '\\%_');
+                    $candidates = $search("%{$cleaned}%");
+                }
+            }
 
             if ($candidates->count() === 1) {
                 return [
@@ -291,9 +297,9 @@ class RecordResolutionService
             // Check if candidates exist in another branch
             $otherBranchCandidates = Warehouse::where('company_id', $context->companyId)
                 ->where('is_active', true)
-                ->where(function ($q) use ($trimmed) {
-                    $q->where('name', 'LIKE', "%{$trimmed}%")
-                        ->orWhere('address', 'LIKE', "%{$trimmed}%");
+                ->where(function ($q) use ($escaped) {
+                    $q->where('name', 'LIKE', "%{$escaped}%")
+                        ->orWhere('address', 'LIKE', "%{$escaped}%");
                 })
                 ->get();
 
@@ -309,9 +315,9 @@ class RecordResolutionService
             // Check if inactive warehouse exists
             $inactive = Warehouse::where('company_id', $context->companyId)
                 ->where('is_active', false)
-                ->where(function ($q) use ($trimmed) {
-                    $q->where('name', 'LIKE', "%{$trimmed}%")
-                        ->orWhere('address', 'LIKE', "%{$trimmed}%");
+                ->where(function ($q) use ($escaped) {
+                    $q->where('name', 'LIKE', "%{$escaped}%")
+                        ->orWhere('address', 'LIKE', "%{$escaped}%");
                 })
                 ->get();
 
@@ -362,6 +368,7 @@ class RecordResolutionService
         // If no branch-specific warehouse, check company-wide active warehouses
         $companyWarehouses = Warehouse::where('company_id', $context->companyId)
             ->where('is_active', true)
+            ->when($context->branchId, fn ($q) => $q->whereNull('branch_id'))
             ->get();
 
         if ($companyWarehouses->count() === 1) {

@@ -255,9 +255,6 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group
         Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('workflow-tasks.dependent-masters.approve-and-execute');
     });
 
-    // Phase 2.4: Scoped Entity Directory & Disambiguation Options
-    Route::get('entity-options', [\App\Http\Controllers\Api\V1\AiEntityOptionsController::class, 'index'])->name('entity-options');
-
     // Phase 2.3: Multimodal Uploads, Preview & Extractions (Session-authenticated workspace routes)
     Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
         Route::post('/', 'store')->name('media.store');

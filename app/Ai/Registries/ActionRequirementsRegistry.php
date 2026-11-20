@@ -22,6 +22,7 @@ final class ActionRequirementsRegistry
         $this->register(new SalesOrderRequirementsProvider());
         $this->register(new GoodsReceivedNoteRequirementsProvider());
         $this->register(new PurchaseBillRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\SupplierSetupRequirementsProvider());
         foreach (CommercialActionCatalog::definitions() as $definition) {
             $this->register(new \App\Ai\Requirements\CommercialActionRequirementsProvider($definition->key));
         }

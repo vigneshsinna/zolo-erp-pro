@@ -34,7 +34,8 @@ class ReadInventoryStockSummary
         ?string $productQuery = null,
         ?int $warehouseId = null,
         int $limit = 10,
-        bool $belowReorderOnly = false
+        bool $belowReorderOnly = false,
+        ?string $productLookup = null,
     ): ErpToolResult {
         $limit = max(1, min(50, $limit));
         $companyId = $principal->companyId;
@@ -80,10 +81,39 @@ class ReadInventoryStockSummary
 
         if ($productQuery !== null && trim($productQuery) !== '') {
             $term = trim($productQuery);
-            $productsQuery->where(function ($q) use ($term) {
-                $q->where('name', 'like', "%{$term}%")
-                  ->orWhere('code', 'like', "%{$term}%");
-            });
+            if ($productLookup === null) {
+                $productsQuery->where(function ($q) use ($term) {
+                    $q->where('name', 'like', "%{$term}%")
+                      ->orWhere('code', 'like', "%{$term}%");
+                });
+            } else {
+                $matches = (clone $productsQuery)->where('code', $term)->orderBy('id')->limit(6)->get(['id', 'name', 'code']);
+                if ($matches->isEmpty() && $productLookup === 'name_or_code') {
+                    $nameQuery = (clone $productsQuery)->orderBy('id')->limit(6);
+                    $matches = (clone $nameQuery)->where('name', $term)->get(['id', 'name', 'code']);
+                    if ($matches->isEmpty()) {
+                        foreach (preg_split('/\s+/u', $term) as $word) {
+                            $escaped = addcslashes($word, '\\%_');
+                            $nameQuery->where('name', 'like', "%{$escaped}%");
+                        }
+                        $matches = $nameQuery->get(['id', 'name', 'code']);
+                    }
+                }
+
+                if ($matches->count() !== 1) {
+                    return ErpToolResult::ok(
+                        toolKey: 'inventory.stock_summary.v1',
+                        scope: ['company_id' => $companyId, 'branch_id' => $principal->branchId, 'financial_year_id' => $principal->financialYearId],
+                        data: ['product_lookup_status' => $matches->isEmpty() ? 'not_found' : 'ambiguous'],
+                        warnings: [$matches->isEmpty()
+                            ? "No active inventory product matched “{$term}”. Check the product name or SKU."
+                            : 'Several inventory products match. Enter an exact SKU: '.$matches->take(5)
+                                ->map(fn (Product $product) => "{$product->name} ({$product->code})")->implode(', ').'.'],
+                        rowCount: 0,
+                    );
+                }
+                $productsQuery->whereKey($matches->first()->id);
+            }
         }
 
         $context = new CompanyContext($companyId, $principal->branchId, $principal->financialYearId);

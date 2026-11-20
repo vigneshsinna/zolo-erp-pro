@@ -82,6 +82,15 @@ final class DeterministicReadRouter
         if (preg_match('/^'.$lead.$optional.'\s+(?:warehouse\s+)?(?:stock|inventory)(?:\s+summary|\s+levels?|\s+availability)?\??$/iu', $text)) {
             return ['type' => 'tool', 'tool' => 'inventory.stock_summary.v1', 'input' => []];
         }
+        if (preg_match('/^SKU-[A-Z0-9][A-Z0-9_.-]{0,99}\??$/iD', $text)) {
+            return ['type' => 'tool', 'tool' => 'inventory.stock_summary.v1',
+                'input' => ['product_query' => rtrim($text, '?'), 'product_lookup' => 'code']];
+        }
+        if (preg_match('/^(?:how much stock(?: (?:is )?available)?|(?:show|check|get)(?: me)? (?:the )?(?:available )?stock(?: availability)?) (?:for|of) ([\p{L}\p{N}][\p{L}\p{N} ._\x27-]{0,119})\??$/iuD', $text, $product)
+            && !preg_match('/\b(?:and|then|create|post|update|pay|compare|versus)\b/iu', $product[1])) {
+            return ['type' => 'tool', 'tool' => 'inventory.stock_summary.v1',
+                'input' => ['product_query' => trim($product[1]), 'product_lookup' => 'name_or_code']];
+        }
         if (preg_match('/^'.$lead.$optional.'\s+(?:products?\s+)?(?:below\s+(?:the\s+)?reorder\s+(?:level|point)|low\s+stock|reorder\s+alerts?)\??$/iu', $text)
             || preg_match('/^'.$lead.$optional.'\s+(?:low\s+stock|reorder\s+alerts?|products?\s+below\s+reorder\s+level)\??$/iu', $text)) {
             return ['type' => 'tool', 'tool' => 'inventory.stock_summary.v1', 'input' => ['below_reorder_only' => true]];

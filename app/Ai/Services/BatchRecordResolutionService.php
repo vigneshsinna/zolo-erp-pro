@@ -146,23 +146,20 @@ final class BatchRecordResolutionService
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         if ($warehouseId > 0) {
             $warehouse = Warehouse::where('company_id', $context->companyId)
-                ->where('branch_id', $context->branchId)
-                ->where('is_active', true)
                 ->find($warehouseId);
 
             if ($warehouse) {
+                if (!$warehouse->is_active) {
+                    $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse '{$warehouse->name}' is inactive.");
+                    return;
+                }
+
                 if ($context->branchId && $warehouse->branch_id && (int) $warehouse->branch_id !== (int) $context->branchId) {
                     $result->setNone('warehouse_id', (string) $warehouseId, "Selected warehouse '{$warehouse->name}' belongs to a different branch.");
                     return;
                 }
 
                 $result->setResolved('warehouse_id', (int) $warehouse->id, $warehouse);
-                return;
-            }
-
-            $inactiveOrMissing = Warehouse::where('company_id', $context->companyId)->find($warehouseId);
-            if ($inactiveOrMissing && !$inactiveOrMissing->is_active) {
-                $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse '{$inactiveOrMissing->name}' is inactive.");
                 return;
             }
 

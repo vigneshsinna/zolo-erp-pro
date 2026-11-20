@@ -472,6 +472,15 @@ class AiMediaController extends Controller
             }
 
             if ($voiceReplyTask !== null) {
+                if ($voiceReplyTask['action_key'] === \App\Ai\Conversation\SupplierSetupConversation::KEY && $asset->source_kind !== 'audio') {
+                    if ($asset->thread_id !== $threadId || $asset->workflow_task_id !== $voiceReplyTask['id']
+                        || !app(\App\Policies\AiMediaAssetPolicy::class)->canStageWriteAction($principal, $asset)) {
+                        throw new \Illuminate\Auth\Access\AuthorizationException('Photo does not belong to the supplier draft.');
+                    }
+                    return response()->json(['status' => 'supplier_photo_review_ready', 'task_id' => $voiceReplyTask['id'],
+                        'task_revision' => (int) $voiceReplyTask['revision'], 'thread_id' => $threadId,
+                        'media' => $this->presentAsset($asset->fresh()), 'extraction' => $this->presentExtraction($extraction->fresh())]);
+                }
                 app(\App\Ai\Conversation\VoiceWorkflowReply::class)->assertAsset($principal, $asset, (string) $threadId, $voiceReplyTask['id']);
                 return response()->json(['status' => 'voice_reply_ready', 'task_id' => $voiceReplyTask['id'], 'task_revision' => (int) $voiceReplyTask['revision'],
                     'thread_id' => $threadId, 'media' => $this->presentAsset($asset->fresh()), 'extraction' => $this->presentExtraction($extraction->fresh()),

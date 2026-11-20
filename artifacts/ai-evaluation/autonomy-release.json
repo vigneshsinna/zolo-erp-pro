@@ -1,0 +1,44 @@
+{
+    "required_corpus_counts": {
+        "indian_purchase_bills": 100,
+        "erp_copilot_requests": 100,
+        "difficult_requests": 50
+    },
+    "required_controls": [
+        "tenant_isolation",
+        "signed_human_approval",
+        "no_unapproved_business_writes",
+        "duplicate_posting_prevention",
+        "tax_and_totals_deterministic",
+        "event_deduplication",
+        "reversal_request_no_business_writes",
+        "company_branch_fy_isolation",
+        "credit_metering_limits"
+    ],
+    "status": "BLOCKED",
+    "production_approved": false,
+    "blockers": [
+        "Missing Git SHA and CI run provenance.",
+        "Dataset validation missing for indian_purchase_bills.",
+        "Actual workflow execution not evidenced for indian_purchase_bills.",
+        "Dataset validation missing for erp_copilot_requests.",
+        "Actual workflow execution not evidenced for erp_copilot_requests.",
+        "Dataset validation missing for difficult_requests.",
+        "Actual workflow execution not evidenced for difficult_requests.",
+        "Verified security evidence missing: tenant_isolation.",
+        "Verified security evidence missing: signed_human_approval.",
+        "Verified security evidence missing: no_unapproved_business_writes.",
+        "Verified security evidence missing: duplicate_posting_prevention.",
+        "Verified security evidence missing: tax_and_totals_deterministic.",
+        "Verified security evidence missing: event_deduplication.",
+        "Verified security evidence missing: reversal_request_no_business_writes.",
+        "Verified security evidence missing: company_branch_fy_isolation.",
+        "Verified security evidence missing: credit_metering_limits.",
+        "Measured load evidence missing for 5 users.",
+        "Measured load evidence missing for 10 users.",
+        "Measured load evidence missing for 20 users.",
+        "Verified live staging evidence missing.",
+        "Security and accounting sign-off required.",
+        "Independent autonomous posting kill switch is off."
+    ]
+}

@@ -1,3 +1,35 @@
+## Conversational Supplier Intake — 2026-11-20
+
+- The standalone supplier form has been replaced by a thread-bound, revision-checked draft. The assistant asks for the supplier name in chat. Typed and dictated replies share the same field parser. Confirmed recordings use the existing voice pipeline, and supplier photos show extracted name, phone, and GSTIN for explicit confirmation.
+- Supplier replies update draft details and validate GSTIN without generating a value. “Preview supplier” creates a signed proposal. Editing the draft cancels any previous pending proposal so the revised details can be reviewed. Supplier creation still requires explicit approval.
+- Passed 86 PHP tests and 812 assertions. Mocked browser verification exercised the composer, staged photo and recording review, proposal preview, and approval. No live microphone or perception provider was needed for verification.
+
+## Same-Thread Supplier Setup — 2026-11-20
+
+- With conversational AI enabled, “create a supplier” opens a supplier details form in the current Copilot chat. “Create a supplier named …” prefills the name. Both use the server's supplier permission check and avoid a model call. The existing dependent supplier path for a purchase order remains available.
+- The form uses the existing signed proposal and approval endpoints. The proposal is tied to the owned chat and appears in its history. A matching supplier blocks the preview. Creating a record requires explicit approval.
+- Verified the same-thread flow in PHP and a mocked browser workspace. The affected PHP suites passed 49 tests and 450 assertions.
+
+## Copilot Product Stock Lookup Fix — 2026-11-20
+
+- Routed explicit product-stock questions and bare SKU prompts through the authorized deterministic stock handler. Bare SKUs match exactly, and name lookup accepts reordered words. Ambiguous names ask for an exact SKU. Unknown SKUs return a clear no-match response.
+- Deduplicated identical tool facts before summary generation and in conversation history. Previously generated summaries are rebuilt on read when they match the old repeated facts. Stored chat data remains intact.
+- Verified both reported prompts against the local catalog through a read-only handler call. Each returned Cotton Shirt Blue (`SKU-COTTONSHIR`) with 20 PRS available in the reported branch. The focused inventory, chat, and summary suites passed 43 tests and 404 assertions.
+
+## Copilot Routing Investigation — 2026-11-20
+
+- Read-only checks of the reported local conversation confirmed that the stock question and bare SKU fell through to the NVIDIA Copilot. The deterministic router matched the control phrase “show stock summary,” but neither reported prompt. Both model runs called the stock tool three times and were denied on the fourth call. The SKU turn stored three identical facts, which the summary builder and the workspace each rendered three times.
+- The standalone supplier request fell through to generic Copilot and made no tool calls. Supplier creation is registered as an approved dependent master action, but it is absent from the generic action requirements registry and has no standalone conversational entry point.
+- Conversation was enabled and streaming was disabled in the local application configuration. The AI conversation router, deterministic router, and Copilot evidence paths were unchanged by the `ui` merge. The 960 px chat width predates that merge. No application code or business data changed during the investigation.
+
+## AI Workspace Merge Follow-up — 2026-11-20
+
+- Fixed proposal editing and booking confirmation after merge `e137b48`. Edits send only changed fields, preserve existing line metadata, and clear the old warehouse selection when the name changes. Booking still renders the confirmation and PDF controls when the receipt omits the warehouse name.
+- Restored exact-match disambiguation and ranked warehouse search. Active company-wide warehouses can be selected by ID, and warehouses assigned to another branch cannot become defaults.
+- Removed shadowed entity-options routes. The workspace uses the rich picker response, and the versioned API retains its branch-scoped response. Restored stylesheet-based workspace styling and kept the newer picker and conversation scripts.
+- Updated focused tests to verify idempotent master retries, mismatched version rejection, and typed PO corrections with explicit payment terms. Mocked browser checks covered the rendered workspace, desktop and mobile picker behavior, proposal edits, and approval receipts.
+- The affected PHP suites passed 105 tests and 730 assertions. Legacy workflow tests used the default conversation flag off, and conversational tests explicitly enabled it. JavaScript and PHP syntax checks passed.
+
 ## Merge: Branch 'ui' Integrated into 'feature/ai-unified-input-clarification' — 2026-11-20
 
 - **Context & User Request:**

@@ -71,7 +71,7 @@
                             <div class="ai-credit-meter-pill d-inline-flex align-items-center bg-light border rounded px-2 py-1 mx-1" id="ai-credit-meter-pill" title="Subscription AI Credit Balance">
                                 <i class="dripicons-wallet mr-1 text-primary" aria-hidden="true"></i>
                                 <span class="font-weight-bold small text-dark mr-1" id="credit-available-val">Loading…</span>
-                                <button type="button" class="btn btn-xs btn-outline-primary" id="btn-open-topup-modal" style="{{ 'padding: 1px 6px; font-size: 11px;' }}">Top Up</button>
+                                <button type="button" class="btn btn-xs btn-outline-primary" id="btn-open-topup-modal">Top Up</button>
                             </div>
                             @if($isAdmin ?? false)
                                 <button id="btn-toggle-telemetry" class="btn ai-telemetry-toggle-btn" type="button"
@@ -109,7 +109,7 @@
                                 <div class="ai-usage-stat">
                                     <span>Subscription Monthly Credits</span><strong id="telemetry-credits-available">—</strong>
                                     <span id="telemetry-credits-detail">Loading credits…</span>
-                                    <div class="ai-usage-track"><span id="telemetry-credits-fill" style="{{ 'width: 0%;' }}"></span></div>
+                                    <div class="ai-usage-track"><span id="telemetry-credits-fill"></span></div>
                                 </div>
                             </div>
                             <p class="ai-usage-explainer"><span id="telemetry-provider">Provider</span>: shared provider limit
@@ -220,7 +220,7 @@
     <!-- In-Chat PDF Preview Modal -->
     <div class="modal fade" id="ai-pdf-preview-modal" tabindex="-1" role="dialog" aria-labelledby="ai-pdf-modal-title"
         aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered" role="document" style="{{ 'max-width: 950px; height: 90vh;' }}">
+        <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
             <div class="modal-content h-100 shadow border-0">
                 <div class="modal-header py-2 bg-light d-flex justify-content-between align-items-center">
                     <h5 class="modal-title font-weight-bold" id="ai-pdf-modal-title"><i
@@ -233,8 +233,8 @@
                         </button>
                     </div>
                 </div>
-                <div class="modal-body p-0 bg-secondary" style="{{ 'height: calc(100% - 55px);' }}">
-                    <iframe id="ai-pdf-iframe" src="" style="{{ 'width: 100%; height: 100%; border: none;' }}"></iframe>
+                <div class="modal-body p-0 bg-secondary">
+                    <iframe id="ai-pdf-iframe" src=""></iframe>
                 </div>
             </div>
         </div>
@@ -1101,19 +1101,22 @@
                             bubble.append(card);
                         } else if (data.proposal_id || fact.tool === 'purchase_order.create.v1' || fact.tool === 'action.purchase_order.v1' || fact.tool === 'purchase_bill.create.v1' || fact.tool === 'action.purchase_bill.v1') {
                             const isPb = (fact.tool === 'purchase_bill.create.v1' || fact.tool === 'action.purchase_bill.v1' || data.action_key === 'purchase_bill.create.v1');
-                            const docTitle = isPb ? 'Purchase Bill Review' : ((data.document_type || 'ERP Action') + ' Proposal');
+                            const isSupplier = fact.tool === 'setup.supplier.create.v1';
+                            const docTitle = isSupplier ? 'Supplier proposal' : (isPb ? 'Purchase Bill Review' : ((data.document_type || 'ERP Action') + ' Proposal'));
                             const partyLabel = isPb ? 'Supplier' : (data.customer?.name ? 'Customer' : 'Party');
-                            const partyVal = data.supplier?.name || data.customer?.name || data.customer_name || '—';
+                            const partyVal = (isSupplier ? data.name : (data.supplier?.name || data.customer?.name || data.customer_name)) || '—';
                             const invoiceNo = data.supplier_invoice_no || data.invoice_no || data.invoice_number || '—';
 
                             const card = $('<div class="card border shadow-none mt-2 mb-1 erp-fact-card ai-proposal-review-card"></div>');
+                            if (isSupplier) card.attr({'data-supplier-task-id': data.task_id || '', 'data-task-revision': data.task_revision || 0});
                             const cardHeader = $('<div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center"></div>');
                             cardHeader.append($('<span class="font-weight-bold text-dark small"></span>').html('<i class="dripicons-document mr-1 text-primary"></i>' + docTitle + ' · ' + $('<div>').text(partyVal).html()));
-                            cardHeader.append($('<span class="badge badge-success px-2 py-1 ai-proposal-status-badge"><i class="dripicons-checkmark mr-1"></i>Validation passed</span>'));
+                            const status = data.proposal_status || 'pending';
+                            cardHeader.append($('<span class="badge badge-success px-2 py-1 ai-proposal-status-badge"></span>').text(status === 'pending' ? 'Validation passed' : status));
                             card.append(cardHeader);
 
                             const cardBody = $('<div class="card-body p-3 bg-white"></div>');
-                            cardBody.append('<div class="row no-gutters ai-meta-grid p-2 mb-3 border rounded bg-light">' +
+                            if (!isSupplier) cardBody.append('<div class="row no-gutters ai-meta-grid p-2 mb-3 border rounded bg-light">' +
                                 '<div class="col-6 mb-2"><small class="text-muted d-block">' + partyLabel + '</small><strong class="text-dark">' + $('<div>').text(partyVal).html() + '</strong></div>' +
                                 '<div class="col-6 mb-2 text-right"><small class="text-muted d-block">Invoice number</small><strong class="text-dark">' + $('<div>').text(invoiceNo).html() + '</strong></div>' +
                                 '<div class="col-6"><small class="text-muted d-block">Invoice date</small><strong class="text-dark">' + $('<div>').text(data.date || '—').html() + '</strong></div>' +
@@ -1156,9 +1159,9 @@
                                 '<div class="col-4 text-center">GST: <strong class="text-dark">' + currencySymbol + (totals.tax_total || '0.00') + '</strong></div>' +
                                 '<div class="col-4 text-right">Total: <strong class="text-dark font-weight-bold">' + currencySymbol + (totals.grand_total || '0.00') + '</strong></div>' +
                                 '</div>');
-                            footer.append(totalsRow);
+                            if (!isSupplier) footer.append(totalsRow);
 
-                            if (data.proposal_id) {
+                            if (data.proposal_id && (!isSupplier || status === 'pending')) {
                                 const actionRow = $('<div class="d-flex justify-content-end align-items-center mt-2 pt-2 border-top flex-wrap"></div>');
                                 const btnDraftPdf = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-2 btn-preview-pdf" title="View draft receipt PDF in chat"><i class="dripicons-document mr-1"></i>Draft PDF</button>')
                                     .attr('data-pdf-url', aiBaseUrl + '/proposals/' + data.proposal_id + '/pdf')
@@ -1190,7 +1193,8 @@
                                                 }
                                                 cardHeader.find('.ai-proposal-status-badge').replaceWith($('<span class="badge badge-success px-2 py-1"></span>').text('Completed'));
                                                 const successBox = $('<div class="alert alert-success mt-2 mb-0 p-3 border-success w-100"></div>');
-                                                successBox.append($('<h6 class="font-weight-bold text-success mb-1"></h6>').text((data.document_type || 'ERP action') + ' completed'));
+                                                successBox.append($('<h6 class="font-weight-bold text-success mb-1"></h6>').text(isSupplier
+                                                    ? 'Supplier ready in ERP' : (data.document_type || 'ERP action') + ' completed'));
                                                 successBox.append($('<div class="small mb-2"></div>').text('Reference: ' + refNo + ' · Status: ' + (receipt.status || 'completed')));
                                                 if (receipt.details?.journal_entry_id) successBox.append($('<div class="small"></div>').text('Journal entry: ' + receipt.details.journal_entry_id));
                                                 if (receipt.details?.stock_movement_id) successBox.append($('<div class="small"></div>').text('Stock movement: ' + receipt.details.stock_movement_id));
@@ -1203,6 +1207,9 @@
                                                 actionRow.empty().append(successBox);
                                             } else {
                                                 actionRow.empty().append($('<span role="status" class="badge badge-success p-2"></span>').text('Approved. Execution is disabled.'));
+                                            }
+                                            if (isSupplier && data.task_id) {
+                                                $(document).trigger('ai:workflow:card-state', [{task_id: data.task_id, status: 'completed'}]);
                                             }
                                         },
                                         error: function (xhr) {
@@ -1227,6 +1234,9 @@
                                         data: JSON.stringify({ expected_version: data.version || 1 }),
                                         success: function (res) {
                                             actionRow.html('<span class="badge badge-secondary p-2"><i class="dripicons-cross mr-1"></i>Proposal Cancelled</span>');
+                                            if (isSupplier && data.task_id) {
+                                                $(document).trigger('ai:workflow:card-state', [{task_id: data.task_id, status: 'completed'}]);
+                                            }
                                         },
                                         error: function (xhr) {
                                             btnApprove.prop('disabled', false);
@@ -1240,7 +1250,8 @@
                                     });
                                 });
 
-                                actionRow.append(btnDraftPdf).append(btnApprove).append(btnReject);
+                                if (!isSupplier) actionRow.append(btnDraftPdf);
+                                actionRow.append(btnApprove).append(btnReject);
                                 footer.append(actionRow);
                             }
 
@@ -1450,7 +1461,7 @@
                                                                 defs.hsn_codes.forEach(function (h) {
                                                                     const pCode = h.code || h;
                                                                     const pDesc = h.description || ('HSN ' + pCode);
-                                                                    const pill = $('<button type="button" class="btn btn-xs btn-outline-info mr-1 mb-1 py-0 px-2 small ai-product-choice" style="{{ 'font-size: 11px;' }}">' + $('<div>').text(pCode + (pDesc ? ' (' + pDesc + ')' : '')).html() + '</button>');
+                                                                    const pill = $('<button type="button" class="btn btn-xs btn-outline-info mr-1 mb-1 py-0 px-2 small ai-product-choice">' + $('<div>').text(pCode + (pDesc ? ' (' + pDesc + ')' : '')).html() + '</button>');
                                                                     pill.on('click', function () {
                                                                         formBody.find('.mf-hsn').val(pCode).removeClass('is-invalid');
                                                                         formBody.find('.mf-hsn-feedback').remove();

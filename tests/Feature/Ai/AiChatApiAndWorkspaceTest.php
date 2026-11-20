@@ -132,6 +132,56 @@ class AiChatApiAndWorkspaceTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_supplier_setup_can_preview_and_approve_in_the_same_chat_as_erp_reads(): void
+    {
+        config([
+            'erp_ai.conversation_enabled' => true, 'ai_actions.foundation_enabled' => true,
+            'ai_actions.execution_enabled' => true, 'ai_infrastructure.async_execution_enabled' => false,
+        ]);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $threadId = $this->postJson(route('ai.chat'), ['message' => 'Show stock summary'])
+            ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')->json('thread_id');
+        $supplierName = 'Same Chat Supplier';
+        $send = fn (string $message, array $extra = []) => $this->postJson(route('ai.chat'), [
+            'thread_id' => $threadId, 'message' => $message, 'client_turn_id' => (string) \Illuminate\Support\Str::uuid(), ...$extra,
+        ]);
+        $draft = $send('create a supplier')->assertOk()
+            ->assertJsonPath('thread_id', $threadId)->assertJsonPath('interaction_type', 'workflow_continuation')
+            ->assertJsonPath('workflow.action_key', 'setup.supplier.create.v1')->assertSee('You can type, dictate, record, or attach a photo.')->json('workflow');
+        $context = ['active_task_id' => $draft['task_id'], 'expected_task_revision' => $draft['task_revision']];
+        $details = $send('Supplier name is '.$supplierName.'. Phone number is 98653210. E-mail is receiving@example.com. City is Tiruppur. GST and you can put anything.', $context)
+            ->assertOk()->assertSee('GSTIN checksum is invalid')->json('workflow');
+        $context['expected_task_revision'] = $details['task_revision'];
+        $corrected = $send('no GSTIN', $context)->assertOk()->assertSee('preview supplier')->json('workflow');
+        $context['expected_task_revision'] = $corrected['task_revision'];
+        $proposal = $send('preview supplier', $context)->assertOk()->assertJsonPath('workflow.preview.city', 'Tiruppur')
+            ->assertJsonPath('workflow.preview.email', 'receiving@example.com')
+            ->assertJsonPath('workflow.preview.phone_number', '98653210')->json('workflow');
+        $oldProposalId = $proposal['proposal_id'];
+        $context['expected_task_revision'] = $proposal['task_revision'];
+        $edited = $send('change the phone to 1234567890', $context)->assertOk()->json('workflow');
+        $this->assertDatabaseHas('ai_action_proposals', ['id' => $oldProposalId, 'status' => 'cancelled']);
+        $context['expected_task_revision'] = $edited['task_revision'];
+        $proposalId = $send('preview supplier', $context)->assertOk()
+            ->assertJsonPath('workflow.preview.phone_number', '1234567890')->json('workflow.proposal_id');
+        $request = ['thread_id' => $threadId, 'action_key' => 'setup.supplier.create.v1',
+            'slots' => ['name' => $supplierName, 'city' => 'Tiruppur']];
+        $this->assertDatabaseMissing('suppliers', ['company_id' => $this->company->id, 'name' => $supplierName]);
+        $this->assertDatabaseHas('ai_action_proposals', ['id' => $proposalId, 'thread_id' => $threadId, 'status' => 'pending']);
+
+        $this->postJson(route('ai.proposals.approve', $proposalId), ['expected_version' => 1])
+            ->assertOk()->assertJsonPath('status', 'completed')->assertJsonPath('execution.receipt.details.name', $supplierName);
+        $history = $this->getJson(route('ai.threads.show', $threadId))->assertOk()->json('messages');
+        $this->assertSame('completed', last($history)['facts'][1]['data']['proposal_status']);
+        $this->postJson(route('ai.proposals.store'), $request)->assertUnprocessable()->assertJsonValidationErrors('name');
+        $this->postJson(route('ai.proposals.store'), array_replace($request, ['thread_id' => (string) \Illuminate\Support\Str::uuid()]))
+            ->assertNotFound();
+        $this->postJson(route('ai.chat'), ['thread_id' => $threadId, 'message' => 'Calculate 2 + 3'])
+            ->assertOk()->assertJsonPath('thread_id', $threadId)->assertJsonPath('message', 'Result: 5');
+        Http::assertNothingSent();
+    }
+
     public function test_deterministic_financial_reports_use_authorized_tools_without_nemotron(): void
     {
         config()->set('erp_ai.conversation_enabled', false);
@@ -879,7 +929,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         app(PartyOpeningBalanceService::class)->post($customer, 12500.00, $context);
         $report = app(FinancialReportService::class)->ageing($context, 'customer', actorId: $this->adminUser->id);
 
-        // Model returns tool call in step 1, then EMPTY text in step 2
+        // Repeated tool results share one verified summary when the model returns no text.
         Http::fake([
             'https://provider.example/v1/responses' => Http::sequence()
                 ->push($this->providerResponse([
@@ -888,17 +938,32 @@ class AiChatApiAndWorkspaceTest extends TestCase
                     'name' => 'CustomerOutstanding',
                     'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
                 ], 120, 18))
+                ->push($this->providerResponse([
+                    'type' => 'function_call',
+                    'call_id' => 'call_summary_retry',
+                    'name' => 'CustomerOutstanding',
+                    'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
+                ], 180, 18))
                 ->push($this->providerResponse($this->providerMessage(''), 250, 5))
         ]);
 
         $res = $this->postJson(route('ai.chat'), ['message' => 'What are customer dues?'])->assertOk();
-        $res->assertJsonPath('answer_status', 'verified');
+        $res->assertJsonPath('answer_status', 'verified')->assertJsonCount(1, 'facts');
         $message = $res->json('message');
 
         $this->assertNotEmpty($message);
         $this->assertStringContainsString('Customer Outstanding Summary', $message);
         $this->assertStringContainsString('Summary Test Customer', $message);
         $this->assertStringNotContainsString('Verified ERP results are below.', $message);
+
+        $legacyFacts = array_merge($res->json('facts'), $res->json('facts'));
+        DB::table('agent_conversation_messages')->where('conversation_id', $res->json('thread_id'))
+            ->where('role', 'assistant')->update([
+                'content' => app(\App\Ai\Services\VerifiedSummaryBuilder::class)->build($legacyFacts),
+                'meta' => json_encode(['facts' => $legacyFacts], JSON_THROW_ON_ERROR),
+            ]);
+        $this->getJson(route('ai.threads.show', ['id' => $res->json('thread_id')]))
+            ->assertOk()->assertJsonCount(1, 'messages.1.facts')->assertJsonPath('messages.1.content', $message);
     }
 
     public function test_model_written_narrative_is_preserved_when_present(): void

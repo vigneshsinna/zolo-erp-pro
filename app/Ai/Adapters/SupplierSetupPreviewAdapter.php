@@ -69,6 +69,10 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'company_name' => $companyName,
             'vat_number' => $vatNumber,
             'state' => $payload['state'],
+            'city' => $payload['city'],
+            'address' => $payload['address'],
+            'phone_number' => $payload['phone_number'],
+            'email' => $payload['email'],
             'is_existing' => $existing !== null,
         ];
 

@@ -267,7 +267,6 @@ Route::prefix('v1')->group(function () {
 
             // Task T03: Scoped ERP Entity Directory Lookup
             Route::get('entity-lookup', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-lookup');
-            Route::get('entity-options', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-options');
 
             // Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine
             Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {

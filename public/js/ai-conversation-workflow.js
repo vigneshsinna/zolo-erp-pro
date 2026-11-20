@@ -6,6 +6,7 @@
     const recordLabel = $('#btn-ai-record-audio').attr('aria-label') || 'Record voice note';
     const dictateLabel = $('#btn-dictate').attr('aria-label') || 'Start voice input';
     let active = null, busy = false, pending = null;
+    const supplierAction = 'setup.supplier.create.v1';
     const header = $('<div id="ai-active-task-header" class="ai-active-task-header" aria-live="polite" hidden></div>').insertBefore('#chat-messages');
     const errorBox = $('<div id="ai-conversation-error" role="alert" class="alert alert-warning small" hidden></div>').insertBefore('#chat-form');
     const headers = {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': ws.csrfToken, 'X-AI-Scope': ws.scopeHeader};
@@ -34,6 +35,21 @@
     function render(state) {
         if (!state?.task_id) return;
         if (active?.task_id === state.task_id && state.task_revision < active.task_revision) { reload(); return; }
+        if (state.action_key === supplierAction) {
+            $('.ai-proposal-review-card[data-supplier-task-id]').filter((_, element) =>
+                element.dataset.supplierTaskId === state.task_id && Number(element.dataset.taskRevision) < state.task_revision
+            ).find('button').prop('disabled', true);
+            if (['completed', 'cancelled'].includes(state.status)) {
+                if (active?.task_id === state.task_id) reset();
+                return;
+            }
+            active = {...state};
+            header.empty().prop('hidden', false).append($('<strong></strong>').text('Supplier draft'));
+            $('#chat-input').attr('placeholder', 'Reply with supplier details…');
+            $('#btn-ai-record-audio').attr('aria-label', 'Record supplier details');
+            $('#btn-dictate').attr('aria-label', 'Dictate supplier details');
+            return;
+        }
         const log = $('#chat-messages');
         const wasAtEnd = log[0].scrollHeight - log.scrollTop() - log.innerHeight() < 80;
         let root = $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === state.task_id).first();
@@ -171,6 +187,14 @@
         if (!active) return;
         try {
             const result = await request('GET', '/workflow-tasks/' + active.task_id);
+            if (active.action_key === supplierAction) {
+                if (['cancelled', 'completed', 'expired', 'executing', 'rejected'].includes(result.proposal?.status || result.task.status)) {
+                    reset();
+                } else {
+                    render({...active, task_revision: result.task.revision});
+                }
+                return;
+            }
             if (['completed', 'cancelled'].includes(result.proposal?.status || result.task.status)) return render({...active, status: result.proposal?.status || result.task.status});
             if (result.dependent_master) {
                 const master = result.dependent_master;
@@ -204,7 +228,7 @@
             const result = await request('POST', '/chat', body);
             pending = null;
             if ($('#chat-input').val().trim() === message) $('#chat-input').val('').trigger('input');
-            $('.ai-conversation-voice, .ai-conversation-initial-voice').remove();
+            $('.ai-conversation-voice, .ai-conversation-initial-voice, .ai-supplier-photo-review').remove();
             receive(result);
         } catch (error) { fail(error); } finally { setBusy(false); }
     }
@@ -219,10 +243,12 @@
         const panel = $('<section class="ai-conversation-initial-voice card border rounded p-3 mb-3"></section>')
             .attr('aria-label', 'Confirm voice transaction');
         panel.append($('<h6 class="mb-2"></h6>').text('Review your voice instruction'));
-        const recognized = result.intent_key === 'purchase_order.create.v1';
-        panel.append($('<p class="small mb-2"></p>').text(recognized
+        const purchaseOrder = result.intent_key === 'purchase_order.create.v1';
+        panel.append($('<p class="small mb-2"></p>').text(result.intent_key === supplierAction
+            ? 'Confirm the wording below to start a supplier draft.'
+            : purchaseOrder
             ? 'I heard a request to create a Purchase Order. Confirm the wording below before Copilot finds suppliers, products and warehouses.'
-            : 'I cannot reliably confirm a Purchase Order request. Correct the transcript to state the intended transaction. No Purchase Bill or Purchase Order has been prepared.'));
+            : 'Correct the transcript to state the intended action, such as creating a purchase order or supplier.'));
         const label = $('<label class="font-weight-bold small" for="ai-voice-initial-transcript"></label>').text('Transcribed instruction');
         const input = $('<textarea class="form-control mb-2" id="ai-voice-initial-transcript" rows="3"></textarea>')
             .val(result.extraction.extracted?.transcript_text || '');
@@ -275,12 +301,45 @@
             } catch (error) { fail(error); } finally { setBusy(false); }
         }));
         $('.ai-conversation-voice').remove();
-        $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === active.task_id).append(panel);
+        if (active.action_key === supplierAction) {
+            const log = $('#chat-messages');
+            log.append(panel).scrollTop(log[0].scrollHeight);
+        } else {
+            $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === active.task_id).append(panel);
+        }
         input[0].focus();
     }
 
+    function reviewSupplierPhoto(result) {
+        if (active?.action_key !== supplierAction || active.task_id !== result.task_id
+            || active.task_revision !== result.task_revision || ws.getCurrentThreadId() !== result.thread_id) return;
+        const data = result.extraction.extracted || {};
+        const details = [
+            ['Supplier name', data.supplier_name], ['Phone', data.supplier_phone], ['GSTIN', data.supplier_gstin]
+        ].filter(([, value]) => value);
+        const panel = $('<section class="card border rounded p-3 mb-3 ai-supplier-photo-review" aria-label="Supplier photo review"></section>');
+        panel.append($('<h6></h6>').text('Review supplier details from the photo'));
+        if (!details.length) {
+            panel.append($('<p class="mb-0"></p>').text('No supplier name, phone, or GSTIN was found. Try a clearer photo or reply with the details.'));
+        } else {
+            for (const [label, value] of details) panel.append($('<p class="mb-1"></p>').text(label + ': ' + value));
+            panel.append($('<button type="button" class="btn btn-sm btn-primary align-self-start">Use these details</button>').on('click', async () => {
+                if (busy || active?.task_id !== result.task_id || active.task_revision !== result.task_revision) return;
+                setBusy(true);
+                try {
+                    const confirmed = await request('POST', '/media/' + result.media.id + '/confirm', {expected_revision: result.extraction.revision});
+                    setBusy(false);
+                    await submit('Use confirmed supplier details', {media_ids: [result.media.id], supplier_photo_revision: confirmed.extraction.revision});
+                } catch (error) { fail(error); } finally { setBusy(false); }
+            }));
+        }
+        $('.ai-supplier-photo-review').remove();
+        $('#chat-messages').append(panel);
+        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+    }
+
     window.zoloAiConversation = {
-        getActiveTask: () => active, isBusy: () => busy, render, receive, reviewVoice, reviewInitialVoice, reload,
+        getActiveTask: () => active, isBusy: () => busy, render, receive, reviewVoice, reviewInitialVoice, reviewSupplierPhoto, reload,
         interceptSubmit(message) {
             // First voice instructions must reach transcription review even if
             // the typed companion text is generic or empty.
@@ -288,7 +347,8 @@
                 if (!busy) { setBusy(true); window.zoloAiMedia.submitStagedAttachment(message, ws.getCurrentThreadId(), () => setBusy(false)); }
                 return true;
             }
-            if (!active && !/\b(?:create|prepare|raise|make|start)\s+(?:a\s+|new\s+)?(?:purchase\s+order|po)\b/i.test(message)) return false;
+            if (!active && !/\b(?:create|prepare|raise|make|start)\s+(?:a\s+|new\s+)?(?:purchase\s+order|po)\b/i.test(message)
+                && !/^(?:please\s+)?(?:create|add)\s+(?:a\s+)?supplier\b/i.test(message)) return false;
             if (window.zoloAiMedia?.hasStagedAttachment()) {
                 if (!busy) { setBusy(true); window.zoloAiMedia.submitStagedAttachment(message, ws.getCurrentThreadId(), () => setBusy(false)); }
             } else submit(message);
@@ -298,6 +358,10 @@
     $(document).on('ai:conversation:reset', reset).on('ai:conversation:history', reload);
     $(document).on('ai:workflow:card-state', (_, state) => {
         if (!active || state.task_id !== active.task_id) return;
+        if (active.action_key === supplierAction && state.status === 'completed') {
+            reset();
+            return;
+        }
         if (state.status === 'completed') {
             const root = $('.ai-conversation-task').filter((_, element) => element.dataset.taskId === state.task_id);
             root.children('div').first().text('Step 3/3 · Purchase order created');

@@ -246,7 +246,28 @@ class AiChatController extends Controller
         $slots = (array) $request->input('slots', []);
         $threadId = $request->input('thread_id') ? (string) $request->input('thread_id') : null;
 
-        $proposal = app(\App\Ai\Services\ActionProposalService::class)->create($principal, $actionKey, $slots, $threadId);
+        $proposal = DB::transaction(function () use ($principal, $actionKey, $slots, $threadId): array {
+            $supplierInChat = $actionKey === 'setup.supplier.create.v1' && $threadId !== null;
+            if ($supplierInChat && !$this->ownedThreads($principal)->where('id', $threadId)->lockForUpdate()->first()) {
+                abort(404, 'Conversation is unavailable.');
+            }
+            $proposal = app(\App\Ai\Services\ActionProposalService::class)->create($principal, $actionKey, $slots, $threadId);
+            if ($supplierInChat) {
+                $preview = json_decode($proposal['preview_json'], true, flags: JSON_THROW_ON_ERROR);
+                if ($preview['is_existing'] ?? false) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['name' => 'A matching supplier already exists. Use the existing supplier.']);
+                }
+                $answer = 'Review the supplier proposal before approving it.';
+                $facts = [['tool' => $actionKey, 'data' => $preview + [
+                    'proposal_id' => $proposal['id'], 'version' => (int) $proposal['version'], 'action_key' => $actionKey,
+                ]]];
+                $response = new AgentResponse($principal->requestId, $answer,
+                    new \Laravel\Ai\Responses\Data\TextUsage, new \Laravel\Ai\Responses\Data\Meta);
+                $this->storeTurn($principal, $threadId, 'Preview supplier proposal', $answer, $response, ['facts' => $facts]);
+                $this->ownedThreads($principal)->where('id', $threadId)->update(['updated_at' => now()]);
+            }
+            return $proposal;
+        });
 
         return response()->json([
             'status' => 'pending',
@@ -712,9 +733,35 @@ class AiChatController extends Controller
                     $metadata = [];
                 }
 
+                $facts = $metadata['facts'] ?? [];
+                $uniqueFacts = array_values(array_unique($facts, SORT_REGULAR));
+                if (count($uniqueFacts) !== count($facts)) {
+                    $summary = app(VerifiedSummaryBuilder::class);
+                    $warnings = $metadata['warnings'] ?? [];
+                    if ($message->content === $summary->build($facts, $warnings)) {
+                        $message->content = $summary->build($uniqueFacts, $warnings);
+                    }
+                }
+                foreach ($uniqueFacts as &$fact) {
+                    if (($fact['tool'] ?? null) === 'setup.supplier.create.v1' && isset($fact['data']['proposal_id'])) {
+                        try {
+                            $proposal = app(\App\Ai\Services\ActionProposalService::class)->getOwned($principal, $fact['data']['proposal_id']);
+                        } catch (\Illuminate\Auth\Access\AuthorizationException) {
+                            $fact['data'] = ['proposal_id' => $fact['data']['proposal_id'], 'proposal_status' => 'unavailable'];
+                            continue;
+                        }
+                        $fact['data']['proposal_status'] = match (true) {
+                            (int) $proposal['version'] !== ($fact['data']['version'] ?? null) => 'superseded',
+                            $proposal['status'] === 'pending' && $proposal['expires_at'] <= now('UTC')->toDateTimeString() => 'expired',
+                            default => $proposal['status'],
+                        };
+                    }
+                }
+                unset($fact);
+
                 return [
                     ...(array) $message,
-                    'facts' => $metadata['facts'] ?? [],
+                    'facts' => $uniqueFacts,
                     'sources' => $metadata['sources'] ?? [],
                     'warnings' => $metadata['warnings'] ?? [],
                 ];
@@ -806,6 +853,7 @@ class AiChatController extends Controller
             'choice_set_id' => 'nullable|uuid',
             'choice_id' => 'nullable|uuid',
             'voice_extraction_revision' => 'nullable|integer|min:1',
+            'supplier_photo_revision' => 'nullable|integer|min:1',
         ]);
         $principal = $this->principal($request);
         if ($denial = $this->accessDenial($principal)) {
@@ -859,6 +907,31 @@ class AiChatController extends Controller
             $builder = app(NormalizedInputBuilder::class);
             foreach ($assets as $asset) {
                 $latest = $extractionsByAssetId[$asset->id];
+                if (isset($validated['supplier_photo_revision'])) {
+                    $task = app(\App\Ai\Conversation\VoiceWorkflowReply::class)->assertTask(
+                        $principal, (string) ($validated['thread_id'] ?? ''), (string) ($validated['active_task_id'] ?? '')
+                    );
+                    if ($task['action_key'] !== \App\Ai\Conversation\SupplierSetupConversation::KEY
+                        || count($assets) !== 1 || $asset->source_kind === 'audio'
+                        || $asset->thread_id !== $task['thread_id'] || $asset->workflow_task_id !== $task['id']
+                        || !app(\App\Policies\AiMediaAssetPolicy::class)->canStageWriteAction($principal, $asset)) {
+                        return $this->error('SUPPLIER_PHOTO_SCOPE', 'This photo does not belong to the supplier draft.', 403);
+                    }
+                    if (!$latest->isConfirmed() || (int) $latest->confirmed_by !== $principal->actorId
+                        || $latest->revision !== $validated['supplier_photo_revision']) {
+                        return $this->error('SUPPLIER_PHOTO_CHANGED', 'Review and confirm the latest photo extraction before applying it.', 409);
+                    }
+                    $extracted = $latest->extracted_json;
+                    $validated['supplier_photo'] = array_filter([
+                        'name' => $extracted['supplier_name'] ?? null,
+                        'phone_number' => $extracted['supplier_phone'] ?? null,
+                        'vat_number' => $extracted['supplier_gstin'] ?? null,
+                    ], fn ($value): bool => is_string($value) && trim($value) !== '');
+                    if (!$validated['supplier_photo']) {
+                        return $this->error('SUPPLIER_PHOTO_EMPTY', 'No supplier name, phone, or GSTIN was found. Try another photo or reply with the details.', 422);
+                    }
+                    continue;
+                }
                 if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
                     if (count($mediaIds) !== 1 || empty($validated['thread_id'])) {
                         return $this->error('VOICE_CONTEXT_REQUIRED', 'Send one confirmed voice instruction in its original conversation thread.', 422);
@@ -914,7 +987,12 @@ class AiChatController extends Controller
         $existingThreadId = $validated['thread_id'] ?? null;
         $threadId = $existingThreadId ?? (string) Str::uuid();
         $question = $validated['message'];
-        if (config('erp_ai.conversation_enabled', false) && ($mediaIds === [] || isset($validated['voice_source'])) && $existingThreadId !== null) {
+        $deterministic = $mediaIds === [] && blank($validated['image'] ?? null)
+            && empty($validated['choice_set_id']) && empty($validated['choice_id'])
+            ? app(\App\Ai\Deterministic\DeterministicReadRouter::class)->plan($question)
+            : null;
+        if (config('erp_ai.conversation_enabled', false) && ($mediaIds === [] || isset($validated['voice_source']) || isset($validated['supplier_photo']))
+            && $existingThreadId !== null && (isset($validated['voice_source']) || !isset($deterministic['input']['product_lookup']))) {
             try {
                 if (!$this->ownedThreads($principal)->where('id', $threadId)->exists()) {
                     return $this->threadNotFound();
@@ -933,7 +1011,7 @@ class AiChatController extends Controller
                         if ($interpretation === null) {
                             $this->modelGateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
                         }
-                        $evidence = ['facts' => [['tool' => 'workflow.clarification.v1', 'data' => $result]],
+                        $evidence = ['facts' => $this->conversationFacts($result),
                             'sources' => [], 'warnings' => [], 'answer_status' => 'needs_input',
                             'workflow' => $result, 'interaction_type' => 'workflow_continuation'];
                         $response = new AgentResponse($principal->requestId, $result['message'],
@@ -947,7 +1025,7 @@ class AiChatController extends Controller
                     return response()->json(['thread_id' => $threadId, 'status' => 'completed',
                         'interaction_type' => 'workflow_continuation', 'workflow' => $conversation,
                         'message' => $conversation['message'], 'answer_status' => 'needs_input',
-                        'facts' => [['tool' => 'workflow.clarification.v1', 'data' => $conversation]],
+                        'facts' => $this->conversationFacts($conversation),
                         'sources' => [], 'warnings' => [], 'scope' => $this->scope($principal)]);
                 }
             } catch (\Symfony\Component\HttpKernel\Exception\ConflictHttpException $error) {
@@ -956,15 +1034,10 @@ class AiChatController extends Controller
         }
         // Strict, read-only and rules-only turns should not spend model RPM,
         // tokens or credits. All ERP reads still pass ErpToolExecutor policies.
-        if ($mediaIds === [] && blank($validated['image'] ?? null)
-            && empty($validated['choice_set_id']) && empty($validated['choice_id'])) {
-            $deterministic = app(\App\Ai\Deterministic\DeterministicReadRouter::class)
-                ->plan($question);
-            if ($deterministic !== null) {
-                return $this->runDeterministicTurn(
-                    $principal, $threadId, $existingThreadId, $question, $deterministic
-                );
-            }
+        if ($deterministic !== null) {
+            return $this->runDeterministicTurn(
+                $principal, $threadId, $existingThreadId, $question, $deterministic
+            );
         }
 
         $principal = new AiPrincipal(...array_replace(get_object_vars($principal), ['threadId' => $threadId]));
@@ -1143,6 +1216,17 @@ class AiChatController extends Controller
      *
      * @param array{type:string,tool?:string,input?:array,message?:string} $plan
      */
+    private function conversationFacts(array $state): array
+    {
+        $facts = [['tool' => 'workflow.clarification.v1', 'data' => $state]];
+        if (($state['action_key'] ?? null) === \App\Ai\Conversation\SupplierSetupConversation::KEY && isset($state['proposal_id'])) {
+            $facts[] = ['tool' => $state['action_key'], 'data' => $state['preview'] + array_intersect_key(
+                $state, array_flip(['proposal_id', 'version', 'action_key', 'task_id', 'task_revision'])
+            )];
+        }
+        return $facts;
+    }
+
     private function runDeterministicTurn(
         AiPrincipal $principal,
         string $threadId,
@@ -1207,6 +1291,9 @@ class AiChatController extends Controller
                         ? 'This ERP report is unavailable under your current permissions or scope.'
                         : 'The ERP could not complete the requested report. Check the selected company, branch and financial year.';
                     $warnings[] = $tool->errorCode ?? 'ERP_READ_FAILED';
+                } elseif (isset($tool->data['product_lookup_status'])) {
+                    $answerStatus = $tool->data['product_lookup_status'] === 'ambiguous' ? 'needs_input' : 'no_data';
+                    $answer = $tool->warnings[0];
                 } else {
                     $facts[] = [
                         'tool' => $tool->toolKey,
@@ -1499,7 +1586,8 @@ class AiChatController extends Controller
             default => 'unsupported',
         };
 
-        return ['answer_status' => $status, 'facts' => $facts, 'sources' => array_values($sources), 'warnings' => array_values(array_unique($warnings))];
+        return ['answer_status' => $status, 'facts' => array_values(array_unique($facts, SORT_REGULAR)),
+            'sources' => array_values($sources), 'warnings' => array_values(array_unique($warnings))];
     }
 
     private function storeTurn(AiPrincipal $principal, string $threadId, string $question, string $answer, AgentResponse $response, array $evidence): void
