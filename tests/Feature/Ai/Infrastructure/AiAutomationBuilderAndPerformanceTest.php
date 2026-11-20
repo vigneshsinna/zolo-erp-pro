@@ -129,8 +129,8 @@ final class AiAutomationBuilderAndPerformanceTest extends TestCase
     public function test_performance_counts_real_runs_but_never_assumes_accuracy_or_savings(): void
     {
         $rule = $this->rule();
-        $this->run($rule['id'], 'completed', 2);
-        $this->run($rule['id'], 'failed', 5);
+        $this->insertScheduledRun($rule['id'], 'completed', 2);
+        $this->insertScheduledRun($rule['id'], 'failed', 5);
         $data = app(AiAutomationPerformanceService::class)->report($this->context(), $this->actor->id, 30);
         $this->assertSame(2, $data['total']);
         $this->assertSame(1, $data['completed']);
@@ -146,7 +146,7 @@ final class AiAutomationBuilderAndPerformanceTest extends TestCase
     public function test_human_reviews_are_immutable_and_labour_savings_are_calculated_by_php(): void
     {
         $rule = $this->rule();
-        $runId = $this->run($rule['id'], 'completed', 2);
+        $runId = $this->insertScheduledRun($rule['id'], 'completed', 2);
         $input = ['run_id' => $runId, 'outcome' => 'correct',
             'minutes_saved' => 30, 'hourly_rate_rupees' => 600,
             'notes' => 'Observed time compared with manual checking', 'days' => 30];
@@ -165,7 +165,7 @@ final class AiAutomationBuilderAndPerformanceTest extends TestCase
     public function test_incorrect_reviews_cannot_claim_time_savings(): void
     {
         $rule = $this->rule();
-        $runId = $this->run($rule['id'], 'completed', 2);
+        $runId = $this->insertScheduledRun($rule['id'], 'completed', 2);
         $this->expectException(ValidationException::class);
         app(AiAutomationReviewService::class)->record($this->context(), $this->actor->id,
             ['run_id' => $runId, 'outcome' => 'incorrect',
@@ -175,7 +175,7 @@ final class AiAutomationBuilderAndPerformanceTest extends TestCase
     public function test_completed_run_review_cannot_cross_branch_even_for_an_approver(): void
     {
         $rule = $this->rule();
-        $runId = $this->run($rule['id'], 'completed', 2);
+        $runId = $this->insertScheduledRun($rule['id'], 'completed', 2);
         $other = $this->company->branches()->create([
             'name' => 'Other Branch', 'code' => 'OTH', 'is_active' => true])->id;
         DB::table('company_user_branches')->insert([
@@ -213,7 +213,7 @@ final class AiAutomationBuilderAndPerformanceTest extends TestCase
             $input);
     }
 
-    private function run(string $ruleId, string $status, int $secondsAgo): string
+    private function insertScheduledRun(string $ruleId, string $status, int $secondsAgo): string
     {
         $id = (string) Str::uuid();
         $now = now('UTC');
