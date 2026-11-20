@@ -151,11 +151,24 @@ final class BatchRecordResolutionService
                 ->find($warehouseId);
 
             if ($warehouse) {
+                if ($context->branchId && $warehouse->branch_id && (int) $warehouse->branch_id !== (int) $context->branchId) {
+                    $result->setNone('warehouse_id', (string) $warehouseId, "Selected warehouse '{$warehouse->name}' belongs to a different branch.");
+                    return;
+                }
+
                 $result->setResolved('warehouse_id', (int) $warehouse->id, $warehouse);
                 return;
             }
-        }
 
+            $inactiveOrMissing = Warehouse::where('company_id', $context->companyId)->find($warehouseId);
+            if ($inactiveOrMissing && !$inactiveOrMissing->is_active) {
+                $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse '{$inactiveOrMissing->name}' is inactive.");
+                return;
+            }
+
+            $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse ID {$warehouseId} not found under current company.");
+            return;
+        }
         $query = isset($slots['warehouse_query']) ? trim((string) $slots['warehouse_query']) : null;
         $res = $this->resolver->resolveWarehouse($context, $query);
 
@@ -165,11 +178,21 @@ final class BatchRecordResolutionService
             $candidates = $res['candidates']->map(fn(Warehouse $w): array => [
                 'id' => (int) $w->id,
                 'label' => $w->name,
+                'name' => $w->name,
+                'code' => $w->code ?? '',
                 'branch_id' => (int) $w->branch_id,
             ])->all();
-            $result->setCandidates('warehouse_id', $candidates, $query);
+            $result->setCandidates('warehouse_id', $candidates, $query ?? '');
         } else {
-            $result->setNone('warehouse_id', $query, $query ? "No warehouse found matching '{$query}'." : "No active warehouse found for this branch.");
+            $reasonMsg = match ($res['reason'] ?? '') {
+                'wrong_branch' => "Warehouse matching '{$query}' belongs to another branch.",
+                'inactive' => "Warehouse matching '{$query}' is inactive.",
+                'not_found' => "No warehouse found matching '{$query}'.",
+                default => ($query !== null && $query !== '')
+                    ? "No warehouse found matching '{$query}'."
+                    : "No eligible default warehouse found. Please select a receiving warehouse."
+            };
+            $result->setNone('warehouse_id', $query ?? '', $reasonMsg);
         }
     }
 

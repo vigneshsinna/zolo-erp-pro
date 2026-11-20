@@ -721,7 +721,7 @@
             const refLabel = isPb ? 'Invoice number' : (isPo ? 'Order Reference' : 'Reference number');
             const invoiceNo = preview.supplier_invoice_no || preview.reference_no || ext.invoice_number || (isPo ? 'Auto-generated on booking' : '—');
             const invoiceDate = preview.date || ext.invoice_date || '—';
-            const warehouseName = (preview.warehouse && preview.warehouse.name) || 'Not selected';
+            const warehouseName = (preview.warehouse && preview.warehouse.name) || (res.task && res.task.slots && (res.task.slots.warehouse_name || res.task.slots.warehouse_query)) || 'Not selected';
 
             metaBox.append('<div class="col-6 mb-2"><small class="text-muted d-block">' + escapeText(partyLabel) + '</small><strong class="text-dark">' + escapeText(supplierName) + '</strong></div>');
             metaBox.append('<div class="col-6 mb-2 text-right"><small class="text-muted d-block">' + escapeText(refLabel) + '</small><strong class="text-dark">' + escapeText(invoiceNo) + '</strong></div>');
@@ -855,7 +855,7 @@
             const body = $('<div class="card-body p-3 bg-white"></div>');
             const successBox = $('<div class="alert alert-success p-3 border-success mb-2"></div>');
             successBox.append('<h6 class="font-weight-bold text-success mb-1">Voucher Booked: ' + escapeText(refNo) + '</h6>');
-            const bookedWarehouse = (receipt && receipt.details && receipt.details.warehouse_name) || (currentRes && currentRes.proposal && currentRes.proposal.preview && currentRes.proposal.preview.warehouse && currentRes.proposal.preview.warehouse.name) || 'warehouse';
+            const bookedWarehouse = (receipt && receipt.details && receipt.details.warehouse_name) || (currentRes && currentRes.proposal && currentRes.proposal.preview && currentRes.proposal.preview.warehouse && currentRes.proposal.preview.warehouse.name) || (preview && preview.warehouse && preview.warehouse.name) || 'warehouse';
             const impactDesc = isPo ? ('Status: Successfully posted to Purchase Orders, allocations updated in ' + escapeText(bookedWarehouse) + '.') : ('Status: Successfully posted to Accounts Payable, inventory updated in ' + escapeText(bookedWarehouse) + '.');
             successBox.append('<div class="small text-muted mb-3">' + escapeText(impactDesc) + '</div>');
 
@@ -1224,6 +1224,108 @@
                         btnAddLine.on('click', function () {
                             addLineRow();
                         });
+                    } else if (window.AiEntityPicker && (inp.field === 'warehouse_id' || inp.field === 'supplier_id')) {
+                        const entityType = inp.field === 'warehouse_id' ? 'warehouse' : 'supplier';
+                        const hiddenInput = $('<input type="hidden" class="ai-clarify-select" />')
+                            .attr('data-field', inp.field)
+                            .val(inp.current_value || '');
+                        grp.append(hiddenInput);
+
+                        const pickerSlot = $('<div class="ai-entity-picker-slot mt-2"></div>');
+                        grp.append(pickerSlot);
+
+                        const renderPickerView = function () {
+                            pickerSlot.empty();
+                            window.AiEntityPicker.renderPicker(pickerSlot, {
+                                entityType: entityType,
+                                taskId: currentTaskId,
+                                taskRevision: (taskObj && taskObj.revision) || 1,
+                                fieldPath: inp.field,
+                                selectedId: hiddenInput.val() || null,
+                                initialQuery: inp.current_value || '',
+                                aiBaseUrl: aiBaseUrl,
+                                onSelect: function (entity) {
+                                    hiddenInput.val(entity.id);
+                                    renderSummaryView(entity);
+                                },
+                                onCreateRequested: function () {
+                                    if (window.AiMasterCreatePanel) {
+                                        window.AiMasterCreatePanel.render(pickerSlot, {
+                                            taskId: currentTaskId,
+                                            field: inp.field,
+                                            entityType: entityType,
+                                            initialName: inp.current_value || '',
+                                            aiBaseUrl: aiBaseUrl,
+                                            baseHeaders: baseHeaders,
+                                            onCompleted: function (res) {
+                                                if (res && res.proposal) {
+                                                    renderProposalView(res);
+                                                } else if (res && res.task) {
+                                                    renderClarificationView(res);
+                                                } else {
+                                                    $.ajax({
+                                                        url: aiBaseUrl + '/workflow-tasks/' + currentTaskId,
+                                                        method: 'GET',
+                                                        headers: baseHeaders(true),
+                                                        dataType: 'json'
+                                                    }).done(function (latestTaskRes) {
+                                                        if (latestTaskRes && latestTaskRes.task) {
+                                                            currentRes = latestTaskRes;
+                                                            if (latestTaskRes.evaluation && latestTaskRes.evaluation.is_ready) {
+                                                                $.ajax({
+                                                                    url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/prepare-proposal',
+                                                                    method: 'POST',
+                                                                    headers: baseHeaders(true),
+                                                                    dataType: 'json'
+                                                                }).done(function (pRes) {
+                                                                    renderProposalView(pRes);
+                                                                });
+                                                            } else {
+                                                                renderClarificationView(latestTaskRes);
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            },
+                                            onCancel: function () {
+                                                renderPickerView();
+                                            }
+                                        });
+                                    }
+                                },
+                                onCancel: function () {
+                                    if (hiddenInput.val()) {
+                                        renderSummaryView({ id: hiddenInput.val(), name: inp.current_label || ('Selected ' + entityType) });
+                                    }
+                                }
+                            });
+                        };
+
+                        const renderSummaryView = function (ent) {
+                            pickerSlot.empty();
+                            window.AiEntityPicker.renderSelectionSummary(pickerSlot, {
+                                label: inp.label || inp.field,
+                                entityName: ent.name || ent.display,
+                                metadata: ent.branch_label || ent.location || (ent.branch_name ? 'Branch: ' + ent.branch_name : ''),
+                                reason: 'User selected',
+                                onChangeRequested: function () {
+                                    renderPickerView();
+                                }
+                            });
+                        };
+
+                        if (inp.current_value && inp.current_label) {
+                            renderSummaryView({ id: inp.current_value, name: inp.current_label });
+                        } else {
+                            renderPickerView();
+                        }
+                    } else if (Array.isArray(inp.candidates) && inp.candidates.length > 0) {
+                        const sel = $('<select class="form-control form-control-sm ai-clarify-select"></select>').attr('data-field', inp.field);
+                        sel.append('<option value="">-- Choose ' + escapeText(inp.label || 'Candidate') + ' --</option>');
+                        inp.candidates.forEach(function (c) {
+                            sel.append($('<option></option>').attr('value', c.id).text(c.display || c.name || c.code));
+                        });
+                        grp.append(sel);
                     } else if (isEntity) {
                         // Rich AiEntityPicker
                         const hiddenInput = $('<input type="hidden" class="ai-clarify-entity-value">')
@@ -1608,17 +1710,25 @@
                     feedback.html('<div class="alert alert-warning py-1 px-2 mb-0">Please resolve the missing details before submitting.</div>');
                     return;
                 }
+                const expectedRevision = (taskObj && taskObj.revision) || (currentRes.task && currentRes.task.revision) || 1;
 
                 $.ajax({
                     url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/inputs',
                     method: 'PATCH',
                     headers: baseHeaders(true),
                     data: JSON.stringify({
-                        expected_revision: (taskObj && taskObj.revision) || 1,
+                        expected_revision: expectedRevision,
                         corrections: corrections
                     }),
                     success: function (resPatch) {
-                        if (resPatch.evaluation && resPatch.evaluation.is_ready) {
+                        if (resPatch && resPatch.task) {
+                            currentRes.task = resPatch.task;
+                            if (taskObj) {
+                                taskObj.revision = resPatch.task.revision;
+                            }
+                        }
+                        const isReady = !!(resPatch && resPatch.evaluation && resPatch.evaluation.is_ready);
+                        if (isReady) {
                             $.ajax({
                                 url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/prepare-proposal',
                                 method: 'POST',
@@ -1645,34 +1755,29 @@
                             });
                         } else {
                             submitBtn.prop('disabled', false).html('<i class="dripicons-direction mr-1"></i>Submit Details & Generate Preview');
-                            refreshView('clarification', {
-                                task: resPatch.task,
-                                evaluation: resPatch.evaluation,
-                                clarification: resPatch.clarification,
-                                task_id: currentTaskId,
-                                media: mediaObj,
-                                extraction: ext
-                            });
+                            refreshView('clarification', resPatch);
                         }
                     },
                     error: function (xhrPatch) {
                         submitBtn.prop('disabled', false).html('<i class="dripicons-direction mr-1"></i>Submit Details & Generate Preview');
                         const err = xhrPatch.responseJSON || {};
                         if (xhrPatch.status === 409) {
-                            feedback.html('<div class="alert alert-warning py-1 px-2 mb-0">' + escapeText(err.message || 'Task was modified in another session. Reloading latest details...') + '</div>');
-                            setTimeout(function () {
-                                $.ajax({
-                                    url: aiBaseUrl + '/workflow-tasks/' + currentTaskId,
-                                    method: 'GET',
-                                    headers: baseHeaders(),
-                                    success: function (taskData) {
-                                        refreshView('clarification', taskData);
-                                    }
-                                });
-                            }, 1200);
-                        } else {
-                            feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to update inputs.') + '</div>');
+                            feedback.html('<div class="alert alert-warning py-1 px-2 mb-2"><i class="dripicons-warning mr-1"></i>Task was modified in another session (revision conflict). Refreshing latest task details...</div>');
+                            $.ajax({
+                                url: aiBaseUrl + '/workflow-tasks/' + currentTaskId,
+                                method: 'GET',
+                                headers: baseHeaders(false),
+                                success: function (latestTaskRes) {
+                                    refreshView('clarification', latestTaskRes);
+                                    $('.ai-clarify-feedback').html('<div class="alert alert-warning py-1 px-2 mb-2"><i class="dripicons-warning mr-1"></i>Task revision updated to latest version (' + (latestTaskRes.task && latestTaskRes.task.revision) + '). Please review and re-submit your details.</div>');
+                                },
+                                error: function () {
+                                    feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Task conflict occurred. Please reload the page.') + '</div>');
+                                }
+                            });
+                            return;
                         }
+                        feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to update inputs.') + '</div>');
                     }
                 });
             });
@@ -1711,8 +1816,34 @@
             formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">' + escapeText(isPurchase ? 'Supplier' : 'Customer') + '</label><input type="text" class="form-control form-control-sm ai-edit-supplier" value="' + escapeText((preview.supplier && (preview.supplier.name || preview.supplier.company_name)) || ext.supplier_name || '') + '"></div>');
             formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">' + escapeText(isPb ? 'Invoice Number' : (isPo ? 'Order Reference' : 'Reference Number')) + '</label><input type="text" class="form-control form-control-sm ai-edit-invoice-no" value="' + escapeText(preview.supplier_invoice_no || preview.reference_no || ext.invoice_number || '') + '"></div>');
             formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Document Date</label><input type="date" class="form-control form-control-sm ai-edit-date" value="' + escapeText(preview.date || ext.invoice_date || '') + '"></div>');
-            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Warehouse</label><input type="text" class="form-control form-control-sm ai-edit-warehouse" value="' + escapeText((preview.warehouse && preview.warehouse.name) || '') + '"></div>');
+            formGrid.append('<div class="form-group col-sm-6 mb-2"><label class="small text-muted mb-1 font-weight-bold">Warehouse</label><div class="input-group input-group-sm"><input type="hidden" class="ai-edit-warehouse-id" value="' + escapeText((preview.warehouse && preview.warehouse.id) || '') + '"><input type="text" class="form-control form-control-sm ai-edit-warehouse" value="' + escapeText((preview.warehouse && preview.warehouse.name) || '') + '" placeholder="Enter warehouse name or ID"><div class="input-group-append"><button type="button" class="btn btn-outline-secondary ai-btn-browse-warehouse" title="Browse warehouses"><i class="dripicons-search"></i></button></div></div><div class="ai-edit-picker-container mt-2" style="display: none;"></div></div>');
             body.append(formGrid);
+
+            const editPickerBox = body.find('.ai-edit-picker-container');
+            body.find('.ai-btn-browse-warehouse').on('click', function () {
+                if (editPickerBox.is(':visible')) {
+                    editPickerBox.slideUp('fast').empty();
+                } else if (window.AiEntityPicker) {
+                    editPickerBox.slideDown('fast');
+                    window.AiEntityPicker.renderPicker(editPickerBox, {
+                        entityType: 'warehouse',
+                        taskId: currentTaskId,
+                        taskRevision: (currentRes.task && currentRes.task.revision) || 1,
+                        fieldPath: 'warehouse_id',
+                        selectedId: body.find('.ai-edit-warehouse-id').val() || null,
+                        initialQuery: body.find('.ai-edit-warehouse').val() || '',
+                        aiBaseUrl: aiBaseUrl,
+                        onSelect: function (entity) {
+                            body.find('.ai-edit-warehouse-id').val(entity.id);
+                            body.find('.ai-edit-warehouse').val(entity.name || entity.display);
+                            editPickerBox.slideUp('fast').empty();
+                        },
+                        onCancel: function () {
+                            editPickerBox.slideUp('fast').empty();
+                        }
+                    });
+                }
+            });
 
             const tableWrap = $('<div class="table-responsive my-2"></div>');
             const table = $('<table class="table table-sm table-bordered mb-0"></table>');
@@ -1748,33 +1879,70 @@
                 feedback.empty();
 
                 const corrections = [];
-                const supplierVal = body.find('.ai-edit-supplier').val().trim();
-                const invoiceNoVal = body.find('.ai-edit-invoice-no').val().trim();
+
+                const supplierVal = body.find('.ai-edit-supplier').val();
+                if (supplierVal !== undefined && supplierVal.trim() !== '') {
+                    corrections.push({
+                        field: isPurchase ? 'supplier_id' : 'customer_id',
+                        value: supplierVal.trim(),
+                        confirmation: 'user_edited'
+                    });
+                }
+
+                const invoiceNoVal = body.find('.ai-edit-invoice-no').val();
+                if (invoiceNoVal !== undefined && invoiceNoVal.trim() !== '') {
+                    corrections.push({
+                        field: isPb ? 'supplier_invoice_no' : (isPo ? 'reference_no' : 'invoice_no'),
+                        value: invoiceNoVal.trim(),
+                        confirmation: 'user_edited'
+                    });
+                }
+
                 const dateVal = body.find('.ai-edit-date').val();
-                const warehouseVal = body.find('.ai-edit-warehouse').val().trim();
-
-                if (supplierVal !== '') {
-                    corrections.push({ field: 'supplier_id', value: supplierVal, confirmation: 'user_edited' });
-                }
-                if (invoiceNoVal !== '') {
-                    corrections.push({ field: 'supplier_invoice_no', value: invoiceNoVal, confirmation: 'user_edited' });
-                }
-                if (dateVal !== '') {
-                    corrections.push({ field: 'date', value: dateVal, confirmation: 'user_edited' });
-                }
-                if (warehouseVal !== '') {
-                    corrections.push({ field: 'warehouse_id', value: warehouseVal, confirmation: 'user_edited' });
+                if (dateVal !== undefined && dateVal.trim() !== '') {
+                    corrections.push({
+                        field: 'date',
+                        value: dateVal.trim(),
+                        confirmation: 'user_edited'
+                    });
                 }
 
+                const whIdVal = body.find('.ai-edit-warehouse-id').val();
+                const warehouseVal = body.find('.ai-edit-warehouse').val();
+                if (whIdVal && !isNaN(whIdVal) && Number(whIdVal) > 0) {
+                    corrections.push({
+                        field: 'warehouse_id',
+                        value: Number(whIdVal),
+                        confirmation: 'user_selected'
+                    });
+                } else if (warehouseVal !== undefined && warehouseVal.trim() !== '') {
+                    corrections.push({
+                        field: 'warehouse_id',
+                        value: warehouseVal.trim(),
+                        confirmation: 'user_edited'
+                    });
+                }
+
+                const updatedItems = [];
                 tbody.find('tr').each(function (idx) {
                     const desc = $(this).find('.ai-edit-item-desc').val().trim();
                     const qty = parseFloat($(this).find('.ai-edit-item-qty').val()) || 1;
                     const rate = parseFloat($(this).find('.ai-edit-item-rate').val()) || 0;
-                    const lineKey = 'line-' + idx;
-                    corrections.push({ field: 'items[' + lineKey + '].product_id', value: desc, confirmation: 'user_edited' });
-                    corrections.push({ field: 'items[' + lineKey + '].qty', value: qty, confirmation: 'user_edited' });
-                    corrections.push({ field: 'items[' + lineKey + '].net_unit_cost', value: rate, confirmation: 'user_edited' });
+                    updatedItems.push({
+                        client_line_id: 'line-' + idx,
+                        product_query: desc,
+                        qty: qty,
+                        net_unit_cost: rate
+                    });
                 });
+
+                if (updatedItems.length > 0) {
+                    corrections.push({
+                        field: 'items',
+                        value: updatedItems,
+                        confirmation: 'user_edited'
+                    });
+                }
 
                 if (corrections.length === 0) {
                     btnSave.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Update & Revalidate');
@@ -1782,16 +1950,25 @@
                     return;
                 }
 
+                const expectedRevision = (currentRes.task && currentRes.task.revision) || (currentRes.task_revision) || (taskObj && taskObj.revision) || 1;
+
                 $.ajax({
                     url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/inputs',
                     method: 'PATCH',
                     headers: baseHeaders(true),
                     data: JSON.stringify({
-                        expected_revision: (currentRes.task && currentRes.task.revision) || 1,
+                        expected_revision: expectedRevision,
                         corrections: corrections
                     }),
                     success: function (resPatch) {
-                        if (resPatch.evaluation && resPatch.evaluation.is_ready) {
+                        if (resPatch && resPatch.task) {
+                            currentRes.task = resPatch.task;
+                            if (taskObj) {
+                                taskObj.revision = resPatch.task.revision;
+                            }
+                        }
+                        const isReady = !!(resPatch && resPatch.evaluation && resPatch.evaluation.is_ready);
+                        if (isReady) {
                             $.ajax({
                                 url: aiBaseUrl + '/workflow-tasks/' + currentTaskId + '/prepare-proposal',
                                 method: 'POST',
@@ -1802,8 +1979,8 @@
                                         status: 'proposal_created',
                                         proposal: resPrep.proposal,
                                         task: resPrep.task,
-                                        media: media,
-                                        extraction: extraction
+                                        media: mediaObj,
+                                        extraction: ext
                                     });
                                 },
                                 error: function (xhrPrep) {
@@ -1813,22 +1990,30 @@
                                 }
                             });
                         } else {
-                            refreshView('clarification', {
-                                task: resPatch.task,
-                                evaluation: resPatch.evaluation,
-                                clarification: resPatch.clarification,
-                                task_id: currentTaskId
-                            });
+                            btnSave.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Update & Revalidate');
+                            refreshView('clarification', resPatch);
                         }
                     },
                     error: function (xhrPatch) {
                         btnSave.prop('disabled', false).html('<i class="dripicons-checkmark mr-1"></i>Update & Revalidate');
                         const err = xhrPatch.responseJSON || {};
                         if (xhrPatch.status === 409) {
-                            feedback.html('<div class="alert alert-warning py-1 px-2 mb-0">' + escapeText(err.message || 'Task was modified in another session. Please reload.') + '</div>');
-                        } else {
-                            feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to update details.') + '</div>');
+                            feedback.html('<div class="alert alert-warning py-1 px-2 mb-2"><i class="dripicons-warning mr-1"></i>Task was modified in another session (revision conflict). Refreshing latest task details...</div>');
+                            $.ajax({
+                                url: aiBaseUrl + '/workflow-tasks/' + currentTaskId,
+                                method: 'GET',
+                                headers: baseHeaders(false),
+                                success: function (latestTaskRes) {
+                                    refreshView('clarification', latestTaskRes);
+                                    $('.ai-clarify-feedback').html('<div class="alert alert-warning py-1 px-2 mb-2"><i class="dripicons-warning mr-1"></i>Task revision updated to latest version (' + (latestTaskRes.task && latestTaskRes.task.revision) + '). Please review and re-submit your details.</div>');
+                                },
+                                error: function () {
+                                    feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Task conflict occurred. Please reload the page.') + '</div>');
+                                }
+                            });
+                            return;
                         }
+                        feedback.html('<div class="alert alert-danger py-1 px-2 mb-0">' + escapeText(err.message || 'Failed to update details.') + '</div>');
                     }
                 });
             });

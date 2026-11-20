@@ -167,6 +167,21 @@
                             @endif
                         </div>
                     @endif
+                    @if (!empty($lims_sale_data->end_user_name))
+                        <div style="margin-bottom: 4px;margin-left: 10px">
+                            <span style="font-weight: bold;">Patient / End User:</span>&nbsp;&nbsp;<span>{{ $lims_sale_data->end_user_name }}</span>
+                        </div>
+                    @endif
+                    @if (!empty($lims_sale_data->end_user_phone))
+                        <div style="margin-bottom: 4px;margin-left: 10px">
+                            <span style="font-weight: bold;">Patient Phone:</span>&nbsp;&nbsp;<span>{{ $lims_sale_data->end_user_phone }}</span>
+                        </div>
+                    @endif
+                    @if (!empty($lims_sale_data->customer_order_no))
+                        <div style="margin-bottom: 4px;margin-left: 10px">
+                            <span style="font-weight: bold;">Order No:</span>&nbsp;&nbsp;<span>{{ $lims_sale_data->customer_order_no }}</span>
+                        </div>
+                    @endif
                 </td>
             @endif
 
@@ -281,6 +296,20 @@
                         <span style="font-weight: bold;">Will
                             Expire</span>{{ ': ' . $product_sale_data->guarantee_end }}
                     @endif
+
+                    @php
+                        $hasRx = (!empty($product_sale_data->sph) || !empty($product_sale_data->cyl) || !empty($product_sale_data->axis) || !empty($product_sale_data->addition) || !empty($product_sale_data->dia) || !empty($product_sale_data->lr));
+                    @endphp
+                    @if($hasRx)
+                        <div style="margin-top: 4px; padding: 2px 6px; background-color: #f8fafc; border-radius: 3px; font-size: 11px; display: inline-block; border: 1px solid #cbd5e1; line-height: 1.4;">
+                            @if(!empty($product_sale_data->lr))<span style="font-weight: 700; color: #0284c7; margin-right: 6px;">Eye: {{ $product_sale_data->lr }}</span>@endif
+                            @if($product_sale_data->sph !== null && $product_sale_data->sph !== '')<span style="margin-right: 6px;"><strong>SPH:</strong> {{ $product_sale_data->sph }}</span>@endif
+                            @if($product_sale_data->cyl !== null && $product_sale_data->cyl !== '')<span style="margin-right: 6px;"><strong>CYL:</strong> {{ $product_sale_data->cyl }}</span>@endif
+                            @if($product_sale_data->axis !== null && $product_sale_data->axis !== '')<span style="margin-right: 6px;"><strong>AXIS:</strong> {{ $product_sale_data->axis }}&deg;</span>@endif
+                            @if($product_sale_data->addition !== null && $product_sale_data->addition !== '')<span style="margin-right: 6px;"><strong>ADD:</strong> {{ $product_sale_data->addition }}</span>@endif
+                            @if(!empty($product_sale_data->dia))<span style="margin-right: 6px;"><strong>DIA:</strong> {{ $product_sale_data->dia }}mm</span>@endif
+                        </div>
+                    @endif
                 </td>
                 <td style="border:1px solid #222;padding:1px 3px;text-align:center">
                     {{ $product_sale_data->qty . ' ' . $unit_code . ' ' . $variant_name }}</td>
@@ -390,6 +419,30 @@
             </td>
 
         </tr>
+        @if(!empty($lims_sale_data->fitting_charge) && $lims_sale_data->fitting_charge > 0)
+        <tr>
+            <td class="td-text" colspan="3"
+                style="border:1px solid #222;padding:1px 3px;background-color:rgb(205, 218, 235);">
+                Fitting Charge
+            </td>
+            <td class="td-text"
+                style="border:1px solid #222;padding:1px 3px;background-color:rgb(205, 218, 235);text-align: center;font-size: 15px;">
+                <x-amount-currency-symbol :amount="$lims_sale_data->fitting_charge" :currency_symbol="$lims_sale_data->currency->symbol" />
+            </td>
+        </tr>
+        @endif
+        @if(!empty($lims_sale_data->tinting_cost) && $lims_sale_data->tinting_cost > 0)
+        <tr>
+            <td class="td-text" colspan="3"
+                style="border:1px solid #222;padding:1px 3px;background-color:rgb(205, 218, 235);">
+                Tinting Cost
+            </td>
+            <td class="td-text"
+                style="border:1px solid #222;padding:1px 3px;background-color:rgb(205, 218, 235);text-align: center;font-size: 15px;">
+                <x-amount-currency-symbol :amount="$lims_sale_data->tinting_cost" :currency_symbol="$lims_sale_data->currency->symbol" />
+            </td>
+        </tr>
+        @endif
         <tr>
             <td class="td-text" colspan="3"
                 style="border:1px solid #222;padding:1px 3px;background-color:rgb(205, 218, 235);">

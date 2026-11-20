@@ -22,8 +22,8 @@ jobs:
         image: mysql:8.4
         env:
           MYSQL_ROOT_PASSWORD: fixture-root-only
-          # The concurrency suite refuses any database but its own.
-          MYSQL_DATABASE: ${{ matrix.suite == 'concurrency' && 'zolo_test_textile_concurrency' || matrix.suite == 'ai' && 'zolo_test_ai_release' || 'zolo_test_foundation' }}
+          # The concurrency suite refuses any database but its own; the AI suite uses zolo_test_ai_release.
+          MYSQL_DATABASE: ${{ matrix.suite == 'concurrency' && 'zolo_test_textile_concurrency' || (matrix.suite == 'ai' && 'zolo_test_ai_release' || 'zolo_test_foundation') }}
           MYSQL_USER: zolo_test
           MYSQL_PASSWORD: fixture-only
         ports: ['3306:3306']
@@ -34,7 +34,7 @@ jobs:
       APP_ENV: testing
       APP_KEY: base64:dGVzdC1vbmx5LWF1ZGl0LWZpeHR1cmUta2V5LTEyMzQ=
       ERP_TEST_MYSQL: '1'
-      ERP_TEST_MYSQL_DATABASE: ${{ matrix.suite == 'concurrency' && 'zolo_test_textile_concurrency' || matrix.suite == 'ai' && 'zolo_test_ai_release' || 'zolo_test_foundation' }}
+      ERP_TEST_MYSQL_DATABASE: ${{ matrix.suite == 'concurrency' && 'zolo_test_textile_concurrency' || (matrix.suite == 'ai' && 'zolo_test_ai_release' || 'zolo_test_foundation') }}
       ERP_TEST_MYSQL_USER: zolo_test
       ERP_TEST_MYSQL_PASSWORD: fixture-only
       CACHE_DRIVER: array

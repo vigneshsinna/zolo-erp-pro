@@ -37,7 +37,7 @@
             $cards.empty();
             
             const includeAll = selectedOrderStatus === 'all' || $('#side-orders-all-toggle').prop('checked');
-            const statusParam = selectedOrderStatus || (includeAll ? 'all' : 'pending');
+            const statusParam = includeAll ? 'all' : (selectedOrderStatus || 'pending');
             const partyId = form?.querySelector('[name="' + (kind === 'sale' ? 'customer_id' : 'supplier_id') + '"]')?.value || '';
 
             $.getJSON(base, {page, party_id: partyId, status: statusParam})

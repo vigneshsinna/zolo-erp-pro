@@ -178,14 +178,14 @@ class RecordResolutionService
 
     /**
      * Resolve a warehouse for the given context.
-     * Enforces branch-level scoping and safe uniqueness (never silent first() fallback).
+     * Replaces first-match LIKE fallbacks with deterministic candidates.
+     * Only auto-selects exact unique eligible warehouse or unique branch default.
      *
      * @return array{
      *     status: 'exact'|'candidates'|'none',
      *     warehouse: ?Warehouse,
-     *     candidates: \Illuminate\Support\Collection<int, Warehouse>,
-     *     recommendation_reason?: ?string,
-     *     match_kind?: ?string
+     *     candidates: Collection<int, Warehouse>,
+     *     reason?: string
      * }
      */
     public function resolveWarehouse(CompanyContext $context, ?string $query = null): array
@@ -193,84 +193,103 @@ class RecordResolutionService
         $trimmed = $query !== null ? trim($query) : '';
 
         if ($trimmed !== '') {
+            // 1. Numeric ID lookup
             if (is_numeric($trimmed)) {
-                $warehouse = Warehouse::where('company_id', $context->companyId)
+                $byPk = Warehouse::where('company_id', $context->companyId)
                     ->where('is_active', true)
                     ->find((int) $trimmed);
-                if ($warehouse) {
+
+                if ($byPk) {
+                    if ($context->branchId && $byPk->branch_id && (int) $byPk->branch_id !== (int) $context->branchId) {
+                        return [
+                            'status' => 'none',
+                            'warehouse' => null,
+                            'candidates' => collect([$byPk]),
+                            'reason' => 'wrong_branch',
+                        ];
+                    }
+
                     return [
                         'status' => 'exact',
-                        'warehouse' => $warehouse,
-                        'candidates' => collect([$warehouse]),
-                        'recommendation_reason' => 'Exact ID match',
-                        'match_kind' => 'id',
+                        'warehouse' => $byPk,
+                        'candidates' => collect([$byPk]),
+                        'reason' => 'exact_id',
                     ];
                 }
             }
 
-            // Check exact name or code in active branch
-            $exactBranch = Warehouse::where('company_id', $context->companyId)
-                ->where('branch_id', $context->branchId)
+            // 2. Exact match on Name
+            $exactBranchMatch = Warehouse::where('company_id', $context->companyId)
                 ->where('is_active', true)
-                ->where(function ($q) use ($trimmed) {
-                    $q->where('name', $trimmed)
-                        ->orWhere('address', $trimmed);
+                ->where('name', $trimmed)
+                ->when($context->branchId, function ($q) use ($context) {
+                    $q->where(function ($sub) use ($context) {
+                        $sub->where('branch_id', $context->branchId)
+                            ->orWhereNull('branch_id');
+                    });
                 })
-                ->get();
+                ->first();
 
-            if ($exactBranch->count() === 1) {
+            if ($exactBranchMatch) {
                 return [
                     'status' => 'exact',
-                    'warehouse' => $exactBranch->first(),
-                    'candidates' => $exactBranch,
-                    'recommendation_reason' => 'Exact match in active branch',
-                    'match_kind' => 'exact_name',
+                    'warehouse' => $exactBranchMatch,
+                    'candidates' => collect([$exactBranchMatch]),
+                    'reason' => 'exact_name',
                 ];
             }
 
-            if ($exactBranch->count() > 1) {
+            // Check if exact name exists in another branch
+            $exactWrongBranch = Warehouse::where('company_id', $context->companyId)
+                ->where('is_active', true)
+                ->where('name', $trimmed)
+                ->first();
+
+            if ($exactWrongBranch) {
+                return [
+                    'status' => 'none',
+                    'warehouse' => null,
+                    'candidates' => collect([$exactWrongBranch]),
+                    'reason' => 'wrong_branch',
+                ];
+            }
+
+            // 3. Substring matching within eligible branch
+            $candidatesQuery = Warehouse::where('company_id', $context->companyId)
+                ->where('is_active', true)
+                ->where(function ($q) use ($trimmed) {
+                    $q->where('name', 'LIKE', "%{$trimmed}%")
+                        ->orWhere('address', 'LIKE', "%{$trimmed}%");
+                })
+                ->when($context->branchId, function ($q) use ($context) {
+                    $q->where(function ($sub) use ($context) {
+                        $sub->where('branch_id', $context->branchId)
+                            ->orWhereNull('branch_id');
+                    });
+                });
+
+            $candidates = $candidatesQuery->limit(5)->get();
+
+            if ($candidates->count() === 1) {
+                return [
+                    'status' => 'exact',
+                    'warehouse' => $candidates->first(),
+                    'candidates' => $candidates,
+                    'reason' => 'unique_partial_match',
+                ];
+            }
+
+            if ($candidates->count() > 1) {
                 return [
                     'status' => 'candidates',
                     'warehouse' => null,
-                    'candidates' => $exactBranch,
-                    'recommendation_reason' => 'Multiple warehouses matched query in active branch',
-                    'match_kind' => 'multiple_exact',
+                    'candidates' => $candidates,
+                    'reason' => 'ambiguous_candidates',
                 ];
             }
 
-            // Prefix search in branch (to leverage B-Tree indexes)
-            $prefixBranch = Warehouse::where('company_id', $context->companyId)
-                ->where('branch_id', $context->branchId)
-                ->where('is_active', true)
-                ->where(function ($q) use ($trimmed) {
-                    $q->where('name', 'LIKE', "{$trimmed}%")
-                        ->orWhere('address', 'LIKE', "{$trimmed}%");
-                })
-                ->get();
-
-            if ($prefixBranch->count() === 1) {
-                return [
-                    'status' => 'exact',
-                    'warehouse' => $prefixBranch->first(),
-                    'candidates' => $prefixBranch,
-                    'recommendation_reason' => 'Unique prefix match in active branch',
-                    'match_kind' => 'prefix_name',
-                ];
-            }
-
-            if ($prefixBranch->count() > 1) {
-                return [
-                    'status' => 'candidates',
-                    'warehouse' => null,
-                    'candidates' => $prefixBranch,
-                    'recommendation_reason' => 'Multiple warehouses matched prefix in active branch',
-                    'match_kind' => 'multiple_prefix',
-                ];
-            }
-
-            // Substring search in branch
-            $subBranch = Warehouse::where('company_id', $context->companyId)
-                ->where('branch_id', $context->branchId)
+            // Check if candidates exist in another branch
+            $otherBranchCandidates = Warehouse::where('company_id', $context->companyId)
                 ->where('is_active', true)
                 ->where(function ($q) use ($trimmed) {
                     $q->where('name', 'LIKE', "%{$trimmed}%")
@@ -278,37 +297,30 @@ class RecordResolutionService
                 })
                 ->get();
 
-            if ($subBranch->isEmpty()) {
-                $cleaned = trim((string) preg_replace('/\b(warehouse|wh|godown|store|depot)\b/i', '', $trimmed));
-                if ($cleaned !== '' && mb_strlen($cleaned) >= 2) {
-                    $subBranch = Warehouse::where('company_id', $context->companyId)
-                        ->where('branch_id', $context->branchId)
-                        ->where('is_active', true)
-                        ->where(function ($q) use ($cleaned) {
-                            $q->where('name', 'LIKE', "%{$cleaned}%")
-                                ->orWhere('address', 'LIKE', "%{$cleaned}%");
-                        })
-                        ->get();
-                }
-            }
-
-            if ($subBranch->count() === 1) {
+            if ($otherBranchCandidates->isNotEmpty()) {
                 return [
-                    'status' => 'exact',
-                    'warehouse' => $subBranch->first(),
-                    'candidates' => $subBranch,
-                    'recommendation_reason' => 'Single matching warehouse in active branch',
-                    'match_kind' => 'substring_name',
+                    'status' => 'none',
+                    'warehouse' => null,
+                    'candidates' => $otherBranchCandidates,
+                    'reason' => 'wrong_branch',
                 ];
             }
 
-            if ($subBranch->count() > 1) {
+            // Check if inactive warehouse exists
+            $inactive = Warehouse::where('company_id', $context->companyId)
+                ->where('is_active', false)
+                ->where(function ($q) use ($trimmed) {
+                    $q->where('name', 'LIKE', "%{$trimmed}%")
+                        ->orWhere('address', 'LIKE', "%{$trimmed}%");
+                })
+                ->get();
+
+            if ($inactive->isNotEmpty()) {
                 return [
-                    'status' => 'candidates',
+                    'status' => 'none',
                     'warehouse' => null,
-                    'candidates' => $subBranch,
-                    'recommendation_reason' => 'Multiple branch warehouses matched query',
-                    'match_kind' => 'multiple_candidates',
+                    'candidates' => collect(),
+                    'reason' => 'inactive',
                 ];
             }
 
@@ -316,33 +328,57 @@ class RecordResolutionService
                 'status' => 'none',
                 'warehouse' => null,
                 'candidates' => collect(),
+                'reason' => 'not_found',
             ];
         }
 
-        // Query is omitted:
-        // Check all active warehouses in active branch
-        $branchWarehouses = Warehouse::where('company_id', $context->companyId)
-            ->where('branch_id', $context->branchId)
+        // 4. Default resolution when query is omitted/empty:
+        // Check active branch warehouses
+        if ($context->branchId) {
+            $branchWarehouses = Warehouse::where('company_id', $context->companyId)
+                ->where('branch_id', $context->branchId)
+                ->where('is_active', true)
+                ->get();
+
+            if ($branchWarehouses->count() === 1) {
+                return [
+                    'status' => 'exact',
+                    'warehouse' => $branchWarehouses->first(),
+                    'candidates' => $branchWarehouses,
+                    'reason' => 'unique_branch_default',
+                ];
+            }
+
+            if ($branchWarehouses->count() > 1) {
+                return [
+                    'status' => 'candidates',
+                    'warehouse' => null,
+                    'candidates' => $branchWarehouses,
+                    'reason' => 'multiple_branch_warehouses',
+                ];
+            }
+        }
+
+        // If no branch-specific warehouse, check company-wide active warehouses
+        $companyWarehouses = Warehouse::where('company_id', $context->companyId)
             ->where('is_active', true)
             ->get();
 
-        if ($branchWarehouses->count() === 1) {
+        if ($companyWarehouses->count() === 1) {
             return [
                 'status' => 'exact',
-                'warehouse' => $branchWarehouses->first(),
-                'candidates' => $branchWarehouses,
-                'recommendation_reason' => 'Only active warehouse in this branch',
-                'match_kind' => 'single_branch_warehouse',
+                'warehouse' => $companyWarehouses->first(),
+                'candidates' => $companyWarehouses,
+                'reason' => 'unique_company_default',
             ];
         }
 
-        if ($branchWarehouses->count() > 1) {
+        if ($companyWarehouses->count() > 1) {
             return [
                 'status' => 'candidates',
                 'warehouse' => null,
-                'candidates' => $branchWarehouses,
-                'recommendation_reason' => 'Multiple active warehouses in branch; selection required',
-                'match_kind' => 'multiple_branch_warehouses',
+                'candidates' => $companyWarehouses,
+                'reason' => 'multiple_company_warehouses',
             ];
         }
 
@@ -350,6 +386,7 @@ class RecordResolutionService
             'status' => 'none',
             'warehouse' => null,
             'candidates' => collect(),
+            'reason' => 'no_active_warehouses',
         ];
     }
 

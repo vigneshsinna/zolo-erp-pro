@@ -123,14 +123,18 @@
                 @foreach(app(\App\Services\Platform\InventoryNavigation::class)->sections($nav) as $key => $item)
                     @php
                         $inventoryActive = match ($key) {
-                            'stock' => request()->is('inventory-reports/*', 'operations/stock*'),
+                            'stock' => request()->is('inventory-reports/stock-by-lot*', 'inventory-reports/timeline*', 'operations/stock*'),
+                            'lifecycle' => request()->is('inventory-reports/lifecycle*'),
                             'corrections' => request()->is('stock-count*', 'qty_adjustment*', 'damage-stock*'),
                             'transfers' => request()->is('transfers*'),
+                            default => false,
                         };
                         $inventoryKeywords = match ($key) {
                             'stock' => 'stock by lot batch balances warehouse godown',
+                            'lifecycle' => 'product lifecycle plc conversion transformation tree process jobwork',
                             'corrections' => 'stock count physical stocktake stock adjustments damage shrinkage write-off',
                             'transfers' => 'import transfers csv godown warehouse',
+                            default => '',
                         };
                     @endphp
                     <li id="{{ $item['id'] }}" @class(['active' => $inventoryActive])><a href="{{ $item['url'] }}" data-keywords="{{ $inventoryKeywords }}">{{ $item['label'] }}</a></li>
@@ -505,6 +509,7 @@
                     <li id="warehouse-stock-report-menu"><a href="{{route('report.warehouseStock')}}">{{__('db.Warehouse Stock Chart')}}</a></li>
                 @endif
                 <li id="stock-by-lot-menu"><a href="{{route('inventory-reports.stock-by-lot')}}" data-keywords="stock by lot batch inventory">{{__('db.Stock by Lot')}}</a></li>
+                <li id="product-lifecycle-report-menu"><a href="{{route('inventory-reports.lifecycle')}}" data-keywords="product lifecycle plc conversion transformation tree">{{__('db.Product Lifecycle')}}</a></li>
                 @if($nav->allows('product-expiry-report'))
                     <li id="productExpiry-report-menu"><a href="{{route('report.productExpiry')}}" data-keywords="batch near expiry">{{__('db.Product Expiry Report')}}</a></li>
                 @endif

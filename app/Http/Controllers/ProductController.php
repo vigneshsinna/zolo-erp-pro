@@ -542,7 +542,7 @@ class ProductController extends Controller
             // The margin only restates price against cost; a blank one (no cost yet) is stored as 0.
             $data['profit_margin'] = $data['profit_margin'] ?? 0;
 
-            $data['product_details'] = str_replace('"', '@', $data['product_details'] ?? '');
+            $data['product_details'] = str_replace('"', '@', (string) ($data['product_details'] ?? ''));
 
             if(!empty($data['starting_date']))
                 $data['starting_date'] = date('Y-m-d', strtotime($data['starting_date']));
@@ -1523,7 +1523,7 @@ class ProductController extends Controller
 
             if(isset($data['short_description']))
                 $data['short_description'] = $data['short_description'];
-            $data['product_details'] = str_replace('"', '@', $data['product_details'] ?? '');
+            $data['product_details'] = str_replace('"', '@', (string) ($data['product_details'] ?? ''));
             if(!empty($data['starting_date']))
                 $data['starting_date'] = date('Y-m-d', strtotime($data['starting_date']));
             else

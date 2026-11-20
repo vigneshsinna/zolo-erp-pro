@@ -146,6 +146,10 @@ class PurchaseController extends Controller
         foreach ($lims_product_purchase_data as $pp) {
             $product = Product::find($pp->product_id);
             $unit = Unit::find($pp->purchase_unit_id);
+            $stockDetails = $pp->stock_details_json ?? [];
+            if (!is_array($stockDetails)) {
+                $stockDetails = json_decode($stockDetails, true) ?: [];
+            }
             $items[] = [
                 'id' => $pp->id,
                 'product_id' => $pp->product_id,
@@ -164,12 +168,28 @@ class PurchaseController extends Controller
                 'expired_date' => $pp->product_batch_id ? ProductBatch::where('id', $pp->product_batch_id)->value('expired_date') : null,
                 'batch_no' => $pp->product_batch_id ? (ProductBatch::where('id', $pp->product_batch_id)->value('batch_no') ?? '') : '',
                 'imei_number' => $pp->imei_number ?? '',
+                'sph' => $pp->sph ?? ($stockDetails['sph'] ?? null),
+                'cyl' => $pp->cyl ?? ($stockDetails['cyl'] ?? null),
+                'axis' => $pp->axis ?? ($stockDetails['axis'] ?? null),
+                'addition' => $pp->addition ?? ($stockDetails['addition'] ?? null),
+                'dia' => $pp->dia ?? ($stockDetails['dia'] ?? null),
+                'lr' => $pp->lr ?? ($stockDetails['lr'] ?? null),
+                'base' => $pp->base ?? ($stockDetails['base'] ?? ($product->base ?? null)),
             ];
         }
 
+        $purchaseData = $purchase->toArray();
+        $purchaseData['end_user_name'] = $purchase->end_user_name;
+        $purchaseData['end_user_phone'] = $purchase->end_user_phone;
+        $purchaseData['end_user_email'] = $purchase->end_user_email;
+        $purchaseData['end_user_address'] = $purchase->end_user_address;
+        $purchaseData['fitting_charge'] = $purchase->fitting_charge;
+        $purchaseData['tinting_cost'] = $purchase->tinting_cost;
+        $purchaseData['customer_order_no'] = $purchase->customer_order_no;
+
         return response()->json([
             'success' => true,
-            'purchase' => $purchase,
+            'purchase' => $purchaseData,
             // created_at serialises as UTC; the form needs the company-local day or edits shift a day early.
             'business_date' => $purchase->created_at?->toDateString(),
             'items' => $items,
@@ -258,6 +278,20 @@ class PurchaseController extends Controller
             if (isset($numberReservation)) {
                 $this->assignNumber($numberReservation, $lims_purchase_data);
             }
+            // Capture optical/warranty metadata in attributes_json
+            $attributes = $lims_purchase_data->attributes_json ?? [];
+            if (!is_array($attributes)) {
+                $attributes = json_decode($attributes, true) ?: [];
+            }
+            foreach (['end_user_name', 'end_user_phone', 'end_user_email', 'end_user_address', 'fitting_charge', 'tinting_cost', 'customer_order_no'] as $optField) {
+                if ($request->filled($optField)) {
+                    $attributes[$optField] = $request->input($optField);
+                }
+            }
+            if (!empty($attributes)) {
+                $lims_purchase_data->attributes_json = $attributes;
+                $lims_purchase_data->saveQuietly();
+            }
             if (!empty($request->goods_received_note_id) && class_exists(\App\Models\GoodsReceivedNote::class)) {
                 \App\Models\GoodsReceivedNote::where('id', $request->goods_received_note_id)->update([
                     'status' => 'converted_to_purchase',
@@ -295,6 +329,13 @@ class PurchaseController extends Controller
             $tax = $data['tax'] ?? array_fill(0, count($product_id), 0);
             $total = $data['subtotal'] ?? [];
             $imei_numbers = $data['imei_number'] ?? array_fill(0, count($product_id), null);
+            $sph = $data['sph'] ?? [];
+            $cyl = $data['cyl'] ?? [];
+            $axis = $data['axis'] ?? [];
+            $base = $data['base'] ?? [];
+            $addition = $data['addition'] ?? [];
+            $lr = $data['lr'] ?? [];
+            $dia = $data['dia'] ?? [];
             $product_purchase = [];
             $log_data['item_description'] = '';
 
@@ -412,6 +453,15 @@ class PurchaseController extends Controller
                 $product_purchase['tax_rate'] = $tax_rate[$i];
                 $product_purchase['tax'] = $tax[$i];
                 $product_purchase['total'] = $total[$i];
+                $stockDetails = [];
+                if (!empty($sph[$i])) $stockDetails['sph'] = trim((string)$sph[$i]);
+                if (!empty($cyl[$i])) $stockDetails['cyl'] = trim((string)$cyl[$i]);
+                if (!empty($axis[$i])) $stockDetails['axis'] = trim((string)$axis[$i]);
+                if (!empty($base[$i])) $stockDetails['base'] = trim((string)$base[$i]);
+                if (!empty($addition[$i])) $stockDetails['addition'] = trim((string)$addition[$i]);
+                if (!empty($lr[$i])) $stockDetails['lr'] = trim((string)$lr[$i]);
+                if (!empty($dia[$i])) $stockDetails['dia'] = trim((string)$dia[$i]);
+                $product_purchase['stock_details_json'] = !empty($stockDetails) ? $stockDetails : null;
                 ProductPurchase::create($product_purchase);
             }
             $this->postPurchaseStock($lims_purchase_data, $warehousePrices);
@@ -839,7 +889,11 @@ class PurchaseController extends Controller
                 $nestedData['id'] = $purchase->id;
                 $nestedData['key'] = $key;
                 $nestedData['date'] = date(config('date_format'), strtotime($purchase->created_at->toDateString()));
-                $nestedData['reference_no'] = $purchase->reference_no;
+                $isNonGst = !empty($purchase->is_non_gst)
+                    || !empty($purchase->attributes_json['is_non_gst'])
+                    || (!empty($purchase->tax_snapshot_json['is_non_gst']))
+                    || (($purchase->attributes_json['bill_type'] ?? '') === 'non_gst');
+                $nestedData['reference_no'] = e($purchase->reference_no) . ($isNonGst ? ' <span class="badge badge-info" style="background:#0284c7;color:#fff;font-size:10px;">Non-GST</span>' : '');
                 $nestedData['created_by'] = $user->name ?? 'N/A';
 
                 if($purchase->supplier_id) {
@@ -928,6 +982,10 @@ class PurchaseController extends Controller
                                 <li>
                                     <button type="button" class="btn btn-link view btn-table-view" data-id="'.$purchase->id.'"><i class="fa fa-eye"></i> '.__('db.View').'</button>
                                 </li>';
+                if($isNonGst && !$purchase->reversed_at)
+                    $nestedData['options'] .= '<li>
+                        <button type="button" class="btn btn-link btn-convert-to-gst" data-id="'.$purchase->id.'" data-kind="purchase" data-ref="'.e($purchase->reference_no).'"><i class="fa fa-refresh text-success"></i> Convert to GST Bill</button>
+                    </li>';
                 if(in_array("purchases-add", $request['all_permission']))
                     $nestedData['options'] .= '<li>
                         <button type="button" class="btn btn-link duplicate btn-table-duplicate" data-id="'.$purchase->id.'"><i class="fa fa-copy"></i> '.__('db.Duplicate').'</button>
@@ -967,11 +1025,16 @@ class PurchaseController extends Controller
                     }
                 }
                 if(in_array("purchases-delete", $request['all_permission'])) {
-                    $nestedData['options'] .= '<li>
-                        <button type="button" class="btn btn-link btn-open-delete-modal text-danger" data-id="'.$purchase->id.'" data-ref="'.e($purchase->reference_no).'" data-status="'.$purchase->status.'" data-reversed="'.($purchase->reversed_at ? 1 : 0).'"><i class="dripicons-trash text-danger"></i> '.__("db.delete").' / Options</button>
-                    </li>
-                    </ul>
-                </div>';
+                    if ($purchase->reversed_at) {
+                        $nestedData['options'] .= '<li>
+                            <button type="button" class="btn btn-link btn-open-delete-modal text-secondary" data-id="'.$purchase->id.'" data-ref="'.e($purchase->reference_no).'" data-status="'.$purchase->status.'" data-reversed="1" data-reversed-at="'.e($purchase->reversed_at).'" data-reversal-reason="'.e($purchase->reversal_reason ?? '').'"><i class="dripicons-history text-secondary"></i> '.__("db.Reversal History").'</button>
+                        </li>';
+                    } else {
+                        $nestedData['options'] .= '<li>
+                            <button type="button" class="btn btn-link btn-open-delete-modal text-danger" data-id="'.$purchase->id.'" data-ref="'.e($purchase->reference_no).'" data-status="'.$purchase->status.'" data-reversed="0" data-doc-date="'.substr($purchase->created_at ?? '', 0, 10).'" data-paid="'.(float)($purchase->paid_amount ?? 0).'" data-total="'.(float)($purchase->grand_total ?? 0).'"><i class="dripicons-return text-danger"></i> '.__("db.Reverse Bill").'</button>
+                        </li>';
+                    }
+                    $nestedData['options'] .= '</ul></div>';
                 } else {
                     $nestedData['options'] .= '</ul></div>';
                 }
@@ -1019,6 +1082,18 @@ class PurchaseController extends Controller
                 else
                     $product_purchase[7][$key] = 'N/A';
                 $product_purchase[0][$key] = $product->name . ' [' . $product->code.']';
+                $stockDetails = $product_purchase_data->stock_details_json ?? [];
+                if (!is_array($stockDetails)) $stockDetails = json_decode($stockDetails, true) ?: [];
+                $rxParts = [];
+                if (!empty($stockDetails['lr'])) $rxParts[] = 'Eye: ' . htmlspecialchars($stockDetails['lr']);
+                if (!empty($stockDetails['sph'])) $rxParts[] = 'SPH: ' . htmlspecialchars($stockDetails['sph']);
+                if (!empty($stockDetails['cyl'])) $rxParts[] = 'CYL: ' . htmlspecialchars($stockDetails['cyl']);
+                if (!empty($stockDetails['axis'])) $rxParts[] = 'AXIS: ' . htmlspecialchars($stockDetails['axis']);
+                if (!empty($stockDetails['addition'])) $rxParts[] = 'ADD: ' . htmlspecialchars($stockDetails['addition']);
+                if (!empty($stockDetails['dia'])) $rxParts[] = 'DIA: ' . htmlspecialchars($stockDetails['dia']);
+                if (!empty($rxParts)) {
+                    $product_purchase[0][$key] .= '<br><span class="badge badge-light border text-muted px-1" style="font-size: 10px;">' . implode(' | ', $rxParts) . '</span>';
+                }
                 $returned_imei_number_data = '';
                 if($product_purchase_data->imei_number) {
                     $product_purchase[0][$key] .= '<br><span style="white-space: normal !important;word-break: break-word !important;overflow-wrap: anywhere !important;max-width: 100%;display: block;">IMEI or Serial Number: '. $product_purchase_data->imei_number.'</span>';
@@ -1052,25 +1127,35 @@ class PurchaseController extends Controller
 
     }
 
-    public function productWithoutVariant()
+    public function productWithoutVariant(?int $limit = null)
     {
-        return Product::forBill('purchase')->where('products.is_active', true)->whereIn('products.type', ['standard', 'service', 'digital'])
+        $query = Product::forBill('purchase')->where('products.is_active', true)->whereIn('products.type', ['standard', 'service', 'digital'])
             ->leftJoin('units', 'products.unit_id', '=', 'units.id')
             ->select('products.id', 'products.type', 'products.name', 'products.code', 'products.price', 'products.cost', 'products.tax_id', 'products.tax_category_id', 'products.tax_method', 'products.unit_id', 'units.unit_name', 'units.unit_code')
-            ->where(fn ($query) => $query->whereNull('products.is_variant')->orWhere('products.is_variant', false))
-            ->get();
+            ->where(fn ($query) => $query->whereNull('products.is_variant')->orWhere('products.is_variant', false));
+        if ($limit !== null && $limit > 0) {
+            $query->limit($limit);
+        } elseif ($limit === null && config('commercial.enabled')) {
+            $query->latest('products.id')->limit(40);
+        }
+        return $query->get();
     }
 
-    public function productWithVariant()
+    public function productWithVariant(?int $limit = null)
     {
-        return Product::join('product_variants', 'products.id', 'product_variants.product_id')
+        $query = Product::join('product_variants', 'products.id', 'product_variants.product_id')
             ->forBill('purchase')
             ->leftJoin('units', 'products.unit_id', '=', 'units.id')
             ->ActiveStandard()
             ->whereNotNull('is_variant')
             ->select('products.id', 'products.name', 'product_variants.item_code', 'products.code', 'products.price', 'product_variants.additional_price', 'products.cost', 'product_variants.additional_cost', 'products.tax_id', 'products.tax_category_id', 'products.tax_method', 'products.unit_id', 'units.unit_name', 'units.unit_code')
-            ->orderBy('position')
-            ->get();
+            ->orderBy('position');
+        if ($limit !== null && $limit > 0) {
+            $query->limit($limit);
+        } elseif ($limit === null && config('commercial.enabled')) {
+            $query->latest('products.id')->limit(40);
+        }
+        return $query->get();
     }
 
     public function newProductWithVariant()
@@ -1248,6 +1333,13 @@ class PurchaseController extends Controller
             $tax = $data['tax'] ?? array_fill(0, count($product_id), 0);
             $total = $data['subtotal'] ?? [];
             $imei_number = $new_imei_number = $data['imei_number'] ?? array_fill(0, count($product_id), null);
+            $sph = $data['sph'] ?? [];
+            $cyl = $data['cyl'] ?? [];
+            $axis = $data['axis'] ?? [];
+            $base = $data['base'] ?? [];
+            $addition = $data['addition'] ?? [];
+            $lr = $data['lr'] ?? [];
+            $dia = $data['dia'] ?? [];
 
             if (empty($product_id) && !empty($data['items']) && is_array($data['items'])) {
                 foreach ($data['items'] as $item) {
@@ -1395,7 +1487,30 @@ class PurchaseController extends Controller
                 $product_purchase['tax'] = $tax[$key];
                 $product_purchase['total'] = $total[$key];
                 $product_purchase['imei_number'] = $imei_number[$key] ?? null;
+                $stockDetails = [];
+                if (!empty($sph[$key])) $stockDetails['sph'] = trim((string)$sph[$key]);
+                if (!empty($cyl[$key])) $stockDetails['cyl'] = trim((string)$cyl[$key]);
+                if (!empty($axis[$key])) $stockDetails['axis'] = trim((string)$axis[$key]);
+                if (!empty($base[$key])) $stockDetails['base'] = trim((string)$base[$key]);
+                if (!empty($addition[$key])) $stockDetails['addition'] = trim((string)$addition[$key]);
+                if (!empty($lr[$key])) $stockDetails['lr'] = trim((string)$lr[$key]);
+                if (!empty($dia[$key])) $stockDetails['dia'] = trim((string)$dia[$key]);
+                $product_purchase['stock_details_json'] = !empty($stockDetails) ? $stockDetails : null;
                 ProductPurchase::create($product_purchase);
+            }
+
+            // Capture optical/warranty metadata in attributes_json
+            $attributes = $lims_purchase_data->attributes_json ?? [];
+            if (!is_array($attributes)) {
+                $attributes = json_decode($attributes, true) ?: [];
+            }
+            foreach (['end_user_name', 'end_user_phone', 'end_user_email', 'end_user_address', 'fitting_charge', 'tinting_cost', 'customer_order_no'] as $optField) {
+                if ($request->filled($optField)) {
+                    $attributes[$optField] = $request->input($optField);
+                }
+            }
+            if (!empty($attributes)) {
+                $data['attributes_json'] = $attributes;
             }
 
             $lims_purchase_data->update($data);

@@ -203,175 +203,188 @@ class SaleApiController extends BaseApiController
             $branchId = $context->branchId;
         }
 
+        // Enforce sales-add permission before proceeding
+        if (Auth::check()) {
+            $role = \Spatie\Permission\Models\Role::find(Auth::user()->role_id);
+            if ($role && !$role->hasPermissionTo('sales-add')) {
+                return $this->sendError(__('db.not_permitted'), [], 403);
+            }
+        }
+        if ($context && Auth::check()) {
+            app(\App\Services\Commercial\CommercialPermission::class)->assert('sales-add', $context, Auth::id());
+        }
+
         $grandTotal = (float) ($request->input('grand_total') ?? $request->input('total_amount') ?? 0);
-        $paidAmount = (float) ($request->input('paid_amount') ?? $grandTotal);
-        $qty = max(1, (float) ($request->input('qty') ?? 1));
-        $unitPrice = (float) ($request->input('unit_price') ?? ($grandTotal / $qty));
-        $paymentMode = $request->input('payment_mode') ?? 'Cash';
+        $paidAmountInput = $request->input('paid_amount');
+        $paidAmount = $paidAmountInput !== null ? (float) $paidAmountInput : $grandTotal;
 
         if ($grandTotal <= 0) {
             return $this->sendError('Validation Error', ['grand_total' => ['Total amount must be positive.']], 422);
         }
+        if ($paidAmount < 0 || $paidAmount > $grandTotal) {
+            return $this->sendError('Validation Error', ['paid_amount' => ['Paid amount must be between 0 and total amount.']], 422);
+        }
 
-        $customerId = $this->resolveCompanyCustomerId(
-            $companyId,
-            $request->filled('customer_id') ? (int) $request->input('customer_id') : null,
-            $request->input('customer_name')
-        );
+        // Honor company-scoped Idempotency-Key if provided
+        $idempotencyKey = $request->header('Idempotency-Key')
+            ?? $request->header('X-Idempotency-Key')
+            ?? $request->input('idempotency_key')
+            ?? ($request->filled('client_timestamp') ? 'mobile:' . $companyId . ':' . Auth::id() . ':' . $request->input('client_timestamp') : null);
+
+        if ($idempotencyKey) {
+            $retry = DB::table('idempotency_keys')
+                ->where('company_id', $companyId)
+                ->where('key', $idempotencyKey)
+                ->first();
+            if ($retry && $retry->response_type === 'sale') {
+                $existingSale = DB::table('sales')->where('id', $retry->response_ref)->first();
+                if ($existingSale) {
+                    return $this->sendResponse([
+                        'id' => $existingSale->id,
+                        'reference_no' => $existingSale->reference_no,
+                        'grand_total' => (float) $existingSale->grand_total,
+                        'paid_amount' => (float) $existingSale->paid_amount,
+                    ], 'Mobile sale retrieved (idempotent)', 200);
+                }
+            }
+        }
+
+        $qty = max(0.01, (float) ($request->input('qty') ?? 1));
+        $unitPrice = (float) ($request->input('unit_price') ?? ($grandTotal / $qty));
+        $rawPaymentMode = (string) ($request->input('payment_mode') ?? 'Cash');
+        $payingMethod = match (strtoupper($rawPaymentMode)) {
+            'UPI', 'QR', 'ONLINE', 'TRANSFER', 'BANK' => 'Bank',
+            'CHEQUE', 'CHECK' => 'Cheque',
+            'CARD', 'CREDIT CARD', 'DEBIT CARD' => 'Credit Card',
+            default => 'Cash',
+        };
+
+        // Resolve customer without fallback to an arbitrary credit customer
+        try {
+            $customerId = $this->resolveCompanyCustomerId(
+                $companyId,
+                $request->filled('customer_id') ? (int) $request->input('customer_id') : null,
+                $request->input('customer_name')
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->sendError('Validation Error', $e->errors(), 422);
+        }
+
         $billerId = $this->resolveCompanyBillerId($companyId);
         $warehouseId = $this->resolveCompanyWarehouseId(
             $companyId,
             $branchId,
             $request->filled('warehouse_id') ? (int) $request->input('warehouse_id') : null
         );
+
+        // Resolve product strictly against the active company catalog
         $rawProdId = (int) ($request->input('product_id') ?: 0);
-        $productId = (int) (
-            ($rawProdId > 0 && DB::table('products')->where('id', $rawProdId)->exists() ? $rawProdId : null)
-            ?? DB::table('products')->where('company_id', $companyId)->where('is_active', 1)->orderBy('id')->value('id')
-            ?? DB::table('products')->where('is_active', 1)->orderBy('id')->value('id')
-            ?? DB::table('products')->orderBy('id')->value('id')
-            ?? 1
-        );
-        $defaultUnitId = (int) (DB::table('units')->orderBy('id')->value('id') ?: 1);
-        $refNo = 'INV-' . date('Ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
-
-        $saleId = null;
-        DB::transaction(function () use (
-            $companyId, $branchId, $customerId, $billerId, $warehouseId, $productId, $defaultUnitId,
-            $refNo, $qty, $unitPrice, $grandTotal, $paidAmount, $paymentMode, $context, &$saleId
-        ) {
-            $saleData = [
-                'reference_no' => $refNo,
-                'user_id' => Auth::id() ?? 1,
-                'customer_id' => $customerId,
-                'warehouse_id' => $warehouseId,
-                'biller_id' => $billerId,
-                'item' => 1,
-                'total_qty' => $qty,
-                'total_discount' => 0.0,
-                'total_tax' => 0.0,
-                'total_price' => $grandTotal,
-                'grand_total' => $grandTotal,
-                'order_tax_rate' => 0.0,
-                'order_tax' => 0.0,
-                'order_discount' => 0.0,
-                'shipping_cost' => 0.0,
-                'sale_status' => 1,
-                'payment_status' => $paidAmount >= $grandTotal ? 4 : ($paidAmount > 0 ? 3 : 2),
-                'paid_amount' => $paidAmount,
-                'sale_note' => 'Mobile App Sale Bill',
-                'company_id' => $companyId,
-                'branch_id' => $branchId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-            if ($context?->financialYearId) {
-                $saleData['financial_year_id'] = $context->financialYearId;
+        $prod = null;
+        if ($rawProdId > 0) {
+            $prod = DB::table('products')->where('company_id', $companyId)->where('id', $rawProdId)->where('is_active', 1)->first();
+            if (!$prod) {
+                return $this->sendError('Validation Error', ['product_id' => ['Product not found or unauthorized for active company.']], 422);
             }
-            $saleId = DB::table('sales')->insertGetId($saleData);
-
-            DB::table('product_sales')->insert([
-                'sale_id' => $saleId,
-                'product_id' => $productId,
-                'qty' => $qty,
-                'sale_unit_id' => $defaultUnitId,
-                'net_unit_price' => $unitPrice,
-                'discount' => 0.0,
-                'tax_rate' => 0.0,
-                'tax' => 0.0,
-                'total' => $grandTotal,
-                'company_id' => $companyId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            if ($paidAmount > 0) {
-                $isBank = stripos($paymentMode, 'upi') !== false || stripos($paymentMode, 'bank') !== false || stripos($paymentMode, 'card') !== false;
-                $accountId = DB::table('accounts')
-                    ->where('company_id', $companyId)
-                    ->where('is_active', 1)
-                    ->where(fn ($q) => $isBank
-                        ? $q->where('name', 'like', '%bank%')->orWhere('account_no', 'like', '%bank%')
-                        : $q->where('name', 'like', '%cash%')->orWhere('account_no', 'like', '%cash%'))
-                    ->value('id')
-                    ?? DB::table('accounts')->where('company_id', $companyId)->where('is_active', 1)->value('id')
-                    ?? 1;
-
-                DB::table('payments')->insert([
-                    'sale_id' => $saleId,
-                    'payment_reference' => 'PAY-' . $refNo,
-                    'user_id' => Auth::id() ?? 1,
-                    'account_id' => $accountId,
-                    'amount' => $paidAmount,
-                    'paying_method' => $paymentMode,
-                    'payment_note' => 'Mobile Sale Receipt',
+        } elseif ($request->filled('item_name')) {
+            $itemName = trim($request->input('item_name'));
+            $prod = DB::table('products')->where('company_id', $companyId)
+                ->where(fn ($q) => $q->where('name', $itemName)->orWhere('code', $itemName))
+                ->where('is_active', 1)
+                ->first();
+            if (!$prod) {
+                $prod = DB::table('products')->where('company_id', $companyId)->where('name', 'like', $itemName)->where('is_active', 1)->first();
+            }
+            if (!$prod) {
+                $unitId = (int) (DB::table('units')->where('company_id', $companyId)->orderBy('id')->value('id')
+                    ?? DB::table('units')->orderBy('id')->value('id') ?? 1);
+                $catId = (int) (DB::table('categories')->where('company_id', $companyId)->orderBy('id')->value('id')
+                    ?? DB::table('categories')->orderBy('id')->value('id') ?? 1);
+                $prodId = DB::table('products')->insertGetId([
+                    'name' => $itemName,
+                    'code' => 'ITM-' . strtoupper(bin2hex(random_bytes(3))),
+                    'type' => 'standard',
+                    'barcode_symbology' => 'C128',
+                    'unit_id' => $unitId,
+                    'purchase_unit_id' => $unitId,
+                    'sale_unit_id' => $unitId,
+                    'cost' => round($unitPrice * 0.7, 2),
+                    'price' => $unitPrice,
+                    'category_id' => $catId,
+                    'is_active' => 1,
                     'company_id' => $companyId,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                DB::table('product_warehouse')->insert([
+                    'product_id' => $prodId,
+                    'warehouse_id' => $warehouseId,
+                    'qty' => $qty,
+                    'price' => $unitPrice,
+                    'company_id' => $companyId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $prod = DB::table('products')->where('id', $prodId)->first();
             }
+        } else {
+            return $this->sendError('Validation Error', ['product_id' => ['Specify a valid product or item name.']], 422);
+        }
 
-            if ($context) {
-                try {
-                    $accService = app(AccountingService::class);
-                    $cashAcc = $accService->getAccount('cash', $context)?->id
-                        ?? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
-                            ->where(fn ($q) => $q->where('code', '1010')->orWhere('control_type', 'cash'))->value('id');
-                    $bankAcc = $accService->getAccount('bank', $context)?->id
-                        ?? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
-                            ->where(fn ($q) => $q->where('code', '1020')->orWhere('control_type', 'bank'))->value('id');
-                    $arAcc = $accService->getAccount('ar', $context)?->id
-                        ?? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
-                            ->where('control_type', 'ar')->value('id');
-                    $revAcc = $accService->getAccount('sales', $context)?->id
-                        ?? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
-                            ->where('code', '4010')->value('id');
+        $saleUnitId = $prod->sale_unit_id ?? $prod->unit_id ?? (int) (DB::table('units')->where('company_id', $companyId)->value('id') ?: 1);
 
-                    $glItems = [];
-                    if ($paidAmount > 0) {
-                        $isBank = stripos($paymentMode, 'upi') !== false || stripos($paymentMode, 'bank') !== false || stripos($paymentMode, 'card') !== false;
-                        $depAcc = $isBank ? ($bankAcc ?: $cashAcc) : $cashAcc;
-                        if ($depAcc) {
-                            $glItems[] = ['chart_of_account_id' => (int) $depAcc, 'debit' => $paidAmount, 'credit' => 0, 'memo' => 'Mobile Sale Receipt'];
-                        }
-                    }
-                    $due = max(0.0, $grandTotal - $paidAmount);
-                    if ($due > 0 && $arAcc) {
-                        $glItems[] = [
-                            'chart_of_account_id' => (int) $arAcc,
-                            'debit' => $due,
-                            'credit' => 0,
-                            'memo' => 'Customer Credit Due',
-                            'partner_type' => 'customer',
-                            'partner_id' => $customerId,
-                        ];
-                    }
-                    if ($revAcc) {
-                        $glItems[] = ['chart_of_account_id' => (int) $revAcc, 'debit' => 0, 'credit' => $grandTotal, 'memo' => 'Sales Revenue'];
-                    }
-
-                    if (count($glItems) >= 2) {
-                        $accService->postJournalEntry([
-                            'entry_date' => now()->toDateString(),
-                            'reference_type' => 'sale',
-                            'reference_id' => $saleId,
-                            'reference_no' => $refNo,
-                            'description' => "Mobile Quick Sale [{$refNo}]",
-                            'created_by' => Auth::id() ?? 1,
-                        ], $glItems, $context);
-                    }
-                } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('Mobile quick sale journal warning: ' . $e->getMessage());
-                }
-            }
-        });
-
-        return $this->sendResponse([
-            'id' => $saleId,
-            'reference_no' => $refNo,
+        $salePayload = [
+            'customer_id' => $customerId,
+            'warehouse_id' => $warehouseId,
+            'biller_id' => $billerId,
             'grand_total' => $grandTotal,
             'paid_amount' => $paidAmount,
-        ], 'Mobile sale recorded and posted to general ledger', 201);
+            'sale_status' => 1,
+            'paying_method' => $payingMethod,
+            'sale_note' => 'Mobile App Sale Bill',
+            'items' => [
+                [
+                    'product_id' => $prod->id,
+                    'qty' => $qty,
+                    'net_unit_price' => $unitPrice,
+                    'sale_unit_id' => $saleUnitId,
+                    'discount' => 0.0,
+                    'tax_rate' => 0.0,
+                    'tax' => 0.0,
+                    'total' => $grandTotal,
+                ]
+            ],
+        ];
+
+        try {
+            $sale = DB::transaction(function () use ($salePayload, $context, $idempotencyKey, $companyId) {
+                $sale = $this->saleService->createSale($salePayload, Auth::id(), $context);
+                if ($idempotencyKey) {
+                    DB::table('idempotency_keys')->insert([
+                        'company_id' => $companyId,
+                        'key' => $idempotencyKey,
+                        'request_hash' => hash('sha256', $idempotencyKey),
+                        'response_type' => 'sale',
+                        'response_ref' => $sale->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+                return $sale;
+            });
+
+            return $this->sendResponse([
+                'id' => $sale->id,
+                'reference_no' => $sale->reference_no,
+                'grand_total' => (float) $sale->grand_total,
+                'paid_amount' => (float) $sale->paid_amount,
+            ], 'Mobile sale recorded and posted to general ledger', 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->sendError('Validation Error', $e->errors(), 422);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->sendError($e->getMessage(), [], 400);
+        }
     }
 
     private function resolveCompanyCustomerId(int $companyId, ?int $requestedId = null, ?string $customerName = null): int
@@ -396,10 +409,13 @@ class SaleApiController extends BaseApiController
                 return (int) $byName;
             }
         }
-        $existing = DB::table('customers')->where('company_id', $companyId)->where('is_active', 1)->orderBy('id')->value('id')
-            ?? DB::table('customers')->where('company_id', $companyId)->orderBy('id')->value('id');
-        if ($existing) {
-            return (int) $existing;
+
+        $walkin = DB::table('customers')->where('company_id', $companyId)
+            ->where(fn ($q) => $q->where('type', 'walkin')->orWhere('name', 'like', '%walk%')->orWhere('name', 'like', '%cash%'))
+            ->orderBy('id')
+            ->value('id');
+        if ($walkin) {
+            return (int) $walkin;
         }
 
         $groupId = (int) (DB::table('customer_groups')->orderBy('id')->value('id') ?: 1);
@@ -411,7 +427,7 @@ class SaleApiController extends BaseApiController
             'type' => 'walkin',
             'phone_number' => '0000000000',
             'address' => 'Counter Retail',
-            'city' => 'Erode',
+            'city' => 'Local',
             'opening_balance' => 0,
             'is_active' => 1,
             'company_id' => $companyId,

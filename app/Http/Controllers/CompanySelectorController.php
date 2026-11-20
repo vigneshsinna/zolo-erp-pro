@@ -56,6 +56,34 @@ class CompanySelectorController extends Controller
         ]);
     }
 
+    public function create(Request $request)
+    {
+        $userId = $request->user()->id;
+        $directory = $this->directory->directory($userId);
+        $isAdmin = $this->directory->isInstallationAdmin($userId);
+        $today = CarbonImmutable::now(config('app.timezone'));
+        $fyStart = $today->month >= 4 ? $today->setDate($today->year, 4, 1) : $today->setDate($today->year - 1, 4, 1);
+
+        return view('backend.company.create', [
+            'user' => $request->user(),
+            'directory' => $directory,
+            'isAdmin' => $isAdmin,
+            'manageableGroups' => collect($directory['groups'])->where('manageable', true)->values(),
+            'industries' => collect(CapabilityCatalog::PROFILES)->map(fn ($profile) => $profile[0])->all(),
+            'subtypes' => IndustryCatalog::SUBTYPES,
+            'currencies' => DB::table('currencies')->orderBy('code')->get(['id', 'code', 'name']),
+            'defaultCurrencyId' => DB::table('currencies')->where('code', 'INR')->value('id') ?? DB::table('general_settings')->latest()->value('currency'),
+            'states' => array_diff_key(\App\Services\Tax\Gstin::$states, ['97' => 1]),
+            'defaults' => [
+                'timezone' => config('app.timezone'),
+                'fy_start' => $fyStart->toDateString(),
+                'fy_end' => $fyStart->addYear()->subDay()->toDateString(),
+            ],
+            'theme' => $_COOKIE['theme'] ?? 'light',
+            'return' => $request->input('return', 'workspace'),
+        ]);
+    }
+
     public function choose(Request $request)
     {
         $data = $request->validate([
@@ -89,7 +117,11 @@ class CompanySelectorController extends Controller
             'address', 'city', 'postal_code', 'phone', 'email', 'website', 'pan', 'gstin', 'registration_type',
         ]), $request->file('logo'));
 
-        return redirect()->route('company.select', ['manage' => 1])
+        $target = $request->input('return') === 'workspace'
+            ? redirect()->route('workspace')
+            : redirect()->route('company.select', ['manage' => 1]);
+
+        return $target
             ->with('status', ($company->trade_name ?: $company->legal_name).' is ready. Open it to start working.');
     }
 

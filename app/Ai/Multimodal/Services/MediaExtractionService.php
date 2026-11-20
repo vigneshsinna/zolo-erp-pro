@@ -97,6 +97,10 @@ final class MediaExtractionService
         ?string $idempotencyKey,
         ?string $companionText,
     ): AiMediaExtraction {
+        if ($companionText !== null && trim($companionText) !== '' && function_exists('app') && app()->bound(\App\Ai\Security\AiDataClassificationPolicy::class)) {
+            $companionText = app(\App\Ai\Security\AiDataClassificationPolicy::class)->inspectUntrustedInput($companionText)['sanitized'];
+        }
+
         $disk = Storage::disk($asset->private_disk);
         $derivatives = is_array($asset->derivatives_json) ? $asset->derivatives_json : [];
         if ($derivatives === []) {
@@ -274,6 +278,10 @@ final class MediaExtractionService
         ?string $idempotencyKey,
         ?string $companionText,
     ): AiMediaExtraction {
+        if ($companionText !== null && trim($companionText) !== '' && function_exists('app') && app()->bound(\App\Ai\Security\AiDataClassificationPolicy::class)) {
+            $companionText = app(\App\Ai\Security\AiDataClassificationPolicy::class)->inspectUntrustedInput($companionText)['sanitized'];
+        }
+
         $disk = Storage::disk($asset->private_disk);
         if (! $disk->exists($asset->private_key)) {
             throw MultimodalException::mediaNotFound('Canonical audio file is missing.');

@@ -72,9 +72,9 @@ class OpticalsMasterSeeder extends Seeder
         $unitMap = [];
 
         // Pairs (PRS) - Standard unit for finished and Rx lenses
-        $prs = Unit::where('unit_code', 'PRS')->where('company_id', $companyId)->first()
-            ?? Unit::where('unit_code', 'PR')->where('company_id', $companyId)->first()
-            ?? Unit::where('unit_code', 'PRS')->first();
+        $prs = Unit::where('company_id', $companyId)
+            ->where(fn ($q) => $q->where('unit_code', 'PRS')->orWhere('unit_code', 'PR'))
+            ->first();
 
         if (!$prs) {
             $prs = Unit::create([
@@ -90,9 +90,9 @@ class OpticalsMasterSeeder extends Seeder
         $unitMap['PRS'] = $prs->id;
 
         // Pieces (PCS)
-        $pcs = Unit::where('unit_code', 'PCS')->where('company_id', $companyId)->first()
-            ?? Unit::where('unit_code', 'Pc')->where('company_id', $companyId)->first()
-            ?? Unit::where('unit_code', 'PCS')->first();
+        $pcs = Unit::where('company_id', $companyId)
+            ->where(fn ($q) => $q->where('unit_code', 'PCS')->orWhere('unit_code', 'Pc'))
+            ->first();
 
         if (!$pcs) {
             $pcs = Unit::create([
@@ -108,8 +108,9 @@ class OpticalsMasterSeeder extends Seeder
         $unitMap['PCS'] = $pcs->id;
 
         // Box (BOX)
-        $box = Unit::where('unit_code', 'BOX')->where('company_id', $companyId)->first()
-            ?? Unit::where('unit_code', 'BOX')->first();
+        $box = Unit::where('company_id', $companyId)
+            ->where('unit_code', 'BOX')
+            ->first();
 
         if (!$box) {
             $box = Unit::create([
@@ -353,6 +354,7 @@ class OpticalsMasterSeeder extends Seeder
                         'warehouse_id' => $warehouse->id,
                     ],
                     [
+                        'company_id' => $companyId,
                         'qty' => 50,
                         'price' => $product->price,
                     ]

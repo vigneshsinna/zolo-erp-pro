@@ -108,6 +108,7 @@ class AiServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(\App\Ai\Security\AiDataClassificationPolicy::class);
         $this->app->singleton(AiAuditRecorder::class);
         $this->app->scoped(ErpToolExecutor::class, fn($app) => new ErpToolExecutor(
             $app->make(AiToolManifest::class),

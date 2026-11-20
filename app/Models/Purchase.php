@@ -28,7 +28,43 @@ class Purchase extends Model
 
     protected $fillable =[
         "reference_no", "supplier_invoice_no", "lot_number", "supplier_invoice_date", "user_id", "warehouse_id", "supplier_id", "currency_id", "exchange_rate", "item", "total_qty", "total_discount", "total_tax", "total_cost", "order_tax_rate", "order_tax", "order_discount", "shipping_cost", "grand_total","paid_amount", "status", "payment_status", "document", "note", "purchase_type", "purchase_type_id", "agent_id", "update_item_cost", "update_item_hsn", "is_reverse_charge", "created_at", "deleted_by",
+        "attributes_json", "end_user_name", "end_user_phone", "end_user_email", "end_user_address", "fitting_charge", "tinting_cost", "customer_order_no", "order_no"
     ];
+
+    public function getEndUserNameAttribute(): ?string
+    {
+        return $this->attributes['end_user_name'] ?? ($this->attributes_json['end_user_name'] ?? null);
+    }
+
+    public function getEndUserPhoneAttribute(): ?string
+    {
+        return $this->attributes['end_user_phone'] ?? ($this->attributes_json['end_user_phone'] ?? null);
+    }
+
+    public function getEndUserEmailAttribute(): ?string
+    {
+        return $this->attributes['end_user_email'] ?? ($this->attributes_json['end_user_email'] ?? null);
+    }
+
+    public function getEndUserAddressAttribute(): ?string
+    {
+        return $this->attributes['end_user_address'] ?? ($this->attributes_json['end_user_address'] ?? null);
+    }
+
+    public function getFittingChargeAttribute(): float
+    {
+        return (float) ($this->attributes['fitting_charge'] ?? ($this->attributes_json['fitting_charge'] ?? 0));
+    }
+
+    public function getTintingCostAttribute(): float
+    {
+        return (float) ($this->attributes['tinting_cost'] ?? ($this->attributes_json['tinting_cost'] ?? 0));
+    }
+
+    public function getCustomerOrderNoAttribute(): ?string
+    {
+        return $this->attributes['customer_order_no'] ?? ($this->attributes_json['customer_order_no'] ?? null);
+    }
 
     public function purchaseType()
     {

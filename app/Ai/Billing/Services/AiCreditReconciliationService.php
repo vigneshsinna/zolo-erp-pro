@@ -169,4 +169,95 @@ class AiCreditReconciliationService
             'discrepancies' => $discrepancies,
         ];
     }
+
+    /**
+     * Audit an entire credit account across all its historical periods and active balances.
+     *
+     * @return array{
+     *     account_id: string,
+     *     is_reconciled: bool,
+     *     periods_audited: int,
+     *     total_spent: int,
+     *     total_granted: int,
+     *     discrepancies: array<string>
+     * }
+     */
+    public function reconcileAccount(string $accountId): array
+    {
+        $periods = DB::table('ai_credit_periods')->where('account_id', $accountId)->get();
+
+        $allDiscrepancies = [];
+        $totalSpent = 0;
+        $totalGranted = 0;
+
+        foreach ($periods as $p) {
+            $periodAudit = $this->reconcilePeriod($p->id);
+            if (! $periodAudit['is_reconciled']) {
+                $allDiscrepancies = array_merge($allDiscrepancies, $periodAudit['discrepancies']);
+            }
+            $totalSpent += $periodAudit['ledger_spent'];
+            $totalGranted += ($periodAudit['ledger_included'] + $periodAudit['ledger_topups']);
+        }
+
+        return [
+            'account_id' => $accountId,
+            'is_reconciled' => empty($allDiscrepancies),
+            'periods_audited' => $periods->count(),
+            'total_spent' => $totalSpent,
+            'total_granted' => $totalGranted,
+            'discrepancies' => $allDiscrepancies,
+        ];
+    }
+
+    /**
+     * Audit a single provider attempt against linked reservation, invocation, and ledger records.
+     *
+     * @return array{
+     *     attempt_id: string,
+     *     is_matched: bool,
+     *     invocation_found: bool,
+     *     reservation_found: bool,
+     *     ledger_found: bool,
+     *     credits_debited: int,
+     *     discrepancies: array<string>
+     * }
+     */
+    public function reconcileAttempt(string $attemptId): array
+    {
+        $invocation = DB::table('ai_model_invocations')
+            ->where('provider_attempt_id', $attemptId)
+            ->first();
+
+        $reservation = null;
+        if ($invocation && !empty($invocation->reservation_id)) {
+            $reservation = DB::table('ai_credit_reservations')
+                ->where('id', $invocation->reservation_id)
+                ->first();
+        }
+
+        $ledgerEntry = DB::table('ai_credit_ledger')
+            ->where('provider_attempt_id', $attemptId)
+            ->orWhere('idempotency_key', 'like', "%{$attemptId}%")
+            ->first();
+
+        $discrepancies = [];
+
+        if (!$invocation && !$reservation && !$ledgerEntry) {
+            $discrepancies[] = "No records found matching provider attempt ID [{$attemptId}]";
+        }
+
+        if ($invocation && $invocation->status === 'completed' && !$ledgerEntry && ($invocation->credits_debited ?? 0) > 0) {
+            $discrepancies[] = "Model invocation was completed with credits debited, but no ledger row was found.";
+        }
+
+        return [
+            'attempt_id' => $attemptId,
+            'is_matched' => empty($discrepancies) && ($invocation !== null || $ledgerEntry !== null),
+            'invocation_found' => $invocation !== null,
+            'reservation_found' => $reservation !== null,
+            'ledger_found' => $ledgerEntry !== null,
+            'credits_debited' => (int) ($ledgerEntry ? abs((int) $ledgerEntry->amount_credits) : ($invocation->credits_debited ?? 0)),
+            'discrepancies' => $discrepancies,
+        ];
+    }
 }

@@ -39,3 +39,541 @@
         opacity: 1 !important;
       }
     }
+
+/* --------------------------------------------------------------------------
+   Top Navbar Right Items: Switch Theme, Fullscreen, Admin Profile Dropdown
+   Constrains height to 32px to ensure hover pills stay 100% inside the 40px navbar frame.
+   -------------------------------------------------------------------------- */
+html.app-shell .page > header nav.navbar .nav-menu .nav-item > a:not(.btn-pos),
+html.app-shell .page > header nav.navbar .nav-menu .nav-item a.nav-link:not(.btn-pos),
+nav.navbar #switch-theme,
+nav.navbar #btnFullscreen,
+nav.navbar .nav-menu .nav-item > a.dropdown-item {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  line-height: 30px !important;
+  padding: 0 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  border-radius: 8px !important;
+  border: 1px solid transparent !important;
+  margin: 0 2px !important;
+  font-size: 13px !important;
+  box-sizing: border-box !important;
+  color: var(--neo-text-secondary, #64748b) !important;
+  transition: all 0.18s ease !important;
+  vertical-align: middle !important;
+}
+
+nav.navbar #switch-theme,
+nav.navbar #btnFullscreen {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  padding: 0 !important;
+}
+
+nav.navbar #switch-theme i,
+nav.navbar #btnFullscreen i {
+  font-size: 16px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Hover state staying strictly within navbar frame */
+html.app-shell .page > header nav.navbar .nav-menu .nav-item > a:not(.btn-pos):hover,
+html.app-shell .page > header nav.navbar .nav-menu .nav-item a.nav-link:not(.btn-pos):hover,
+nav.navbar #switch-theme:hover,
+nav.navbar #btnFullscreen:hover,
+nav.navbar .nav-menu .nav-item > a.dropdown-item:hover {
+  height: 32px !important;
+  max-height: 32px !important;
+  background: var(--z-primary-soft, rgba(var(--z-primary-rgb) / 0.08)) !important;
+  border-color: rgba(var(--z-primary-rgb) / 0.22) !important;
+  color: var(--z-primary, #7d287e) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+}
+
+nav.navbar #switch-theme:hover i,
+nav.navbar #btnFullscreen:hover i,
+nav.navbar .nav-menu .nav-item > a.dropdown-item:hover i {
+  color: var(--z-primary, #7d287e) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Company Switch Logo & Mark (Right Navbar Switch Company Button)
+   -------------------------------------------------------------------------- */
+.company-switch-logo-wrap {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--neo-border, rgba(0, 0, 0, 0.08));
+  flex-shrink: 0;
+}
+
+.company-switch-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 2px;
+}
+
+/* Remove duplicate bootstrap dropdown-toggle caret so only ONE clean arrow down is displayed */
+.company-switch-link.dropdown-toggle::after {
+  display: none !important;
+  content: none !important;
+}
+
+.company-switch-caret {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--neo-text-secondary, #64748b);
+  transition: transform 0.18s ease;
+}
+
+.company-switch.show .company-switch-caret {
+  transform: rotate(180deg);
+}
+
+/* --------------------------------------------------------------------------
+   Separate FY (Fiscal Year) Pill in Top Navbar
+   -------------------------------------------------------------------------- */
+.topbar-fiscal-item {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin: 0 4px !important;
+}
+
+.topbar-fiscal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--z-primary-soft, rgba(var(--z-primary-rgb) / 0.08));
+  border: 1px solid rgba(var(--z-primary-rgb) / 0.2);
+  color: var(--z-primary, #7d287e);
+  font-family: var(--neo-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.topbar-fiscal-pill i {
+  font-size: 13px;
+  color: var(--z-primary, #7d287e);
+}
+
+body.dark-mode .topbar-fiscal-pill {
+  background: rgba(var(--z-primary-rgb) / 0.16);
+  border-color: rgba(var(--z-primary-rgb) / 0.3);
+  color: #ffffff;
+}
+body.dark-mode .topbar-fiscal-pill i {
+  color: #ffffff;
+}
+
+/* Navbar Left Group (keeps toggle button and company brand together on the left) */
+.navbar-left-group {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-right: auto;
+}
+
+/* Top Navbar Company Identifier (Left side) */
+.top-navbar-company {
+  gap: 10px;
+  padding: 4px 10px;
+  border-radius: 9px;
+  max-width: 340px;
+  background: var(--neo-surface-2, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--neo-border-subtle, rgba(0, 0, 0, 0.06));
+  transition: all 0.2s ease;
+}
+
+body.dark-mode .top-navbar-company {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.top-navbar-company-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 2px;
+  border: 1px solid var(--neo-border, #cbd5e1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.top-navbar-company-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgb(var(--z-primary-rgb) / 0.25);
+}
+
+.top-navbar-company-info {
+  line-height: 1.2;
+  overflow: hidden;
+}
+
+.top-navbar-company-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--neo-text-primary, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+body.dark-mode .top-navbar-company-name {
+  color: #f8fafc;
+}
+
+.top-navbar-company-group {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--neo-text-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Top Navbar Company Switcher Dropdown */
+.top-company-dropdown-menu {
+  width: 360px !important;
+  max-width: 95vw !important;
+  padding: 0 !important;
+  border-radius: 14px !important;
+  border: 1px solid var(--neo-border, #e2e8f0) !important;
+  background: var(--neo-surface, #ffffff) !important;
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+  overflow: hidden !important;
+  margin-top: 8px !important;
+}
+
+body.dark-mode .top-company-dropdown-menu {
+  background: #0f172a !important;
+  border-color: #1e293b !important;
+  box-shadow: 0 20px 40px -4px rgba(0, 0, 0, 0.6) !important;
+}
+
+.top-company-dropdown-header {
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(var(--z-primary-rgb) / 0.08) 0%, rgba(var(--z-primary-rgb) / 0.02) 100%);
+  border-bottom: 1px solid var(--neo-border, #e2e8f0);
+}
+
+body.dark-mode .top-company-dropdown-header {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.top-company-active-tag {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--z-primary);
+  margin-bottom: 3px;
+}
+
+.top-company-active-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--neo-text-primary, #0f172a);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+body.dark-mode .top-company-active-name {
+  color: #f8fafc;
+}
+
+.top-company-active-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--neo-text-muted, #64748b);
+}
+
+.top-company-active-meta code {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(var(--z-primary-rgb) / 0.1);
+  color: var(--z-primary);
+}
+
+.top-company-search-box {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--neo-border, #f1f5f9);
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+body.dark-mode .top-company-search-box {
+  border-color: #1e293b;
+}
+
+.top-company-search-box i {
+  position: absolute;
+  left: 22px;
+  font-size: 11px;
+  color: var(--neo-text-muted, #64748b);
+  pointer-events: none;
+}
+
+.top-company-search-input {
+  width: 100%;
+  padding: 6px 10px 6px 28px;
+  font-size: 12px;
+  border: 1px solid var(--neo-border, #cbd5e1);
+  border-radius: 8px;
+  background: var(--neo-bg, #f8fafc);
+  color: var(--neo-text-primary, #0f172a);
+  outline: none;
+}
+
+body.dark-mode .top-company-search-input {
+  background: #090d16;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.top-company-search-input:focus {
+  border-color: var(--z-primary);
+}
+
+.top-company-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-company-item-form {
+  margin: 0;
+  width: 100%;
+}
+
+.top-company-item-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.top-company-item-btn:hover {
+  background: var(--neo-bg, #f8fafc);
+  border-color: var(--neo-border, #e2e8f0);
+}
+
+body.dark-mode .top-company-item-btn:hover {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.top-company-item-btn.is-active {
+  background: rgba(var(--z-primary-rgb) / 0.06);
+  border-color: rgba(var(--z-primary-rgb) / 0.2);
+}
+
+.top-company-item-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.top-company-item-info {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.top-company-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.top-company-item-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--neo-text-primary, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.dark-mode .top-company-item-title {
+  color: #f1f5f9;
+}
+
+.top-company-item-title-row code {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--neo-bg, #f1f5f9);
+  color: var(--neo-text-muted, #64748b);
+}
+
+body.dark-mode .top-company-item-title-row code {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.top-company-item-sub {
+  font-size: 10.5px;
+  color: var(--neo-text-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-company-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.top-company-pill.is-active {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--z-success, #10b981);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.top-company-pill.is-switch {
+  background: var(--neo-surface, #ffffff);
+  color: var(--z-primary);
+  border: 1px solid var(--neo-border, #cbd5e1);
+}
+
+body.dark-mode .top-company-pill.is-switch {
+  background: #090d16;
+  border-color: #334155;
+}
+
+.top-company-dropdown-footer {
+  padding: 10px 14px;
+  background: var(--neo-bg, #f8fafc);
+  border-top: 1px solid var(--neo-border, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+body.dark-mode .top-company-dropdown-footer {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.top-company-portal-btn,
+.top-company-portal-btn *,
+.top-company-portal-btn span,
+.top-company-portal-btn i,
+nav.navbar .nav-item a.top-company-portal-btn,
+nav.navbar .nav-item a.top-company-portal-btn *,
+nav.navbar .nav-item a.top-company-portal-btn span,
+nav.navbar .nav-item a.top-company-portal-btn i,
+nav.navbar .dropdown-menu a.top-company-portal-btn,
+nav.navbar .dropdown-menu a.top-company-portal-btn *,
+nav.navbar .dropdown-menu a.top-company-portal-btn span,
+nav.navbar .dropdown-menu a.top-company-portal-btn i {
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+.top-company-portal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 100%);
+  padding: 6px 14px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgb(var(--z-primary-rgb) / 0.35);
+  transition: all 0.15s ease;
+}
+
+.top-company-portal-btn:hover,
+.top-company-portal-btn:hover *,
+.top-company-portal-btn:hover span,
+.top-company-portal-btn:hover i,
+nav.navbar .nav-item a.top-company-portal-btn:hover,
+nav.navbar .nav-item a.top-company-portal-btn:hover *,
+nav.navbar .nav-item a.top-company-portal-btn:hover span,
+nav.navbar .nav-item a.top-company-portal-btn:hover i,
+nav.navbar .dropdown-menu a.top-company-portal-btn:hover,
+nav.navbar .dropdown-menu a.top-company-portal-btn:hover *,
+nav.navbar .dropdown-menu a.top-company-portal-btn:hover span,
+nav.navbar .dropdown-menu a.top-company-portal-btn:hover i {
+  color: #ffffff !important;
+  text-decoration: none !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgb(var(--z-primary-rgb) / 0.45);
+}
+
+.top-company-manage-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--neo-text-muted, #64748b) !important;
+  text-decoration: none !important;
+}
+
+.top-company-manage-link:hover {
+  color: var(--z-primary) !important;
+}

@@ -11,6 +11,7 @@ final class InventoryNavigation
         if ($access->allows('products-index')) {
             if ($access->has('inventory.lot_report')) {
                 $sections['stock'] = ['label' => 'Stock', 'url' => route('inventory-reports.stock-by-lot'), 'id' => 'stock-by-lot-menu'];
+                $sections['lifecycle'] = ['label' => 'Product Lifecycle', 'url' => route('inventory-reports.lifecycle'), 'id' => 'product-lifecycle-menu'];
             } elseif (config('operations.enabled') && $access->has('core.inventory')) {
                 $sections['stock'] = ['label' => 'Stock', 'url' => url('/operations/stock'), 'id' => 'stock-menu'];
             }

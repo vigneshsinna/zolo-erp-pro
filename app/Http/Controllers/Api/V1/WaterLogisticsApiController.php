@@ -210,13 +210,20 @@ class WaterLogisticsApiController extends BaseApiController
             // Update odometer and surcharge columns safely
             $startKm = (int) ($request->input('start_km') ?? $request->input('start_odometer') ?? 0);
             $endKm = (int) ($request->input('end_km') ?? $request->input('end_odometer') ?? 0);
-            DB::table('water_tanker_trips')->where('id', $record->id)->update([
+            $tripUpdates = [
                 'start_km' => $startKm,
                 'end_km' => $endKm,
-                'total_km' => max(0, $endKm - $startKm),
-                'motor_pumping_charge' => (float) ($request->input('motor_pumping_charge') ?? 0),
-                'waiting_charge' => (float) ($request->input('waiting_charge') ?? 0),
-            ]);
+            ];
+            if (Schema::hasColumn('water_tanker_trips', 'total_km')) {
+                $tripUpdates['total_km'] = max(0, $endKm - $startKm);
+            }
+            if (Schema::hasColumn('water_tanker_trips', 'motor_pumping_charge')) {
+                $tripUpdates['motor_pumping_charge'] = (float) ($request->input('motor_pumping_charge') ?? 0);
+            }
+            if (Schema::hasColumn('water_tanker_trips', 'waiting_charge')) {
+                $tripUpdates['waiting_charge'] = (float) ($request->input('waiting_charge') ?? 0);
+            }
+            DB::table('water_tanker_trips')->where('id', $record->id)->update($tripUpdates);
 
             // Post to General Ledger using resolved leaf accounts
             if ($tripRate > 0) {

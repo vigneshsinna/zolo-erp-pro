@@ -18,6 +18,61 @@ class TaxDeterminationService
             unset($line['_tax_snapshot'], $line['tax_snapshot_json'], $line['recoverable_tax']);
         }
         unset($line);
+
+        $isNonGst = !empty($data['is_non_gst'])
+            || !empty($data['non_gst'])
+            || ($data['bill_type'] ?? '') === 'non_gst'
+            || (!empty($data['attributes']) && (!empty($data['attributes']['is_non_gst']) || ($data['attributes']['bill_type'] ?? '') === 'non_gst'));
+
+        if ($isNonGst) {
+            $priceField = $kind === 'sale' ? 'net_unit_price' : 'net_unit_cost';
+            foreach ($data['items'] as $i => &$line) {
+                $qty = (float) ($line['qty'] ?? 1);
+                $price = (float) ($line[$priceField] ?? 0);
+                $taxable = $qty * $price;
+                $product = $products[$line['product_id']] ?? null;
+                $line['tax_rate'] = 0.0;
+                $line['tax_rate_override'] = 0.0;
+                $line['tax'] = 0.0;
+                $line['_tax_snapshot'] = [
+                    'version' => 'non-gst-v1',
+                    'is_non_gst' => true,
+                    'taxable_value' => $taxable,
+                    'discount' => (float) ($line['discount'] ?? 0),
+                    'rate' => 0.0,
+                    'product_rate' => 0.0,
+                    'cess_rate' => 0.0,
+                    'cgst' => 0.0,
+                    'sgst' => 0.0,
+                    'igst' => 0.0,
+                    'cess' => 0.0,
+                    'hsn_sac' => $product?->hsn_code ?? '',
+                    'reverse_charge' => false,
+                    'supply_type' => 'non_gst',
+                    'input_credit_allowed' => false,
+                    'product_name' => $product?->name ?? '',
+                    'product_code' => $product?->code ?? '',
+                    'qty' => $qty,
+                ];
+            }
+            unset($line);
+
+            $data['_tax_snapshot'] = [
+                'version' => 'non-gst-v1',
+                'is_non_gst' => true,
+                'bill_type' => 'non_gst',
+                'buyer_name' => $party->name ?? '',
+                'seller_name' => $party->name ?? '',
+                'registration_type' => 'unregistered',
+                'registration_gstin' => '',
+                'reverse_charge' => false,
+                'place_of_supply' => '',
+            ];
+            $data['order_tax_rate'] = 0.0;
+            $data['order_tax'] = 0.0;
+            $data['is_non_gst'] = true;
+            return $data;
+        }
         if (!config('compliance.enabled') && empty($data['gst']) && !collect($products)->contains(fn ($p) => $p->tax_category_id)) return $data;
         $company = Company::findOrFail($context->companyId);
         $registrations = DB::table('tax_registrations')->where('company_id', $context->companyId)

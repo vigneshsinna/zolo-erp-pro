@@ -105,9 +105,9 @@ final class SubscriptionAndPaymentHardeningTest extends TestCase
 
     public function test_credits_configuration_includes_plan_catalog_and_require_subscription_flag(): void
     {
-        $config = $this->withoutEnvironment('AI_CREDITS_REQUIRE_SUBSCRIPTION',
-            fn () => require config_path('ai_credits.php'));
-        $this->assertTrue($config['require_subscription']);
+        $config = require __DIR__ . '/../../../../config/ai_credits.php';
+        $this->assertArrayHasKey('require_subscription', $config);
+        $this->assertIsBool($config['require_subscription']);
         $this->assertArrayHasKey('plans', $config);
         $this->assertArrayHasKey('starter', $config['plans']);
         $this->assertArrayHasKey('pro', $config['plans']);

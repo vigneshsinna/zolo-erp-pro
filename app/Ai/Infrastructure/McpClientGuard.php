@@ -26,7 +26,7 @@ final class McpClientGuard
         $binding = DB::table('ai_mcp_client_bindings')
             ->where('personal_access_token_id', $token->id)
             ->where('actor_id', $request->user()->id)
-            ->where('is_active', true)->where('expires_at', '>', now('UTC'))->first();
+            ->where('is_active', true)->where('expires_at', '>', now())->first();
         abort_unless($binding, 403, 'MCP token binding is unavailable.');
         $principal = app(AiPrincipalFactory::class)->createForUser(
             (int) $binding->actor_id, (int) $binding->company_id, (int) $binding->branch_id,

@@ -130,9 +130,6 @@ class IndustryProfileService
     {
         try {
             $request = request();
-            if ($request && $request->attributes->has('industry_profile_key')) {
-                return (string) $request->attributes->get('industry_profile_key');
-            }
             $context ??= $request?->attributes->get(CompanyContext::class);
             $companyId = $context?->companyId;
             if (!$companyId && function_exists('session')) {
@@ -143,20 +140,94 @@ class IndustryProfileService
                     $companyId = app(CompanyContextResolver::class)->forActor()?->companyId;
                 } catch (\Throwable) {}
             }
-            if ($companyId && Schema::hasTable('company_industry_settings')) {
-                $profile = DB::table('company_industry_settings')->where('company_id', $companyId)->value('profile_key') ?: 'general_trading';
-                $request?->attributes->set('industry_profile_key', $profile);
-                return $profile;
+
+            $cacheKey = 'industry_profile_key_' . ($companyId ?? 'none');
+            if ($request && $request->attributes->has($cacheKey)) {
+                return (string) $request->attributes->get($cacheKey);
             }
+
+            if ($companyId && Schema::hasTable('company_industry_settings')) {
+                $profile = DB::table('company_industry_settings')->where('company_id', $companyId)->value('profile_key');
+                if ($profile) {
+                    $request?->attributes->set($cacheKey, $profile);
+                    return $profile;
+                }
+            }
+            // Standalone or legacy database fallback where company_industry_settings table does not exist
+            if (Schema::hasTable('general_settings')) {
+                $general = DB::table('general_settings')->first();
+                if ($general && (
+                    stripos($general->site_title ?? '', 'lenz') !== false ||
+                    stripos($general->company_name ?? '', 'lenz') !== false ||
+                    stripos($general->site_title ?? '', 'optic') !== false ||
+                    stripos($general->company_name ?? '', 'optic') !== false
+                )) {
+                    $request?->attributes->set($cacheKey, 'opticals');
+                    return 'opticals';
+                }
+            }
+            if (Schema::hasTable('product_types') && Schema::hasColumn('products', 'base')) {
+                $lensQuery = DB::table('product_types')->where(function ($q) {
+                    $q->where('name', 'like', '%Progressive%')
+                      ->orWhere('name', 'like', '%Bifocal%')
+                      ->orWhere('name', 'like', '%Single Vision%')
+                      ->orWhere('name', 'like', '%KBF%');
+                });
+                if ($companyId && Schema::hasColumn('product_types', 'company_id')) {
+                    $lensQuery->where('company_id', $companyId);
+                }
+                if ($lensQuery->exists()) {
+                    $request?->attributes->set($cacheKey, 'opticals');
+                    return 'opticals';
+                }
+            }
+            $request?->attributes->set($cacheKey, 'general_trading');
             return 'general_trading';
         } catch (\Throwable) {
             return 'general_trading';
         }
     }
 
-    public static function isOptical(?CompanyContext $context = null): bool
+    public static function isOptical(?CompanyContext $context = null, mixed $documentOrItem = null): bool
     {
-        return static::currentProfileKey($context) === 'opticals';
+        $profile = static::currentProfileKey($context);
+        if (in_array($profile, ['opticals', 'optical', 'lens', 'optician'], true)) {
+            return true;
+        }
+
+        try {
+            $companyId = $context?->companyId ?: (function_exists('session') ? session('company_id') : null);
+            if ($companyId && Schema::hasTable('companies')) {
+                $company = DB::table('companies')->where('id', $companyId)->first(['legal_name', 'trade_name']);
+                if ($company && (
+                    stripos($company->legal_name ?? '', 'lenz') !== false ||
+                    stripos($company->trade_name ?? '', 'lenz') !== false ||
+                    stripos($company->legal_name ?? '', 'optic') !== false ||
+                    stripos($company->trade_name ?? '', 'optic') !== false
+                )) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {}
+
+        if ($documentOrItem !== null) {
+            if (is_object($documentOrItem)) {
+                if (!empty($documentOrItem->end_user_name) || !empty($documentOrItem->fitting_charge) || !empty($documentOrItem->tinting_cost)) {
+                    return true;
+                }
+                if (isset($documentOrItem->sph) && ($documentOrItem->sph !== null && $documentOrItem->sph !== '')) {
+                    return true;
+                }
+                if (isset($documentOrItem->productSales)) {
+                    foreach ($documentOrItem->productSales as $item) {
+                        if (!empty($item->sph) || !empty($item->cyl) || !empty($item->axis) || !empty($item->addition) || !empty($item->lr)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     public static function isTextile(?CompanyContext $context = null): bool

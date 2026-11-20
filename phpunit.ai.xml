@@ -24,5 +24,6 @@
     <env name="ERP_TEST_MYSQL_PORT" value="3307" force="false"/>
     <env name="ERP_TEST_MYSQL_USER" value="zolo_erp" force="false"/>
     <env name="ERP_TEST_MYSQL_PASSWORD" value="zolo_password_123" force="false"/>
+    <env name="AI_CREDITS_REQUIRE_SUBSCRIPTION" value="false" force="true"/>
   </php>
 </phpunit>

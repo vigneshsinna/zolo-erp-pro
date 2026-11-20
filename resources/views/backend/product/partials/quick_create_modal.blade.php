@@ -632,7 +632,8 @@
 </div>
 
 <script>
-$(document).ready(function() {
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof $ === 'undefined') return;
     @if($isOpticalProfile)
     $('#quick-is-optical').on('change', function () {
         var isChecked = $(this).is(':checked');

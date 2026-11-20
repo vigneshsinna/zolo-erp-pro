@@ -1,0 +1,4 @@
+{
+    "status": "NOT_EVIDENCED",
+    "reason": "No run-bound ledger snapshot. Test transactions roll back; estimated credits are not ledger debits."
+}

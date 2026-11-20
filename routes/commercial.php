@@ -46,6 +46,7 @@ Route::prefix('commercial')->middleware(['auth', 'company.context', RequireShare
         Route::post('{kind}/masters/{resource}', [CommercialController::class, 'inlineMaster']);
         Route::post('{kind}/{id}/reverse', [CommercialController::class, 'reverse']);
         Route::get('{kind}/{id}/reverse', [CommercialController::class, 'reversalForm']);
+        Route::post('{kind}/{id}/convert-to-gst', [CommercialController::class, 'convertToGst'])->name('commercial.convert-to-gst');
         Route::put('{kind}/{id}', [CommercialController::class, 'replace']);
         Route::post('{kind}/{id}/payments', [CommercialController::class, 'payment']);
         Route::post('purchase/{id}/receipts', [CommercialController::class, 'receive']);

@@ -151,6 +151,45 @@ zolo-erp-pro/
 - **Web Routes:** Dot-notation lowercase for named routes (e.g., `route('accounting.general_ledger')`, `route('ai.workspace')`).
 - **API Endpoints:** Plural nouns under versioned prefix (e.g., `POST /api/v1/ai/threads`, `POST /api/v1/ai/chat`).
 
+### 4.4 Strict UI Architecture Rule: Zero Novel AI UI Designs — Reuse Existing ERP Design System Exclusively
+- **Mandate:** Default, bespoke, or novel "AI UI designs" (such as custom colored left-border metric cards, floating cards, unstandardized widget layouts, invented border colors, or novel card components) are **STRICTLY RESTRICTED AND FORBIDDEN**.
+- **Core Principle: 100% Reuse of Existing zoloERP Design Patterns:**
+  1. **Canonical KPI Metric Strips:** ALWAYS reuse the canonical zoloERP KPI summary strip component:
+     ```html
+     <div class="kpi-summary-strip d-print-none">
+         <div class="kpi-card">
+             <div>
+                 <div class="kpi-label">METRIC TITLE</div>
+                 <div class="kpi-number">1,234.56</div>
+                 <div class="kpi-subtext">Context or explanatory note</div>
+             </div>
+             <div class="z-icon-tile z-tone-primary">
+                 <i class="dripicons-box u-fs-18px"></i>
+             </div>
+         </div>
+     </div>
+     ```
+     - **Icons:** Use standard Dripicons (`dripicons-download`, `dripicons-export`, `dripicons-checkmark`, `dripicons-box`, `dripicons-home`, `dripicons-warning`, `dripicons-gear`, `dripicons-stack`).
+     - **Tones:** Use standard `.z-icon-tile` tones (`z-tone-primary`, `z-tone-warning`, `z-tone-success`, `z-tone-info`, `z-tone-danger`, `z-tone-neutral`).
+     - **Forbidden:** Never invent custom left-border stripes (`border-left: 3px solid ...`) or custom box styling for metrics.
+  2. **Surfaces, Containers & Cards:**
+     - Filter forms: Use `<div class="desk-filter-card d-print-none">`.
+     - Tables, lists, timelines, and primary content: Use `<div class="desk-card-wrapper">`.
+     - Top action / navigation bars: Use `<div class="comm-bar">` or `<x-inventory-command-bar>`.
+     - Product / entity summary bars: Use `.desk-card-wrapper` with standard flex layout, typography, and `.badge` pills.
+  3. **Tables & Status Badges:**
+     - Tabular data must use `<table class="table table-sm">` inside `<div class="table-responsive">`.
+     - Status badges must strictly use Bootstrap/zoloERP standard badges (`.badge.badge-primary`, `.badge.badge-success`, `.badge.badge-warning`, `.badge.badge-danger`, `.badge.badge-secondary`, `.badge.badge-light`).
+  4. **Design Token & Global UI Engine Compliance:**
+     - Must strictly use Global UI Engine tokens (`var(--z-primary)`, `var(--zp-800)`, `var(--z-ink)`, `var(--neo-surface)`, `var(--neo-bg)`, `var(--neo-border)`).
+     - Full compliance with `tests/Unit/DesignTokensTest.php` (zero forbidden inline styles; zero hardcoded accent hex codes).
+  5. **Reference Templates Before Authoring:**
+     - Every developer and AI assistant MUST inspect and mirror:
+       - `resources/views/backend/report/stock_report.blade.php`
+       - `resources/views/backend/accounting/general_ledger.blade.php`
+       - `public/css/pages/stock-report.css`
+       - `public/css/zolo-components.css`
+
 ---
 
 ## 5. Database Architecture & Non-Negotiable Tenancy Rules

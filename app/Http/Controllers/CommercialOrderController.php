@@ -40,13 +40,24 @@ class CommercialOrderController extends Controller
                            ->where(fn($q) => $q->whereNull('attributes_json->order_status')->orWhere('attributes_json->order_status', 'open'));
             } elseif ($statusFilter === 'fulfilled') {
                 if ($kind === 'sale') $query->where('status', 'fulfilled');
-                else $query->whereNotNull('attributes_json->fulfilled_at');
+                else $query->where(function ($q) {
+                    $q->where('attributes_json->order_status', 'fulfilled')
+                      ->orWhere(fn ($sub) => $sub->whereNotNull('attributes_json->fulfilled_at')
+                                                 ->whereNull('reversed_at')
+                                                 ->whereNull('attributes_json->order_status'));
+                });
             } elseif ($statusFilter === 'cancelled') {
                 if ($kind === 'sale') $query->where('status', 'cancelled');
-                else $query->whereNotNull('reversed_at');
+                else $query->where(function ($q) {
+                    $q->where('attributes_json->order_status', 'cancelled')
+                      ->orWhereNotNull('reversed_at');
+                });
             } else {
                 if ($kind === 'sale') $query->whereIn('status', ['open', 'partial']);
-                else $query->whereNull('reversed_at')->whereNull('attributes_json->fulfilled_at');
+                else $query->whereNull('reversed_at')
+                           ->where(fn ($q) => $q->whereNull('attributes_json->order_status')
+                                                ->orWhereIn('attributes_json->order_status', ['open', 'partial']))
+                           ->whereNull('attributes_json->fulfilled_at');
             }
         }
         $rows = $query->orderByDesc('id')->paginate(25);

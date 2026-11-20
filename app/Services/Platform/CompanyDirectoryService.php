@@ -12,6 +12,7 @@ use App\Services\Industry\IndustryProfileService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -25,6 +26,17 @@ use Illuminate\Validation\ValidationException;
  */
 class CompanyDirectoryService
 {
+    private static array $requestCache = [];
+
+    public static function clearCache(): void
+    {
+        self::$requestCache = [];
+        try {
+            Cache::increment('company_directory_global_version');
+        } catch (\Throwable $e) {
+            Cache::put('company_directory_global_version', time(), 86400 * 30);
+        }
+    }
     /** Installation administrators (Admin/Owner) create groups and ungrouped companies. */
     public function isInstallationAdmin(int $userId): bool
     {
@@ -41,16 +53,50 @@ class CompanyDirectoryService
         }
 
         return $this->isInstallationAdmin($userId)
+            && Schema::hasTable('company_group_admins')
             && DB::table('company_group_admins')->where('company_group_id', $groupId)->where('user_id', $userId)->exists();
     }
 
     /** Member companies grouped for the picker; groups the user administers are listed even while empty. */
     public function directory(int $userId): array
     {
-        $companies = Company::with('group')->where('status', 'active')
-            ->whereIn('id', DB::table('company_user')->where('user_id', $userId)->select('company_id'))
-            ->orderBy('legal_name')->get();
-        $managed = DB::table('company_group_admins')->where('user_id', $userId)->pluck('company_group_id')->all();
+        if (!Schema::hasTable('companies')) {
+            return ['groups' => [], 'ungrouped' => []];
+        }
+
+        if (app()->runningUnitTests()) {
+            return $this->buildDirectory($userId);
+        }
+
+        if (isset(self::$requestCache[$userId])) {
+            return self::$requestCache[$userId];
+        }
+
+        $version = Cache::get('company_directory_global_version', 1);
+        $cacheKey = "user_company_directory_{$userId}_v{$version}";
+
+        $result = Cache::remember($cacheKey, 300, function () use ($userId) {
+            return $this->buildDirectory($userId);
+        });
+
+        return self::$requestCache[$userId] = $result;
+    }
+
+    private function buildDirectory(int $userId): array
+    {
+        if (!Schema::hasTable('companies')) {
+            return ['groups' => [], 'ungrouped' => []];
+        }
+
+        $isAdmin = $this->isInstallationAdmin($userId);
+        $companiesQuery = Company::with('group')->where('status', 'active');
+        if (Schema::hasTable('company_user')) {
+            $companiesQuery->whereIn('id', DB::table('company_user')->where('user_id', $userId)->select('company_id'));
+        }
+        $companies = $companiesQuery->orderBy('legal_name')->get();
+        $managed = Schema::hasTable('company_group_admins')
+            ? DB::table('company_group_admins')->where('user_id', $userId)->pluck('company_group_id')->all()
+            : [];
         $profiles = Schema::hasTable('company_industry_settings')
             ? DB::table('company_industry_settings')->whereIn('company_id', $companies->pluck('id'))->get()->keyBy('company_id')
             : collect();
@@ -59,16 +105,26 @@ class CompanyDirectoryService
             ->where('status', 'active')->whereNull('effective_to')->orderByDesc('effective_from')->get()->unique('company_id')->keyBy('company_id') : collect();
         $resolver = app(CompanyContextResolver::class);
 
-        $groups = CompanyGroup::where('status', 'active')
-            ->where(fn ($q) => $q->whereIn('id', $companies->pluck('company_group_id')->filter())->orWhereIn('id', $managed))
-            ->orderBy('name')->get()
-            ->map(fn (CompanyGroup $group) => ['id' => $group->id, 'code' => $group->code, 'name' => $group->name,
-                'manageable' => in_array($group->id, $managed, true), 'companies' => []])
-            ->keyBy('id')->all();
+        $groups = Schema::hasTable('company_groups')
+            ? CompanyGroup::where('status', 'active')
+                ->where(fn ($q) => $q->whereIn('id', $companies->pluck('company_group_id')->filter())->orWhereIn('id', $managed))
+                ->orderBy('name')->get()
+                ->map(fn (CompanyGroup $group) => ['id' => $group->id, 'code' => $group->code, 'name' => $group->name,
+                    'manageable' => in_array($group->id, $managed, true), 'companies' => []])
+                ->keyBy('id')->all()
+            : [];
         $ungrouped = [];
         foreach ($companies as $company) {
-            $branches = $company->branches()->where('is_active', true)->whereIn('id', DB::table('company_user_branches')
-                ->where('company_id', $company->id)->where('user_id', $userId)->select('branch_id'))->orderBy('name')->get(['id', 'name']);
+            $branchesQuery = $company->branches()->where('is_active', true);
+            if (Schema::hasTable('company_user_branches')) {
+                $hasExplicitBranches = DB::table('company_user_branches')
+                    ->where('company_id', $company->id)->where('user_id', $userId)->exists();
+                if ($hasExplicitBranches || !$isAdmin) {
+                    $branchesQuery->whereIn('id', DB::table('company_user_branches')
+                        ->where('company_id', $company->id)->where('user_id', $userId)->select('branch_id'));
+                }
+            }
+            $branches = $branchesQuery->orderBy('name')->get(['id', 'name']);
             $years = $company->fiscalYears()->orderByDesc('start_date')->get(['id', 'name', 'status', 'start_date', 'end_date']);
             $current = $years->first(fn ($year) => $year->start_date->toDateString() <= $today($company)
                 && $year->end_date->toDateString() >= $today($company));
@@ -109,7 +165,7 @@ class CompanyDirectoryService
             'company_ids' => 'array', 'company_ids.*' => 'integer|min:1',
         ])->validate();
 
-        return DB::transaction(function () use ($actor, $data) {
+        $group = DB::transaction(function () use ($actor, $data) {
             $group = CompanyGroup::create(['code' => $data['code'], 'name' => $data['name']]);
             DB::table('company_group_admins')->insert(['company_group_id' => $group->id, 'user_id' => $actor,
                 'created_at' => now(), 'updated_at' => now()]);
@@ -124,6 +180,9 @@ class CompanyDirectoryService
 
             return $group;
         });
+        self::clearCache();
+
+        return $group;
     }
 
     /** Group admins see every company in the group, including companies created later. */
@@ -142,6 +201,7 @@ class CompanyDirectoryService
                 $this->grant($companyId, $userId);
             }
         });
+        self::clearCache();
     }
 
     /**
@@ -221,6 +281,9 @@ class CompanyDirectoryService
 
             return $company;
         });
+        self::clearCache();
+
+        return $company;
     }
 
     private function grant(int $companyId, int $userId): void
@@ -339,7 +402,7 @@ class CompanyDirectoryService
             throw new AuthorizationException('Group administrator required to move a company into this group.');
         }
 
-        return DB::transaction(function () use ($actor, $company, $data, $groupId, $moving, $input, $logo) {
+        $company = DB::transaction(function () use ($actor, $company, $data, $groupId, $moving, $input, $logo) {
             $before = $company->only(['code', 'company_group_id']);
             $company->forceFill(['code' => $data['code'], 'company_group_id' => $groupId])->save();
             if ($moving && $groupId) {
@@ -353,6 +416,9 @@ class CompanyDirectoryService
 
             return $company->refresh();
         });
+        self::clearCache();
+
+        return $company;
     }
 
     /**
@@ -367,6 +433,7 @@ class CompanyDirectoryService
         }
         $company->forceFill(['status' => 'deleted'])->save();
         $this->audit($company->id, $actor, 'company_deleted', ['status' => 'active'], ['status' => 'deleted']);
+        self::clearCache();
 
         return $company;
     }
@@ -376,6 +443,7 @@ class CompanyDirectoryService
         $company = $this->administeredCompany($actor, $companyId, 'deleted');
         $company->forceFill(['status' => 'active'])->save();
         $this->audit($company->id, $actor, 'company_restored', ['status' => 'deleted'], ['status' => 'active']);
+        self::clearCache();
 
         return $company;
     }
@@ -404,6 +472,7 @@ class CompanyDirectoryService
             'code' => ['required', 'string', 'max:50', 'regex:/^[A-Z0-9_-]+$/', Rule::unique('company_groups', 'code')->ignore($group->id)],
         ])->validate();
         $group->update(['name' => $data['name'], 'code' => $data['code']]);
+        self::clearCache();
 
         return $group;
     }
@@ -423,6 +492,7 @@ class CompanyDirectoryService
             DB::table('company_group_admins')->where('company_group_id', $group->id)->delete();
             $group->delete();
         });
+        self::clearCache();
     }
 
     private function administeredCompany(int $actor, int $companyId, string $status): Company

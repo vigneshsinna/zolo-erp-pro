@@ -323,6 +323,27 @@
             $('#quick-variant-section input[name="variant_option[]"]').first().val(optVal);
             $('#quick-variant-section input[name="variant_value[]"]').first().val(valStr);
 
+            // Optical lens specifications
+            var isOptical = Boolean(p.is_optical || p.product_type_id || p.base || p.addition || p.lr || p.dia);
+            setCheckVal('#quick-is-optical', isOptical);
+            setSelectVal('#quick-item-product-type', p.product_type_id || '');
+            $('#quick-item-base').val(p.base || '');
+            $('#quick-item-addition').val(p.addition || '');
+            setSelectVal('#quick-item-lr', p.lr || '');
+            $('#quick-item-dia').val(p.dia || '');
+            if (isOptical) {
+                $('#quick-optical-container').show();
+                $('#quick-product-type-col').show();
+                var optTypeText = $('#quick-item-product-type option:selected').text();
+                if (optTypeText && optTypeText !== 'Select Type...') {
+                    $('#quick-optical-type-label').text(optTypeText);
+                }
+            } else {
+                $('#quick-optical-container').hide();
+                $('#quick-product-type-col').hide();
+                $('#quick-optical-type-label').text('None selected');
+            }
+
             syncQuickSections();
         }
 

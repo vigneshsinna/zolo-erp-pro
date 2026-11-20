@@ -32,6 +32,7 @@ class GstProjectionService
     {
         if (!$document->tax_snapshot_json) return;
         $snapshot = $document->tax_snapshot_json;
+        if (!empty($snapshot['is_non_gst']) || ($snapshot['bill_type'] ?? '') === 'non_gst') return;
         DB::table('gst_transaction_projections')->insert([
             'company_id' => $context->companyId, 'branch_id' => $context->branchId, 'financial_year_id' => $context->financialYearId,
             'source_type' => $kind, 'source_id' => $document->id, 'document_no' => $document->reference_no,

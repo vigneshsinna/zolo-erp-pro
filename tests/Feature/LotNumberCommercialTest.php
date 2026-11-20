@@ -34,19 +34,36 @@ class LotNumberCommercialTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['database.connections.mysql.database' => 'salepro_db']);
-        \Illuminate\Support\Facades\DB::purge('mysql');
-        \Illuminate\Support\Facades\DB::reconnect('mysql');
         config(['commercial.enabled' => true]);
         config(['compliance.enabled' => false]);
         putenv('ERP_OPTIONAL_ACTIVATION_READY=true');
         $_ENV['ERP_OPTIONAL_ACTIVATION_READY'] = 'true';
 
         $this->adminUser = User::first();
-        $companyId = 4;
-        $this->warehouse = Warehouse::where('company_id', $companyId)->first();
-        $this->supplier = Supplier::where('company_id', $companyId)->first();
-        $this->customer = Customer::where('company_id', $companyId)->first();
+        $this->warehouse = Warehouse::first();
+        $companyId = $this->warehouse->company_id;
+        $branch = \App\Models\CompanyBranch::where('company_id', $companyId)->first()
+            ?? \App\Models\CompanyBranch::firstOrCreate(['company_id' => $companyId, 'code' => 'LOT-BR-01'], ['name' => 'Lot Branch', 'is_active' => true]);
+        $this->warehouse->branch_id = $branch->id;
+        $this->warehouse->save();
+
+        \Illuminate\Support\Facades\DB::table('company_user')->updateOrInsert(
+            ['company_id' => $companyId, 'user_id' => $this->adminUser->id],
+            ['is_default' => 1]
+        );
+        if (\Illuminate\Support\Facades\Schema::hasTable('company_user_branches')) {
+            \Illuminate\Support\Facades\DB::table('company_user_branches')->updateOrInsert(
+                ['company_id' => $companyId, 'user_id' => $this->adminUser->id, 'branch_id' => $branch->id],
+                []
+            );
+        }
+
+        $fy = \App\Models\Accounting\FiscalYear::where('company_id', $companyId)->where('is_closed', 0)->first()
+            ?? \App\Models\Accounting\FiscalYear::where('company_id', $companyId)->first()
+            ?? \App\Models\Accounting\FiscalYear::first();
+
+        $this->supplier = Supplier::where('company_id', $companyId)->first() ?? Supplier::first();
+        $this->customer = Customer::where('company_id', $companyId)->first() ?? Customer::first();
         $this->unit = \App\Models\Unit::firstOrCreate(
             ['company_id' => $companyId, 'unit_code' => 'LOT-PC'],
             ['unit_name' => 'Lot Piece', 'operator' => '*', 'operation_value' => 1, 'is_active' => 1]
@@ -75,9 +92,9 @@ class LotNumberCommercialTest extends TestCase
         ]);
         \Illuminate\Support\Facades\DB::table('tax_registrations')
             ->where('company_id', $companyId)
-            ->where('branch_id', 5)
+            ->where('branch_id', $branch->id)
             ->update(['status' => 'inactive']);
-        $this->context = new CompanyContext(4, 5, 4);
+        $this->context = new CompanyContext($companyId, $branch->id, $fy->id);
     }
 
     public function test_purchase_and_sale_views_render_lot_number_field(): void
@@ -112,6 +129,7 @@ class LotNumberCommercialTest extends TestCase
                     'qty' => 10,
                     'net_unit_cost' => 100,
                     'purchase_unit_id' => $unit->id,
+                    'expired_date' => date('Y-m-d', strtotime('+1 year')),
                 ],
             ],
         ], 'idemp-pur-' . mt_rand(1000, 9999), $this->adminUser->id, $this->context);

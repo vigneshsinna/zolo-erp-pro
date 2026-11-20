@@ -1,0 +1,113 @@
+{
+  "count_md": 15,
+  "total_words": 13789,
+  "source_branch": "feature/ai-unified-input-clarification",
+  "reference_commit": "7b5d0e5f8baaae392d222e0f2fe263e914f0692b",
+  "documents": [
+    {
+      "path": "docs/00_README_AND_MASTER_SPEC.md",
+      "bytes": 6663,
+      "words": 814,
+      "sha256": "d52ea82f1bc031adb43f21f177a3fef3d456826bf5cca73ad5e569c2df3ba4d2",
+      "code_fences": 2
+    },
+    {
+      "path": "docs/01_SYSTEM_ARCHITECTURE.md",
+      "bytes": 6065,
+      "words": 845,
+      "sha256": "e310fade40d860b6c56e5c687a5352cafaed9b8a57c36ee0fd229ae055415054",
+      "code_fences": 4
+    },
+    {
+      "path": "docs/02_MODEL_ROUTING_NVIDIA_API.md",
+      "bytes": 7569,
+      "words": 936,
+      "sha256": "df774759480229f877b19f87ae4c23f36352052e76e627c56365932e826dfe67",
+      "code_fences": 12
+    },
+    {
+      "path": "docs/03_MEDIA_INGESTION_PREPROCESSING.md",
+      "bytes": 6946,
+      "words": 954,
+      "sha256": "58ab9d8a2a7636a4360a7146a66bf4c8baeabec4fd930e09d8562132c25e46f2",
+      "code_fences": 2
+    },
+    {
+      "path": "docs/04_IMAGE_AND_DOCUMENT_EXTRACTION.md",
+      "bytes": 7049,
+      "words": 940,
+      "sha256": "54c49bed3cba98154298c2ac3b05a0d3491e157bc30eed1fa6decb46492dc89b",
+      "code_fences": 2
+    },
+    {
+      "path": "docs/05_AUDIO_TRANSCRIPTION_AND_LANGUAGE.md",
+      "bytes": 5631,
+      "words": 774,
+      "sha256": "bb48754b108744397fc37e1620961a3dd450b177cc3b94ef2443c86b9ad19f82",
+      "code_fences": 4
+    },
+    {
+      "path": "docs/06_NORMALIZED_INPUT_DATA_CONTRACTS.md",
+      "bytes": 6150,
+      "words": 805,
+      "sha256": "a7c191ad5e0b43476d94e0559c4c112717e647d7ba9e90991a989745af730236",
+      "code_fences": 4
+    },
+    {
+      "path": "docs/07_ERP_WORKFLOW_AND_MASTER_INTEGRATION.md",
+      "bytes": 7574,
+      "words": 1024,
+      "sha256": "e1cec8285beb937cda0d2716993c067e79e2a800f588266b33b3e5f69643e56b",
+      "code_fences": 0
+    },
+    {
+      "path": "docs/08_BLADE_UI_AND_API_DESIGN.md",
+      "bytes": 6732,
+      "words": 808,
+      "sha256": "7062ab84d1668b6f6e02e7a7f42b437a5882df7ac0e89877d4fddb1eb148f7aa",
+      "code_fences": 14
+    },
+    {
+      "path": "docs/09_SECURITY_PRIVACY_GOVERNANCE.md",
+      "bytes": 6796,
+      "words": 951,
+      "sha256": "c76119316515b0c0fe4fa3f71e0884493d296d9d848b9154b553af7b2acdf525",
+      "code_fences": 0
+    },
+    {
+      "path": "docs/10_REPOSITORY_IMPLEMENTATION_PLAN.md",
+      "bytes": 10371,
+      "words": 1230,
+      "sha256": "fde1fb4d40853e01a001c218445c25ceae7c7242d5ca35f847dddcc74fbf9de2",
+      "code_fences": 0
+    },
+    {
+      "path": "docs/11_TEST_MATRIX_AND_RELEASE_GATES.md",
+      "bytes": 10076,
+      "words": 1631,
+      "sha256": "1aadd95fdb87e567ebcec5443f8244efffcdbf904748b83761b803baf237eaaa",
+      "code_fences": 0
+    },
+    {
+      "path": "docs/12_SCENARIOS_AND_EXAMPLES.md",
+      "bytes": 6983,
+      "words": 956,
+      "sha256": "4819e687c45a452ac61579e902023129cb8833ca543391577e929933b914e447",
+      "code_fences": 4
+    },
+    {
+      "path": "docs/13_SOURCES_AND_OPEN_DECISIONS.md",
+      "bytes": 6358,
+      "words": 798,
+      "sha256": "7de85c535bf8f31e4f1fd51bba7084788878b7d4c7a5301b91dd09c160d6e15d",
+      "code_fences": 0
+    },
+    {
+      "path": "IMPLEMENTATION_HANDOFF.md",
+      "bytes": 2516,
+      "words": 323,
+      "sha256": "68312cd4635fe2460c94c42b7930ddd194f074f9fee7bf02300cf95fbb693bdd",
+      "code_fences": 0
+    }
+  ]
+}

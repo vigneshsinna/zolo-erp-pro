@@ -285,7 +285,7 @@ class HomeController extends Controller
         }
 
         $context = $request->attributes->get(CompanyContext::class);
-        $company = Company::findOrFail($context->companyId);
+        $company = Company::with('group')->findOrFail($context->companyId);
         $year = FiscalYear::where('company_id', $context->companyId)->findOrFail($context->financialYearId);
         $yearStart = CarbonImmutable::parse($year->start_date);
         $yearEnd = CarbonImmutable::parse($year->end_date);
@@ -404,7 +404,7 @@ class HomeController extends Controller
         $versionUpgradeData = (!config('database.connections.zoloerp_landlord') && Auth::user()->role_id <= 2) ? ($this->versionUpgradeInfo ?? []) : [];
 
         return view('backend.index', $metrics + compact(
-            'period', 'warehouseId', 'warehouses', 'start', 'end', 'year', 'reportDate', 'ledger',
+            'company', 'period', 'warehouseId', 'warehouses', 'start', 'end', 'year', 'reportDate', 'ledger',
             'payment_recieved', 'payment_sent', 'month', 'yearly_sale_amount', 'yearly_purchase_amount',
             'versionUpgradeData', 'liquid_balance', 'stock_valuation', 'total_customers',
             'total_suppliers', 'low_stock_count', 'low_stock_products', 'currency_symbol'

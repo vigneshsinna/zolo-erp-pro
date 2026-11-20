@@ -39,6 +39,11 @@
         if (paymentError) throw new Error(paymentError);
         $('#btn-save-drawer-details').trigger('click');
         const values = fields();
+        const isNonGst = $('#hidden-is-non-gst').val() === '1' || values.is_non_gst === '1' || values.bill_type === 'non_gst';
+        if (isNonGst) {
+            values.is_non_gst = 1;
+            values.bill_type = 'non_gst';
+        }
         const items = $('#order-table-body tr.order-item-row').toArray().map(row => {
             const $row = $(row);
             let id = $row.find('.row-product-id').val();
@@ -76,8 +81,13 @@
                 product_batch_id: $row.attr('data-batch-id') || null,
                 ...(purchase && $row.find('.row-batch-val').val() ? { batch: { batch_no: $row.find('.row-batch-val').val(), expired_date: $row.find('.row-expire-val').val() || null } } : {})
             };
-            const taxOverride = window.zoloLineTax?.override(row);
-            if (taxOverride !== undefined) line.tax_rate_override = taxOverride;
+            if (isNonGst) {
+                line.tax_rate_override = 0;
+                line.tax_rate = 0;
+            } else {
+                const taxOverride = window.zoloLineTax?.override(row);
+                if (taxOverride !== undefined) line.tax_rate_override = taxOverride;
+            }
             if ($row.attr('data-order-item-id')) line.order_item_id = Number($row.attr('data-order-item-id'));
             if ($row.attr('data-variant-id')) line.variant_id = Number($row.attr('data-variant-id'));
             const orderBatch = $row.attr('data-order-batch-no');
@@ -160,6 +170,10 @@
         };
     }
     function preview(data) {
+        if ($('#hidden-is-non-gst').val() === '1') {
+            data.is_non_gst = 1;
+            data.bill_type = 'non_gst';
+        }
         return api('/preview', data).then(result => {
             const totals = result.data;
             $('#order-table-body tr.order-item-row').each(function (i) {

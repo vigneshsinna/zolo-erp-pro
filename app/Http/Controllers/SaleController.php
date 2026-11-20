@@ -211,17 +211,22 @@ class SaleController extends Controller
         return $this->getSaleJson($id);
     }
 
-    public function productWithoutVariant()
+    public function productWithoutVariant(?int $limit = null)
     {
         $query = Product::forBill('sale')->where('products.is_active', true)->whereIn('products.type', ['standard', 'service', 'digital'])
             ->leftJoin('units', 'products.unit_id', '=', 'units.id')
             ->select('products.id', 'products.type', 'products.name', 'products.code', 'products.price', 'products.tax_id', 'products.tax_category_id', 'products.tax_method', 'products.unit_id', 'units.unit_name', 'units.unit_code')
             ->where(fn ($query) => $query->whereNull('products.is_variant')->orWhere('products.is_variant', false));
         if ($this->salesCatalogCostVisible()) $query->addSelect('products.cost');
+        if ($limit !== null && $limit > 0) {
+            $query->limit($limit);
+        } elseif ($limit === null && config('commercial.enabled')) {
+            $query->latest('products.id')->limit(40);
+        }
         return $query->get();
     }
 
-    public function productWithVariant()
+    public function productWithVariant(?int $limit = null)
     {
         $query = Product::join('product_variants', 'products.id', 'product_variants.product_id')
             ->forBill('sale')
@@ -231,6 +236,11 @@ class SaleController extends Controller
             ->select('products.id', 'products.name', 'product_variants.item_code', 'products.code', 'products.price', 'product_variants.additional_price', 'products.tax_id', 'products.tax_category_id', 'products.tax_method', 'products.unit_id', 'units.unit_name', 'units.unit_code')
             ->orderBy('position');
         if ($this->salesCatalogCostVisible()) $query->addSelect('products.cost', 'product_variants.additional_cost');
+        if ($limit !== null && $limit > 0) {
+            $query->limit($limit);
+        } elseif ($limit === null && config('commercial.enabled')) {
+            $query->latest('products.id')->limit(40);
+        }
         return $query->get();
     }
 
@@ -271,6 +281,12 @@ class SaleController extends Controller
                 'expired_date' => $ps->product_batch_id ? ProductBatch::where('id', $ps->product_batch_id)->value('expired_date') : null,
                 'batch_no' => $ps->product_batch_id ? (ProductBatch::where('id', $ps->product_batch_id)->value('batch_no') ?? '') : '',
                 'imei_number' => $ps->imei_number ?? '',
+                'sph' => $ps->sph ?? null,
+                'cyl' => $ps->cyl ?? null,
+                'axis' => $ps->axis ?? null,
+                'addition' => $ps->addition ?? null,
+                'dia' => $ps->dia ?? null,
+                'lr' => $ps->lr ?? null,
             ];
         }
 
@@ -540,7 +556,11 @@ class SaleController extends Controller
                 $nestedData['key'] = $key;
                 // Business-date documents are stored at midnight; only show a clock time when one was recorded.
                 $nestedData['date'] = date(config('date_format').(date('H:i:s', strtotime($sale->created_at)) === '00:00:00' ? '' : ' h:i a'), strtotime($sale->created_at));
-                $nestedData['reference_no'] = $sale->reference_no;
+                $isNonGst = !empty($sale->is_non_gst)
+                    || !empty($sale->attributes_json['is_non_gst'])
+                    || (!empty($sale->tax_snapshot_json['is_non_gst']))
+                    || (($sale->attributes_json['bill_type'] ?? '') === 'non_gst');
+                $nestedData['reference_no'] = e($sale->reference_no) . ($isNonGst ? ' <span class="badge badge-info" style="background:#0284c7;color:#fff;font-size:10px;">Non-GST</span>' : '');
                 $nestedData['bale_no'] = e($sale->attributes_json['bale_no'] ?? $sale->bale_no ?? '');
                 $nestedData['transport_name'] = e($sale->attributes_json['transport_name'] ?? $sale->transport_name ?? '');
                 $nestedData['created_by'] = $user->name;
@@ -640,6 +660,10 @@ class SaleController extends Controller
                         <li>
                             <button type="button" class="btn btn-link view btn-table-view" data-id="'.$sale->id.'"><i class="fa fa-eye"></i> '.__('db.View').'</button>
                         </li>';
+                if($isNonGst && !$sale->reversed_at)
+                    $nestedData['options'] .= '<li>
+                        <button type="button" class="btn btn-link btn-convert-to-gst" data-id="'.$sale->id.'" data-kind="sale" data-ref="'.e($sale->reference_no).'"><i class="fa fa-refresh text-success"></i> Convert to GST Bill</button>
+                    </li>';
                 if(in_array("sales-add", $request['all_permission']))
                     $nestedData['options'] .= '<li>
                         <button type="button" class="btn btn-link duplicate btn-table-duplicate" data-id="'.$sale->id.'"><i class="fa fa-copy"></i> '.__('db.Duplicate').'</button>
@@ -722,11 +746,17 @@ class SaleController extends Controller
                         <button type="button" class="add-delivery btn btn-link" data-id = "'.$sale->id.'"><i class="fa fa-truck"></i> '.__('db.Add Delivery').'</button>
                     </li>';
                 if(in_array("sales-delete", $request['all_permission'])) {
-                    $nestedData['options'] .= '<li>
-                        <button type="button" class="btn btn-link btn-open-delete-modal text-danger" data-id="'.$sale->id.'" data-ref="'.e($sale->reference_no).'" data-status="'.$sale->sale_status.'" data-reversed="'.($sale->reversed_at ? 1 : 0).'"><i class="dripicons-trash text-danger"></i> '.__("db.delete").' / Options</button>
-                    </li>
-                    </ul>
-                </div>';
+                    if ($sale->reversed_at) {
+                        $nestedData['options'] .= '<li>
+                            <button type="button" class="btn btn-link btn-open-delete-modal text-secondary" data-id="'.$sale->id.'" data-ref="'.e($sale->reference_no).'" data-status="'.$sale->sale_status.'" data-reversed="1" data-reversed-at="'.e($sale->reversed_at).'" data-reversal-reason="'.e($sale->reversal_reason ?? '').'"><i class="dripicons-history text-secondary"></i> '.__("db.Reversal History").'</button>
+                        </li>';
+                    } else {
+                        $hasEinvoice = (!empty($sale->irn_no) || !empty($sale->attributes_json['irn'])) ? 1 : 0;
+                        $nestedData['options'] .= '<li>
+                            <button type="button" class="btn btn-link btn-open-delete-modal text-danger" data-id="'.$sale->id.'" data-ref="'.e($sale->reference_no).'" data-status="'.$sale->sale_status.'" data-reversed="0" data-doc-date="'.substr($sale->created_at ?? '', 0, 10).'" data-paid="'.(float)($sale->paid_amount ?? 0).'" data-total="'.(float)($sale->grand_total ?? 0).'" data-einvoice="'.$hasEinvoice.'"><i class="dripicons-return text-danger"></i> '.__("db.Reverse Invoice").'</button>
+                        </li>';
+                    }
+                    $nestedData['options'] .= '</ul></div>';
                 } else {
                     $nestedData['options'] .= '</ul></div>';
                 }
@@ -4815,6 +4845,7 @@ class SaleController extends Controller
 
         return DB::transaction(function () use ($id) {
             $sale = Sale::withTrashed()->findOrFail($id);
+            $this->reverseSaleStock($sale);
             Product_Sale::where('sale_id', $id)->delete();
             Payment::where('sale_id', $id)->delete();
             $this->fileDelete(public_path('documents/sale/'), $sale->document);

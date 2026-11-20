@@ -110,55 +110,67 @@
     }
 
     function restoreLines(lines) {
-        for (const line of lines.filter(line => !blankLine(line))) {
-            const get = name => (line.controls.find(control => control.name === name) || {}).value;
-            const rate = Number(get(purchase ? 'net_unit_cost[]' : 'net_unit_price[]')) || 0;
-            grid.addProductRow({
-                preserve_line: true, product_id: Number(get('product_id[]')) || 0, product_name: get('product_name_text[]') || '',
-                product_code: get('product_code[]') || '', qty: Number(get('qty[]')) || 1, cost: rate, price: rate, rate,
-                tax_rate: Number(get('tax_rate[]')) || 0, unit: get(purchase ? 'purchase_unit[]' : 'sale_unit[]'),
-                discount: get('discount[]') || 0, batch_no: get('batch_no[]') || '', expired_date: get('expired_date[]') || '',
-                imei_number: get('imei_number[]') || '', product_batch_id: line.data['data-batch-id'] || '',
-            });
-            const row = $('#order-table-body tr.order-item-row').last()[0];
-            if (!row) continue;
-            // A null attribute (no batch) must stay absent: setAttribute would store the string "null" and post it as an id.
-            Object.entries(line.data).forEach(([name, value]) => value === null ? row.removeAttribute(name) : row.setAttribute(name, value));
-            Array.from(row.querySelectorAll('input, select')).forEach((element, index) => {
-                const stored = line.controls[index];
-                if (stored && stored.name === (element.name || '')) setControl(element, stored.value);
-            });
+        const tbody = document.getElementById('order-table-body');
+        const prevDisplay = tbody ? tbody.style.display : '';
+        if (tbody) tbody.style.display = 'none'; // Batch insertion: eliminate layout thrashing per row
+        try {
+            for (const line of lines.filter(line => !blankLine(line))) {
+                const get = name => (line.controls.find(control => control.name === name) || {}).value;
+                const rate = Number(get(purchase ? 'net_unit_cost[]' : 'net_unit_price[]')) || 0;
+                grid.addProductRow({
+                    preserve_line: true, product_id: Number(get('product_id[]')) || 0, product_name: get('product_name_text[]') || '',
+                    product_code: get('product_code[]') || '', qty: Number(get('qty[]')) || 1, cost: rate, price: rate, rate,
+                    tax_rate: Number(get('tax_rate[]')) || 0, unit: get(purchase ? 'purchase_unit[]' : 'sale_unit[]'),
+                    discount: get('discount[]') || 0, batch_no: get('batch_no[]') || '', expired_date: get('expired_date[]') || '',
+                    imei_number: get('imei_number[]') || '', product_batch_id: line.data['data-batch-id'] || '',
+                });
+                const row = $('#order-table-body tr.order-item-row').last()[0];
+                if (!row) continue;
+                // A null attribute (no batch) must stay absent: setAttribute would store the string "null" and post it as an id.
+                Object.entries(line.data).forEach(([name, value]) => value === null ? row.removeAttribute(name) : row.setAttribute(name, value));
+                Array.from(row.querySelectorAll('input, select')).forEach((element, index) => {
+                    const stored = line.controls[index];
+                    if (stored && stored.name === (element.name || '')) setControl(element, stored.value);
+                });
+            }
+        } finally {
+            if (tbody) tbody.style.display = prevDisplay;
         }
     }
 
     /** Replace the entire form with a snapshot. Never merges into whatever was on screen before. */
     function restore(stored) {
-        const state = stored.form || {};
-        grid.resetFormToNew();
-        config.context = {...(state.context || {})};
-        grid.switchWorkspaceMode('voucher');
-        const ui = state.ui || {};
-        if (ui.action) form.setAttribute('action', ui.action);
-        for (const container of containers()) {
-            container.querySelectorAll('input, select, textarea').forEach(element => {
-                if (skipped(element)) return;
-                const key = keyOf(element);
-                if (Object.prototype.hasOwnProperty.call(state.fields || {}, key)) setControl(element, state.fields[key]);
-            });
+        window._isRestoringWorkspace = true;
+        try {
+            const state = stored.form || {};
+            grid.resetFormToNew();
+            config.context = {...(state.context || {})};
+            grid.switchWorkspaceMode('voucher');
+            const ui = state.ui || {};
+            if (ui.action) form.setAttribute('action', ui.action);
+            for (const container of containers()) {
+                container.querySelectorAll('input, select, textarea').forEach(element => {
+                    if (skipped(element)) return;
+                    const key = keyOf(element);
+                    if (Object.prototype.hasOwnProperty.call(state.fields || {}, key)) setControl(element, state.fields[key]);
+                });
+            }
+            Object.entries(ui.links || {}).forEach(([name, value]) => $('<input type="hidden">').attr('name', name).val(value).appendTo(form));
+            // Header controls may drive per-row defaults, so rows are rebuilt last and keep their stored values.
+            $(partySelector).trigger('change');
+            $('#order-table-body tr.order-item-row').remove();
+            restoreLines(state.lines || []);
+            if (ui.payment_mode) $('.pill-segmented-compact button[data-mode="' + ui.payment_mode + '"]').trigger('click');
+            if (ui.nature) $('.pill-segmented-compact button[data-nature="' + ui.nature + '"]').trigger('click');
+            if (ui.title) $('#doc-title-text').text(ui.title);
+            if (ui.editing) {
+                $('#replacement-reason').closest('.form-group').prop('hidden', false).find('input').prop('required', true);
+            }
+            if ($.fn.selectpicker) $('.selectpicker').selectpicker('refresh');
+            grid.recalcTableSummary();
+        } finally {
+            window._isRestoringWorkspace = false;
         }
-        Object.entries(ui.links || {}).forEach(([name, value]) => $('<input type="hidden">').attr('name', name).val(value).appendTo(form));
-        if ($.fn.selectpicker) $('.selectpicker').selectpicker('refresh');
-        // Header controls may drive per-row defaults, so rows are rebuilt last and keep their stored values.
-        $(partySelector).trigger('change');
-        $('#order-table-body tr.order-item-row').remove();
-        restoreLines(state.lines || []);
-        if (ui.payment_mode) $('.pill-segmented-compact button[data-mode="' + ui.payment_mode + '"]').trigger('click');
-        if (ui.nature) $('.pill-segmented-compact button[data-nature="' + ui.nature + '"]').trigger('click');
-        if (ui.title) $('#doc-title-text').text(ui.title);
-        if (ui.editing) {
-            $('#replacement-reason').closest('.form-group').prop('hidden', false).find('input').prop('required', true);
-        }
-        grid.recalcTableSummary();
     }
 
     const stable = state => JSON.stringify([state.form.fields, state.form.lines.map(line => line.controls.map(control => control.value))]);

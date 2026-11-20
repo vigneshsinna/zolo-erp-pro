@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ai\Services;
 
 use App\Ai\DTOs\ErpToolResult;
+use App\Ai\Security\AiDataClassificationPolicy;
 
 /**
  * Audit recorder providing field-level redaction of PII, credentials,
@@ -33,10 +34,14 @@ class AiAuditRecorder
     ];
 
     /**
-     * Redact sensitive fields recursively.
+     * Redact sensitive fields recursively using AiDataClassificationPolicy.
      */
     public function redact(array $payload): array
     {
+        if (function_exists('app') && app()->bound(AiDataClassificationPolicy::class)) {
+            return app(AiDataClassificationPolicy::class)->sanitizePayload($payload);
+        }
+
         $sanitized = [];
 
         foreach ($payload as $key => $value) {

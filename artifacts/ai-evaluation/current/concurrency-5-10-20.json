@@ -1,0 +1,4 @@
+{
+    "status": "NOT_RUN",
+    "reason": "No verified simultaneous worker evidence. Sequential reservation tests do not establish concurrency performance."
+}

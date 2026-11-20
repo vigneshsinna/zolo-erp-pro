@@ -667,7 +667,7 @@
                                 </div>
 
                                 <!-- Warehouse Differential Price Section -->
-                                <div data-usage-side="sale" id="diffPrice-section">
+                                <div data-usage-side="sale" id="diffPrice-section" style="display: {{ (!empty($lims_product_data->is_diffPrice) || old('is_diffPrice')) ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="emerald" title="{{__('db.Different Warehouse Price')}}" icon="pricing">
                                         <div class="table-responsive">
                                             <table id="diffPrice-table" class="table table-hover table-sm">
@@ -695,7 +695,7 @@
                                 </div>
 
                                 <!-- Product Variants Section -->
-                                <div id="variant-section">
+                                <div id="variant-section" style="display: {{ (!empty($lims_product_data->is_variant) || old('is_variant')) ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="purple" title="{{__('db.Product Variants')}}" icon="tag">
                                         <div id="variant-input-section">
                                             @forelse($lims_product_data->variant_option ?: [] as $key => $variant_option)
@@ -760,7 +760,7 @@
                                 </div>
 
                                 <!-- Promotional Price Section -->
-                                <div data-usage-side="sale" id="promo-container">
+                                <div data-usage-side="sale" id="promo-container" style="display: {{ (!empty($lims_product_data->promotion) || old('promotion')) ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="blue" title="{{__('db.Promotional Price')}}" icon="pricing">
                                         <div class="zolo-promo-vertical-form">
                                             <div class="form-group mb-2" id="promotion_price">
@@ -790,7 +790,7 @@
                                 </div>
 
                                 <!-- Combo Products Section -->
-                                <div id="combo">
+                                <div id="combo" style="display: {{ ($lims_product_data->type === 'combo' || old('type') === 'combo') ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="blue" title="{{__('db.Combo Products')}}" icon="box">
                                         <div class="search-box input-group mb-2">
                                             <div class="input-group-prepend">
@@ -1003,7 +1003,8 @@
         }
     })
 
-    if($("#is_addon").prop('checked') == false || {{$lims_product_data->is_addon}} == 0){
+    var isAddon = {{ (int) ($lims_product_data->is_addon ?? 0) }};
+    if($("#is_addon").prop('checked') == false || isAddon == 0){
         $('.extra-section,.related-section').css('display','block');
     }else{
         $('.extra-section,.related-section').css('display','none');
@@ -1127,10 +1128,10 @@
     });
 
     $("#digital").hide();
-    $("#combo").hide();
+    $("#combo").toggle($("input[name='type_hidden']").val() === 'combo');
     $("select[name='type']").val($("input[name='type_hidden']").val());
-    variantShowHide();
-    diffPriceShowHide();
+    variantShowHide(false);
+    diffPriceShowHide(false);
     if(is_batch)
         $("#variant-option").hide();
     if(is_variant) {
@@ -2044,26 +2045,28 @@
         diffPriceShowHide();
     });
 
-    function variantShowHide() {
+    function variantShowHide(animate = true) {
          if ($("#is-variant").is(':checked')) {
-            $("#variant-section").show(300);
-            $("#batch-option").hide(300);
+            if (animate) { $("#variant-section").show(200); $("#batch-option").hide(200); }
+            else { $("#variant-section").show(); $("#batch-option").hide(); }
             $(".variant-field").prop("required", true);
         }
         else {
-            $("#variant-section").hide(300);
-            $("#batch-option").show(300);
+            if (animate) { $("#variant-section").hide(200); $("#batch-option").show(200); }
+            else { $("#variant-section").hide(); $("#batch-option").show(); }
             $(".variant-field").prop("required", false);
         }
         applyDynamicGridSpans();
     };
 
-    function diffPriceShowHide() {
+    function diffPriceShowHide(animate = true) {
          if ($("#is-diffPrice").is(':checked')) {
-            $("#diffPrice-section").show(300);
+            if (animate) $("#diffPrice-section").show(200);
+            else $("#diffPrice-section").show();
         }
         else {
-            $("#diffPrice-section").hide(300);
+            if (animate) $("#diffPrice-section").hide(200);
+            else $("#diffPrice-section").hide();
         }
         applyDynamicGridSpans();
     };
@@ -2277,7 +2280,7 @@
                             $.each(data, function (key, el) {
                                 formData.append(el.name, el.value);
                             });
-                            var fileEl = $('#file')[0];
+                            var fileEl = document.getElementById('file');
                             if (fileEl && fileEl.files && fileEl.files.length > 0) {
                                 formData.append('file', fileEl.files[0]);
                             }
@@ -2339,7 +2342,7 @@
                 $.each(data, function (key, el) {
                     formData.append(el.name, el.value);
                 });
-                var fileEl = $('#file')[0];
+                var fileEl = document.getElementById('file');
                 if (fileEl && fileEl.files && fileEl.files.length > 0) {
                     formData.append('file', fileEl.files[0]);
                 }

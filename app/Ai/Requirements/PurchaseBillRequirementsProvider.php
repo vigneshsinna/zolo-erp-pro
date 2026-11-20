@@ -52,13 +52,11 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
                     if (!$ctx->companyId()) {
                         return null;
                     }
-                    $query = Warehouse::where('company_id', $ctx->companyId())
+                    $whs = Warehouse::where('company_id', $ctx->companyId())
                         ->where('is_active', true)
-                        ->when($ctx->branchId(), fn ($q) => $q->where('branch_id', $ctx->branchId()));
-                    if ($query->count() === 1) {
-                        return (int) $query->value('id');
-                    }
-                    return null;
+                        ->when($ctx->branchId(), fn ($q) => $q->where(fn($sub) => $sub->where('branch_id', $ctx->branchId())->orWhereNull('branch_id')))
+                        ->get();
+                    return $whs->count() === 1 ? (int) $whs->first()->id : null;
                 },
             ),
             new ActionFieldRequirement(
@@ -232,6 +230,8 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
                 $errors['warehouse_id'] = 'Warehouse does not belong to the current company.';
             } elseif (isset($warehouse->is_active) && !$warehouse->is_active) {
                 $errors['warehouse_id'] = 'Selected warehouse is inactive.';
+            } elseif ($context->branchId() && $warehouse->branch_id && (int) $warehouse->branch_id !== (int) $context->branchId()) {
+                $errors['warehouse_id'] = 'Selected warehouse belongs to a different branch.';
             }
         }
 

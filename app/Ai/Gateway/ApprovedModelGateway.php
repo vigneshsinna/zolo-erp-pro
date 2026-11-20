@@ -476,6 +476,14 @@ class ApprovedModelGateway
                 billingAccountId: $settlement->accountId, chargeStatus: $settlement->status, creditsDebited: $settlement->creditsDebited);
         };
         try {
+            // Task T06: Sanitize outbound messages and instructions at the last trusted boundary
+            if (function_exists('app') && app()->bound(\App\Ai\Security\AiDataClassificationPolicy::class)) {
+                $sanitizer = app(\App\Ai\Security\AiDataClassificationPolicy::class);
+                $cleanMessages = $sanitizer->sanitizeMessages($step->messages);
+                $cleanInstructions = $step->instructions !== null ? $sanitizer->sanitizeOutboundPrompt($step->instructions) : null;
+                $step = $step->withMessages($cleanMessages)->withInstructions($cleanInstructions);
+            }
+
             // Keep the reservation until the quota day ends if the provider fails without reporting usage.
             $result = $next($step->withMaxTokens($outputLimit));
             if ($result->stopped() && $this->dispatchAttempts === 0) {

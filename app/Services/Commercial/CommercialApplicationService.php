@@ -118,20 +118,27 @@ class CommercialApplicationService
                 if ($kind === 'purchase' && !empty($line['dimensions']) && \Illuminate\Support\Facades\Schema::hasColumn('stock_dimensions', 'computed_cbm')) {
                     $line['attributes']['stock_dimension'] = app(\App\Services\Inventory\DimensionCalculationService::class)->calculate($line['dimensions']);
                 }
-                // GST-rated products are priced by TaxDeterminationService below; the legacy VAT rate applies otherwise.
-                $rate = $product->tax_category_id ? 0.0 : app(CommercialPricing::class)->legacyRate($product, $context);
-                // A rate the user changed on the line (tax_rate_override) replaces the product's; GST lines check it in TaxDeterminationService.
-                $override = $line['tax_rate_override'] ?? '';
-                if (!$product->tax_category_id && $override !== '' && $override !== null) {
-                    validator(['tax_rate_override' => $override], ['tax_rate_override' => 'numeric|min:0|max:100'])->validate();
-                    $rate = (float) $override;
-                } elseif (!$product->tax_category_id && isset($line['tax_rate']) && (float) $line['tax_rate'] !== $rate) {
-                    throw ValidationException::withMessages(['items.tax_rate' => 'Tax rate differs from the configured product rate.']);
+                $isNonGst = !empty($data['is_non_gst']) || !empty($data['non_gst']) || ($data['bill_type'] ?? '') === 'non_gst'
+                    || (!empty($data['attributes']) && (!empty($data['attributes']['is_non_gst']) || ($data['attributes']['bill_type'] ?? '') === 'non_gst'));
+                if ($isNonGst) {
+                    $rate = 0.0;
+                    $line['tax_rate_override'] = 0.0;
+                } else {
+                    // GST-rated products are priced by TaxDeterminationService below; the legacy VAT rate applies otherwise.
+                    $rate = $product->tax_category_id ? 0.0 : app(CommercialPricing::class)->legacyRate($product, $context);
+                    // A rate the user changed on the line (tax_rate_override) replaces the product's; GST lines check it in TaxDeterminationService.
+                    $override = $line['tax_rate_override'] ?? '';
+                    if (!$product->tax_category_id && $override !== '' && $override !== null) {
+                        validator(['tax_rate_override' => $override], ['tax_rate_override' => 'numeric|min:0|max:100'])->validate();
+                        $rate = (float) $override;
+                    } elseif (!$product->tax_category_id && isset($line['tax_rate']) && (float) $line['tax_rate'] !== $rate) {
+                        throw ValidationException::withMessages(['items.tax_rate' => 'Tax rate differs from the configured product rate.']);
+                    }
                 }
                 $line['tax_rate'] = $rate;
             }
             unset($line);
-            if (!empty($data['order_tax_rate'])) {
+            if (!$isNonGst && !empty($data['order_tax_rate'])) {
                 throw ValidationException::withMessages(['order_tax_rate' => 'Document tax determination requires the Phase 7 tax service.']);
             }
             $data = app(\App\Services\Tax\TaxDeterminationService::class)->prepare($data, $kind, $products, $party, $context, $date);
@@ -212,10 +219,30 @@ class CommercialApplicationService
                 || !checkdate((int) substr($dueDate, 5, 2), (int) substr($dueDate, 8, 2), (int) substr($dueDate, 0, 4)) || $dueDate < $date) {
                 throw ValidationException::withMessages(['due_date' => 'Due date must be on or after document date.']);
             }
-            $document->forceFill(['branch_id' => $context->branchId, 'financial_year_id' => $context->financialYearId,
+            $opticalFields = [];
+            if ($kind === 'sale') {
+                foreach (['end_user_name', 'end_user_phone', 'end_user_email', 'end_user_address', 'fitting_charge', 'tinting_cost', 'customer_order_no'] as $optCol) {
+                    if (isset($data[$optCol]) && \Illuminate\Support\Facades\Schema::hasColumn('sales', $optCol)) {
+                        $opticalFields[$optCol] = $data[$optCol];
+                    }
+                }
+            }
+            $saveFields = [
+                'branch_id' => $context->branchId,
+                'financial_year_id' => $context->financialYearId,
                 'lot_number' => $data['lot_number'] ?? $document->lot_number,
-                'attributes_json' => $attributes, 'replaces_id' => $replacesId] + (isset($data['_tax_snapshot'])
-                    ? ['tax_snapshot_json' => $data['_tax_snapshot']] : []))->save();
+                'attributes_json' => $attributes,
+                'replaces_id' => $replacesId
+            ] + $opticalFields;
+            if ($isNonGst || !empty($attributes['is_non_gst'])) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn($document->getTable(), 'is_non_gst')) {
+                    $saveFields['is_non_gst'] = true;
+                }
+            }
+            if (isset($data['_tax_snapshot'])) {
+                $saveFields['tax_snapshot_json'] = $data['_tax_snapshot'];
+            }
+            $document->forceFill($saveFields)->save();
             if (!empty($data['project_id'])) {
                 app(\App\Services\Industry\ProjectService::class)->link((int) $data['project_id'], $kind, $document->id, $context, $actor);
             }
@@ -316,11 +343,19 @@ class CommercialApplicationService
     {
         $attributes = array_intersect_key($data, array_flip(['transport_name', 'lr_number', 'lr_date', 'vehicle_number', 'bale_count', 'bundle_count', 'landed_cost_method', 'capitalise_services', 'sales_order_id', 'purchase_order_id', 'goods_receipt_no',
             'bale_no', 'no_of_bales', 'lr_no', 'station_to', 'order_no', 'credit_days', 'agent_id', 'area_id', 'job_work_receipt_id',
-            'cash_discount_percent', 'cash_discount_days', 'job_work_charge_mode', 'job_work_remarks', 'supply_type', 'lut_number', 'payment_terms_type']));
+            'cash_discount_percent', 'cash_discount_days', 'job_work_charge_mode', 'job_work_remarks', 'supply_type', 'lut_number', 'payment_terms_type', 'is_non_gst', 'bill_type',
+            'end_user_name', 'end_user_phone', 'end_user_email', 'end_user_address', 'fitting_charge', 'tinting_cost', 'customer_order_no']));
         if (isset($attributes['job_work_receipt_id'])) validator($attributes, ['job_work_receipt_id' => 'integer|min:1'])->validate();
         if (($attributes['cash_discount_percent'] ?? '') === '') unset($attributes['cash_discount_percent'], $attributes['cash_discount_days']);
         validator($attributes, ['cash_discount_percent' => 'sometimes|numeric|gt:0|max:100', 'cash_discount_days' => 'sometimes|nullable|integer|min:0|max:365',
-            'job_work_charge_mode' => 'sometimes|in:capitalise,expense'])->validate();
+            'job_work_charge_mode' => 'sometimes|in:capitalise,expense',
+            'end_user_name' => 'sometimes|nullable|string|max:191',
+            'end_user_phone' => 'sometimes|nullable|string|max:50',
+            'end_user_email' => 'sometimes|nullable|string|max:191',
+            'end_user_address' => 'sometimes|nullable|string|max:1000',
+            'fitting_charge' => 'sometimes|nullable|numeric|min:0',
+            'tinting_cost' => 'sometimes|nullable|numeric|min:0',
+            'customer_order_no' => 'sometimes|nullable|string|max:191'])->validate();
         foreach (['bale_count', 'bundle_count', 'no_of_bales'] as $count) if (isset($attributes[$count])) validator($attributes, [$count => 'integer|min:0|max:1000000'])->validate();
         if (isset($attributes['credit_days']) && $attributes['credit_days'] !== '') validator($attributes, ['credit_days' => 'integer|min:0|max:3650'])->validate();
         foreach ($attributes as $key => $value) {
@@ -328,11 +363,226 @@ class CommercialApplicationService
                 unset($attributes[$key]);
                 continue;
             }
+            if ($key === 'end_user_address') {
+                if (!is_scalar($value) || strlen((string) $value) > 1000) {
+                    throw ValidationException::withMessages([$key => 'Use a value of at most 1000 characters.']);
+                }
+                continue;
+            }
             if (!is_scalar($value) || strlen((string) $value) > 255) {
                 throw ValidationException::withMessages([$key => 'Use a value of at most 255 characters.']);
             }
         }
         return $attributes;
+    }
+
+    public function convertToGst(string $kind, int $id, CompanyContext $context, int $actor): Sale|Purchase
+    {
+        $guard = app(CompanyWriteGuard::class);
+        $context = $guard->context($context, $actor);
+        app(CommercialPermission::class)->assert($kind === 'sale' ? 'sales-edit' : 'purchases-edit', $context, $actor);
+
+        return DB::transaction(function () use ($kind, $id, $context, $actor, $guard) {
+            $guard->begin($context, null);
+            $modelClass = $kind === 'sale' ? Sale::class : Purchase::class;
+            $document = $modelClass::visibleIn($context)->whereKey($id)->lockForUpdate()->firstOrFail();
+
+            if ($document->reversed_at) {
+                throw ValidationException::withMessages(['document' => 'Cannot convert a reversed document to GST.']);
+            }
+
+            $attributes = $document->attributes_json ?? [];
+            $snapshot = $document->tax_snapshot_json ?? [];
+            $isNonGst = !empty($document->is_non_gst)
+                || !empty($attributes['is_non_gst'])
+                || ($attributes['bill_type'] ?? '') === 'non_gst'
+                || (!empty($snapshot['is_non_gst']))
+                || (($snapshot['bill_type'] ?? '') === 'non_gst');
+
+            if (!$isNonGst) {
+                throw ValidationException::withMessages(['document' => 'This document is already a GST document.']);
+            }
+
+            $date = $document->created_at ? $document->created_at->toDateString() : date('Y-m-d');
+            $party = ($kind === 'sale' ? \App\Models\Customer::class : \App\Models\Supplier::class)::forCompany($context)
+                ->findOrFail($document->{$kind === 'sale' ? 'customer_id' : 'supplier_id'});
+
+            $relation = $kind === 'sale' ? 'productSales' : 'productPurchases';
+            $lines = $document->$relation()->with('product')->get();
+            if ($lines->isEmpty()) {
+                throw ValidationException::withMessages(['document' => 'Document has no line items to price.']);
+            }
+
+            $productIds = $lines->pluck('product_id')->unique()->all();
+            $products = \App\Models\Product::forCompany($context)->whereIn('id', $productIds)->get()->keyBy('id')->all();
+
+            $priceField = $kind === 'sale' ? 'net_unit_price' : 'net_unit_cost';
+            $itemData = [];
+            foreach ($lines as $line) {
+                $itemData[] = [
+                    'product_id' => $line->product_id,
+                    'qty' => (float) $line->qty,
+                    $priceField => (float) $line->$priceField,
+                    'discount' => (float) ($line->discount ?? 0),
+                    'tax_rate_override' => $line->tax_rate_override ?? null,
+                ];
+            }
+
+            $docData = [
+                'items' => $itemData,
+                'order_discount' => (float) ($document->order_discount ?? 0),
+                'shipping_cost' => (float) ($document->shipping_cost ?? 0),
+                'is_non_gst' => false,
+                'bill_type' => 'gst',
+            ];
+
+            // Run authoritative TaxDeterminationService
+            $prepared = app(\App\Services\Tax\TaxDeterminationService::class)->prepare($docData, $kind, $products, $party, $context, $date);
+            $calculated = app(CommercialPricing::class)->calculate($prepared, $kind === 'purchase');
+
+            // 1. Update lines
+            foreach ($lines as $i => $line) {
+                $calcLine = $calculated['items'][$i];
+                $lineTax = (float) $calcLine['tax'];
+                $lineTotal = (float) $calcLine['total'];
+                $lineTaxRate = (float) $calcLine['tax_rate'];
+                $lineSnapshot = $calcLine['_tax_snapshot'] ?? [];
+
+                $lineClass = get_class($line);
+                $lineClass::withoutEvents(function () use ($line, $lineTaxRate, $lineTax, $lineTotal, $lineSnapshot) {
+                    $line->forceFill([
+                        'tax_rate' => $lineTaxRate,
+                        'tax' => $lineTax,
+                        'total' => $lineTotal,
+                        'tax_snapshot_json' => $lineSnapshot,
+                    ])->save();
+                });
+            }
+
+            // 2. Update document header
+            $totalTax = array_sum(array_column($calculated['items'], 'tax'));
+            $grandTotal = (float) $calculated['grand_total'];
+            $totalPrice = array_sum(array_column($calculated['items'], 'total'));
+
+            unset($attributes['is_non_gst']);
+            $attributes['bill_type'] = 'gst';
+            $attributes['converted_to_gst_at'] = now()->toDateTimeString();
+            $attributes['converted_to_gst_by'] = $actor;
+
+            $docUpdate = [
+                'total_tax' => $totalTax,
+                'order_tax' => 0,
+                'order_tax_rate' => 0,
+                'grand_total' => $grandTotal,
+                'attributes_json' => $attributes,
+                'tax_snapshot_json' => $calculated['_tax_snapshot'] ?? null,
+            ];
+
+            if ($kind === 'sale') {
+                $docUpdate['total_price'] = $totalPrice;
+            } else {
+                $docUpdate['total_cost'] = $totalPrice;
+            }
+
+            if (\Illuminate\Support\Facades\Schema::hasColumn($document->getTable(), 'is_non_gst')) {
+                $docUpdate['is_non_gst'] = false;
+            }
+
+            $docClass = get_class($document);
+            $docClass::withoutEvents(function () use ($document, $docUpdate) {
+                $document->forceFill($docUpdate)->save();
+            });
+
+            // 3. Update accounting journals if posted
+            if ($document->posted_at) {
+                $existingJournal = DB::table('journal_entries')
+                    ->where('company_id', $context->companyId)
+                    ->where('reference_type', $kind)
+                    ->where('reference_id', $document->id)
+                    ->whereNull('reversal_of_id')
+                    ->where('status', 'posted')
+                    ->first();
+
+                if ($existingJournal) {
+                    try {
+                        app(\App\Services\Accounting\AccountingPostingService::class)->reverse(
+                            $existingJournal->id,
+                            $date,
+                            'Converted from Non-GST to GST Bill',
+                            $context
+                        );
+                    } catch (\Exception $e) {
+                        // Continue if already reversed or standalone
+                    }
+                }
+
+                $accounts = app(PostingAccounts::class);
+                $jLines = [];
+                $add = function (string|int $role, float $debit, float $credit, bool $partyFlag = false) use (&$jLines, $accounts, $context, $document, $actor, $kind) {
+                    if (round($debit + $credit, 4) == 0) return;
+                    $jLines[] = [
+                        'chart_of_account_id' => is_int($role) ? $role : $accounts->account($role, $context, $actor),
+                        'debit' => round($debit, 4),
+                        'credit' => round($credit, 4),
+                        'partner_type' => $partyFlag ? ($kind === 'sale' ? 'customer' : 'supplier') : null,
+                        'partner_id' => $partyFlag ? ($kind === 'sale' ? $document->customer_id : $document->supplier_id) : null,
+                    ];
+                };
+
+                if ($kind === 'sale') {
+                    $add('accounts_receivable', (float) $document->grand_total, 0, true);
+                    $add('sales_discount', (float) ($document->order_discount ?? 0), 0);
+                    $add('sales_revenue', 0, (float) $document->total_price - (float) $document->total_tax);
+                    if ($document->tax_snapshot_json) {
+                        foreach (['cgst', 'sgst', 'igst', 'cess'] as $component) {
+                            $amount = $document->tax_snapshot_json['reverse_charge'] ? 0 : $document->productSales->sum(fn ($l) => $l->tax_snapshot_json[$component] ?? 0);
+                            $add('output_tax_'.$component, 0, (float) $amount);
+                        }
+                    }
+                } else {
+                    $add('inventory', (float) $document->total_cost - (float) $document->total_tax, 0);
+                    $add('accounts_payable', 0, (float) $document->grand_total, true);
+                    if ($document->tax_snapshot_json) {
+                        foreach (['cgst', 'sgst', 'igst', 'cess'] as $component) {
+                            $amount = $document->productPurchases->sum(fn ($l) => $l->tax_snapshot_json['input_credit_allowed'] ? ($l->tax_snapshot_json[$component] ?? 0) : 0);
+                            $add('input_tax_'.$component, (float) $amount, 0);
+                        }
+                    }
+                }
+
+                if (count($jLines) >= 2) {
+                    $description = ucfirst($kind).' '.$document->reference_no.' (Converted to GST Bill)';
+                    app(\App\Services\Accounting\AccountingService::class)->postJournalEntry([
+                        'entry_date' => $date,
+                        'reference_type' => $kind,
+                        'reference_id' => $document->id,
+                        'reference_no' => $document->reference_no,
+                        'posting_key' => $kind.':'.$document->id.':gst-conv:'.time(),
+                        'due_date' => $attributes['due_date'] ?? $date,
+                        'created_by' => $actor,
+                        'voucher_type' => $kind === 'sale' ? 'sales' : 'purchase',
+                        'description' => mb_substr($description, 0, 2000),
+                    ], $jLines, $context);
+                }
+
+                // Record in GST Projections
+                $docLines = $kind === 'sale' ? $document->productSales : $document->productPurchases;
+                app(\App\Services\Tax\GstProjectionService::class)->record($document, $kind, $docLines->pluck('tax_snapshot_json')->all(), $context);
+
+                // Update document print snapshot
+                if (config('compliance.enabled') && \Illuminate\Support\Facades\Schema::hasColumn($document->getTable(), 'document_snapshot_json')) {
+                    $document->forceFill(['document_snapshot_json' => app(\App\Services\Documents\DocumentRenderingService::class)->capture($document, $kind, $context)])->save();
+                }
+            }
+
+            $this->audit('converted_to_gst', $document, $context, $actor, [
+                'old_tax' => 0,
+                'new_tax' => $totalTax,
+                'new_grand_total' => $grandTotal,
+            ]);
+
+            return $document->fresh();
+        });
     }
 
     private function canonical(array $value): array

@@ -22,9 +22,6 @@ class QuickEditProductModalTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['database.connections.mysql.database' => 'salepro_db']);
-        DB::purge('mysql');
-        DB::reconnect('mysql');
         config(['commercial.enabled' => true]);
         putenv('ERP_OPTIONAL_ACTIVATION_READY=true');
         $_ENV['ERP_OPTIONAL_ACTIVATION_READY'] = 'true';

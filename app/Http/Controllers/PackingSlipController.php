@@ -235,9 +235,27 @@ class PackingSlipController extends Controller
         $packing_slip = PackingSlip::with('sale.customer', 'sale.warehouse')->findOrFail($id);
         $sale = $packing_slip->sale;
         $general_setting = cache()->get('general_setting') ?? \App\Models\GeneralSetting::latest()->first();
-        $packing_slip_product_data = \App\Models\Product_Sale::where('sale_id', $sale->id)->get();
-        if ($packing_slip_product_data->isEmpty()) {
-            $packing_slip_product_data = PackingSlipProduct::where('packing_slip_id', $id)->get();
+        $slipProducts = PackingSlipProduct::where('packing_slip_id', $id)->get();
+        if ($slipProducts->isNotEmpty()) {
+            $saleLines = \App\Models\Product_Sale::where('sale_id', $sale->id)->get()->groupBy(function ($line) {
+                return $line->product_id . '-' . ($line->variant_id ?? '0');
+            });
+            foreach ($slipProducts as $slipProduct) {
+                $key = $slipProduct->product_id . '-' . ($slipProduct->variant_id ?? '0');
+                $saleLine = $saleLines->get($key)?->first();
+                if ($saleLine) {
+                    $slipProduct->sph = $saleLine->sph;
+                    $slipProduct->cyl = $saleLine->cyl;
+                    $slipProduct->axis = $saleLine->axis;
+                    $slipProduct->base = $saleLine->base;
+                    $slipProduct->addition = $saleLine->addition;
+                    $slipProduct->lr = $saleLine->lr;
+                    $slipProduct->dia = $saleLine->dia;
+                }
+            }
+            $packing_slip_product_data = $slipProducts;
+        } else {
+            $packing_slip_product_data = \App\Models\Product_Sale::where('sale_id', $sale->id)->get();
         }
         return view('backend.packing_slip.invoice', compact('sale', 'packing_slip_product_data', 'general_setting'));
     }

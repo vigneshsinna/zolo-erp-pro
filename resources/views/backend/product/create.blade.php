@@ -516,74 +516,68 @@
                                     <div class="zolo-inventory-stripe-divider"></div>
 
                                     <div class="zolo-inventory-stripe-toggles">
-                                        <label id="stock-section" class="zolo-toggle-pill" data-role="amber"
+                                        <label id="stock-section" class="zolo-toggle-pill {{ old('is_initial_stock') ? 'is-active' : '' }}" data-role="amber"
                                             for="chk_initial_stock" title="{{ __('db.Initial Stock') }}">
-                                            <input type="checkbox" name="is_initial_stock" id="chk_initial_stock" value="1">
+                                            <input type="checkbox" name="is_initial_stock" id="chk_initial_stock" value="1" {{ old('is_initial_stock') ? 'checked' : '' }}>
                                             <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                             <span>{{__('db.Initial Stock')}}</span>
                                         </label>
 
-                                        @if(!$isOpticalProfile)
-                                            <label id="variant-option" class="zolo-toggle-pill" data-role="purple"
-                                                for="is-variant" title="{{ __('db.This product has variant') }}">
-                                                <input name="is_variant" type="checkbox" id="is-variant" value="1">
-                                                <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
-                                                <span>{{__('db.This product has variant')}}</span>
-                                            </label>
-                                        @endif
+                                        <label id="variant-option" class="zolo-toggle-pill {{ old('is_variant') ? 'is-active' : '' }}" data-role="purple"
+                                            for="is-variant" title="{{ __('db.This product has variant') }}">
+                                            <input name="is_variant" type="checkbox" id="is-variant" value="1" {{ old('is_variant') ? 'checked' : '' }}>
+                                            <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                            <span>{{__('db.This product has variant')}}</span>
+                                        </label>
 
-                                        <label data-usage-side="sale" id="diffPrice-option" class="zolo-toggle-pill"
+                                        <label data-usage-side="sale" id="diffPrice-option" class="zolo-toggle-pill {{ old('is_diffPrice') ? 'is-active' : '' }}"
                                             data-role="emerald" for="is-diffPrice"
                                             title="{{ __('db.Different price by warehouse') }}">
-                                            <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1">
+                                            <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1" {{ old('is_diffPrice') ? 'checked' : '' }}>
                                             <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                             <span>{{__('db.Different price by warehouse')}}</span>
                                         </label>
 
-                                        @if(!$isOpticalProfile)
-                                            <label id="batch-option" class="zolo-toggle-pill" data-role="amber" for="is-batch"
-                                                title="{{ __('db.Batch & expiry date') }}">
-                                                <input name="is_batch" type="checkbox" id="is-batch" value="1">
-                                                <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
-                                                <span>{{__('db.Batch & expiry date')}}</span>
-                                            </label>
+                                        <label id="batch-option" class="zolo-toggle-pill {{ old('is_batch') ? 'is-active' : '' }}" data-role="amber" for="is-batch"
+                                            title="{{ __('db.Batch & expiry date') }}">
+                                            <input name="is_batch" type="checkbox" id="is-batch" value="1" {{ old('is_batch') ? 'checked' : '' }}>
+                                            <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                            <span>{{__('db.Batch & expiry date')}}</span>
+                                        </label>
 
-                                            <label id="imei-option" class="zolo-toggle-pill" data-role="blue" for="is-imei"
-                                                title="{{ __('db.IMEI / Serial numbers') }}">
-                                                <input name="is_imei" type="checkbox" id="is-imei" value="1">
-                                                <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
-                                                <span>{{__('db.IMEI / Serial numbers')}}</span>
-                                            </label>
+                                        <label id="imei-option" class="zolo-toggle-pill {{ old('is_imei') ? 'is-active' : '' }}" data-role="blue" for="is-imei"
+                                            title="{{ __('db.IMEI / Serial numbers') }}">
+                                            <input name="is_imei" type="checkbox" id="is-imei" value="1" {{ old('is_imei') ? 'checked' : '' }}>
+                                            <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                            <span>{{__('db.IMEI / Serial numbers')}}</span>
+                                        </label>
 
-                                            <label data-usage-side="sale" class="zolo-toggle-pill" data-role="blue"
-                                                for="promotion" title="{{ __('db.Promotional Price') }}">
-                                                <input name="promotion" type="checkbox" id="promotion" value="1">
-                                                <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
-                                                <span>{{__('db.Promotional Price')}}</span>
-                                            </label>
-                                        @endif
+                                        <label data-usage-side="sale" class="zolo-toggle-pill {{ old('promotion') ? 'is-active' : '' }}" data-role="blue"
+                                            for="promotion" title="{{ __('db.Promotional Price') }}">
+                                            <input name="promotion" type="checkbox" id="promotion" value="1" {{ old('promotion') ? 'checked' : '' }}>
+                                            <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                            <span>{{__('db.Promotional Price')}}</span>
+                                        </label>
 
-                                        <label data-usage-side="sale" id="featured" class="zolo-toggle-pill"
+                                        <label data-usage-side="sale" id="featured" class="zolo-toggle-pill {{ old('featured') ? 'is-active' : '' }}"
                                             data-role="purple" for="chk_featured" title="{{ __('db.Featured') }}">
-                                            <input type="checkbox" name="featured" id="chk_featured" value="1">
+                                            <input type="checkbox" name="featured" id="chk_featured" value="1" {{ old('featured') ? 'checked' : '' }}>
                                             <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                             <span>{{__('db.Featured')}}</span>
                                         </label>
 
-                                        @if(!$isOpticalProfile)
-                                            <label class="zolo-toggle-pill" data-role="emerald" for="chk_embeded"
-                                                title="{{ __('db.Embedded Barcode') }}">
-                                                <input type="checkbox" name="is_embeded" id="chk_embeded" value="1">
-                                                <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
-                                                <span>{{__('db.Embedded Barcode')}}</span>
-                                            </label>
-                                        @endif
+                                        <label class="zolo-toggle-pill {{ old('is_embeded') ? 'is-active' : '' }}" data-role="emerald" for="chk_embeded"
+                                            title="{{ __('db.Embedded Barcode') }}">
+                                            <input type="checkbox" name="is_embeded" id="chk_embeded" value="1" {{ old('is_embeded') ? 'checked' : '' }}>
+                                            <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
+                                            <span>{{__('db.Embedded Barcode')}}</span>
+                                        </label>
 
                                         @if($isOpticalProfile)
                                         <label id="optical-option"
-                                            class="zolo-toggle-pill {{ $isOpticalProfile ? 'is-active' : '' }}"
+                                            class="zolo-toggle-pill {{ ($isOpticalProfile && old('is_optical', 1)) ? 'is-active' : '' }}"
                                             data-role="purple" for="is-optical" title="Optical Lens Specifications">
-                                            <input name="is_optical" type="checkbox" id="is-optical" value="1" {{ $isOpticalProfile ? 'checked' : '' }}>
+                                            <input name="is_optical" type="checkbox" id="is-optical" value="1" {{ ($isOpticalProfile && old('is_optical', 1)) ? 'checked' : '' }}>
                                             <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                             <span>Optical / Lens Rx</span>
                                         </label>
@@ -693,7 +687,7 @@
                                 <!-- Extended Conditional Details Container (4-column grid mirroring top primary boxes) -->
                                 <div class="product-extended-details-container mt-2">
                                     <!-- Warehouse Initial Stock Section (1 grid column) -->
-                                    <div id="initial-stock-section">
+                                    <div id="initial-stock-section" style="display: {{ old('is_initial_stock') ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="amber" title="{{__('db.Warehouse Initial Stock')}}"
                                             icon="inventory">
                                             <div class="table-responsive">
@@ -723,7 +717,7 @@
                                     </div>
 
                                     <!-- Warehouse Differential Price Section (1 grid column) -->
-                                    <div data-usage-side="sale" id="diffPrice-section">
+                                    <div data-usage-side="sale" id="diffPrice-section" style="display: {{ old('is_diffPrice') ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="emerald" title="{{__('db.Different Warehouse Price')}}"
                                             icon="pricing">
                                             <div class="table-responsive">
@@ -754,7 +748,7 @@
                                     </div>
 
                                     <!-- Product Variants Section -->
-                                    <div id="variant-section">
+                                    <div id="variant-section" style="display: {{ old('is_variant') ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="purple" title="{{__('db.Product Variants')}}" icon="tag">
                                             <div id="variant-input-section">
                                                 <div class="row align-items-end">
@@ -763,7 +757,7 @@
                                                                 class="dripicons-question" data-toggle="tooltip"
                                                                 title="{{__('db.Size, Color etc')}}"></i></label>
                                                         <input type="text" name="variant_option[]"
-                                                            class="form-control form-control-sm variant-field"
+                                                             class="form-control form-control-sm variant-field"
                                                             placeholder="{{ __('db.Size, Color etc') }}">
                                                     </div>
                                                     <div class="col-md-7 form-group mb-2">
@@ -802,7 +796,7 @@
                                     </div>
 
                                     <!-- Warehouse Batch & Expiry Date Section -->
-                                    <div id="batch-section">
+                                    <div id="batch-section" style="display: {{ old('is_batch') ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="amber" title="{{__('db.Batch & Expiry Date')}}"
                                             icon="inventory">
                                             <div class="table-responsive">
@@ -849,7 +843,7 @@
                                     </div>
 
                                     <!-- Warehouse IMEI / Serial Numbers Section -->
-                                    <div id="imei-section">
+                                    <div id="imei-section" style="display: {{ old('is_imei') ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="blue" title="{{__('db.IMEI / Serial numbers')}}"
                                             icon="tag">
                                             <div class="table-responsive">
@@ -880,7 +874,7 @@
                                     </div>
 
                                     <!-- Promotional Price Section -->
-                                    <div data-usage-side="sale" id="promo-container">
+                                    <div data-usage-side="sale" id="promo-container" style="display: {{ old('promotion') ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="blue" title="{{__('db.Promotional Price')}}"
                                             icon="pricing">
                                             <div class="zolo-promo-vertical-form">
@@ -917,7 +911,7 @@
                                     </div>
 
                                     <!-- Combo Products Section -->
-                                    <div id="combo">
+                                    <div id="combo" style="display: {{ old('type') === 'combo' ? 'block' : 'none' }};">
                                         <x-ui.section-box variant="blue" title="{{__('db.Combo Products')}}" icon="box">
                                             <div class="search-box input-group mb-2">
                                                 <div class="input-group-prepend">
@@ -2465,7 +2459,7 @@
                                 $.each(data, function (key, el) {
                                     formData.append(el.name, el.value);
                                 });
-                                var fileEl = $('#file')[0];
+                                var fileEl = document.getElementById('file');
                                 if (fileEl && fileEl.files && fileEl.files.length > 0) {
                                     formData.append('file', fileEl.files[0]);
                                 }
@@ -2509,7 +2503,7 @@
                     $.each(data, function (key, el) {
                         formData.append(el.name, el.value);
                     });
-                    var fileEl = $('#file')[0];
+                    var fileEl = document.getElementById('file');
                     if (fileEl && fileEl.files && fileEl.files.length > 0) {
                         formData.append('file', fileEl.files[0]);
                     }

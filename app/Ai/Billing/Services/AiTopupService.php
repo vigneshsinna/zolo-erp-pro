@@ -274,13 +274,14 @@ class AiTopupService
      */
     public function verifyWebhookSignature(string $rawPayload, string $signature, ?string $secret = null): bool
     {
-        $signingSecret = $secret !== null ? $secret : (string) config('ai_credits.webhook_secret', '');
+        $signingSecret = $secret !== null ? $secret : (string) (function_exists('app') && app()->bound('config') ? config('ai_credits.webhook_secret', '') : (getenv('AI_CREDITS_WEBHOOK_SECRET') ?: ''));
         if (empty($signingSecret) || empty($signature)) {
             return false;
         }
 
         // In production, reject known test/fallback keys
-        $isProduction = method_exists(app(), 'environment') ? app()->environment('production') : false;
+        $appEnv = function_exists('app') && app()->bound('config') ? config('app.env') : (getenv('APP_ENV') ?: 'testing');
+        $isProduction = $appEnv === 'production';
         if ($isProduction && in_array($signingSecret, ['whsec_zolo_credits_secret_key_2026', 'dummy', 'secret'], true)) {
             return false;
         }

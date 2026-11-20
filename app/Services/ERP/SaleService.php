@@ -175,6 +175,18 @@ class SaleService
                 ]);
             }
 
+            if (\Illuminate\Support\Facades\Schema::hasColumn('sales', 'end_user_name')) {
+                $saleFill = array_merge($saleFill, [
+                    'end_user_name' => $data['end_user_name'] ?? null,
+                    'end_user_phone' => $data['end_user_phone'] ?? null,
+                    'end_user_email' => $data['end_user_email'] ?? null,
+                    'end_user_address' => $data['end_user_address'] ?? null,
+                    'fitting_charge' => isset($data['fitting_charge']) ? (float) $data['fitting_charge'] : 0,
+                    'tinting_cost' => isset($data['tinting_cost']) ? (float) $data['tinting_cost'] : 0,
+                    'customer_order_no' => $data['customer_order_no'] ?? null,
+                ]);
+            }
+
             $sale = (new Sale)->forceFill($saleFill);
             $sale->save();
             $numbers->assign($reservation, $sale);
@@ -190,6 +202,8 @@ class SaleService
                 if (!$batchId && !empty($batchNo)) {
                     $batch = \App\Models\ProductBatch::firstOrCreateOwned($context->companyId, $productId, (string) $batchNo, [
                         'expired_date' => $item['batch']['expired_date'] ?? ($item['expired_date'] ?? null),
+                        'mfg_date' => $item['batch']['mfg_date'] ?? ($item['mfg_date'] ?? null),
+                        'mrp' => isset($item['batch']['mrp']) ? (float) $item['batch']['mrp'] : (isset($item['mrp']) ? (float) $item['mrp'] : null),
                     ]);
                     $batchId = $batch->id;
                 }

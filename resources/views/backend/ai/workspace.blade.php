@@ -71,7 +71,7 @@
                             <div class="ai-credit-meter-pill d-inline-flex align-items-center bg-light border rounded px-2 py-1 mx-1" id="ai-credit-meter-pill" title="Subscription AI Credit Balance">
                                 <i class="dripicons-wallet mr-1 text-primary" aria-hidden="true"></i>
                                 <span class="font-weight-bold small text-dark mr-1" id="credit-available-val">Loading…</span>
-                                <button type="button" class="btn btn-xs btn-outline-primary" id="btn-open-topup-modal">Top Up</button>
+                                <button type="button" class="btn btn-xs btn-outline-primary" id="btn-open-topup-modal" style="{{ 'padding: 1px 6px; font-size: 11px;' }}">Top Up</button>
                             </div>
                             @if($isAdmin ?? false)
                                 <button id="btn-toggle-telemetry" class="btn ai-telemetry-toggle-btn" type="button"
@@ -109,7 +109,7 @@
                                 <div class="ai-usage-stat">
                                     <span>Subscription Monthly Credits</span><strong id="telemetry-credits-available">—</strong>
                                     <span id="telemetry-credits-detail">Loading credits…</span>
-                                    <div class="ai-usage-track"><span id="telemetry-credits-fill"></span></div>
+                                    <div class="ai-usage-track"><span id="telemetry-credits-fill" style="{{ 'width: 0%;' }}"></span></div>
                                 </div>
                             </div>
                             <p class="ai-usage-explainer"><span id="telemetry-provider">Provider</span>: shared provider limit
@@ -220,7 +220,7 @@
     <!-- In-Chat PDF Preview Modal -->
     <div class="modal fade" id="ai-pdf-preview-modal" tabindex="-1" role="dialog" aria-labelledby="ai-pdf-modal-title"
         aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+        <div class="modal-dialog modal-xl modal-dialog-centered" role="document" style="{{ 'max-width: 950px; height: 90vh;' }}">
             <div class="modal-content h-100 shadow border-0">
                 <div class="modal-header py-2 bg-light d-flex justify-content-between align-items-center">
                     <h5 class="modal-title font-weight-bold" id="ai-pdf-modal-title"><i
@@ -233,8 +233,8 @@
                         </button>
                     </div>
                 </div>
-                <div class="modal-body p-0 bg-secondary">
-                    <iframe id="ai-pdf-iframe" src=""></iframe>
+                <div class="modal-body p-0 bg-secondary" style="{{ 'height: calc(100% - 55px);' }}">
+                    <iframe id="ai-pdf-iframe" src="" style="{{ 'width: 100%; height: 100%; border: none;' }}"></iframe>
                 </div>
             </div>
         </div>
@@ -1450,7 +1450,7 @@
                                                                 defs.hsn_codes.forEach(function (h) {
                                                                     const pCode = h.code || h;
                                                                     const pDesc = h.description || ('HSN ' + pCode);
-                                                                    const pill = $('<button type="button" class="btn btn-xs btn-outline-info mr-1 mb-1 py-0 px-2 small ai-product-choice">' + $('<div>').text(pCode + (pDesc ? ' (' + pDesc + ')' : '')).html() + '</button>');
+                                                                    const pill = $('<button type="button" class="btn btn-xs btn-outline-info mr-1 mb-1 py-0 px-2 small ai-product-choice" style="{{ 'font-size: 11px;' }}">' + $('<div>').text(pCode + (pDesc ? ' (' + pDesc + ')' : '')).html() + '</button>');
                                                                     pill.on('click', function () {
                                                                         formBody.find('.mf-hsn').val(pCode).removeClass('is-invalid');
                                                                         formBody.find('.mf-hsn-feedback').remove();
@@ -2187,6 +2187,8 @@
             ]) !!};
         </script>
         @if ((!empty($isMultimodalEnabled) || config('erp_ai.conversation_enabled', false)) && $canUseCopilot)
+            <script src="{{ versioned_asset('js/ai-entity-picker.js') }}"></script>
+            <script src="{{ versioned_asset('js/ai-master-create.js') }}"></script>
             <script src="{{ versioned_asset('js/ai-media-input.js') }}"></script>
         @endif
         @if (config('erp_ai.conversation_enabled', false) && $canUseCopilot)
