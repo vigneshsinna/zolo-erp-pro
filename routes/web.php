@@ -181,6 +181,7 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
     // AI Operating Layer Workspace
     Route::get('ai', [\App\Http\Controllers\Ai\AiWorkspaceController::class, 'index'])->name('ai.workspace');
     Route::get('ai/operations', [\App\Http\Controllers\Ai\AiOperationsController::class, 'index'])->name('ai.operations');
+    Route::get('ai/operations/exceptions', [\App\Http\Controllers\Ai\AiExceptionTriageController::class, 'index'])->name('ai.exceptions.index');
     Route::get('ai/operations/policies', [\App\Http\Controllers\Ai\AiAutonomyPolicyController::class, 'index'])->name('ai.autonomy.index');
     Route::post('ai/operations/policies/{actionKey}', [\App\Http\Controllers\Ai\AiAutonomyPolicyController::class, 'store'])
         ->where('actionKey', '[a-z0-9_.]+')->name('ai.autonomy.store');
