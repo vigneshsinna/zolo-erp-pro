@@ -65,7 +65,7 @@ jobs:
         run: php artisan migrate --force
       - name: Focused AI autonomy regression suites
         run: |
-          php vendor/bin/phpunit -c phpunit.ai.xml --filter 'AiOperationsPageTest|AiAutonomyPolicyTest|AiEventInboxTest'
+          php vendor/bin/phpunit -c phpunit.ai.xml --filter 'AiOperationsPageTest|AiAutonomyPolicyTest|AiEventInboxTest|AiActionReversalRequestTest'
           php vendor/bin/phpunit tests/Unit/AiExceptionClassifierTest.php
           php vendor/bin/phpunit tests/Unit/AutonomyExecutionPreflightTest.php
           php vendor/bin/phpunit tests/Unit/Ai/AutonomyReleaseGateTest.php
