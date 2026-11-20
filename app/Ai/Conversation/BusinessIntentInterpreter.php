@@ -21,10 +21,13 @@ final class BusinessIntentInterpreter
 
     public function start(AiPrincipal $principal, string $threadId, string $utterance): ?array
     {
-        if (!config('ai_business_knowledge.semantic_enabled', false)) return null;
+        if (!config('ai_business_knowledge.semantic_enabled', false)
+            || !config('ai_business_knowledge.enabled', false)) return null;
         $message = trim($utterance);
         if ($this->pending->isPending($principal, $threadId)) {
             $role = $this->direction($message);
+            if (preg_match('/^(?:a\s+)?(?:supplier|vendor)[.!]?$/i', $message)) $role = 'supplier';
+            if (preg_match('/^(?:a\s+)?(?:customer|buyer)[.!]?$/i', $message)) $role = 'customer';
             return $this->result($role ?? 'ambiguous', [], 'deterministic', 'pending_party');
         }
         if (!preg_match('/^(?:please\s+)?(?:create|add|register|set\s+up)\s+(?:(?:a|an)\s+)?(?:new\s+)?(supplier|vendor|seller|customer|buyer|client|party|trader)\b(.*)$/iu', $message, $m)) {
@@ -46,12 +49,14 @@ final class BusinessIntentInterpreter
         return $this->modelParse($principal, $threadId, $message, 'intent', $role);
     }
 
-    public function supplierDetails(AiPrincipal $principal, string $threadId, string $message): ?array
+    public function supplierDetails(AiPrincipal $principal, string $threadId, string $message, bool $needsName = false): ?array
     {
-        if (!config('ai_business_knowledge.semantic_enabled', false)) return null;
-        if (preg_match('/^(?:cancel|preview|continue|resume|edit|skip)\b/i', trim($message))) return null;
+        if (!config('ai_business_knowledge.semantic_enabled', false)
+            || !config('ai_business_knowledge.enabled', false)) return null;
+        if (preg_match('/^(?:cancel|preview|continue|resume|edit|skip)\b/i', trim($message))
+            || preg_match('/^(?:unregistered|not registered|no gstin|gst registered)[.!]?$/i', trim($message))) return null;
         if (preg_match('/\b(?:name|supplier name|company name|phone|mobile|email|gstin|gst number|city|state|address)\s*(?:[:=]|\s+(?:is|to)\b)/i', $message)) return null;
-        if (preg_match('/^[\pL\pN][\pL\pN &.,\x27()-]{1,180}$/uD', trim($message))
+        if ($needsName && preg_match('/^[\pL\pN][\pL\pN &.,\x27()-]{1,180}$/uD', trim($message))
             && !preg_match('/\b(?:from|at|in|our|their|they|he|she|unregistered|registered|gst)\b/i', $message)) return null;
         return $this->modelParse($principal, $threadId, $message, 'supplier_fields', 'supplier');
     }
