@@ -40,12 +40,13 @@ final class AiPurchaseProposalEditService
                 ->where('financial_year_id', $principal->financialYearId)->lockForUpdate()->first();
             if (!$locked || !in_array($locked->action_key, [
                 'purchase_order.create.v1', 'purchase_bill.create.v1',
-            ], true) || !in_array($locked->status, ['pending', 'approved'], true)
+            ], true) || !in_array($locked->status, ['pending', 'approved', 'editing'], true)
                 || $locked->expires_at <= now('UTC')->toDateTimeString()) {
                 throw ValidationException::withMessages([
                     'proposal' => 'This purchase proposal is not editable. Start a new one or refresh the review queue.',
                 ]);
             }
+            $this->proposals->suspendForEditing($principal, $proposalId);
             $existing = DB::table('ai_workflow_tasks')->where('linked_proposal_id', $proposalId)
                 ->where('company_id', $principal->companyId)->where('branch_id', $principal->branchId)
                 ->where('financial_year_id', $principal->financialYearId)->where('actor_id', $principal->actorId)

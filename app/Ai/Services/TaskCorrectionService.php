@@ -12,6 +12,7 @@ use App\Ai\Registries\ActionRequirementsRegistry;
 use App\Ai\Security\BootstrapSetupPrincipal;
 use App\Services\Platform\CompanyContext;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 final class TaskCorrectionService
 {
@@ -114,7 +115,15 @@ final class TaskCorrectionService
 
         $newStatus = $evaluation->isReady() ? 'ready' : 'collecting';
 
-        $updatedTask = $this->taskState->updateTaskState(
+        // Prevent a previously approved (or still pending) preview from being
+        // executed while amended supplier, warehouse, rate or GST fields are
+        // being resolved. Keep task revision and suspension atomic.
+        $updatedTask = DB::transaction(function () use ($principal, $task, $taskId, $expectedRevision, $slots, $batchResult, $evaluation, $newStatus, $corrections): array {
+            if ($principal instanceof AiPrincipal && $task['linked_proposal_id']
+                && $corrections !== []) {
+                app(ActionProposalService::class)->suspendForEditing($principal, $task['linked_proposal_id']);
+            }
+            return $this->taskState->updateTaskState(
             principal: $principal,
             taskId: $taskId,
             expectedRevision: $expectedRevision,
@@ -125,7 +134,8 @@ final class TaskCorrectionService
             issues: $evaluation->issuesArray(),
             status: $newStatus,
             patch: $corrections,
-        );
+            );
+        }, 3);
 
         $clarification = null;
         if (!$evaluation->isReady()) {

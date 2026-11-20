@@ -245,7 +245,7 @@
                     </div>
                     <div class="d-flex align-items-center">
                         @if(in_array($proposal->action_key, ['purchase_order.create.v1', 'purchase_bill.create.v1'], true)
-                            && in_array($proposal->status, ['pending', 'approved'], true)
+                            && in_array($proposal->status, ['pending', 'approved', 'editing'], true)
                             && (int) $proposal->actor_id === (int) auth()->id()
                             && config('erp_ai.conversation_enabled', false))
                             <form method="POST" action="{{ route('ai.purchase.edit-copilot', ['id' => $proposal->id]) }}" class="mr-2">

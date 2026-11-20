@@ -64,7 +64,7 @@ class AiWorkspaceController extends Controller
                 ->where('financial_year_id', $principal->financialYearId)->exists();
             if (!$ownedThread) abort(404);
             $proposal = app(ActionProposalService::class)->getOwned($principal, $task['linked_proposal_id']);
-            if (!in_array($proposal['status'], ['pending', 'approved'], true)
+            if (!in_array($proposal['status'], ['pending', 'approved', 'editing'], true)
                 || $proposal['action_key'] !== $task['action_key']) abort(404);
             $editContext = [
                 'thread_id' => $threadId, 'task_id' => $taskId,
