@@ -181,6 +181,9 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
     // AI Operating Layer Workspace
     Route::get('ai', [\App\Http\Controllers\Ai\AiWorkspaceController::class, 'index'])->name('ai.workspace');
     Route::get('ai/operations', [\App\Http\Controllers\Ai\AiOperationsController::class, 'index'])->name('ai.operations');
+    Route::get('ai/operations/policies', [\App\Http\Controllers\Ai\AiAutonomyPolicyController::class, 'index'])->name('ai.autonomy.index');
+    Route::post('ai/operations/policies/{actionKey}', [\App\Http\Controllers\Ai\AiAutonomyPolicyController::class, 'store'])
+        ->where('actionKey', '[a-z0-9_.]+')->name('ai.autonomy.store');
     // PH1 review desk is read-only until an explicitly reviewed action capability is enabled.
     Route::get('ai/action-review', [\App\Http\Controllers\Ai\ActionReviewCenterController::class, 'index'])->name('ai.actions.review');
 });
