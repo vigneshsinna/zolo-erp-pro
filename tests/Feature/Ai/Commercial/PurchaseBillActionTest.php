@@ -288,7 +288,8 @@ final class PurchaseBillActionTest extends TestCase
         ]);
         $supplier = Supplier::create(['name' => 'Local Non GST Bill Supplier',
             'company_id' => $this->company->id, 'is_active' => true,
-            'state' => 'Tamil Nadu', 'address' => 'Coimbatore']);
+            'state' => 'Tamil Nadu', 'address' => 'Coimbatore',
+            'phone_number' => '9000000001']);
         DB::table('party_tax_profiles')->insert([
             'company_id' => $this->company->id, 'party_type' => 'supplier',
             'party_id' => $supplier->id, 'gstin' => null,

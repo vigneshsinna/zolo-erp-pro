@@ -61,7 +61,9 @@ final class ConversationalSlotInterpreter
                 }
                 $corrections[] = $this->correction('items['.$lines[$idx]['client_line_id'].'].qty', $m[2]);
                 $lines[$idx]['qty'] = $m[2];
-            } elseif (preg_match('/^(?:(?:change|set|update|increase|decrease)\s+)?(?:the\s+)?(?:quantity|qty)(?:\s+to)?\s+(\d+(?:\.\d+)?)\s*(?:instead)?$/iu', $part, $m) && count($lines) === 1) {
+            } elseif ((preg_match('/^(?:make (?:it|that)|increase quantity to|quantity|qty)\s+(\d+(?:\.\d+)?)\s*(?:instead)?$/i', $part, $m)
+                || preg_match('/^(?:(?:change|set|update|decrease)\s+)?(?:the\s+)?(?:quantity|qty)(?:\s+to)?\s+(\d+(?:\.\d+)?)\s*(?:instead)?$/iu', $part, $m))
+                && count($lines) === 1) {
                 $corrections[] = $this->correction('items['.$lines[0]['client_line_id'].'].qty', $m[1]);
                 $lines[0]['qty'] = $m[1];
             } elseif (preg_match('/^(?:(?:qty|quantity|add)\s+)?(\d+(?:\.\d+)?)\s+(pairs?|pcs|pieces?|units?|kg|metres?|meters?|mtr)(?:\s+at\s+(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)(?:\s+each)?)?$/iu', $part, $m) && count($lines) === 1) {
