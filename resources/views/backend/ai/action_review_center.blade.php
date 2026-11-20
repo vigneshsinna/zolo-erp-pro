@@ -17,8 +17,9 @@
             </p>
         </div>
         <div>
+            <a href="{{ route('ai.operations') }}" class="btn btn-outline-secondary btn-sm mr-2">AI Operations</a>
             <a href="{{ route('ai.workspace') }}" class="btn btn-outline-primary btn-sm">
-                <i class="dripicons-message mr-1"></i>Open AI Workspace
+                <i class="dripicons-message mr-1"></i>Open Copilot
             </a>
         </div>
     </div>
