@@ -512,41 +512,50 @@
       "source_refs": [
         "app/Services/JobWork/JobWorkService.php"
       ],
-      "summary": "Company-owned fabric subcontracted; service bill not registered as AI capability",
+      "summary": "Our-material processing: job order, dispatch, actual approved GRN, verified receipt evidence, supplier processing bill, reconciliation; unreviewed owner signoff required",
       "steps": [
         {
           "id": "job_order",
-          "kind": "read_or_clarify",
-          "depends_on": []
+          "kind": "reviewed_action",
+          "depends_on": [],
+          "action_key": "job_work.order.create.v1"
         },
         {
           "id": "dispatch",
           "kind": "reviewed_action",
-          "action_key": "job_work.outward.v1",
           "depends_on": [
             "job_order"
-          ]
+          ],
+          "action_key": "job_work.outward.v1"
+        },
+        {
+          "id": "receipt",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "dispatch"
+          ],
+          "action_key": "job_work.inward.v1"
         },
         {
           "id": "physical_return",
           "kind": "external_event",
           "depends_on": [
-            "dispatch"
-          ]
-        },
-        {
-          "id": "receipt",
-          "kind": "reviewed_action",
-          "action_key": "job_work.inward.v1",
-          "depends_on": [
-            "physical_return"
+            "receipt"
           ]
         },
         {
           "id": "service_bill",
-          "kind": "unsupported_action",
+          "kind": "reviewed_action",
           "depends_on": [
-            "receipt"
+            "physical_return"
+          ],
+          "action_key": "job_work.service_bill.create.v1"
+        },
+        {
+          "id": "reconcile",
+          "kind": "read_only_validation",
+          "depends_on": [
+            "service_bill"
           ]
         }
       ]
@@ -563,26 +572,34 @@
       "source_refs": [
         "app/Services/JobWork/PrincipalJobService.php"
       ],
-      "summary": "Customer-owned fabric processed; no reviewed conversational service invoicing capability",
+      "summary": "Customer-owned processing requires principal order, physical receipt and return adapters still unsupported; service invoice action prepared behind flag",
       "steps": [
         {
-          "id": "customer_receipt",
-          "kind": "read_or_clarify",
+          "id": "principal_job_order",
+          "kind": "unsupported_action",
           "depends_on": []
         },
         {
-          "id": "processing_complete",
-          "kind": "external_event",
+          "id": "customer_material_received",
+          "kind": "unsupported_action",
           "depends_on": [
-            "customer_receipt"
+            "principal_job_order"
+          ]
+        },
+        {
+          "id": "customer_material_return",
+          "kind": "unsupported_action",
+          "depends_on": [
+            "customer_material_received"
           ]
         },
         {
           "id": "service_invoice",
-          "kind": "unsupported_action",
+          "kind": "reviewed_action",
           "depends_on": [
-            "processing_complete"
-          ]
+            "customer_material_return"
+          ],
+          "action_key": "principal_job.service_invoice.create.v1"
         }
       ]
     },
@@ -732,6 +749,54 @@
           ]
         }
       ]
+    },
+    {
+      "id": "action.job_work.order.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Opt-in explicit-approval job-work action job_work.order.create.v1; requires separate domain owner signoff",
+      "source_refs": [
+        "app/Ai/Adapters/JobWorkOrderActionAdapter.php"
+      ],
+      "action_key": "job_work.order.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.job_work.service_bill.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Opt-in explicit-approval job-work action job_work.service_bill.create.v1; requires separate domain owner signoff",
+      "source_refs": [
+        "app/Ai/Adapters/JobWorkServiceBillActionAdapter.php"
+      ],
+      "action_key": "job_work.service_bill.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.service_invoice.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Opt-in explicit-approval job-work action principal_job.service_invoice.create.v1; requires separate domain owner signoff",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobInvoiceActionAdapter.php"
+      ],
+      "action_key": "principal_job.service_invoice.create.v1",
+      "approval": "explicit_per_action"
     }
   ]
 }
