@@ -167,6 +167,26 @@ final class TaskCorrectionService
         if ($task['linked_proposal_id']) {
             $old = $service->getOwned($principal, $task['linked_proposal_id']);
             $proposal = $service->applyChangeRequest($principal, $old['id'], $evaluation->validatedSlots, (int) $old['version'], reuseUnchanged: true);
+            $provenance = json_decode((string) ($current['provenance_json'] ?? '{}'), true);
+            if (($provenance['source'] ?? null) === 'proposal_edit') {
+                // The same editing conversation must continue against its own
+                // newly sealed version, not a stale version from before this
+                // successful preview. Only server-owned linkage is updated.
+                $provenance['source_version'] = (int) $proposal['version'];
+                $changed = DB::table('ai_workflow_tasks')
+                    ->where('id', $task['id'])->where('actor_id', $principal->actorId)
+                    ->where('company_id', $principal->companyId)
+                    ->where('branch_id', $principal->branchId)
+                    ->where('financial_year_id', $principal->financialYearId)
+                    ->where('revision', $task['revision'])
+                    ->where('linked_proposal_id', $proposal['id'])
+                    ->update(['provenance_json' => json_encode($provenance, JSON_THROW_ON_ERROR),
+                        'updated_at' => now('UTC')]);
+                if ($changed !== 1) {
+                    throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException(
+                        'Draft changed while sealing the proposal. Reload its current version.');
+                }
+            }
         } else {
             $proposal = $service->create($principal, $task['action_key'], $evaluation->validatedSlots, $task['thread_id']);
             $this->taskState->linkProposal($task['id'], $proposal['id']);
