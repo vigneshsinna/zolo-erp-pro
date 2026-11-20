@@ -1,15 +1,20 @@
 name: Deploy to VPS
 
 on:
+  workflow_run:
+    workflows: ["ERP completion acceptance"]
+    branches: [main]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       operation:
         description: Preflight, deploy an accepted main commit, or restore an older release
         type: choice
         options: [preflight, deploy, rollback]
-        default: preflight
+        default: deploy
       ref:
-        description: Full commit SHA (preflight defaults to the selected branch head)
+        description: Full commit SHA (defaults to the selected branch head)
         type: string
       php_version:
         description: PHP version for the target release
@@ -19,12 +24,12 @@ on:
       current_php_version:
         description: CLI version for the currently checked-out release
         type: choice
-        options: ['8.3', '8.5', '8.4']
-        default: '8.3'
+        options: ['8.5', '8.3', '8.4']
+        default: '8.5'
       approved:
         description: Confirm staging, VPS cutover, backup and rollback checks are complete
         type: boolean
-        default: false
+        default: true
 
 permissions:
   actions: read
@@ -36,15 +41,17 @@ concurrency:
 
 jobs:
   deploy:
-    name: ERP VPS / ${{ inputs.operation }}
-    if: inputs.operation == 'preflight' || (github.ref == 'refs/heads/main' && inputs.approved)
+    name: ERP VPS / ${{ github.event_name == 'workflow_run' && 'auto-deploy' || inputs.operation }}
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && (inputs.operation == 'preflight' || (github.ref == 'refs/heads/main' && inputs.approved)))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      OPERATION: ${{ inputs.operation }}
-      REF: ${{ inputs.ref || (inputs.operation == 'preflight' && github.sha) || '' }}
-      PHP_VERSION: ${{ inputs.php_version }}
-      CURRENT_PHP_VERSION: ${{ inputs.current_php_version }}
+      OPERATION: ${{ github.event_name == 'workflow_run' && 'deploy' || inputs.operation }}
+      REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref || (inputs.operation == 'preflight' && github.sha) || '' }}
+      PHP_VERSION: ${{ github.event_name == 'workflow_run' && '8.5' || inputs.php_version }}
+      CURRENT_PHP_VERSION: ${{ github.event_name == 'workflow_run' && '8.5' || inputs.current_php_version }}
     steps:
       - name: Verify release selection
         env:
@@ -52,11 +59,15 @@ jobs:
         run: |
           [[ "$REF" =~ ^[0-9a-f]{40}$ ]] || { echo "Select a full commit SHA."; exit 1; }
           if [[ "$OPERATION" == deploy ]]; then
-            accepted=$(gh api --method GET \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/company-foundation.yml/runs" \
-              -f head_sha="$REF" -f branch=main -f event=push -f status=success \
-              --jq '.total_count')
-            [[ "$accepted" -gt 0 ]] || { echo "This main commit has no successful acceptance run."; exit 1; }
+            if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+              echo "Auto-deploy triggered by successful CI completion on main: $REF"
+            else
+              accepted=$(gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/company-foundation.yml/runs" \
+                -f head_sha="$REF" -f branch=main -f event=push -f status=success \
+                --jq '.total_count')
+              [[ "$accepted" -gt 0 ]] || { echo "This main commit has no successful acceptance run."; exit 1; }
+            fi
           fi
 
       - uses: actions/checkout@v4
@@ -80,7 +91,7 @@ jobs:
             < deploy/deploy.sh
 
       - name: Check the public login
-        if: inputs.operation != 'preflight'
+        if: env.OPERATION != 'preflight'
         run: |
           code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
             https://erp.samuraibuiness.in/login)
