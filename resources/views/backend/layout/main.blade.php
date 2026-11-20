@@ -312,6 +312,13 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
           <li class="nav-item"><a class="btn-pos btn-sm" href="{{route('sale.pos') }}"><i class="dripicons-shopping-bag"></i><span> POS</span></a></li>
           @endif
           --}}
+          @if(config('erp_ai.enabled') && $activeCompany)
+          <li class="nav-item">
+            <a class="topbar-shortcuts" href="{{ route('ai.workspace') }}" title="Open Zolo Copilot" aria-label="Ask Zolo Copilot">
+              <i class="dripicons-sparkles" aria-hidden="true"></i><span>Ask Zolo</span>
+            </a>
+          </li>
+          @endif
           <li class="nav-item">
             <button type="button" class="topbar-shortcuts topbar-guided-tour-btn" id="btn-open-guided-tour" title="Interactive Setup Guided Tour">
               <i class="dripicons-lightbulb" aria-hidden="true"></i>

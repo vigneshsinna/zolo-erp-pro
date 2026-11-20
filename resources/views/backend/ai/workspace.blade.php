@@ -55,6 +55,7 @@
                             <p id="active-thread-title">New conversation</p>
                         </div>
                         <div class="ai-header-actions">
+                            <a href="{{ route('ai.operations') }}" class="btn btn-sm btn-outline-secondary" aria-label="View AI Operations">AI Operations</a>
                             @if($model)
                                 <details class="ai-engine-details">
                                     <summary><i class="dripicons-stack" aria-hidden="true"></i> AI engine <span
