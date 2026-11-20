@@ -89,7 +89,7 @@ final class PrincipalJobInvoiceActionAdapter implements ActionPreviewAdapterInte
             'grand_total' => $priced['grand_total'], 'tax_total' => $priced['total_tax'],
             'inventory_impact' => 'Customer-owned material is not company stock.',
             'approval_required' => true, 'posted' => false,
-        ], CanonicalActionPayload::hash($state));
+        ], hash('sha256', json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)));
     }
 
     public function execute(
