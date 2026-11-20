@@ -108,7 +108,9 @@ final class ConversationalSlotInterpreter
                 $lineId = $lines[0]['client_line_id'];
                 $corrections[] = $this->correction('items['.$lineId.'].net_unit_cost', $m[1]);
                 $lines[0]['net_unit_cost'] = $m[1];
-            } elseif (!isset($slots['supplier_id']) && !isset($slots['supplier_query']) && preg_match('/^[\pL][\pL\pN .&\-]{1,100}$/u', $part)) {
+            } elseif (!isset($slots['supplier_id']) && !isset($slots['supplier_query'])
+                && !preg_match('/\b(?:set|change|update|make|increase|decrease|quantity|qty|rate|price|cost|tax|gst|item|invoice|bill|grn|warehouse|supplier\s+id|purchase\s+order)\b/iu', $part)
+                && preg_match('/^[\pL][\pL\pN .&\-]{1,100}$/u', $part)) {
                 $corrections[] = $this->correction('supplier_query', $part);
             } else {
                 $unknown[] = $part;

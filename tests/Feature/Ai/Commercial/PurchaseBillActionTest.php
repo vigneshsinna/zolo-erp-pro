@@ -290,11 +290,12 @@ final class PurchaseBillActionTest extends TestCase
             'company_id' => $this->company->id, 'is_active' => true,
             'state' => 'Tamil Nadu', 'address' => 'Coimbatore',
             'phone_number' => '9000000001']);
-        DB::table('party_tax_profiles')->insert([
+        DB::table('party_tax_profiles')->updateOrInsert([
             'company_id' => $this->company->id, 'party_type' => 'supplier',
-            'party_id' => $supplier->id, 'gstin' => null,
-            'state_code' => '33', 'registration_type' => 'unregistered',
-            'created_at' => now(), 'updated_at' => now(),
+            'party_id' => $supplier->id,
+        ], [
+            'gstin' => null, 'state_code' => '33', 'registration_type' => 'unregistered',
+            'updated_at' => now(),
         ]);
         $principal = app(\App\Ai\Services\AiPrincipalFactory::class)->createForUser(
             $this->adminUser->id, $this->company->id, $this->branch->id, $this->fiscalYear->id);
