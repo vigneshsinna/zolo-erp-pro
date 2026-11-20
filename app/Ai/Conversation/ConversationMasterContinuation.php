@@ -66,7 +66,15 @@ final class ConversationMasterContinuation
             $field = array_key_first($pending);
             $type = $masters[$field]['entity_type'];
             $data = $masters[$field]['draft_data'];
-            foreach (preg_split('/\s*[;]\s*/', trim($message)) as $part) {
+            $skipGroups = $type === 'supplier'
+                ? app(ConversationQuestionPlanner::class)->skipGroups($message) : [];
+            if ($skipGroups !== []) {
+                $data['_conversation_skips'] = array_values(array_unique(array_merge(
+                    (array) ($data['_conversation_skips'] ?? []), $skipGroups)));
+            } elseif ($type === 'supplier' && preg_match('/\b(?:unregistered|not\s+(?:gst\s+)?registered)\b/i', $message)) {
+                $data['_conversation_gst_status'] = 'unregistered';
+                $data['vat_number'] = null;
+            } else foreach (preg_split('/\s*[;]\s*/', trim($message)) as $part) {
                 if (!preg_match('/^(name|address|phone|email|city|state|gstin|sku|hsn|unit|tax category|category|cost|price)\s*[:=]?\s+(.+)$/i', $part, $match)) {
                     throw ValidationException::withMessages(['master' => 'Provide named master details such as “address Erode” or “SKU CTN-001; unit Pairs; HSN 5205”.']);
                 }
@@ -112,6 +120,15 @@ final class ConversationMasterContinuation
         if ($validator->fails()) {
             $result['master_required_inputs'] = $validator->errors()->toArray();
             return $result;
+        }
+        if ($type === 'supplier' && config('ai_business_knowledge.enabled', false)
+            && config('ai_business_knowledge.semantic_enabled', false)) {
+            $question = app(ConversationQuestionPlanner::class)->next(
+                \App\Ai\Requirements\SupplierSetupRequirementsProvider::KEY, $data);
+            if ($question !== null) {
+                $result['message'] = $question;
+                return $result;
+            }
         }
         $preview = $orchestrator->previewMasterProposal($context, $task['id'], $field, $validator->validated());
         $result['status'] = 'master_proposal_created';

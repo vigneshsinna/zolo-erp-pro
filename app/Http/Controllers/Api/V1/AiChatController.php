@@ -1008,9 +1008,8 @@ class AiChatController extends Controller
                         return null;
                     }
                     if (empty($result['replayed'])) {
-                        if ($interpretation === null) {
-                            $this->modelGateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
-                        }
+                        // Deterministic workflow replies do not reserve model credits.
+                        // A semantic interpretation, when required, was metered before this transaction.
                         $evidence = ['facts' => $this->conversationFacts($result),
                             'sources' => [], 'warnings' => [], 'answer_status' => 'needs_input',
                             'workflow' => $result, 'interaction_type' => 'workflow_continuation'];

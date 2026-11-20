@@ -21,24 +21,42 @@ final class SupplierSetupConversation
             ? trim($match[1] ?? '') : null;
     }
 
-    public function reply(AiPrincipal $principal, array $task, string $message, ?string $start, array $photo = []): ?array
+    public function reply(AiPrincipal $principal, array $task, string $message, ?string $start, array $photo = [], array $semanticFacts = []): ?array
     {
         $state = app(WorkflowTaskStateService::class);
         $corrections = app(TaskCorrectionService::class);
         $slots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
         $cancel = (bool) preg_match('/^cancel(?: (?:this |the )?supplier(?: draft)?)?[.!]?$/i', $message);
         $preview = (bool) preg_match('/^(?:show |prepare )?preview(?: (?:the )?supplier(?: proposal)?)?[.!]?$/i', $message);
-        $changes = $photo;
+        $planner = app(ConversationQuestionPlanner::class);
+        $guided = config('ai_business_knowledge.enabled', false)
+            && config('ai_business_knowledge.semantic_enabled', false);
+        $skipGroups = $guided ? $planner->skipGroups($message) : [];
+        $gstStatus = $guided ? ($semanticFacts['_gst_status'] ?? null) : null;
+        $allowedFields = ['name', 'company_name', 'phone_number', 'vat_number', 'state', 'city', 'address', 'email'];
+        $changes = array_replace($photo, array_intersect_key($semanticFacts, array_flip($allowedFields)));
         if ($start !== null && $start !== '') {
             $changes['name'] = $start;
-        } elseif (!$cancel && !$preview && $start === null && $photo === []) {
+        } elseif (!$cancel && !$preview && $start === null && $photo === [] && $changes === []) {
             $changes = $this->parseDetails($message, empty($slots['name']));
-            if ($changes === [] && !preg_match('/^(?:resume|continue|edit)(?: (?:the )?supplier(?: draft)?)?[.!]?$/i', $message)) {
+            if ($changes === [] && $skipGroups === []
+                && !preg_match('/\b(?:unregistered|not registered|registered|no gstin)\b/i', $message)
+                && !preg_match('/^(?:resume|continue|edit)(?: (?:the )?supplier(?: draft)?)?[.!]?$/i', $message)) {
                 return null;
             }
         }
+        if ($guided && preg_match('/\b(?:unregistered|not\s+(?:gst\s+)?registered)\b/i', $message)) {
+            $gstStatus = 'unregistered';
+            $changes['vat_number'] = null;
+        } elseif ($guided && preg_match('/\bno\s+gstin\b/i', $message)) {
+            // No number is not evidence of a legally unregistered tax profile.
+            $gstStatus = 'unknown';
+            $changes['vat_number'] = null;
+        } elseif ($guided && (preg_match('/\bgst\s+registered\b/i', $message) || !empty($changes['vat_number']))) {
+            $gstStatus = 'registered';
+        }
 
-        if ($task['linked_proposal_id'] && ($cancel || $changes !== [])) {
+        if ($task['linked_proposal_id'] && ($cancel || $changes !== [] || $gstStatus !== null)) {
             $proposals = app(ActionProposalService::class);
             $proposal = $proposals->getOwned($principal, $task['linked_proposal_id']);
             $proposals->reject($principal, $proposal['id'], (int) $proposal['version']);
@@ -51,10 +69,23 @@ final class SupplierSetupConversation
         }
         $patch = [];
         foreach ($changes as $field => $value) {
-            $patch[] = ['field' => $field, 'value' => $value, 'confirmation' => 'user_edited'];
+            $origin = array_key_exists($field, $semanticFacts) ? 'model_extracted'
+                : (array_key_exists($field, $photo) ? 'photo_extracted' : 'user_edited');
+            $patch[] = ['field' => $field, 'value' => $value, 'confirmation' => $origin];
         }
         $applied = $corrections->applyCorrections($principal, $task['id'], (int) $task['revision'], $patch);
         $task = $applied['task'];
+        $currentSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+        if ($skipGroups !== [] || $gstStatus !== null) {
+            $skipped = array_values(array_unique(array_merge(
+                (array) ($currentSlots['_conversation_skips'] ?? []), $skipGroups,
+            )));
+            $currentSlots['_conversation_skips'] = $skipped;
+            if ($gstStatus !== null) $currentSlots['_conversation_gst_status'] = $gstStatus;
+            $task = $state->updateTaskState($principal, $task['id'], (int) $task['revision'],
+                $currentSlots, patch: [['field' => 'conversation_metadata', 'value' =>
+                    ['skipped_groups' => $skipGroups, 'gst_status' => $gstStatus]]]);
+        }
         $issue = $applied['evaluation']->firstBlockingIssue();
         if ($issue) {
             $message = $issue->field === 'name' && empty($slots['name']) && empty($changes['name'])
@@ -63,12 +94,20 @@ final class SupplierSetupConversation
             return $this->result($task, 'needs_input', $message);
         }
         if ($preview) {
+            if (($currentSlots['_conversation_gst_status'] ?? null) === 'registered'
+                && empty($currentSlots['vat_number'])) {
+                return $this->result($task, 'needs_input',
+                    'You marked this supplier as GST registered. Please share their GSTIN or correct the registration status.');
+            }
             return array_replace($corrections->prepareProposal($principal, $task, $applied['evaluation']),
                 ['message' => 'Review the supplier details before approving creation.']);
         }
-        $name = $changes['name'] ?? $slots['name'];
-        return $this->result($task, 'needs_input',
-            'Supplier draft: '.$name.'. Add or correct details in chat, or say “preview supplier” when ready.');
+        $question = $guided ? $planner->next(self::KEY, $currentSlots) : null;
+        if ($question !== null) return $this->result($task, 'needs_input', $question);
+        $name = $currentSlots['name'] ?? '';
+        return $this->result($task, 'needs_input', $guided
+            ? 'Supplier draft: '.$name.'. The guided details are collected or skipped. Say “preview supplier” to review before approval, or correct any field in chat.'
+            : 'Supplier draft: '.$name.'. Add or correct details in chat, or say “preview supplier” when ready.');
     }
 
     private function result(array $task, string $status, string $message): array
