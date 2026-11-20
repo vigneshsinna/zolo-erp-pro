@@ -12,7 +12,12 @@
             <h1 id="ai-ops-heading">AI Operations</h1>
             <p>Manage governed actions, review exceptions, and follow your scheduled work.</p>
         </div>
-        <a class="btn btn-primary" href="{{ route('ai.workspace') }}"><i class="dripicons-sparkles mr-1" aria-hidden="true"></i> Ask Zolo</a>
+        <div class="d-flex flex-wrap align-items-center ai-ops-actions">
+            @if($canManagePolicies)
+                <a class="btn btn-outline-secondary" href="{{ route('ai.autonomy.index') }}">Autonomy policies</a>
+            @endif
+            <a class="btn btn-primary" href="{{ route('ai.workspace') }}"><i class="dripicons-sparkles mr-1" aria-hidden="true"></i> Ask Zolo</a>
+        </div>
     </header>
 
     @unless($enabled)
