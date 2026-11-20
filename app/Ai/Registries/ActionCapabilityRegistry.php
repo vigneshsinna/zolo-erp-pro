@@ -213,6 +213,23 @@ final class ActionCapabilityRegistry
             ));
         }
 
+        if (config('ai_business_knowledge.service_bill_enabled', false)
+            && !$this->has('purchase_bill.service.create.v1')) {
+            $this->register(new ActionDefinition(
+                key: 'purchase_bill.service.create.v1',
+                businessModule: 'service_purchasing',
+                riskTier: 'r3_financial',
+                requiredPermissions: ['ai.use', 'purchases-add'],
+                inputSchemaClass: \App\Ai\Schemas\CreateServicePurchaseBillInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\ServicePurchaseBillAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\ServicePurchaseBillAdapter::class,
+                domainOwnsTransaction: true,
+                requiresApproval: true,
+                requiresFreshSnapshot: true,
+                enabledByDefault: false,
+                mode: 'company',
+            ));
+        }
         if (!$this->has('purchase_bill.create.v1')) {
             $this->register(new ActionDefinition(
                 key: 'purchase_bill.create.v1',
