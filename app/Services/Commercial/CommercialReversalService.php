@@ -31,6 +31,10 @@ class CommercialReversalService
             if ($document->reversed_at) {
                 return $document;
             }
+            $company = \App\Models\Company::find($context->companyId);
+            if ($document->isEditedOrder() && !($company?->allowReverseEditedOrders() ?? false)) {
+                throw ValidationException::withMessages(['document' => 'Reversal of edited orders is disabled for this company.']);
+            }
             if ($document instanceof Purchase && (int) $document->status === 4
                 && \Illuminate\Support\Facades\Schema::hasTable('commercial_order_allocations')
                 && DB::table('commercial_order_allocations as a')->join('commercial_order_items as i', 'i.id', '=', 'a.order_item_id')

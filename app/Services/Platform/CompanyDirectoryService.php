@@ -41,9 +41,16 @@ class CompanyDirectoryService
     public function isInstallationAdmin(int $userId): bool
     {
         $user = User::find($userId);
+        if (!$user || !$user->is_active || $user->is_deleted) {
+            return false;
+        }
 
-        return $user && $user->is_active && !$user->is_deleted && in_array((int) $user->role_id, [1, 2], true)
-            && DB::table('roles')->where('id', $user->role_id)->where('is_active', true)->exists();
+        if (in_array((int) $user->role_id, [1, 2], true)) {
+            return DB::table('roles')->where('id', $user->role_id)->where('is_active', true)->exists();
+        }
+
+        $roleName = strtolower(trim((string) DB::table('roles')->where('id', $user->role_id)->where('is_active', true)->value('name')));
+        return in_array($roleName, ['admin', 'owner', 'super admin', 'superadmin'], true);
     }
 
     public function canManageGroup(int $userId, ?int $groupId): bool
@@ -214,6 +221,18 @@ class CompanyDirectoryService
         if (!$this->canManageGroup($actor, $groupId)) {
             throw new AuthorizationException('Group administrator required to add a company.');
         }
+        if (!empty($input['fy_start'])) {
+            try { $input['fy_start'] = \Carbon\Carbon::parse($input['fy_start'])->toDateString(); } catch (\Throwable $e) {}
+        }
+        if (!empty($input['fy_end'])) {
+            try { $input['fy_end'] = \Carbon\Carbon::parse($input['fy_end'])->toDateString(); } catch (\Throwable $e) {}
+        }
+        if (!empty($input['gstin']) && empty(trim((string)($input['address'] ?? '')))) {
+            $input['address'] = trim(($input['city'] ?? '') . ' ' . ($input['state_code'] ?? ''));
+            if (empty($input['address'])) {
+                $input['address'] = 'Registered Office';
+            }
+        }
         $input['code'] = strtoupper($input['code'] ?? '') ?: $this->code($input['trade_name'] ?? $input['legal_name'] ?? '', 'companies');
         $data = Validator::make($input, [
             'legal_name' => 'required|string|max:255', 'trade_name' => 'nullable|string|max:255',
@@ -260,8 +279,8 @@ class CompanyDirectoryService
                     'state_code' => $company->state_code, 'gst_effective_from' => $data['fy_start']], $logo, $context, $actor);
             }
             $this->installStarterMasters($company->refresh());
-            // A GST-registered (or declared unregistered) company bills under GST rules from its first invoice: install the standard slabs now.
-            if ((!empty($profile['gstin']) || ($profile['registration_type'] ?? null) === 'unregistered') && config('compliance.enabled') && Schema::hasTable('tax_categories')) {
+            // Install standard GST slabs for every newly created company so tax rates are available on first invoice.
+            if (config('compliance.enabled') && Schema::hasTable('tax_categories')) {
                 app(\App\Services\Tax\GstSetupService::class)->installDefaults($context, $actor);
             }
             DB::table('company_setup_audits')->insert(['company_id' => $company->id, 'actor_id' => $actor,
@@ -270,10 +289,6 @@ class CompanyDirectoryService
                     'subtype' => $data['subtype'], 'branch_id' => $branch->id, 'financial_year_id' => $year->id,
                     'idempotency_key' => $input['idempotency_key'] ?? null], JSON_THROW_ON_ERROR),
                 'created_at' => now()]);
-
-            if (Schema::hasTable('ai_feature_settings')) {
-                app(\App\Ai\Services\AiFeatureGate::class)->provisionCompanyDefaults($company->id, $actor);
-            }
 
             if (Schema::hasTable('ai_feature_settings')) {
                 app(\App\Ai\Services\AiFeatureGate::class)->provisionCompanyDefaults($company->id, $actor);

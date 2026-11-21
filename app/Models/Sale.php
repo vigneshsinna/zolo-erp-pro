@@ -112,4 +112,12 @@ class Sale extends Model
     {
         return $this->morphOne(InstallmentPlan::class, 'reference');
     }
+
+    public function isEditedOrder(): bool
+    {
+        return !empty($this->replaces_id)
+            || !empty($this->attributes_json['is_edited'])
+            || !empty($this->attributes_json['edited_at'])
+            || ($this->updated_at && $this->created_at && abs($this->updated_at->timestamp - $this->created_at->timestamp) > 5);
+    }
 }

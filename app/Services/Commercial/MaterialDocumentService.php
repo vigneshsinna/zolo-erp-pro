@@ -397,7 +397,8 @@ class MaterialDocumentService
             [$product, $warehouse, $variant, $batch] = $group['identity'];
             $held = (float) DB::table('stock_movement_lines as l')->join('stock_movements as m', 'm.id', '=', 'l.stock_movement_id')
                 ->where('l.company_id', $context->companyId)->where('m.company_id', $context->companyId)
-                ->where('m.projection_mode', 'applied')->whereIn('m.status', ['posted', 'reversed'])
+                ->where('m.projection_mode', 'applied')->where('m.status', 'posted')
+                ->where('m.movement_type', '!=', 'reversal')->whereNull('m.reversal_of_id')
                 ->where('l.product_id', $product)->where('l.warehouse_id', $warehouse)
                 ->where('l.variant_id', $variant)->where('l.batch_id', $batch)->sum('l.qty_base');
             $onHand = (int) round($group['amount'] * max(0, min(1, $held / $group['qty'])));

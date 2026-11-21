@@ -91,6 +91,14 @@
                     <label class="cpf-check"><input type="checkbox" name="features[]" value="{{ $key }}" @checked($feature['enabled'])> {{ $feature['label'] }}</label>
                 @endforeach
             </div>
+            <div class="mt-3 pt-3 border-top">
+                <label class="cpf-check font-weight-bold">
+                    <input type="hidden" name="allow_reverse_edited_orders" value="0">
+                    <input type="checkbox" name="allow_reverse_edited_orders" value="1" @checked($company->allowReverseEditedOrders())>
+                    Allow reversing edited orders &amp; bills
+                </label>
+                <p class="cpf-muted mb-0">By default disabled to prevent confusing stock discrepancy entries. When enabled, authorized administrators can reverse orders even if they were previously edited.</p>
+            </div>
             <p class="cpf-muted">Switched-off features leave the menu and their pages refuse access. Records already saved are kept. Changing the industry resets these to its preset.</p>
         </div>
 

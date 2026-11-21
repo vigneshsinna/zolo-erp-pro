@@ -36,4 +36,9 @@ class Company extends Model
     {
         return $this->hasMany(FiscalYear::class);
     }
+
+    public function allowReverseEditedOrders(): bool
+    {
+        return (bool) ($this->settings_json['allow_reverse_edited_orders'] ?? false);
+    }
 }
