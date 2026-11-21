@@ -1,3 +1,28 @@
+## PR9 (Workflow State Machine, Typed Clarification & Evidence Bridge) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR9 (P0 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.2.
+  - Closed the gap between process plans and execution: prevented workflows from getting stuck in limbo when external events occur, and strictly prevented LLMs or users from advancing workflows through unverified text assertions.
+- **Technical Implementation:**
+  - `app/Ai/Knowledge/BusinessWorkflowProgress.php`:
+    - `completeClarification()`: Requires typed, server-validated structured fields (rejects empty strings or bare `['status' => 'done']`), hashes inputs with actor ID and step key, advances step status to `completed`, and unblocks dependent downstream steps.
+    - `completeValidation()`: Requires named validator and source-state hash for `read_only_validation`, computes verified evidence hash, advances step to `completed`, and unblocks downstream steps.
+    - `verifyExternalEvent()`: Rejects free-text assertions (e.g. "goods received"); requires verified, active posted ERP documents (`job_work_receipt` with matching workflow dispatch execution, or `purchase_order` in status 4 Ordered visible in caller's company/branch/FY).
+    - `change()`: Updated to automatically evaluate remaining steps when any step completes. If all steps are verified, transitions workflow status to `completed` and records an immutable `workflow_completed` audit event.
+  - `app/Http/Controllers/Api/V1/AiBusinessWorkflowController.php`:
+    - Added authenticated and validated REST actions: `clarify()`, `validateStep()`, `verifyEvent()`.
+  - `routes/api.php`:
+    - Registered routes: `POST {id}/clarify`, `POST {id}/validate`, `POST {id}/verify-event`.
+  - `tests/Feature/Ai/BusinessWorkflowStateMachineTest.php`:
+    - Comprehensive test suite covering typed clarification unblocking downstream, rejection of free-text claims for external events, authoritative PO document verification, automatic plan transition to `completed` with audit logging, pause/cancel state machine guards, 409 conflict on stale revision, and step reversion during proposal cancellation/rejection reconciliation.
+- **Verification:**
+  - `BusinessWorkflowStateMachineTest`: 6/6 passed (21 assertions, 100% OK).
+  - `BusinessWorkflowApiTest`: 4/4 passed (17 assertions, 100% OK).
+  - `BusinessWorkflowPlannerTest`: 1/1 passed (1 assertion, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch & Commit:** `feature/ai-knowledge-09-workflow-fsm` at commit `89ad3de`.
+
 ## PR8 (CI Defect Repair, Principal-Job FY Migration & Tenant Boundary Hardening) Implemented — 2026-11-21
 
 - **Context & Readiness Assessment:**
