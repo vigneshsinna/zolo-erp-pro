@@ -69,6 +69,30 @@ final class ExtendedActionCatalog
                 commandAdapterClass: \App\Ai\Adapters\PrincipalJobInvoiceActionAdapter::class,
                 requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
             );
+            $definitions[] = new ActionDefinition(
+                key: 'principal_job.order.create.v1', businessModule: 'job_work',
+                riskTier: 'r2_operational', requiredPermissions: ['ai.use', 'job_work.manage'],
+                inputSchemaClass: \App\Ai\Schemas\CreatePrincipalJobOrderInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\PrincipalJobOrderActionAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\PrincipalJobOrderActionAdapter::class,
+                requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
+            );
+            $definitions[] = new ActionDefinition(
+                key: 'principal_job.receive.create.v1', businessModule: 'job_work',
+                riskTier: 'r2_operational', requiredPermissions: ['ai.use', 'job_work.receive'],
+                inputSchemaClass: \App\Ai\Schemas\CreatePrincipalJobReceiveInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\PrincipalJobReceiveActionAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\PrincipalJobReceiveActionAdapter::class,
+                requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
+            );
+            $definitions[] = new ActionDefinition(
+                key: 'principal_job.return.create.v1', businessModule: 'job_work',
+                riskTier: 'r2_operational', requiredPermissions: ['ai.use', 'job_work.dispatch'],
+                inputSchemaClass: \App\Ai\Schemas\CreatePrincipalJobReturnInputSchema::class,
+                previewAdapterClass: \App\Ai\Adapters\PrincipalJobReturnActionAdapter::class,
+                commandAdapterClass: \App\Ai\Adapters\PrincipalJobReturnActionAdapter::class,
+                requiresApproval: true, requiresFreshSnapshot: true, enabledByDefault: false,
+            );
         }
         return $definitions;
     }

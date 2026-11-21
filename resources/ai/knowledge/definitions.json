@@ -572,26 +572,29 @@
       "source_refs": [
         "app/Services/JobWork/PrincipalJobService.php"
       ],
-      "summary": "Customer-owned processing requires principal order, physical receipt and return adapters still unsupported; service invoice action prepared behind flag",
+      "summary": "Customer-owned processing: principal order, physical receipt, return challan and service invoice",
       "steps": [
         {
           "id": "principal_job_order",
-          "kind": "unsupported_action",
-          "depends_on": []
+          "kind": "reviewed_action",
+          "depends_on": [],
+          "action_key": "principal_job.order.create.v1"
         },
         {
           "id": "customer_material_received",
-          "kind": "unsupported_action",
+          "kind": "reviewed_action",
           "depends_on": [
             "principal_job_order"
-          ]
+          ],
+          "action_key": "principal_job.receive.create.v1"
         },
         {
           "id": "customer_material_return",
-          "kind": "unsupported_action",
+          "kind": "reviewed_action",
           "depends_on": [
             "customer_material_received"
-          ]
+          ],
+          "action_key": "principal_job.return.create.v1"
         },
         {
           "id": "service_invoice",
@@ -780,6 +783,54 @@
         "app/Ai/Adapters/JobWorkServiceBillActionAdapter.php"
       ],
       "action_key": "job_work.service_bill.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.order.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Customer-owned job-work order action principal_job.order.create.v1",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobOrderActionAdapter.php"
+      ],
+      "action_key": "principal_job.order.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.receive.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Customer-owned material receipt action principal_job.receive.create.v1",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobReceiveActionAdapter.php"
+      ],
+      "action_key": "principal_job.receive.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.return.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Customer-owned material return action principal_job.return.create.v1",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobReturnActionAdapter.php"
+      ],
+      "action_key": "principal_job.return.create.v1",
       "approval": "explicit_per_action"
     },
     {
