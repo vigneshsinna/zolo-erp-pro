@@ -53,7 +53,7 @@ final class BusinessIntentInterpreter
         if (preg_match('/^(?:named|called)\s+([\pL\pN .&\x27-]{2,160}?)(?:\s+(?:who|that|which)\b.*)?$/uD', $tail, $match)) {
             return $this->result($role, ['name' => trim($match[1])], 'deterministic');
         }
-        if (preg_match('/^(?:who|that|which)\s+(?:buys|purchases|sells|supplies)\b.*$/iu', $tail)
+        if (preg_match('/^(?:who|that|which)\s+(?:will\s+|are\s+)?(?:buy|buys|purchase|purchases|sell|sells|supply|supplies)\b.*$/iu', $tail)
             || preg_match('/^for\s+(?:buying|selling|purchasing)\b.*$/iu', $tail)) {
             return $this->result($role, [], 'deterministic');
         }
