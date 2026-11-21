@@ -1,3 +1,44 @@
+## PR13 (Unified Natural-Language and Multimodal Conversation Completion) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR13 (P1 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.6.
+  - Delivered seamless, deterministic-first conversational ERP workflows for party setup (both suppliers and customers), multi-field purchase order entry in one turn, natural corrections, and verified business knowledge context enrichment.
+- **Technical Implementation:**
+  - `app/Ai/Requirements/CustomerSetupRequirementsProvider.php`:
+    - Created schema-driven requirements provider for `setup.customer.create.v1`.
+    - Integrated with `CustomerSetupPreviewAdapter` for duplicate checking and field requirements.
+  - `app/Ai/Registries/ActionRequirementsRegistry.php`:
+    - Registered `CustomerSetupRequirementsProvider`.
+  - `app/Ai/Conversation/CustomerSetupConversation.php`:
+    - Implemented revision-checked, thread-bound customer setup conversation matching `SupplierSetupConversation`.
+    - Handles name parsing, contact details, address details, GST status (registered vs unregistered), duplicate validation, cancellation, and unapproved proposal preview for human review.
+  - `app/Ai/Conversation/BusinessIntentInterpreter.php`:
+    - Extended party direction classifier (`direction()`) to resolve trading direction ("They buy from us" -> `customer`, "We buy from them" -> `supplier`).
+    - Added deterministic extraction for descriptive customer intent ("Create a customer who buys linen from us") without calling LLM.
+    - Added `customerDetails()` with deterministic field detection (phone, mobile, email, gstin, tax no, city, state, address) bypassing LLM requests.
+  - `app/Ai/Conversation/ConversationTurnRouter.php`:
+    - Wired `CustomerSetupConversation` directly alongside `SupplierSetupConversation`.
+    - Wired `BusinessKnowledgeContextReader` to enrich conversation workflow results with reviewed knowledge definitions and source citations.
+  - `app/Ai/Conversation/ConversationalSlotInterpreter.php`:
+    - Enhanced multi-field extraction for single-turn PO requests: "Create a PO for 200 metres of Linen Blue from New Trader, delivered to Erode Warehouse" extracts product, qty, uom, supplier, and warehouse in turn 1.
+    - Added natural corrections support: "Actually 180 metres", "and put 20 in a separate line", and GST treatment ("It is a GST bill" vs "non-GST bill").
+  - `tests/Feature/Ai/Conversation/UnifiedBusinessConversationTest.php`:
+    - Comprehensive 5-test feature suite covering:
+      1. Ambiguous party direction resolution -> customer flow -> field collection -> proposal preview -> explicit human approval -> customer created in database with `party_tax_profiles` (A01/A02/A03).
+      2. Direct customer intent ("Create a customer who buys linen from us") starts customer flow deterministically.
+      3. Single-turn multi-field PO creation and natural quantity/split/terms corrections.
+      4. Unauthorized customer creation fails closed with 403 Forbidden.
+      5. Duplicate customer detection blocks preview with clear diagnostic message.
+- **Verification:**
+  - `UnifiedBusinessConversationTest`: 5/5 passed (54 assertions, 100% OK).
+  - `BusinessKnowledgeSupplierWorkflowTest`: 1/1 passed (11 assertions, 100% OK).
+  - `BusinessIntentInterpreterTest`: 4/4 passed (25 assertions, 100% OK).
+  - `ConversationalSlotInterpreterTest`: 5/5 passed (31 assertions, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `BothDirectionJobWorkOrchestrationTest`: 3/3 passed (51 assertions, 100% OK).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch & Commit:** `feature/ai-knowledge-13-conversation-completion` at commit `b90f53f`.
+
 ## PR11 (Both-Direction Job-Work Completion) Implemented — 2026-11-21
 
 - **Context & Scope:**
