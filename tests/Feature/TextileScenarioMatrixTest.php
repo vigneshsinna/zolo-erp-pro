@@ -33,6 +33,7 @@ class TextileScenarioMatrixTest extends ReturnsDocumentTestCase
         // Textile lots carry no expiry date; this migration relaxes the column as it does in production.
         (require database_path('migrations/2026_10_16_000005_job_work_textile_process_route.php'))->up();
         (require database_path('migrations/2026_10_24_000003_textile_trade_compliance_features.php'))->up();
+        (require database_path('migrations/2026_11_20_235003_add_principal_job_financial_year_ownership.php'))->up();
         // Party 1 is both the mill and the dyer in these fixtures.
         DB::table('suppliers')->where('id', 1)->update(['name' => 'Lakshmi Mills & Dyeing', 'company_name' => 'Lakshmi Mills & Dyeing Works']);
         DB::table('customers')->where('id', 1)->update(['name' => 'Kaveri Garments', 'company_name' => 'Kaveri Garments Pvt Ltd']);

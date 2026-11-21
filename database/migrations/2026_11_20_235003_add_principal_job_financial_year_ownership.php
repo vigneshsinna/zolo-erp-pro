@@ -18,19 +18,21 @@ return new class extends Migration {
             });
         }
         // Only backfill where the business date matches exactly one tenant FY. Ambiguous history remains blocked.
-        DB::table('principal_job_orders')->whereNull('financial_year_id')->orderBy('id')
-            ->chunkById(250, function ($orders): void {
-                foreach ($orders as $order) {
-                    $candidates = DB::table('fiscal_years')->where('company_id', $order->company_id)
-                        ->where('start_date', '<=', $order->business_date)
-                        ->where('end_date', '>=', $order->business_date)->limit(2)->pluck('id');
-                    if ($candidates->count() === 1) {
-                        DB::table('principal_job_orders')->where('id', $order->id)
-                            ->where('company_id', $order->company_id)->whereNull('financial_year_id')
-                            ->update(['financial_year_id' => (int) $candidates[0]]);
+        if (Schema::hasTable('fiscal_years') && Schema::hasColumn('fiscal_years', 'company_id')) {
+            DB::table('principal_job_orders')->whereNull('financial_year_id')->orderBy('id')
+                ->chunkById(250, function ($orders): void {
+                    foreach ($orders as $order) {
+                        $candidates = DB::table('fiscal_years')->where('company_id', $order->company_id)
+                            ->where('start_date', '<=', $order->business_date)
+                            ->where('end_date', '>=', $order->business_date)->limit(2)->pluck('id');
+                        if ($candidates->count() === 1) {
+                            DB::table('principal_job_orders')->where('id', $order->id)
+                                ->where('company_id', $order->company_id)->whereNull('financial_year_id')
+                                ->update(['financial_year_id' => (int) $candidates[0]]);
+                        }
                     }
-                }
-            });
+                });
+        }
     }
 
     public function down(): void

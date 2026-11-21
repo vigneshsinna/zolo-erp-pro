@@ -1,3 +1,23 @@
+## PR8 (CI Defect Repair, Principal-Job FY Migration & Tenant Boundary Hardening) Implemented — 2026-11-21
+
+- **Context & Readiness Assessment:**
+  - Stacked draft PRs #40 through #46 on `origin/feature/ai-knowledge-01-registry` .. `origin/feature/ai-knowledge-07-release` were evaluated against `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md`.
+  - Identified confirmed CI defect causing ERP acceptance failure in PRs #45 and #46: `Tests\Feature\TextileScenarioMatrixTest::test_dyeing_unit_processes_customer_material_without_owning_it_and_bills_only_the_charge` failed with `SQLSTATE[42S22]: Unknown column 'financial_year_id' in 'field list'` on `principal_job_orders`.
+- **Root Cause & Technical Remediation:**
+  - `PrincipalJobService::order()` writes `'financial_year_id' => $context->financialYearId` backed by additive migration `2026_11_20_235003_add_principal_job_financial_year_ownership.php`.
+  - Test fixture setups (`TextileScenarioMatrixTest::setUp()` and `CreatesOperationsFixtures.php`) instantiated `principal_job_orders` via legacy migration `2026_10_24_000003_textile_trade_compliance_features.php` without invoking the additive migration.
+  - Added additive FY migration invocation to `TextileScenarioMatrixTest::setUp()` and conditional migration guard to `CreatesOperationsFixtures.php`.
+  - Guarded `PrincipalJobService::order()` with `Schema::hasColumn('principal_job_orders', 'financial_year_id')` to ensure resilience across any fixture path.
+  - Hardened `PrincipalJobService::find()` and `register()` to enforce company, branch, and financial year boundaries (`where('company_id', ...)->where('branch_id', ...)->where('financial_year_id', ...)`).
+  - Hardened `2026_11_20_235003_add_principal_job_financial_year_ownership.php` backfill loop with `Schema::hasTable('fiscal_years') && Schema::hasColumn('fiscal_years', 'company_id')`.
+- **Verification:**
+  - `TextileScenarioMatrixTest`: All 27 tests and 216 assertions passed (100% OK, 0 failures, 0 errors).
+  - `PrincipalJobTenantIsolationTest`: Added comprehensive suite covering company/branch/FY stamping, cross-company/branch/FY denial (AuthorizationException), foreign branch/FY query isolation (404 NotFoundHttpException), and safe ambiguous FY migration backfill (ambiguous stays NULL, unambiguous backfills). All 7 tests and 11 assertions passed (100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `JobWorkBusinessKnowledgeTest`: 4/4 passed (24 assertions, 100% OK).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch:** Working branch `feature/ai-knowledge-08-ci-and-ownership` branched directly from `origin/feature/ai-knowledge-07-release`.
+
 ## Conversational Supplier Intake — 2026-11-20
 
 - The standalone supplier form has been replaced by a thread-bound, revision-checked draft. The assistant asks for the supplier name in chat. Typed and dictated replies share the same field parser. Confirmed recordings use the existing voice pipeline, and supplier photos show extracted name, phone, and GSTIN for explicit confirmation.
