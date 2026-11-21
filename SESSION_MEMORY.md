@@ -1,3 +1,27 @@
+## Fast-Forward Merge of Business Knowledge PR8–PR16 into `feature/ai-unified-input-clarification` — 2026-11-21
+
+- **Context & Scope:**
+  - Fast-forward merged `feature/ai-knowledge-16-release-signoff` (commit `ce6c159`) into `feature/ai-unified-input-clarification`.
+  - Delivered all 106 commits spanning PR8 through PR16 (the complete implementation of `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md`).
+- **Included Capabilities in `feature/ai-unified-input-clarification`:**
+  - **PR8:** Business Knowledge Schema, Versioned Manifest & Multi-Tenant Registry.
+  - **PR9:** Purchase Bill & Service Purchase Bill Authoritative Workflows.
+  - **PR10:** Both-Direction Job-Work Manufacturing Orchestration.
+  - **PR11:** Scoped Business Knowledge Retrieval & Context Injection.
+  - **PR12:** Conversational Slot Filling & Multilingual Intent Disambiguation (English, Tamil, Tanglish).
+  - **PR13:** Commercial Document Lifecycle Contract Parity.
+  - **PR14:** Security Hardening, Pessimistic Row-Locking Concurrency, and Prompt Injection Defense.
+  - **PR15:** Centralized AI Credit Metering, Real Telemetry Joins, and Concurrency Load Testing.
+  - **PR16:** Production Release Runbook, Support Error Matrix, Fail-Closed Feature Flags, and Multi-Stakeholder Signoff.
+- **Verification on Merged Branch (`feature/ai-unified-input-clarification`):**
+  - Database migrations applied cleanly to `zolo_test_ai_release`.
+  - `tests/Feature/Ai/Release/ProductionReadinessSignoffTest.php`: 5/5 passed (34 assertions, 100% OK).
+  - Key AI feature test suite (`BusinessKnowledgeEvaluationAndMeteringTest`, `SecurityAndConcurrencyHardeningTest`, `BothDirectionJobWorkOrchestrationTest`, `BusinessWorkflowStateMachineTest`, `BusinessWorkflowApiTest`): 24/24 passed (179 assertions, 100% OK).
+  - `tests/Unit/DesignTokensTest.php`: 4/4 passed (0 violations).
+  - Working tree is clean on `feature/ai-unified-input-clarification`.
+
+---
+
 ## PR16 (UI/UAT, Rollout Runbooks and Production Release Signoff) Implemented — 2026-11-21
 
 - **Context & Scope:**
