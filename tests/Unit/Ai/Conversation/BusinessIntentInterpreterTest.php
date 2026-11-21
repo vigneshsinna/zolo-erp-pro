@@ -55,4 +55,32 @@ final class BusinessIntentInterpreterTest extends TestCase
         ]));
         $this->assertSame(['contact', 'address', 'tax'], $planner->skipGroups('skip all optional'));
     }
+
+    public function test_shared_customer_questions_and_intent_extraction(): void
+    {
+        $planner = new ConversationQuestionPlanner;
+        $action = 'setup.customer.create.v1';
+        $this->assertStringContainsString('customer name', $planner->next($action, []));
+        $this->assertStringContainsString('contact', $planner->next($action, ['name' => 'Acme Retail']));
+        $this->assertStringContainsString('address', $planner->next($action, [
+            'name' => 'Acme Retail', 'phone_number' => '9876543210',
+        ]));
+        $this->assertNull($planner->next($action, [
+            'name' => 'Acme Retail', '_conversation_skips' => ['contact', 'address'],
+        ]));
+
+        config(['ai_business_knowledge.enabled' => true, 'ai_business_knowledge.semantic_enabled' => true]);
+        $interpreter = new BusinessIntentInterpreter(new PendingPartyIntentService);
+        $principal = new AiPrincipal(actorId: 1, companyId: 1, branchId: 1, financialYearId: 1);
+
+        $res1 = $interpreter->start($principal, '00000000-0000-4000-8000-000000000000', 'Create a customer named Zenith');
+        $this->assertSame('customer', $res1['role']);
+        $this->assertSame('Zenith', $res1['facts']['name']);
+        $this->assertSame('deterministic', $res1['source']);
+
+        $res2 = $interpreter->start($principal, '00000000-0000-4000-8000-000000000000', 'Create a customer who buys linen from us');
+        $this->assertSame('customer', $res2['role']);
+        $this->assertSame('deterministic', $res2['source']);
+        $this->assertFalse($res2['needs_clarification']);
+    }
 }

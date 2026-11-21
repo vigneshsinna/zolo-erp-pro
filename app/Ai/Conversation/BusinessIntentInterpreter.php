@@ -43,8 +43,12 @@ final class BusinessIntentInterpreter
         if (preg_match('/\bboth\s+(?:supplier|vendor)\s+and\s+customer\b/i', $message)) $role = 'both';
         if ($role === 'ambiguous' || $role === 'both') return $this->result($role, [], 'deterministic');
         if ($tail === '') return $this->result($role, [], 'deterministic');
-        if (preg_match('/^(?:named|called)\s+([\pL\pN .&\x27-]{2,160})$/uD', $tail, $match)) {
+        if (preg_match('/^(?:named|called)\s+([\pL\pN .&\x27-]{2,160}?)(?:\s+(?:who|that|which)\b.*)?$/uD', $tail, $match)) {
             return $this->result($role, ['name' => trim($match[1])], 'deterministic');
+        }
+        if (preg_match('/^(?:who|that|which)\s+(?:buys|purchases|sells|supplies)\b.*$/iu', $tail)
+            || preg_match('/^for\s+(?:buying|selling|purchasing)\b.*$/iu', $tail)) {
+            return $this->result($role, [], 'deterministic');
         }
         return $this->modelParse($principal, $threadId, $message, 'intent', $role);
     }
@@ -55,11 +59,27 @@ final class BusinessIntentInterpreter
             || !config('ai_business_knowledge.enabled', false)) return null;
         if (preg_match('/^(?:cancel|preview|continue|resume|edit|skip)\b/i', trim($message))
             || preg_match('/^(?:unregistered|not registered|no gstin|gst registered)[.!]?$/i', trim($message))) return null;
-        if (preg_match('/\b(?:name|supplier name|company name|phone|mobile|email|gstin|gst number|city|state|address)\s*(?:[:=]|\s+(?:is|to)\b)/i', $message)) return null;
+        if (preg_match('/\b(?:name|supplier name|company name|phone|mobile|email|gstin|gst number|city|state|address)\b/i', $message)) return null;
         if ($needsName && preg_match('/^[\pL\pN][\pL\pN &.,\x27()-]{1,180}$/uD', trim($message))
             && !preg_match('/\b(?:from|at|in|our|their|they|he|she|unregistered|registered|gst)\b/i', $message)) return null;
         $parsed = $this->modelParse($principal, $threadId, $message, 'supplier_fields', 'supplier');
         if (!$needsName && !preg_match('/\b(?:change|update|correct|rename)\s+(?:the\s+)?(?:supplier\s+)?name\b/i', $message)) {
+            unset($parsed['facts']['name']);
+        }
+        return $parsed;
+    }
+
+    public function customerDetails(AiPrincipal $principal, string $threadId, string $message, bool $needsName = false): ?array
+    {
+        if (!config('ai_business_knowledge.semantic_enabled', false)
+            || !config('ai_business_knowledge.enabled', false)) return null;
+        if (preg_match('/^(?:cancel|preview|continue|resume|edit|skip)\b/i', trim($message))
+            || preg_match('/^(?:unregistered|not registered|no gstin|no tax no|gst registered)[.!]?$/i', trim($message))) return null;
+        if (preg_match('/\b(?:name|customer name|company name|phone|mobile|email|gstin|gst number|tax no|city|state|address)\b/i', $message)) return null;
+        if ($needsName && preg_match('/^[\pL\pN][\pL\pN &.,\x27()-]{1,180}$/uD', trim($message))
+            && !preg_match('/\b(?:from|at|in|our|their|they|he|she|unregistered|registered|gst)\b/i', $message)) return null;
+        $parsed = $this->modelParse($principal, $threadId, $message, 'customer_fields', 'customer');
+        if (!$needsName && !preg_match('/\b(?:change|update|correct|rename)\s+(?:the\s+)?(?:customer\s+)?name\b/i', $message)) {
             unset($parsed['facts']['name']);
         }
         return $parsed;
@@ -70,8 +90,8 @@ final class BusinessIntentInterpreter
     {
         $text = strtolower(trim($utterance));
         if (preg_match('/\b(?:we|i|our company)\s+(?:will\s+|are\s+|would\s+)?(?:buy|purchase|buying|purchasing)\b.{0,100}\bfrom\s+(?:them|this party|the party|him|her)\b/i', $text)
-            || preg_match('/\b(?:they|this party|the party)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\b(?:to\s+us|our company)\b/i', $text)) return 'supplier';
-        if (preg_match('/\b(?:they|this party|the party)\s+(?:will\s+|are\s+)?(?:buy|purchase|buying|purchasing)\b.{0,100}\bfrom\s+(?:us|our company)\b/i', $text)
+            || preg_match('/\b(?:who|they|this party|the party)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\b(?:to\s+us|our company)\b/i', $text)) return 'supplier';
+        if (preg_match('/\b(?:who|they|this party|the party)\s+(?:will\s+|are\s+)?(?:buy|purchase|buying|purchasing)\b.{0,100}\bfrom\s+(?:us|our company)\b/i', $text)
             || preg_match('/\b(?:we|i|our company)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\bto\s+(?:them|the party|this party)\b/i', $text)) return 'customer';
         return null;
     }

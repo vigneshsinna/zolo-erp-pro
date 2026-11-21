@@ -65,13 +65,12 @@ final class ConversationTurnRouter
                 'I could not safely identify a supported party-creation action. Please specify supplier or customer.',
                 'can_prepare_proposal' => false];
         }
-        if ($semantic !== null && $semantic['role'] === 'customer') {
-            if (($semantic['continuation'] ?? null) === 'pending_party') {
-                app(PendingPartyIntentService::class)->resolve($principal, $threadId);
-            }
-            return ['status' => 'needs_input', 'message' =>
-                'This is a customer, not a supplier. Customer creation through this guided chat is not yet enabled. Use the Customer setup screen; no customer was created.',
-                'action_key' => 'setup.customer.create.v1', 'can_prepare_proposal' => false];
+        $customer = app(CustomerSetupConversation::class);
+        $customerName = ($semantic !== null && $semantic['role'] === 'customer')
+            ? (string) ($semantic['facts']['name'] ?? '')
+            : $customer->start($message);
+        if (($semantic['continuation'] ?? null) === 'pending_party' && $semantic['role'] === 'customer') {
+            app(PendingPartyIntentService::class)->resolve($principal, $threadId);
         }
         $supplier = app(SupplierSetupConversation::class);
         $supplierName = ($semantic !== null && $semantic['role'] === 'supplier')
@@ -80,8 +79,49 @@ final class ConversationTurnRouter
         if (($semantic['continuation'] ?? null) === 'pending_party' && $semantic['role'] === 'supplier') {
             app(PendingPartyIntentService::class)->resolve($principal, $threadId);
         }
-        $requestedTask = $supplierName === null ? ($input['active_task_id'] ?? null) : null;
+        $requestedTask = ($supplierName === null && $customerName === null) ? ($input['active_task_id'] ?? null) : null;
         $tasks = $this->resolver->resolve($principal, $threadId, $requestedTask);
+        $customerTasks = array_values(array_filter($tasks, fn (array $task): bool => $task['action_key'] === CustomerSetupConversation::KEY));
+        if ($customerName !== null || ($customerTasks !== [] && ($requestedTask !== null || count($tasks) === 1))) {
+            if (app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
+                return null;
+            }
+            if (empty($input['client_turn_id'])) {
+                throw ValidationException::withMessages(['client_turn_id' => 'A conversation turn UUID is required.']);
+            }
+            app(ActionSecurity::class)->definition(CustomerSetupConversation::KEY, $principal);
+            $task = $customerTasks[0] ?? $this->state->createTask(new WorkflowTaskContext(
+                $principal, new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
+                threadId: $threadId,
+            ), CustomerSetupConversation::KEY);
+            if ($customerTasks !== [] && $requestedTask !== null) {
+                $this->assertRevision($task, $input);
+            }
+            if (isset($interpretation['customer_facts'])
+                && ($interpretation['task_id'] ?? null) !== $task['id']) {
+                throw new ConflictHttpException('Customer task changed while interpreting the reply.');
+            }
+            if (isset($interpretation['customer_facts'])
+                && ($interpretation['revision'] ?? null) !== (int) $task['revision']) {
+                throw new ConflictHttpException('Customer draft changed while parsing; reload and retry.');
+            }
+            if (isset($interpretation['customer_role'])
+                && $interpretation['customer_role'] !== 'customer') {
+                return $this->summary($task,
+                    'This draft is for a customer. Start a separate supplier draft or confirm the customer details.');
+            }
+            $semanticFacts = $interpretation['customer_facts'] ?? $semantic['facts'] ?? [];
+            $result = $customer->reply($principal, $task, $message, $customerName, $input['customer_photo'] ?? [], $semanticFacts);
+            if ($result !== null) {
+                if (config('ai_business_knowledge.enabled', false)) {
+                    try {
+                        $result['knowledge'] = app(\App\Ai\Knowledge\BusinessKnowledgeContextReader::class)->forAction($principal, $task['action_key']);
+                    } catch (\Throwable) {}
+                }
+                $this->saveReceipt($principal, $task, $input, $hash, $result);
+            }
+            return $result;
+        }
         $supplierTasks = array_values(array_filter($tasks, fn (array $task): bool => $task['action_key'] === SupplierSetupConversation::KEY));
         if ($supplierName !== null || ($supplierTasks !== [] && ($requestedTask !== null || count($tasks) === 1))) {
             if (app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
@@ -114,6 +154,11 @@ final class ConversationTurnRouter
             $semanticFacts = $interpretation['supplier_facts'] ?? $semantic['facts'] ?? [];
             $result = $supplier->reply($principal, $task, $message, $supplierName, $input['supplier_photo'] ?? [], $semanticFacts);
             if ($result !== null) {
+                if (config('ai_business_knowledge.enabled', false)) {
+                    try {
+                        $result['knowledge'] = app(\App\Ai\Knowledge\BusinessKnowledgeContextReader::class)->forAction($principal, $task['action_key']);
+                    } catch (\Throwable) {}
+                }
                 $this->saveReceipt($principal, $task, $input, $hash, $result);
             }
             return $result;
@@ -290,7 +335,8 @@ final class ConversationTurnRouter
     // Provider billing must commit outside the draft transaction, including rejected or stale output.
     public function interpretTurn(AiPrincipal $principal, string $threadId, array $input): ?array
     {
-        if (app(SupplierSetupConversation::class)->start($input['message']) !== null) {
+        if (app(SupplierSetupConversation::class)->start($input['message']) !== null
+            || app(CustomerSetupConversation::class)->start($input['message']) !== null) {
             return null;
         }
         if (DB::table('ai_workflow_task_events')->whereIn('task_id', $this->resolver->tasks($principal, $threadId)->select('id'))
@@ -310,6 +356,15 @@ final class ConversationTurnRouter
             return null;
         }
         $task = $tasks[0];
+        if ($task['action_key'] === CustomerSetupConversation::KEY) {
+            $draftSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+            $details = app(BusinessIntentInterpreter::class)->customerDetails(
+                $principal, $threadId, $input['message'], empty($draftSlots['name']));
+            return $details === null ? null : [
+                'task_id' => $task['id'], 'revision' => (int) $task['revision'],
+                'customer_facts' => $details['facts'], 'customer_role' => $details['role'],
+            ];
+        }
         if ($task['action_key'] === SupplierSetupConversation::KEY) {
             $draftSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
             $details = app(BusinessIntentInterpreter::class)->supplierDetails(

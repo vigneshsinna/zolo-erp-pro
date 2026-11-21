@@ -21,6 +21,9 @@ final class VoiceIntentResolver
         if (app(SupplierSetupConversation::class)->start($text) !== null) {
             return SupplierSetupConversation::KEY;
         }
+        if (app(CustomerSetupConversation::class)->start($text) !== null) {
+            return CustomerSetupConversation::KEY;
+        }
 
         // The sentence must request a transaction, not merely refer to a PO number,
         // invoice reference, or existing transaction in a general question.

@@ -40,4 +40,59 @@ final class ConversationalSlotInterpreterTest extends TestCase
             $this->assertSame([], $result['corrections']);
         }
     }
+
+    public function test_multi_field_single_turn_extracts_product_qty_supplier_and_warehouse(): void
+    {
+        $task = ['slots_json' => '{}'];
+        $interpreter = new ConversationalSlotInterpreter;
+        $result = $interpreter->interpret($task, 'Create a PO for 200 metres of linen from New Trader, delivered to Erode warehouse.');
+        $this->assertSame('continue_task', $result['turn_intent']);
+        $this->assertCount(3, $result['corrections']);
+
+        $fields = array_column($result['corrections'], 'field');
+        $this->assertContains('items', $fields);
+        $this->assertContains('supplier_query', $fields);
+        $this->assertContains('warehouse_query', $fields);
+
+        $supplierCorr = collect($result['corrections'])->firstWhere('field', 'supplier_query');
+        $this->assertSame('New Trader', $supplierCorr['value']);
+
+        $warehouseCorr = collect($result['corrections'])->firstWhere('field', 'warehouse_query');
+        $this->assertSame('Erode warehouse', $warehouseCorr['value']);
+
+        $itemsCorr = collect($result['corrections'])->firstWhere('field', 'items');
+        $this->assertSame('200', $itemsCorr['value'][0]['qty']);
+        $this->assertSame('metres', $itemsCorr['value'][0]['uom']);
+        $this->assertSame('linen', $itemsCorr['value'][0]['product_query']);
+    }
+
+    public function test_natural_corrections_quantity_separate_line_and_gst_treatment(): void
+    {
+        $task = [
+            'slots_json' => json_encode([
+                'items' => [
+                    ['client_line_id' => 'line-1', 'product_query' => 'linen', 'qty' => '200', 'uom' => 'metres', 'net_unit_cost' => '150'],
+                ],
+            ]),
+        ];
+        $interpreter = new ConversationalSlotInterpreter;
+        $result = $interpreter->interpret($task, 'Actually 180 metres and put 20 in a separate line. It is a GST bill.');
+        $this->assertSame('continue_task', $result['turn_intent']);
+
+        $fields = array_column($result['corrections'], 'field');
+        $this->assertContains('items[line-1].qty', $fields);
+        $this->assertContains('items', $fields);
+        $this->assertContains('is_non_gst', $fields);
+
+        $qtyCorr = collect($result['corrections'])->firstWhere('field', 'items[line-1].qty');
+        $this->assertSame('180', $qtyCorr['value']);
+
+        $gstCorr = collect($result['corrections'])->firstWhere('field', 'is_non_gst');
+        $this->assertFalse($gstCorr['value']);
+
+        $itemsCorr = collect($result['corrections'])->firstWhere('field', 'items');
+        $this->assertCount(2, $itemsCorr['value']);
+        $this->assertSame('20', $itemsCorr['value'][1]['qty']);
+        $this->assertSame('metres', $itemsCorr['value'][1]['uom']);
+    }
 }
