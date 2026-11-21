@@ -102,6 +102,14 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
                 requiredWhen: fn (): bool => false,
             ),
             new ActionFieldRequirement(
+                fieldPath: 'is_non_gst',
+                label: 'Non-GST Bill',
+                dataType: 'boolean',
+                inputControl: 'checkbox',
+                helpText: 'Whether this purchase bill is non-GST or exempt.',
+                requiredWhen: fn (): bool => false,
+            ),
+            new ActionFieldRequirement(
                 fieldPath: 'items',
                 label: 'Billed Line Items',
                 dataType: 'list',

@@ -57,12 +57,22 @@ final class PurchaseBillMatchAudit
             $openByProduct = [];
             foreach ($remaining['items'] as $line) {
                 $pid = (int) $line['product_id'];
-                $openByProduct[$pid] = ($openByProduct[$pid] ?? 0) + (float) $line['remaining_qty'];
+                $openByProduct[$pid] = ($openByProduct[$pid] ?? 0) + (float) ($line['remaining_billing_base'] ?? $line['remaining_qty']);
             }
             $requestedByProduct = [];
+            $units = \Illuminate\Support\Facades\DB::table('units')->where('company_id', $context->companyId)->get()->keyBy('id');
             foreach ($bill['items'] ?? [] as $line) {
                 $pid = (int) ($line['product_id'] ?? 0);
-                $requestedByProduct[$pid] = ($requestedByProduct[$pid] ?? 0) + (float) ($line['qty'] ?? 0);
+                $qty = (float) ($line['qty'] ?? 0);
+                $unitId = (int) ($line['purchase_unit_id'] ?? 0);
+                if ($unitId > 0 && isset($units[$unitId]) && (float) ($units[$unitId]->operation_value ?? 0) > 0) {
+                    $u = $units[$unitId];
+                    $factor = (float) $u->operation_value;
+                    $qty = $u->operator === '*'
+                        ? $qty * $factor
+                        : $qty / $factor;
+                }
+                $requestedByProduct[$pid] = ($requestedByProduct[$pid] ?? 0) + $qty;
             }
             foreach ($requestedByProduct as $pid => $qty) {
                 if (!array_key_exists($pid, $openByProduct)) {
@@ -71,7 +81,7 @@ final class PurchaseBillMatchAudit
                     $result['exceptions'][] = 'Billed quantity exceeds PO open quantity for product ID '.$pid.'.';
                 }
             }
-            $result['checks'][] = 'PO open quantities checked; UOM conversions and rates require authoritative bill preview.';
+            $result['checks'][] = 'PO open quantities verified with base UOM conversion; rates verified by authoritative bill preview.';
         }
         if ($grn) {
             $receivedProducts = $grn->items()->pluck('product_id')->map(static fn ($v): int => (int) $v)->all();

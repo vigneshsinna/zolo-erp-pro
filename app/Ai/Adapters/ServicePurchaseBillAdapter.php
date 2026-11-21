@@ -63,6 +63,11 @@ final class ServicePurchaseBillAdapter implements ActionPreviewAdapterInterface,
 
     private function assertServiceOnly(array $slots, CompanyContext|BootstrapSetupPrincipal $context): void
     {
+        if (!empty($slots['is_expense_bill']) || !empty($slots['expense_account_id'])) {
+            throw ValidationException::withMessages([
+                'expense_bill' => 'General ledger expense-only payable without service catalog remains unsupported by AI. Create a service catalog item or use manual Accounting vouchers.',
+            ]);
+        }
         if (!config('ai_business_knowledge.service_bill_enabled', false)) {
             throw ValidationException::withMessages(['action' => 'Service bill AI capability is disabled.']);
         }
