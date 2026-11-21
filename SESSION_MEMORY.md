@@ -1,3 +1,43 @@
+## PR12 (Business Knowledge Governance, Ownership & Permission Model) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR12 (P1 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.4.
+  - Established auditable governance, domain code ownership, tamper protection, and dedicated read permissions for the business knowledge layer.
+- **Technical Implementation:**
+  - `.github/CODEOWNERS`: Created CODEOWNERS mapping defining accountable domain teams across Purchasing (`@vigneshsinna/purchasing-reviewers`), Finance/GST (`@vigneshsinna/finance-reviewers`), Inventory (`@vigneshsinna/inventory-reviewers`), Manufacturing/Job Work (`@vigneshsinna/manufacturing-reviewers`), and Security (`@vigneshsinna/security-reviewers`) for all AI knowledge assets, registries, schemas, and adapters.
+  - `app/Ai/Knowledge/KnowledgeDefinitionValidator.php`:
+    - Enforced `ALLOWED_OWNERS` checking against an explicit allowlist of domain owners.
+    - Added strict governance rule for any `reviewed` definition: must provide valid ISO `reviewed_at`, `reviewed_by`, non-empty `domain_policy_ref`, structured `signoff_evidence`, `impacted_workflows` array, and non-empty `rollback_policy`.
+    - Enforced that unsupported processes (`process.expense_payable.v1`) cannot be marked `reviewed`.
+    - In `validateSteps()`: Verified that reviewed processes cannot contain `unsupported_action` steps and all referenced action steps must be `reviewed_action` whose action definitions are also `status: 'reviewed'`.
+    - Checked that reviewed actions reference registered action capabilities in `ActionCapabilityRegistry`.
+  - `app/Ai/Knowledge/KnowledgeDefinition.php`:
+    - Updated `isReviewed()` to require `status === 'reviewed'`, valid `reviewed_at`, `reviewed_by`, `signoff_evidence`, and `domain_policy_ref`.
+    - Added typed accessors: `domainPolicyRef()`, `signoffEvidence()`, `rollbackPolicy()`, `impactedWorkflows()`.
+  - `app/Ai/Knowledge/ScopedBusinessFactReader.php`:
+    - Refactored permission enforcement to support dedicated read permissions (`suppliers-index`, `customers-index`, `products-index`, `warehouse`, `purchases-index`, `job_work.view`) in addition to write permissions.
+    - Enforced that read-only auditors/viewers can retrieve entity facts without requiring `-add` mutation permissions.
+    - Explicitly stamped `can_create: false` and `writes_executed: false` on all fact responses, guaranteeing knowledge retrieval never grants creation authorization.
+  - `tests/Feature/Ai/Knowledge/BusinessKnowledgeGovernanceTest.php`: Comprehensive test suite verifying:
+    1. Unreviewed signoff cannot be forged by merely flipping `status` to `reviewed`.
+    2. Reviewed status strictly requires complete governance metadata (domain policy ref, signoff evidence, impacted workflows, rollback policy).
+    3. Unsupported processes (expense-only payable) fail-closed against being marked reviewed.
+    4. Reviewed process cannot reference unreviewed/draft actions.
+    5. Draft or retired processes cannot start executable workflows in `BusinessWorkflowPlanner`.
+    6. Scoped fact reader permits read-only users with index-only permissions.
+    7. Scoped fact reader denies users lacking read permissions.
+    8. Fact reader strictly redacts sensitive fields (costs, margins, wholesale prices) and isolates foreign tenant records (404 ModelNotFoundException).
+    9. CODEOWNERS file enforces required reviewers across domain boundaries.
+- **Verification:**
+  - `BusinessKnowledgeGovernanceTest`: 9/9 passed (35 assertions, 100% OK).
+  - `BusinessKnowledgeRegistryTest`: 5/5 passed (8 assertions, 100% OK).
+  - `ScopedBusinessFactReaderTest`: 4/4 passed (6 assertions, 100% OK).
+  - `JobWorkBusinessKnowledgeTest`: 4/4 passed (24 assertions, 100% OK).
+  - `BusinessKnowledgeIntentCorpusTest`: 1/1 passed (241 assertions, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch & Commit:** `feature/ai-knowledge-12-knowledge-governance` at commit `766317d`.
+
 ## PR10 (Financial Document Contracts, GST/Non-GST & Job-Work Accounting Parity) Implemented — 2026-11-21
 
 - **Context & Scope:**
