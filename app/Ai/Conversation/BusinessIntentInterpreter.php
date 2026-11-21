@@ -26,15 +26,22 @@ final class BusinessIntentInterpreter
         $message = trim($utterance);
         if ($this->pending->isPending($principal, $threadId)) {
             $role = $this->direction($message);
-            if (preg_match('/^(?:a\s+)?(?:supplier|vendor)[.!]?$/i', $message)) $role = 'supplier';
-            if (preg_match('/^(?:a\s+)?(?:customer|buyer)[.!]?$/i', $message)) $role = 'customer';
+            if (preg_match('/^(?:a\s+)?(?:supplier|vendor|சப்ளையர்)[.!]?$/iu', $message)) $role = 'supplier';
+            if (preg_match('/^(?:a\s+)?(?:customer|buyer|கஸ்டமர்)[.!]?$/iu', $message)) $role = 'customer';
             return $this->result($role ?? 'ambiguous', [], 'deterministic', 'pending_party');
         }
-        if (!preg_match('/^(?:please\s+)?(?:create|add|register|set\s+up)\s+(?:(?:a|an)\s+)?(?:new\s+)?(supplier|vendor|seller|customer|buyer|client|party|trader)\b(.*)$/iu', $message, $m)) {
+        if (preg_match('/^(?:please\s+)?(?:create|add|register|set\s+up)\s+(?:(?:a|an)\s+)?(?:new\s+)?(supplier|vendor|seller|customer|buyer|client|party|trader)\b(.*)$/iu', $message, $m)) {
+            $noun = strtolower($m[1]);
+            $tail = trim($m[2], " \t\n\r.!?");
+        } elseif (preg_match('/^(?:oru\s+)?(?:puthiya|pudhu|new)?\s*(supplier|vendor|seller|customer|buyer|client|party|trader)\s+(?:create\s+pannunga|add\s+pannunga|set\s+up\s+pannunga)\b(.*)$/iu', $message, $m)
+            || preg_match('/^(?:ஒரு\s+)?(?:புதிய|புது)?\s*(supplier|vendor|customer|buyer|party|சப்ளையர்|கஸ்டமர்)\s+(?:create\s+பண்ணுங்க|add\s+பண்ணுங்க|உருவாக்குங்க)\b(.*)$/iu', $message, $m)) {
+            $noun = strtolower($m[1]);
+            if ($noun === 'சப்ளையர்') $noun = 'supplier';
+            if ($noun === 'கஸ்டமர்') $noun = 'customer';
+            $tail = trim($m[2], " \t\n\r.!?");
+        } else {
             return null;
         }
-        $noun = strtolower($m[1]);
-        $tail = trim($m[2], " \t\n\r.!?");
         $role = match ($noun) {
             'supplier', 'vendor', 'seller' => 'supplier',
             'customer', 'buyer', 'client' => 'customer',
@@ -90,9 +97,13 @@ final class BusinessIntentInterpreter
     {
         $text = strtolower(trim($utterance));
         if (preg_match('/\b(?:we|i|our company)\s+(?:will\s+|are\s+|would\s+)?(?:buy|purchase|buying|purchasing)\b.{0,100}\bfrom\s+(?:them|this party|the party|him|her)\b/i', $text)
-            || preg_match('/\b(?:who|they|this party|the party)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\b(?:to\s+us|our company)\b/i', $text)) return 'supplier';
+            || preg_match('/\b(?:who|they|this party|the party)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\b(?:to\s+us|our company)\b/i', $text)
+            || preg_match('/\b(?:avanga\s+namakku\s+supply|namakku\s+supply\s+pannuvanga|namma\s+avanga\s+kitta\s+vanguroam|namakku\s+porul\s+tharuvanga)\b/i', $text)
+            || preg_match('/(?:நமக்கு\s+சப்ளை|நமக்கு\s+பொருள்\s+தருவாங்க|அவங்க\s+நமக்கு\s+விற்பாங்க)/u', $text)) return 'supplier';
         if (preg_match('/\b(?:who|they|this party|the party)\s+(?:will\s+|are\s+)?(?:buy|purchase|buying|purchasing)\b.{0,100}\bfrom\s+(?:us|our company)\b/i', $text)
-            || preg_match('/\b(?:we|i|our company)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\bto\s+(?:them|the party|this party)\b/i', $text)) return 'customer';
+            || preg_match('/\b(?:we|i|our company)\s+(?:will\s+|are\s+)?(?:sell|selling|supply|supplying)\b.{0,100}\bto\s+(?:them|the party|this party)\b/i', $text)
+            || preg_match('/\b(?:namma\s+kitta\s+irundhu\s+vanguvanga|avanga\s+namma\s+kitta\s+vanguranga|namma\s+avangalukku\s+vikkiroam)\b/i', $text)
+            || preg_match('/(?:நம்ம\s+கிட்ட\s+இருந்து\s+வாங்குவாங்க|அவங்க\s+நம்ம\s+கிட்ட\s+வாங்குவாங்க)/u', $text)) return 'customer';
         return null;
     }
 

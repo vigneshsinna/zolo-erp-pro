@@ -22,7 +22,7 @@ return new class extends Migration {
             $table->string('status', 32)->default('planned');
             $table->unsignedInteger('revision')->default(1);
             $table->json('facts_json')->nullable();
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->index(['company_id', 'branch_id', 'financial_year_id', 'actor_id', 'status'], 'ai_bwf_owned_status');
         });
@@ -49,7 +49,7 @@ return new class extends Migration {
             $table->unsignedInteger('revision');
             $table->string('event_type', 60);
             $table->json('metadata_json')->nullable();
-            $table->timestamp('created_at');
+            $table->timestamp('created_at')->useCurrent();
             $table->index(['workflow_id', 'revision'], 'ai_bwf_event_revision');
         });
     }

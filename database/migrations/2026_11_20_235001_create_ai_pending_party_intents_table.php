@@ -19,7 +19,7 @@ return new class extends Migration {
             $table->string('status', 20)->default('pending');
             $table->string('subject_hint', 200)->nullable();
             $table->unsignedInteger('revision')->default(1);
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->unique(['company_id', 'actor_id', 'thread_id'], 'ai_party_intent_scope_unique');
             $table->index(['company_id', 'branch_id', 'financial_year_id', 'status'], 'ai_party_intent_scope_index');
