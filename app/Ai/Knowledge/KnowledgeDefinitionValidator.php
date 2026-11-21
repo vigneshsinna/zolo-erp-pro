@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Knowledge;
 
+use App\Ai\Registries\ActionCapabilityRegistry;
 use InvalidArgumentException;
 
 /** Deployment/read-time validation; deliberately contains no execution hooks. */
@@ -12,6 +13,17 @@ final class KnowledgeDefinitionValidator
     private const KINDS = ['entity', 'relationship', 'policy', 'action', 'process'];
     private const STATUSES = ['draft', 'reviewed', 'retired'];
     private const STEP_KINDS = ['read_or_clarify', 'reviewed_action', 'external_event', 'read_only_validation', 'unsupported_action'];
+    private const ALLOWED_OWNERS = [
+        'purchasing', 'finance', 'finance-domain', 'inventory', 'manufacturing',
+        'operations', 'security', 'product', 'sales', 'catalog', 'accounting', 'erp-platform',
+    ];
+    private const UNSUPPORTED_PROCESSES = [
+        'process.expense_payable.v1',
+    ];
+
+    public function __construct(
+        private readonly ?ActionCapabilityRegistry $capabilities = null,
+    ) {}
 
     public function validate(array $document, array $manifest, string $repositoryRoot): void
     {
@@ -34,12 +46,20 @@ final class KnowledgeDefinitionValidator
             $this->assert(in_array($kind, self::KINDS, true), "Unknown kind {$kind}.");
             $this->assert(in_array($row['status'], self::STATUSES, true), "Unknown review status for {$id}.");
             $this->assert(is_int($row['version']) && $row['version'] > 0, "Invalid version for {$id}.");
-            $this->assert(is_string($row['owner']) && trim($row['owner']) !== '', "Missing owner for {$id}.");
+            $this->assert(is_string($row['owner']) && in_array(trim($row['owner']), self::ALLOWED_OWNERS, true), "Invalid or unassigned owner for {$id}.");
             $this->assert(is_string($row['summary']) && trim($row['summary']) !== '', "Missing summary for {$id}.");
             $this->assert(is_string($row['effective_from']) && (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/D', $row['effective_from']), "Invalid effective date for {$id}.");
+
             if ($row['status'] === 'reviewed') {
-                $this->assert(!empty($row['reviewed_at']) && !empty($row['reviewed_by']), "Reviewed definition {$id} needs signoff.");
+                $this->assert(!empty($row['reviewed_at']) && (bool) preg_match('/^\d{4}-\d{2}-\d{2}/D', (string) $row['reviewed_at']), "Reviewed definition {$id} needs signoff.");
+                $this->assert(!empty($row['reviewed_by']) && is_string($row['reviewed_by']), "Reviewed definition {$id} needs signoff.");
+                $this->assert(!in_array($id, self::UNSUPPORTED_PROCESSES, true), "Unsupported process {$id} cannot be marked reviewed.");
+                $this->assert(!empty($row['domain_policy_ref']) && is_string($row['domain_policy_ref']), "Reviewed definition {$id} requires domain_policy_ref.");
+                $this->assert(!empty($row['signoff_evidence']), "Reviewed definition {$id} requires signoff_evidence.");
+                $this->assert(array_key_exists('impacted_workflows', $row) && is_array($row['impacted_workflows']), "Reviewed definition {$id} requires impacted_workflows list.");
+                $this->assert(!empty($row['rollback_policy']) && is_string($row['rollback_policy']), "Reviewed definition {$id} requires rollback_policy.");
             }
+
             $sources = $row['source_refs'];
             $this->assert(is_array($sources) && array_is_list($sources) && $sources !== [], "Missing source refs for {$id}.");
             foreach ($sources as $source) {
@@ -51,6 +71,10 @@ final class KnowledgeDefinitionValidator
                 $this->assert(is_string($row['action_key'] ?? null) && (bool) preg_match('/^[a-z0-9_.]+\.v[1-9][0-9]*$/D', $row['action_key']), "Invalid action key for {$id}.");
                 $this->assert(!isset($actions[$row['action_key']]), "Duplicate action key {$row['action_key']}.");
                 $actions[$row['action_key']] = $id;
+
+                if ($row['status'] === 'reviewed' && $this->capabilities !== null) {
+                    $this->assert($this->capabilities->has($row['action_key']), "Reviewed action {$id} specifies unregistered action capability {$row['action_key']}.");
+                }
             }
             $known[$id] = $row;
         }
@@ -61,16 +85,19 @@ final class KnowledgeDefinitionValidator
                     $this->assert(is_string($target) && isset($known[$target]) && $known[$target]['kind'] === 'entity', "Broken relationship {$id}: {$edge}.");
                 }
             }
-            if ($row['kind'] === 'process') $this->validateSteps($id, $row['steps'] ?? null, $actions);
+            if ($row['kind'] === 'process') {
+                $this->validateSteps($id, $row['steps'] ?? null, $actions, $row, $known);
+            }
             foreach ($row['policy_refs'] ?? [] as $ref) {
                 $this->assert(isset($known[$ref]) && $known[$ref]['kind'] === 'policy', "Unknown policy reference {$ref}.");
             }
         }
     }
 
-    private function validateSteps(string $id, mixed $steps, array $actions): void
+    private function validateSteps(string $id, mixed $steps, array $actions, array $processRow, array $known): void
     {
         $this->assert(is_array($steps) && array_is_list($steps) && $steps !== [], "Process {$id} has no steps.");
+        $isReviewed = ($processRow['status'] ?? '') === 'reviewed';
         $byId = [];
         foreach ($steps as $step) {
             $key = $step['id'] ?? null;
@@ -79,8 +106,16 @@ final class KnowledgeDefinitionValidator
             $this->assert(is_array($step['depends_on'] ?? null), "Missing dependencies in {$id}.");
             if ($step['kind'] === 'reviewed_action') {
                 $this->assert(isset($actions[$step['action_key'] ?? '']), "Unknown action descriptor in {$id}.");
+                if ($isReviewed) {
+                    $actionId = $actions[$step['action_key'] ?? ''];
+                    $actionRow = $known[$actionId] ?? null;
+                    $this->assert($actionRow !== null && ($actionRow['status'] ?? '') === 'reviewed', "Reviewed process {$id} step {$key} references unreviewed action {$step['action_key']}.");
+                }
             } else {
                 $this->assert(!isset($step['action_key']), "Non-action step has action key in {$id}.");
+            }
+            if ($isReviewed) {
+                $this->assert($step['kind'] !== 'unsupported_action', "Reviewed process {$id} cannot contain unsupported steps ({$key}).");
             }
             $byId[$key] = $step;
         }

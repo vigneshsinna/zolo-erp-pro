@@ -29,6 +29,30 @@ final readonly class KnowledgeDefinition
 
     public function isReviewed(): bool
     {
-        return $this->status === 'reviewed';
+        return $this->status === 'reviewed'
+            && !empty($this->data['reviewed_at'])
+            && !empty($this->data['reviewed_by'])
+            && !empty($this->data['signoff_evidence'])
+            && !empty($this->data['domain_policy_ref']);
+    }
+
+    public function domainPolicyRef(): ?string
+    {
+        return $this->data['domain_policy_ref'] ?? null;
+    }
+
+    public function signoffEvidence(): mixed
+    {
+        return $this->data['signoff_evidence'] ?? null;
+    }
+
+    public function rollbackPolicy(): ?string
+    {
+        return $this->data['rollback_policy'] ?? null;
+    }
+
+    public function impactedWorkflows(): array
+    {
+        return (array) ($this->data['impacted_workflows'] ?? []);
     }
 }

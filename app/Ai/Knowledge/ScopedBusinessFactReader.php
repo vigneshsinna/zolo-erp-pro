@@ -27,17 +27,17 @@ use InvalidArgumentException;
  */
 final class ScopedBusinessFactReader
 {
-    private const PERMISSIONS = [
-        'supplier' => 'suppliers-add',
-        'customer' => 'customers-add',
-        'product' => 'products-add',
-        'warehouse' => 'warehouse',
-        'purchase_order' => 'purchases-add',
-        'purchase_bill' => 'purchases-add',
-        'grn' => 'purchases-add',
-        'job_work_order' => 'job_work.dispatch',
-        'job_work_dispatch' => 'job_work.dispatch',
-        'job_work_receipt' => 'job_work.receive',
+    private const READ_PERMISSIONS = [
+        'supplier' => ['suppliers-index', 'suppliers-add'],
+        'customer' => ['customers-index', 'customers-add'],
+        'product' => ['products-index', 'products-add'],
+        'warehouse' => ['warehouse', 'warehouse-index'],
+        'purchase_order' => ['purchases-index', 'purchases-add'],
+        'purchase_bill' => ['purchases-index', 'purchases-add'],
+        'grn' => ['purchases-index', 'purchases-add'],
+        'job_work_order' => ['job_work.view', 'job_work.dispatch'],
+        'job_work_dispatch' => ['job_work.view', 'job_work.dispatch'],
+        'job_work_receipt' => ['job_work.view', 'job_work.receive'],
     ];
 
     public function __construct(
@@ -48,12 +48,12 @@ final class ScopedBusinessFactReader
     /** @return list<string> */
     public static function supportedKinds(): array
     {
-        return array_keys(self::PERMISSIONS);
+        return array_keys(self::READ_PERMISSIONS);
     }
 
     public static function assertRequest(string $kind, int $id): void
     {
-        if (!array_key_exists($kind, self::PERMISSIONS) || $id <= 0) {
+        if (!array_key_exists($kind, self::READ_PERMISSIONS) || $id <= 0) {
             throw new InvalidArgumentException('Unsupported business fact request.');
         }
     }
@@ -67,7 +67,11 @@ final class ScopedBusinessFactReader
         }
         $this->security->assertEnabled($principal);
         $context = $this->security->context($principal);
-        $this->permissions->assert(self::PERMISSIONS[$kind], $context, $principal->actorId);
+        $candidates = self::READ_PERMISSIONS[$kind];
+        $allowed = $this->permissions->allowed($candidates, $context, $principal->actorId);
+        if ($allowed === []) {
+            throw new AuthorizationException("Read permission required for fact kind {$kind}: one of [".implode(', ', $candidates).'].');
+        }
         $query = match ($kind) {
             'supplier' => Supplier::forCompany($context),
             'customer' => Customer::forCompany($context),
@@ -117,6 +121,8 @@ final class ScopedBusinessFactReader
             'scope' => ['company_id' => $context->companyId, 'branch_id' => $context->branchId,
                 'financial_year_id' => $context->financialYearId],
             'facts' => $facts,
+            'can_create' => false,
+            'writes_executed' => false,
         ];
     }
 }
