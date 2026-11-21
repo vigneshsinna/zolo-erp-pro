@@ -1,3 +1,34 @@
+## PR11 (Both-Direction Job-Work Completion) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR11 (P1 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.5.
+  - Closed the job-work symmetry gap by providing governed AI action support for inward customer-owned job work alongside company-owned outward job work.
+- **Technical Implementation:**
+  - Schemas:
+    - `app/Ai/Schemas/CreatePrincipalJobOrderInputSchema.php`: Validates inward job order (customer, service product, unit rate, process details).
+    - `app/Ai/Schemas/CreatePrincipalJobReceiveInputSchema.php`: Validates customer raw material receipt (customer, product, received qty, off-balance sheet tracking).
+    - `app/Ai/Schemas/CreatePrincipalJobReturnInputSchema.php`: Validates delivery challan returning processed goods to customer (return qty, process scrap/loss % within threshold).
+  - Adapters:
+    - `app/Ai/Adapters/PrincipalJobOrderActionAdapter.php`: Wraps `PrincipalJobService::order()`, preview stamps zero inventory movement, executes within locked company context and idempotent operation request.
+    - `app/Ai/Adapters/PrincipalJobReceiveActionAdapter.php`: Wraps `PrincipalJobService::receive()`, guarantees zero balance sheet / company valuation impact, validates customer-owned stock ledger.
+    - `app/Ai/Adapters/PrincipalJobReturnActionAdapter.php`: Wraps `PrincipalJobService::returnGoods()`, validates return balance and scrap tolerance.
+  - Registries & Definitions:
+    - `app/Ai/Registries/ExtendedActionCatalog.php`: Registered actions `principal_job.order.create.v1`, `principal_job.receive.create.v1`, `principal_job.return.create.v1` under `ai_business_knowledge.job_work_enabled`.
+    - `resources/ai/knowledge/definitions.json`: Registered action capabilities and defined multi-step process `process.job_work_inward.v1`.
+    - `resources/ai/knowledge/source_manifest.json`: Linked new schemas and adapters to the AI knowledge manifest.
+  - `tests/Feature/Ai/JobWork/BothDirectionJobWorkOrchestrationTest.php`: Comprehensive test suite verifying:
+    1. Outward company-owned job work runs end-to-end: order -> material dispatch -> goods receipt -> processing service bill with inventory cost capitalization.
+    2. Inward customer-owned job work runs end-to-end: order -> receive customer goods (0 company inventory impact) -> return processed goods via DC (rejects excessive loss) -> tax invoice for processing charge only (rejects over-billing) -> validates final zero unbilled balance.
+    3. Multi-tenant isolation: Foreign company/branch cannot query, receive, return, or invoice inward jobs (404/ValidationException); duplicate requests recover original receipt idempotently.
+- **Verification:**
+  - `BothDirectionJobWorkOrchestrationTest`: 3/3 passed (51 assertions, 100% OK).
+  - `JobWorkBusinessKnowledgeTest`: 4/4 passed (24 assertions, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `BusinessKnowledgeGovernanceTest`: 9/9 passed (35 assertions, 100% OK).
+  - `FinancialDocumentContractsParityTest`: 5/5 passed (20 assertions, 100% OK).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch & Commit:** `feature/ai-knowledge-11-jobwork-completion` at commit `9e0eb14`.
+
 ## PR12 (Business Knowledge Governance, Ownership & Permission Model) Implemented — 2026-11-21
 
 - **Context & Scope:**
