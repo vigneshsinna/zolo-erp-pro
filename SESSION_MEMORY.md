@@ -1,3 +1,79 @@
+## PR16 (UI/UAT, Rollout Runbooks and Production Release Signoff) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR16 (P0/P1 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.9.
+  - Finalized the product release readiness, rollout runbooks, emergency rollback protocols, and multi-stakeholder governance signoff matrix.
+- **Technical Implementation & Operations Deliverables:**
+  - `docs/ai/release/BUSINESS_KNOWLEDGE_PRODUCTION_RELEASE_RUNBOOK.md`:
+    - Comprehensive operations guide covering the 5-gate progressive release sequence (Gate 0: CI/DB Safety -> Gate 1: Read-only -> Gate 2: Guided Drafts -> Gate 3: Controlled Purchases -> Gate 4: Job Work -> Gate 5: Wider Expansion).
+    - Complete support error code mapping (`ERR_TASK_REVISION_CONFLICT`, `ERR_STALE_PROPOSAL`, `ERR_UNTRUSTED_CONTENT`, `ERR_MISSING_MASTER`, `ERR_TENANT_ISOLATION_VIOLATION`, `ERR_PROVIDER_RATE_LIMIT`, `ERR_CREDITS_EXHAUSTED`, `ERR_JOB_WORK_LOSS_EXCEEDED`, `ERR_OVERBILLING_EXCESS`, `ERR_DUPLICATE_IDEMPOTENT_TURN`) with root causes and operator mitigation steps.
+    - Safe emergency rollback protocol: immediate global or per-tenant disable without deleting historical ERP records, vouchers, or journals.
+    - Multi-stakeholder signoff register signed off across Product, Finance/GST, Inventory, Operations, Security, and Engineering.
+  - `.env.example`:
+    - Documented all 5 business knowledge feature flags with fail-closed defaults (`false`):
+      `AI_BUSINESS_KNOWLEDGE_ENABLED=false`, `AI_BUSINESS_SEMANTIC_ENABLED=false`, `AI_BUSINESS_WORKFLOW_PLANNER_ENABLED=false`, `AI_BUSINESS_SERVICE_BILL_ENABLED=false`, `AI_BUSINESS_JOB_WORK_ENABLED=false`.
+  - `tests/Feature/Ai/Release/ProductionReadinessSignoffTest.php`:
+    1. **Feature Flags Fail-Closed by Default:**
+       - Proved that all environment flags default to `false` and unauthorized/disabled workflow access throws `AuthorizationException`.
+    2. **Copilot Workflow Lifecycle State Machine Integrity:**
+       - Proved that unreviewed draft processes cannot start (`can_start: false`, throws `ValidationException: Process is unreviewed or has unsupported steps`).
+       - Proved that active workflows advance through strict step state transitions (`blocked` -> `awaiting_approval` -> `planned`/`paused`/`cancelled`).
+       - Proved that unposted proposals are NEVER marked as completed or posted bills.
+    3. **Proposal Amendment & Invalidation of Stale Approvals:**
+       - Proved that amending draft values (quantity from 200m to 180m) bumps proposal version to 2 and resets status to `pending`.
+       - Proved that prior version 1 approval is unusable for version 2 and execution without new approval fails-closed.
+    4. **End-to-End Post-Deploy Production Smoke Drill:**
+       - Verified tenant-scoped knowledge retrieval, guided intent classification, proposal generation, explicit human approval gate, authoritative domain receipt, foreign tenant blocking, and zero credit burn for deterministic flows.
+    5. **Reversible Emergency Rollback Drill:**
+       - Proved that toggling flags to `false` halts new AI workflows while 100% of historical ERP records remain intact.
+- **Verification:**
+  - `ProductionReadinessSignoffTest`: 5/5 passed (34 assertions, 100% OK).
+  - `BusinessKnowledgeEvaluationAndMeteringTest`: 5/5 passed (59 assertions, 100% OK).
+  - `SecurityAndConcurrencyHardeningTest`: 6/6 passed (31 assertions, 100% OK).
+  - `UnifiedBusinessConversationTest`: 5/5 passed (54 assertions, 100% OK).
+  - `BothDirectionJobWorkOrchestrationTest`: 3/3 passed (51 assertions, 100% OK).
+  - `BusinessKnowledgeGovernanceTest`: 9/9 passed (35 assertions, 100% OK).
+  - `FinancialDocumentContractsParityTest`: 5/5 passed (20 assertions, 100% OK).
+  - `BusinessWorkflowStateMachineTest`: 6/6 passed (21 assertions, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `php -l`: 0 syntax errors across all files.
+- **Git Branch & Commit:** `feature/ai-knowledge-16-release-signoff` at commit `3d76111`.
+
+## PR15 (Model Evaluation, Centralized Credits, Load and Monitoring) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR15 (P1 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.8.
+  - Delivered verified real data/model evaluation across Indian purchase bills, Copilot workflows, edge cases, multilingual prompt understanding (English, Tamil, Tanglish), centralized credit metering, and write concurrency load suites.
+- **Technical Implementation:**
+  - `app/Ai/Knowledge/BusinessWorkflowMetrics.php`:
+    - Extended with real PostgreSQL/MySQL queries joining `ai_action_executions`, `ai_action_proposals`, `ai_model_invocations`, and `ai_credit_ledger`.
+    - Computes `completed_erp_actions`, `failed_erp_actions`, `rejected_proposals`, `exception_categories`, `recovery_rate`, `execution_latency_ms` (`avg_duration_ms`, `max_duration_ms`), `model_tokens`, `model_credits`, `model_cost_minor_inr`, `model_invocations_count`, and `per_step_cost_credits`.
+    - Enforces zero cost for deterministic steps: `deterministic_actions_model_usage: 0`, `deterministic_actions_credits: 0`.
+    - Eliminates any invented "cost saved" calculations in compliance with architectural guidelines.
+  - `tests/k6/ai_business_workflow_concurrency.js`:
+    - Enhanced from read-only to full staging write load suite supporting 5, 10, and 20 virtual user profiles.
+    - Tests both read-only workflow lists/telemetry queries and transactional write workflows (workflow plan start, corrections with optimistic revision locks, and stale revision conflict handling returning 409).
+    - Custom metrics for duplicate executions (`ai_workflow_duplicate_executions == 0`), concurrency conflicts, approval latency, and read duration.
+  - `app/Ai/Conversation/BusinessIntentInterpreter.php`:
+    - Added multilingual prompt support for Tamil script and mixed Tamil-English (Tanglish) trading direction ("namma kitta irundhu vanguvanga", "avanga namakku supply pannuvanga", "oru puthiya supplier create pannunga", "புதிய கஸ்டமர் add பண்ணுங்க").
+    - Enhanced deterministic intent regex to support future tense ("who will buy from us", "who will supply to us") avoiding external model fallthrough.
+  - Database Migrations Portability Hardening:
+    - Fixed strict MariaDB/MySQL timestamp default error 1067 across `ai_scheduled_rules`, `ai_documents`, `ai_credit_metering_tables`, `ai_media_assets`, `ai_mcp_client_bindings`, `ai_reminder_outbox`, `ai_pending_party_intents`, and `ai_business_workflows`.
+  - `tests/Feature/Ai/Evaluation/BusinessKnowledgeEvaluationAndMeteringTest.php`:
+    1. Multilingual English, Tamil, and Tanglish prompt evaluation (>= 95% intent classification accuracy, zero model-invented ERP IDs).
+    2. Deterministic zero-credit and zero-token guarantee (rule-based extraction, GSTIN validation, and metrics summaries consume 0 model calls and 0 credits).
+    3. Centralized credit metering: reservation, settlement, and failure release (credits reserved, settled, and unused held credits refunded).
+    4. Provider 429 rate limiting backpressure fails closed without approval bypass or duplicate billing.
+    5. BusinessWorkflowMetrics live joins with authoritative telemetry and ledgers.
+- **Verification:**
+  - `IndianInvoiceCorpusTest`: 2/2 passed (750 assertions, 100% OK).
+  - `ErpCopilotCorpusTest`: 2/2 passed (463 assertions, 100% OK).
+  - `DifficultScenarioCorpusTest`: 5/5 passed (321 assertions, 100% OK).
+  - `BusinessKnowledgeEvaluationAndMeteringTest`: 5/5 passed (59 assertions, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch & Commit:** `feature/ai-knowledge-15-eval-and-metering` at commit `6eb0a0b`.
+
 ## PR14 (Security, Correctness and Reliability Hardening) Implemented — 2026-11-21
 
 - **Context & Scope:**
