@@ -1,3 +1,32 @@
+## PR10 (Financial Document Contracts, GST/Non-GST & Job-Work Accounting Parity) Implemented — 2026-11-21
+
+- **Context & Scope:**
+  - Implemented PR10 (P0 milestone) as specified in `docs/ZOLOERP_BUSINESS_KNOWLEDGE_PRODUCTION_READINESS.md` Section 3.3.
+  - Resolved financial document contract gaps across goods purchases, non-GST supplier purchases, service bills, and open purchase order fulfilment.
+- **Technical Implementation:**
+  - `app/Ai/Schemas/CreatePurchaseBillInputSchema.php`: Added validation rules for `is_non_gst` (boolean), `bill_type` (in:gst,non_gst), `is_expense_bill` (boolean), and `expense_account_id` (integer).
+  - `app/Ai/Adapters/PurchaseBillPreviewAdapter.php`:
+    - Added fail-closed guard rejecting uncataloged expense-only AP bills (`is_expense_bill` or `expense_account_id`) with clear instruction pointing to standard journal voucher entry.
+    - Supported `is_non_gst`: bypasses `party_tax_profiles` requirement when non-GST is chosen, feeds `is_non_gst` and `bill_type` into `CommercialPricing`, records in `normalizedPayload`, stamps `is_non_gst` in preview policy, and incorporates into `sourceStateHash`.
+  - `app/Ai/Adapters/PurchaseBillCommandAdapter.php`: Passes `is_non_gst` into source state hash calculation and stamps onto purchase command data.
+  - `app/Ai/Adapters/ServicePurchaseBillAdapter.php`: Added fail-closed guard against unsupported expense bills; guarantees zero stock receipt / inventory impact for service catalog items.
+  - `app/Ai/Knowledge/PurchaseBillMatchAudit.php`: Implemented robust UOM conversion using `units.operation_value` and `operator` ('*' and '/') and line aggregation when matching billed quantities against open purchase order lines.
+  - `app/Ai/Requirements/PurchaseBillRequirementsProvider.php`: Added `is_non_gst` requirement schema definition.
+  - `tests/Feature/Ai/Commercial/FinancialDocumentContractsParityTest.php`: Comprehensive test suite verifying:
+    1. Non-GST purchase bill preview and posting (zero tax, proper grand total, `is_non_gst = true`).
+    2. Fail-closed rejection of expense-only AP bills without service catalog.
+    3. Service bill strictly rejecting goods items and proving zero inventory movements.
+    4. Base UOM conversion enforced when matching bill quantities against open PO quantities.
+    5. Duplicate idempotency returns original receipt without double-posting.
+- **Verification:**
+  - `FinancialDocumentContractsParityTest`: 5/5 passed (20 assertions, 100% OK).
+  - `PurchaseBillActionTest`: 9/9 passed (60 assertions, 100% OK).
+  - `ServicePurchaseBillActionTest`: 3/3 passed (9 assertions, 100% OK).
+  - `BusinessWorkflowStateMachineTest`: 6/6 passed (21 assertions, 100% OK).
+  - `DesignTokensTest`: 4/4 passed (0 violations).
+  - `php -l`: 0 syntax errors across all touched files.
+- **Git Branch & Commit:** `feature/ai-knowledge-10-financial-contracts` at commit `5fe0f07`.
+
 ## PR9 (Workflow State Machine, Typed Clarification & Evidence Bridge) Implemented — 2026-11-21
 
 - **Context & Scope:**
