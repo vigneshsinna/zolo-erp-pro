@@ -103,6 +103,45 @@ final class AiBusinessWorkflowController extends Controller
         ));
     }
 
+    public function clarify(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'expected_revision' => 'required|integer|min:1',
+            'step_key' => 'required|string|max:100',
+            'inputs' => 'required|array|min:1',
+        ]);
+        return response()->json($this->progress->completeClarification(
+            $this->principal($request), $id, (int) $data['expected_revision'],
+            $data['step_key'], $data['inputs'],
+        ));
+    }
+
+    public function validateStep(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'expected_revision' => 'required|integer|min:1',
+            'step_key' => 'required|string|max:100',
+            'validation' => 'required|array|min:1',
+        ]);
+        return response()->json($this->progress->completeValidation(
+            $this->principal($request), $id, (int) $data['expected_revision'],
+            $data['step_key'], $data['validation'],
+        ));
+    }
+
+    public function verifyEvent(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'expected_revision' => 'required|integer|min:1',
+            'step_key' => 'required|string|max:100',
+            'evidence' => 'required|array|min:1',
+        ]);
+        return response()->json($this->progress->verifyExternalEvent(
+            $this->principal($request), $id, (int) $data['expected_revision'],
+            $data['step_key'], $data['evidence'],
+        ));
+    }
+
     public function verifyReturn(Request $request, string $id): JsonResponse
     {
         $data = $request->validate([

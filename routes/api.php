@@ -279,6 +279,9 @@ Route::prefix('v1')->group(function () {
                 Route::post('{id}/pause', 'pause')->whereUuid('id')->name('api.v1.ai.business-workflows.pause');
                 Route::post('{id}/resume', 'resume')->whereUuid('id')->name('api.v1.ai.business-workflows.resume');
                 Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('api.v1.ai.business-workflows.cancel');
+                Route::post('{id}/clarify', 'clarify')->whereUuid('id')->name('api.v1.ai.business-workflows.clarify');
+                Route::post('{id}/validate', 'validateStep')->whereUuid('id')->name('api.v1.ai.business-workflows.validate');
+                Route::post('{id}/verify-event', 'verifyEvent')->whereUuid('id')->name('api.v1.ai.business-workflows.verify-event');
                 Route::post('{id}/link-proposal', 'linkProposal')->whereUuid('id')->name('api.v1.ai.business-workflows.link-proposal');
                 Route::post('{id}/verify-return', 'verifyReturn')->whereUuid('id')->name('api.v1.ai.business-workflows.verify-return');
                 Route::post('{id}/reconcile', 'reconcile')->whereUuid('id')->name('api.v1.ai.business-workflows.reconcile');

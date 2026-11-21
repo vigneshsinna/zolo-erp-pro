@@ -63,6 +63,135 @@ final class BusinessWorkflowProgress
         }, 'proposal_linked');
     }
 
+    public function completeClarification(
+        AiPrincipal $principal, string $workflowId, int $revision,
+        string $stepKey, array $inputs,
+    ): array {
+        $this->enabled($principal);
+        return $this->change($principal, $workflowId, $revision, $stepKey, function ($step, $workflow) use ($principal, $stepKey, $inputs): array {
+            if ($step->kind !== 'read_or_clarify') {
+                throw ValidationException::withMessages(['step' => 'Step does not accept structured clarification inputs.']);
+            }
+            $this->assertDependencies($workflow->id, $step);
+            if (empty($inputs) || (isset($inputs['status']) && $inputs['status'] === 'done' && count($inputs) === 1)) {
+                throw ValidationException::withMessages(['inputs' => 'Clarification requires typed, server-validated structured fields, not a raw status assertion.']);
+            }
+            foreach ($inputs as $key => $val) {
+                if ($val === null || $val === '') {
+                    throw ValidationException::withMessages(['inputs' => "Field '{$key}' cannot be empty."]);
+                }
+            }
+            $hash = hash('sha256', $workflow->id.':'.$stepKey.':'.json_encode($inputs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE).':'.$principal->actorId);
+            return [
+                'status' => 'completed',
+                'evidence_hash' => $hash,
+            ];
+        }, 'clarification_completed');
+    }
+
+    public function completeValidation(
+        AiPrincipal $principal, string $workflowId, int $revision,
+        string $stepKey, array $validationEvidence,
+    ): array {
+        $this->enabled($principal);
+        return $this->change($principal, $workflowId, $revision, $stepKey, function ($step, $workflow) use ($principal, $stepKey, $validationEvidence): array {
+            if ($step->kind !== 'read_only_validation') {
+                throw ValidationException::withMessages(['step' => 'Step does not accept read-only validation results.']);
+            }
+            $this->assertDependencies($workflow->id, $step);
+            if (empty($validationEvidence['validator']) || empty($validationEvidence['source_hash'])) {
+                throw ValidationException::withMessages(['validation' => 'Read-only validation requires a named validator and source state hash.']);
+            }
+            $hash = hash('sha256', $workflow->id.':'.$stepKey.':'.$validationEvidence['validator'].':'.$validationEvidence['source_hash'].':'.$principal->actorId);
+            return [
+                'status' => 'completed',
+                'evidence_hash' => $hash,
+            ];
+        }, 'validation_completed');
+    }
+
+    public function verifyExternalEvent(
+        AiPrincipal $principal, string $workflowId, int $revision,
+        string $stepKey, array $evidence,
+    ): array {
+        $this->enabled($principal);
+        return $this->change($principal, $workflowId, $revision, $stepKey, function ($step, $workflow) use ($principal, $stepKey, $evidence): array {
+            if ($step->kind !== 'external_event') {
+                throw ValidationException::withMessages(['step' => 'Step is not an external event.']);
+            }
+            $this->assertDependencies($workflow->id, $step);
+
+            // Strictly reject free-text statements like "goods received" or "done"
+            if (isset($evidence['text']) || isset($evidence['message']) || !isset($evidence['document_type']) || !isset($evidence['resource_id'])) {
+                throw ValidationException::withMessages(['evidence' => 'A user statement or free-text description cannot advance an external event. A verified, posted ERP document is required.']);
+            }
+
+            $context = $this->security->context($principal);
+            $docType = (string) $evidence['document_type'];
+            $resourceId = (int) $evidence['resource_id'];
+
+            if ($docType === 'job_work_receipt') {
+                $receipt = JobWorkReceipt::visibleIn($context)
+                    ->where('financial_year_id', $context->financialYearId)
+                    ->where('id', $resourceId)->whereNotNull('posted_at')->whereNull('reversed_at')->first();
+                if (!$receipt) {
+                    throw ValidationException::withMessages(['evidence' => 'A posted, active physical receipt is required.']);
+                }
+                $dispatchStep = DB::table('ai_business_workflow_steps')->where([
+                    'workflow_id' => $workflow->id, 'step_key' => 'dispatch', 'status' => 'completed',
+                ])->first();
+                if (!$dispatchStep || !$dispatchStep->proposal_id) {
+                    throw ValidationException::withMessages(['evidence' => 'No completed dispatch is linked to this workflow.']);
+                }
+                $dispatchReceipt = DB::table('ai_action_executions as e')
+                    ->join('ai_action_proposals as p', 'p.id', '=', 'e.proposal_id')
+                    ->where('p.id', $dispatchStep->proposal_id)
+                    ->where('p.company_id', $principal->companyId)
+                    ->where('p.branch_id', $principal->branchId)
+                    ->where('p.financial_year_id', $principal->financialYearId)
+                    ->where('p.actor_id', $principal->actorId)
+                    ->whereColumn('e.version', 'p.version')
+                    ->where('e.status', 'completed')->where('e.erp_resource_type', 'job_work_dispatch')
+                    ->where('e.erp_resource_id', $receipt->dispatch_id)->select('e.*')->first();
+                if (!$dispatchReceipt) {
+                    throw ValidationException::withMessages(['evidence' => 'Physical return does not belong to the workflow dispatch.']);
+                }
+                $evidenceHash = hash('sha256', $workflow->id.':'.$dispatchReceipt->id.':'.$receipt->id.':'.$receipt->posted_at);
+            } elseif ($docType === 'purchase_order') {
+                $poStep = DB::table('ai_business_workflow_steps')->where([
+                    'workflow_id' => $workflow->id, 'step_key' => 'prepare_po', 'status' => 'completed',
+                ])->first();
+                if (!$poStep || !$poStep->proposal_id) {
+                    throw ValidationException::withMessages(['evidence' => 'No approved PO is linked to this workflow.']);
+                }
+                $poExecution = DB::table('ai_action_executions as e')
+                    ->join('ai_action_proposals as p', 'p.id', '=', 'e.proposal_id')
+                    ->where('p.id', $poStep->proposal_id)
+                    ->where('p.company_id', $principal->companyId)
+                    ->where('p.branch_id', $principal->branchId)
+                    ->where('p.financial_year_id', $principal->financialYearId)
+                    ->where('p.actor_id', $principal->actorId)
+                    ->whereColumn('e.version', 'p.version')
+                    ->where('e.status', 'completed')->where('e.erp_resource_id', $resourceId)->first();
+                if (!$poExecution) {
+                    throw ValidationException::withMessages(['evidence' => 'Document resource does not match the approved PO in this workflow.']);
+                }
+                $po = \App\Models\Purchase::visibleIn($context)->where('status', 4)->find($resourceId);
+                if (!$po) {
+                    throw ValidationException::withMessages(['evidence' => 'The purchase order must be in active Ordered status.']);
+                }
+                $evidenceHash = hash('sha256', $workflow->id.':po_delivery:'.$resourceId.':'.$principal->actorId);
+            } else {
+                throw ValidationException::withMessages(['evidence' => "Unsupported external document type '{$docType}'."]);
+            }
+
+            return [
+                'status' => 'completed',
+                'evidence_hash' => $evidenceHash,
+            ];
+        }, 'external_event_verified');
+    }
+
     public function verifyPhysicalReturn(
         AiPrincipal $principal, string $workflowId, int $revision,
         string $stepKey, int $receiptId,
@@ -190,7 +319,16 @@ final class BusinessWorkflowProgress
                     $step->status = $next;
                 }
             }
-            $this->bump($principal, $workflowId, $revision, 'reconciled');
+            $freshSteps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->get();
+            $allCompleted = $freshSteps->isNotEmpty() && $freshSteps->every(static fn ($s): bool => $s->status === 'completed');
+            if ($allCompleted) {
+                DB::table('ai_business_workflows')->where('id', $workflowId)->update([
+                    'status' => 'completed', 'updated_at' => now('UTC'),
+                ]);
+                $this->bump($principal, $workflowId, $revision, 'workflow_completed');
+            } else {
+                $this->bump($principal, $workflowId, $revision, 'reconciled');
+            }
         }, 3);
         return $this->planner->inspect($principal, $workflowId);
     }
@@ -219,6 +357,41 @@ final class BusinessWorkflowProgress
             }
             DB::table('ai_business_workflow_steps')->where('id', $step->id)
                 ->update($changes + ['updated_at' => now('UTC')]);
+
+            if (($changes['status'] ?? '') === 'completed') {
+                $allSteps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->get();
+                $byKey = $allSteps->keyBy('step_key');
+                foreach ($allSteps as $s) {
+                    if ($s->status !== 'blocked') continue;
+                    $deps = json_decode($s->depends_on_json, true, flags: JSON_THROW_ON_ERROR);
+                    if (collect($deps)->every(static fn (string $k): bool => ($byKey[$k]->status ?? '') === 'completed')) {
+                        $next = match ($s->kind) {
+                            'reviewed_action' => 'awaiting_proposal',
+                            'external_event' => 'awaiting_real_event',
+                            'read_or_clarify' => 'needs_input',
+                            'read_only_validation' => 'needs_validation',
+                            default => 'unsupported',
+                        };
+                        DB::table('ai_business_workflow_steps')->where('id', $s->id)
+                            ->update(['status' => $next, 'updated_at' => now('UTC')]);
+                    }
+                }
+
+                $freshSteps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->get();
+                if ($freshSteps->isNotEmpty() && $freshSteps->every(static fn ($s): bool => $s->status === 'completed')) {
+                    DB::table('ai_business_workflows')->where('id', $workflowId)
+                        ->update(['status' => 'completed', 'updated_at' => now('UTC')]);
+                    DB::table('ai_business_workflow_events')->insert([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'workflow_id' => $workflowId,
+                        'actor_id' => $principal->actorId,
+                        'revision' => $revision + 1,
+                        'event_type' => 'workflow_completed',
+                        'metadata_json' => json_encode(['completed_at' => now('UTC')->toIso8601String()], JSON_THROW_ON_ERROR),
+                        'created_at' => now('UTC'),
+                    ]);
+                }
+            }
             $this->bump($principal, $workflowId, $revision, $event, ['step_key' => $stepKey]);
         }, 3);
         return $this->planner->inspect($principal, $workflowId);
