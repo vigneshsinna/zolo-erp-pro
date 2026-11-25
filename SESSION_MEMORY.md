@@ -1,3 +1,34 @@
+## Unified Shared Capability Discovery & External MCP Governed Proposals (U1 + U2 + Doc 03/04 Hardening) — 2026-11-25
+
+- **Context & Scope:**
+  - Implemented the complete specification in `docs/zoloERP_Unified_Capability_Production_Pack/` (`00_README_IMPLEMENTATION_ORDER.md`, `01_MCP_GOVERNED_ACTION_PROPOSALS.md`, `02_COMPLETE_SHARED_TOOL_DISCOVERY.md`, `03_ERP_BUSINESS_KNOWLEDGE_LAYER.md`, `04_COMPLETE_PRODUCTION_VALIDATION.md`) on branch `feature/ai-unified-input-clarification`.
+- **Workstream U1 (Shared ERP Capability Discovery & Common Dispatch):**
+  - Added `config/ai_capabilities.php` (default-off `AI_SHARED_CAPABILITY_DISCOVERY_ENABLED=false`) and `app/Ai/Capabilities/` (`CapabilityDescriptor`, `CapabilitySchemaCompiler`, `CapabilityIntegrityValidator`, `CapabilityCatalog`, `CapabilityExposurePolicy`, `ProposalStatusReader`, `CapabilityDispatcher`).
+  - Upgraded `ActionPreparationService::prepare()` and `ActionProposalService::create()` to support optimistic task revision conflicts, atomic slot/line replacement, proposal amendment versioning, canonical review URLs, and `source_channel` / `source_client_binding_id` provenance.
+  - Added `GenericPrepareSdkTool`, REST discovery endpoint `GET /api/v1/ai/capabilities` (`AiCapabilityDiscoveryController`), and gated shared catalog adoption in `PrepareAction`, `PreparePurchaseOrder`, `ErpCopilot`, and `AiAutomationBuilderController`.
+- **Workstream U2 (External MCP Governed Proposals & Status Handoff):**
+  - Extended `config/ai_infrastructure.php` (`AI_MCP_GOVERNED_PROPOSALS_ENABLED=false`), `.env.example`, and added additive migrations `2026_11_25_000001_extend_ai_mcp_client_bindings_for_governed_proposals.php` and `2026_11_25_000002_create_ai_mcp_preparation_requests_table.php` (applied cleanly to `zolo_test_ai_release`).
+  - Added `McpClientGrant`, `McpClientBindingService` (scoped token issuance/revocation without wildcards), and `McpPreparationDeduplicator` (unique claim deduplication for `client_request_id`).
+  - Extended `McpClientGuard` and `McpController` to expose reviewed `purchase_order.create.v1` (`erp_purchase_order_prepare`) and `proposal.status.v1` (`erp_proposal_status`) strictly in `read`/`prepare`/`status` modes while preserving legacy read clients and zero external approval/execution authority.
+  - Updated `ActionReviewCenterController` and `resources/views/backend/ai/action_review_center.blade.php` to display the standard Bootstrap `MCP Draft` badge and support `?proposal_id=` deep links.
+- **Doc 03/04 Hardening & Release Runbook:**
+  - Hardened `BusinessWorkflowProgress` to block cross-workflow proposal reuse and transition reversed `job_work_receipt` steps to `needs_reconciliation` on `reconcile()` (A22).
+  - Extended `BusinessWorkflowMetrics` with `proposals_by_channel` telemetry breakdown.
+  - Created `docs/ai/release/UNIFIED_CAPABILITY_AND_MCP_RUNBOOK.md` with derived capability coverage, MCP credential lifecycle, rollback steps, and Gate G0–G6 status.
+- **Verification (`zolo_test_ai_release`, `BypassSandbox: true`, 47 tests / 311 assertions, 0 failures/skips):**
+  - `CapabilityCatalogAndSchemaTest`: 5/5 passed (34 assertions).
+  - `SharedCapabilityDiscoveryTest`: 3/3 passed (29 assertions).
+  - `McpGovernedProposalsTest`: 3/3 passed (89 assertions).
+  - `McpAndAsyncInfrastructureTest`: 12/12 passed (52 assertions).
+  - `WorkflowEvidenceHardeningTest`: 2/2 passed (3 assertions).
+  - `ProductionReadinessSignoffTest`: 5/5 passed (34 assertions).
+  - `SecurityAndConcurrencyHardeningTest`: 6/6 passed (31 assertions).
+  - `BusinessWorkflowStateMachineTest`: 6/6 passed (21 assertions).
+  - `DesignTokensTest`: 4/4 passed (4 assertions).
+  - `TextileScenarioMatrixTest::test_dyeing_unit_processes_customer_material_without_owning_it_and_bills_only_the_charge`: 1/1 passed (14 assertions).
+
+---
+
 ## Fast-Forward Merge of Business Knowledge PR8–PR16 into `feature/ai-unified-input-clarification` — 2026-11-21
 
 - **Context & Scope:**

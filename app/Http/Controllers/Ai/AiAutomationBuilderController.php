@@ -30,10 +30,25 @@ final class AiAutomationBuilderController extends Controller
         AiFeatureGate $gate, AiPrincipalFactory $factory, ScheduledRuleService $rules,
     ): View {
         [$principal, $enabled] = $this->authorized($request, $resolver, $permissions, $gate, $factory);
+
+        $discoverableCapabilities = [];
+        $canPreparePo = $principal->hasTool('purchase_order.create.v1');
+        if (config('ai_capabilities.shared_discovery_enabled', false)) {
+            $eligible = app(\App\Ai\Capabilities\CapabilityExposurePolicy::class)->discover($principal, 'automation');
+            $discoverableCapabilities = array_map(
+                static fn (\App\Ai\Capabilities\CapabilityDescriptor $d): array => $d->toPublicArray('automation'),
+                $eligible
+            );
+            $canPreparePo = collect($eligible)->contains(
+                static fn (\App\Ai\Capabilities\CapabilityDescriptor $d): bool => $d->capabilityKey === 'purchase_order.create.v1' && $d->operation === 'prepare'
+            );
+        }
+
         return view('backend.ai.automation_builder', [
             'enabled' => $enabled,
             'rules' => $enabled ? $rules->list($principal) : [],
-            'canPreparePo' => $principal->hasTool('purchase_order.create.v1'),
+            'canPreparePo' => $canPreparePo,
+            'discoverableCapabilities' => $discoverableCapabilities,
             'maxActiveRules' => (int) config('ai_infrastructure.scheduling.max_rules_per_actor', 10),
         ]);
     }

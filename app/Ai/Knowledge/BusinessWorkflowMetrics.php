@@ -98,10 +98,27 @@ final class BusinessWorkflowMetrics
 
         $perStepCostCredits = $completedSteps > 0 ? round($creditsDebited / $completedSteps, 4) : 0.0;
 
+        $proposalsByChannel = [];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ai_action_proposals', 'source_channel')) {
+            $proposalsByChannel = array_map(
+                'intval',
+                DB::table('ai_action_proposals')
+                    ->where('company_id', $principal->companyId)
+                    ->where('branch_id', $principal->branchId)
+                    ->where('financial_year_id', $principal->financialYearId)
+                    ->where('actor_id', $principal->actorId)
+                    ->selectRaw('COALESCE(source_channel, "internal") as channel, COUNT(*) as total')
+                    ->groupBy('channel')
+                    ->pluck('total', 'channel')
+                    ->all()
+            );
+        }
+
         return [
             'scope' => 'current_actor_company_branch_fy',
             'workflow_status_counts' => array_map('intval', $rows),
             'step_status_counts' => array_map('intval', $stepRows),
+            'proposals_by_channel' => $proposalsByChannel,
             'completed_erp_actions' => $completedActions,
             'failed_erp_actions' => $failedActions,
             'rejected_proposals' => $rejectedProposals,

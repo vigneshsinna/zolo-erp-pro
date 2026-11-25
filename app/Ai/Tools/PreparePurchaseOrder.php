@@ -123,6 +123,33 @@ final class PreparePurchaseOrder implements Tool
     {
         $args = $request->all();
 
+        if (config('ai_capabilities.shared_discovery_enabled', false)) {
+            try {
+                $result = app(\App\Ai\Capabilities\CapabilityDispatcher::class)->dispatch(
+                    principal: $this->principal,
+                    channel: 'sdk',
+                    capabilityKey: 'purchase_order.create.v1',
+                    operation: 'prepare',
+                    arguments: $args,
+                );
+
+                return json_encode($result, JSON_THROW_ON_ERROR);
+            } catch (ValidationException $e) {
+                return json_encode([
+                    'status' => 'needs_input',
+                    'missing_field' => 'validation',
+                    'message' => implode(' ', $e->validator->errors()->all()),
+                    'errors' => $e->errors(),
+                ], JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                return json_encode([
+                    'status' => 'error',
+                    'error_code' => 'AI_DOMAIN_EXECUTION_FAILURE',
+                    'message' => 'Could not generate purchase order proposal: ' . $e->getMessage(),
+                ], JSON_THROW_ON_ERROR);
+            }
+        }
+
         $context = new CompanyContext(
             $this->principal->companyId,
             $this->principal->branchId,

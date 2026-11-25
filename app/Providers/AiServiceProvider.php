@@ -146,6 +146,25 @@ class AiServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Ai\Registries\SetupCapabilityRegistry::class);
         $this->app->singleton(\App\Ai\Services\ActionApprovalSignature::class);
 
+        // Unified Shared Capability Discovery & Governed Proposal Dispatch
+        $this->app->singleton(\App\Ai\Capabilities\CapabilitySchemaCompiler::class);
+        $this->app->singleton(\App\Ai\Capabilities\CapabilityIntegrityValidator::class);
+        $this->app->singleton(\App\Ai\Capabilities\CapabilityCatalog::class, function ($app) {
+            return new \App\Ai\Capabilities\CapabilityCatalog(
+                $app->make(AiToolManifest::class),
+                $app->make(\App\Ai\Registries\ActionCapabilityRegistry::class),
+                $app->make(\App\Ai\Registries\ActionRequirementsRegistry::class),
+                $app->make(\App\Ai\Capabilities\CapabilitySchemaCompiler::class),
+                $app->make(\App\Ai\Capabilities\CapabilityIntegrityValidator::class),
+                $app->make(\App\Ai\Knowledge\BusinessKnowledgeRegistry::class),
+            );
+        });
+        $this->app->scoped(\App\Ai\Capabilities\CapabilityExposurePolicy::class);
+        $this->app->scoped(\App\Ai\Capabilities\ProposalStatusReader::class);
+        $this->app->scoped(\App\Ai\Capabilities\CapabilityDispatcher::class);
+        $this->app->scoped(\App\Ai\Infrastructure\McpPreparationDeduplicator::class);
+        $this->app->singleton(\App\Ai\Infrastructure\McpClientBindingService::class);
+
         // Phase 2.3 Multimodal Perception Bindings
         $this->app->bind(PdfRasterizerInterface::class, DefaultPdfRasterizer::class);
         $this->app->bind(AudioTranscoderInterface::class, DefaultAudioTranscoder::class);

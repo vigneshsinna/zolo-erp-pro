@@ -19,8 +19,14 @@ final class ActionProposalService
 {
     public function __construct(private readonly ActionSecurity $security) {}
 
-    public function create(AiPrincipal $principal, string $key, array $slots, ?string $threadId = null): array
-    {
+    public function create(
+        AiPrincipal $principal,
+        string $key,
+        array $slots,
+        ?string $threadId = null,
+        string $sourceChannel = 'internal',
+        ?string $sourceClientBindingId = null,
+    ): array {
         $definition = $this->security->definition($key, $principal);
         $validated = $this->security->validate($definition, $slots);
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
@@ -36,7 +42,7 @@ final class ActionProposalService
         }
 
         $id = (string) Str::uuid();
-        DB::table('ai_action_proposals')->insert([
+        $row = [
             'id' => $id,
             'actor_id' => $principal->actorId,
             'company_id' => $principal->companyId,
@@ -56,7 +62,14 @@ final class ActionProposalService
             'expires_at' => $now->copy()->addMinutes((int) config('ai_actions.proposal_ttl_minutes', 30)),
             'created_at' => $now,
             'updated_at' => $now,
-        ]);
+        ];
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ai_action_proposals', 'source_channel')) {
+            $row['source_channel'] = $sourceChannel;
+            $row['source_client_binding_id'] = $sourceClientBindingId;
+        }
+
+        DB::table('ai_action_proposals')->insert($row);
 
         return $this->getOwned($principal, $id);
     }

@@ -242,6 +242,7 @@ Route::prefix('v1')->group(function () {
         Route::prefix('ai')->middleware('company.context')->group(function () {
             require __DIR__ . '/ai-documents.php';
             Route::get('settings', [\App\Http\Controllers\Api\V1\AiChatController::class, 'settings'])->name('api.v1.ai.settings');
+            Route::get('capabilities', [\App\Http\Controllers\Api\V1\AiCapabilityDiscoveryController::class, 'index'])->name('api.v1.ai.capabilities.index');
             Route::get('monitoring', [\App\Http\Controllers\Api\V1\AiChatController::class, 'monitoring'])->name('api.v1.ai.monitoring');
             Route::get('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'threads'])->name('api.v1.ai.threads.index');
             Route::post('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'createThread'])->name('api.v1.ai.threads.store');

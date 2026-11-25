@@ -16,6 +16,7 @@ return [
     ],
     'mcp' => [
         'enabled' => (bool) env('AI_MCP_ENABLED', false),
+        'governed_proposals_enabled' => (bool) env('AI_MCP_GOVERNED_PROPOSALS_ENABLED', false),
         'outbound' => [
             'enabled' => (bool) env('AI_MCP_OUTBOUND_ENABLED', false),
             // Code-reviewed server URLs, tool schemas, permission requirements and per-company/branch credentials.
@@ -26,6 +27,9 @@ return [
         // Exact browser origins. Requests without Origin still require a bound bearer token.
         'allowed_origins' => array_values(array_filter(explode(',', (string) env('AI_MCP_ALLOWED_ORIGINS', '')))),
         'tools' => ['receivables.outstanding.v1', 'inventory.stock_summary.v1'],
+        'prepare_tools' => ['purchase_order.create.v1'],
+        'status_tools' => ['proposal.status.v1'],
+        'max_concurrent_per_client' => (int) env('AI_MCP_MAX_CONCURRENT_PER_CLIENT', 5),
         'max_request_bytes' => 16384,
         'max_response_bytes' => 65536,
     ],

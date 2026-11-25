@@ -37,6 +37,16 @@ final class BusinessWorkflowProgress
             if ($step->kind !== 'reviewed_action' || $step->action_key !== $proposal['action_key']) {
                 throw ValidationException::withMessages(['proposal' => 'Proposal does not match the planned step.']);
             }
+            $reusedElsewhere = DB::table('ai_business_workflow_steps')
+                ->where('proposal_id', $proposal['id'])
+                ->where(function ($query) use ($workflow, $step): void {
+                    $query->where('workflow_id', '!=', $workflow->id)
+                        ->orWhere('step_key', '!=', $step->step_key);
+                })
+                ->exists();
+            if ($reusedElsewhere) {
+                throw ValidationException::withMessages(['proposal' => 'Proposal is already linked to another workflow step.']);
+            }
             $this->assertDependencies($workflow->id, $step);
             if (!in_array($proposal['status'], ['pending', 'approved', 'executing', 'completed'], true)
                 || ($proposal['status'] !== 'completed'
@@ -300,6 +310,40 @@ final class BusinessWorkflowProgress
                     DB::table('ai_business_workflow_steps')->where('id', $step->id)
                         ->update(['status' => 'awaiting_execution', 'updated_at' => now('UTC')]);
                     $step->status = 'awaiting_execution';
+                }
+            }
+
+            // Revalidate completed physical_return steps if underlying receipt was reversed.
+            $context = $this->security->context($principal);
+            foreach ($steps as $step) {
+                if ($step->status !== 'completed' || $step->kind !== 'external_event' || $step->step_key !== 'physical_return') {
+                    continue;
+                }
+                $grnStep = $steps->firstWhere('step_key', 'receipt');
+                if (!$grnStep || !$grnStep->proposal_id) {
+                    continue;
+                }
+                $grnExec = DB::table('ai_action_executions')
+                    ->where('proposal_id', $grnStep->proposal_id)
+                    ->where('company_id', $principal->companyId)
+                    ->where('erp_resource_type', 'job_work_receipt')
+                    ->where('status', 'completed')
+                    ->first();
+                if ($grnExec && $grnExec->erp_resource_id) {
+                    $stillActive = JobWorkReceipt::visibleIn($context)
+                        ->where('financial_year_id', $context->financialYearId)
+                        ->where('id', $grnExec->erp_resource_id)
+                        ->whereNotNull('posted_at')
+                        ->whereNull('reversed_at')
+                        ->exists();
+                    if (!$stillActive) {
+                        DB::table('ai_business_workflow_steps')->where('id', $step->id)->update([
+                            'status' => 'needs_reconciliation',
+                            'evidence_hash' => null,
+                            'updated_at' => now('UTC'),
+                        ]);
+                        $step->status = 'needs_reconciliation';
+                    }
                 }
             }
             $byKey = $steps->keyBy('step_key');

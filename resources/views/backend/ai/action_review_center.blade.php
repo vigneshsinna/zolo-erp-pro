@@ -121,6 +121,9 @@
                         </span>
                         <span class="badge badge-light border text-muted mr-2">v{{ $proposal->version }}</span>
                         <span class="badge badge-info mr-2">{{ $proposal->risk_tier }}</span>
+                        @if (($proposal->source_channel ?? 'internal') === 'mcp')
+                            <span class="badge badge-secondary mr-2">MCP Draft</span>
+                        @endif
                         <small class="text-muted">ID: {{ substr($proposal->id, 0, 8) }}...</small>
                     </div>
                     <div>
