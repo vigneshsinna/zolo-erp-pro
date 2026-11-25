@@ -33,9 +33,14 @@ final class BusinessWorkflowPlanner
         if (!$definition || $definition->kind !== 'process') {
             throw ValidationException::withMessages(['process' => 'Unknown business process.']);
         }
+        $context = $this->security->context($principal);
+        $industry = app(IndustryContextResolver::class)->resolve($context);
+        $profileMatches = $definition->appliesToProfile($industry['profile'], $industry['subtype'])
+            && $definition->isEffectiveOn()
+            && !$definition->isWithdrawnOrDeprecated();
         $steps = [];
         foreach ($definition->data['steps'] as $step) {
-            $supported = $step['kind'] !== 'unsupported_action';
+            $supported = $profileMatches && $step['kind'] !== 'unsupported_action';
             if ($step['kind'] === 'reviewed_action') {
                 $supported = $this->capabilities->has($step['action_key'])
                     && $this->knowledge->forAction($step['action_key'], reviewedOnly: true) !== [];

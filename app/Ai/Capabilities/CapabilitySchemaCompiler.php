@@ -50,6 +50,8 @@ final class CapabilitySchemaCompiler
         'debit',
         'credit',
         'planned_qty',
+        'fitting_charge',
+        'tinting_cost',
     ];
 
     public const MAX_ITEMS = 50;
@@ -449,6 +451,14 @@ final class CapabilitySchemaCompiler
                         'uom' => ['type' => 'string', 'maxLength' => 64, 'description' => 'Optional unit of measure (e.g. KG, PCS, MTR).'],
                         'purchase_unit_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional purchase unit ID.'],
                         'note' => ['type' => 'string', 'maxLength' => 500, 'description' => 'Optional line item note.'],
+                        'sph' => ['type' => 'string', 'maxLength' => 16, 'description' => 'Optical sphere power (e.g. -2.00, +1.50).'],
+                        'cyl' => ['type' => 'string', 'maxLength' => 16, 'description' => 'Optical cylinder power.'],
+                        'axis' => ['type' => 'string', 'maxLength' => 8, 'description' => 'Optical axis 0-180.'],
+                        'base' => ['type' => 'string', 'maxLength' => 20, 'description' => 'Optical base curve.'],
+                        'addition' => ['type' => 'string', 'maxLength' => 16, 'description' => 'Optical addition power.'],
+                        'lr' => ['type' => 'string', 'enum' => ['R', 'L', 'Pair'], 'description' => 'Eye designation.'],
+                        'dia' => ['type' => 'string', 'maxLength' => 16, 'description' => 'Lens diameter in mm.'],
+                        'optical_spec' => $this->opticalSpecObjectSchema(),
                     ],
                     'required' => [],
                     'additionalProperties' => false,
@@ -532,6 +542,31 @@ final class CapabilitySchemaCompiler
             return;
         }
 
+        if ($req->fieldPath === 'optical_spec') {
+            $props['optical_spec'] = $this->opticalSpecObjectSchema();
+            return;
+        }
+
+        if ($req->fieldPath === 'prescription_json') {
+            $props['prescription_json'] = [
+                'type' => 'object',
+                'properties' => [
+                    'od_sph' => ['type' => 'string', 'maxLength' => 16],
+                    'od_cyl' => ['type' => 'string', 'maxLength' => 16],
+                    'od_axis' => ['type' => 'string', 'maxLength' => 8],
+                    'od_add' => ['type' => 'string', 'maxLength' => 16],
+                    'os_sph' => ['type' => 'string', 'maxLength' => 16],
+                    'os_cyl' => ['type' => 'string', 'maxLength' => 16],
+                    'os_axis' => ['type' => 'string', 'maxLength' => 8],
+                    'os_add' => ['type' => 'string', 'maxLength' => 16],
+                    'pd' => ['type' => 'string', 'maxLength' => 16],
+                ],
+                'required' => [],
+                'additionalProperties' => false,
+            ];
+            return;
+        }
+
         $props[$req->fieldPath] = match ($req->dataType) {
             'integer' => ['type' => 'integer', 'description' => $req->helpText ?? $req->label],
             'decimal_string' => ['type' => ['string', 'number'], 'description' => $req->helpText ?? $req->label],
@@ -539,6 +574,30 @@ final class CapabilitySchemaCompiler
             'boolean' => ['type' => 'boolean', 'description' => $req->helpText ?? $req->label],
             default => ['type' => 'string', 'maxLength' => self::MAX_STRING_LENGTH, 'description' => $req->helpText ?? $req->label],
         };
+    }
+
+    /** @return array<string, mixed> */
+    private function opticalSpecObjectSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'lens_family' => ['type' => 'string', 'maxLength' => 120],
+                'lens_material' => ['type' => 'string', 'maxLength' => 80],
+                'refractive_index' => ['type' => 'string', 'maxLength' => 20],
+                'coating' => ['type' => 'string', 'maxLength' => 80],
+                'lens_form' => ['type' => 'string', 'enum' => ['finished_stock', 'semi_finished_blank', 'custom_rx', 'service']],
+                'sph' => ['type' => 'string', 'maxLength' => 16],
+                'cyl' => ['type' => 'string', 'maxLength' => 16],
+                'axis' => ['type' => 'string', 'maxLength' => 8],
+                'addition' => ['type' => 'string', 'maxLength' => 16],
+                'base_curve' => ['type' => 'string', 'maxLength' => 16],
+                'dia' => ['type' => 'string', 'maxLength' => 16],
+                'lr' => ['type' => 'string', 'enum' => ['R', 'L', 'Pair']],
+            ],
+            'required' => [],
+            'additionalProperties' => false,
+        ];
     }
 
     /**

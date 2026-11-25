@@ -37,6 +37,8 @@ use App\Ai\Handlers\InvoiceAllocationsHandler;
 use App\Ai\Handlers\JobWorkStatusHandler;
 use App\Ai\Handlers\ManufacturingBomsHandler;
 use App\Ai\Handlers\OpenOrdersHandler;
+use App\Ai\Handlers\OpticalLensCandidatesHandler;
+use App\Ai\Handlers\OpticalPowerMatrixHandler;
 use App\Ai\Handlers\PayablesSummaryHandler;
 use App\Ai\Handlers\SalesSummaryHandler;
 use App\Ai\Services\AiAuditRecorder;
@@ -79,6 +81,8 @@ class AiServiceProvider extends ServiceProvider
                 new AiToolRegistration($app->make(DuplicatePurchaseInvoiceHandler::class), 'duplicate_purchase_invoice', ['purchases-index']),
                 new AiToolRegistration($app->make(CompanyKnowledgeHandler::class), 'company_knowledge', []),
                 new AiToolRegistration($app->make(CopilotHelpHandler::class), 'copilot_help', []),
+                new AiToolRegistration($app->make(OpticalLensCandidatesHandler::class), 'optical_lens_candidates', ['products-index', 'warehouse-stock-report', 'product-report']),
+                new AiToolRegistration($app->make(OpticalPowerMatrixHandler::class), 'optical_power_matrix', ['products-index', 'warehouse-stock-report', 'product-report']),
             ] as $registration) {
                 $manifest->register($registration);
             }

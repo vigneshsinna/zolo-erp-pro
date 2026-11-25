@@ -198,10 +198,19 @@ final class BatchRecordResolutionService
         $rawItems = (array) ($slots['items'] ?? []);
         $isSale = isset($slots['customer_id']) || isset($slots['customer_query']);
         $mode = $isSale ? 'sale' : 'purchase';
+        $isOptical = config('ai_business_knowledge.opticals_enabled', false)
+            && app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($context);
+        $warehouseId = !empty($slots['warehouse_id']) ? (int) $slots['warehouse_id'] : null;
 
         foreach ($rawItems as $index => $line) {
             $clientLineId = (string) ($line['client_line_id'] ?? "line-{$index}");
             $fieldKey = "items[{$clientLineId}].product_id";
+            $opticalSpec = is_array($line['optical_spec'] ?? null) ? $line['optical_spec'] : [];
+            foreach (['sph', 'cyl', 'axis', 'addition', 'base', 'dia', 'lr'] as $optField) {
+                if (isset($line[$optField]) && $line[$optField] !== null && $line[$optField] !== '') {
+                    $opticalSpec[$optField] = $line[$optField];
+                }
+            }
 
             $productId = (int) ($line['product_id'] ?? 0);
             if ($productId > 0) {
@@ -210,6 +219,13 @@ final class BatchRecordResolutionService
                     ->find($productId);
 
                 if ($product) {
+                    if ($isOptical && $opticalSpec !== []) {
+                        $optCheck = $this->resolver->resolveOpticalProduct($context, (string) $product->code, $opticalSpec, $warehouseId);
+                        if ($optCheck['status'] === 'candidates') {
+                            $result->setCandidates($fieldKey, $optCheck['candidates'], (string) $product->code);
+                            continue;
+                        }
+                    }
                     $result->setResolved($fieldKey, (int) $product->id, $product);
                     $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
                     continue;
@@ -217,6 +233,41 @@ final class BatchRecordResolutionService
             }
 
             $productQuery = trim((string) ($line['product_query'] ?? ''));
+            if ($isOptical && $opticalSpec !== []) {
+                $res = $this->resolver->resolveOpticalProduct($context, $productQuery, $opticalSpec, $warehouseId);
+                if ($res['status'] === 'exact' && $res['product']) {
+                    $product = $res['product'];
+                    $result->setResolved($fieldKey, (int) $product->id, $product);
+                    $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
+                    continue;
+                }
+                if ($res['status'] === 'candidates') {
+                    $candidates = array_map(static function (array $c): array {
+                        $spec = $c['optical_spec'] ?? [];
+                        $specLabel = implode(' ', array_filter([
+                            $spec['sph'] ?? null ? 'SPH ' . $spec['sph'] : null,
+                            $spec['cyl'] ?? null ? 'CYL ' . $spec['cyl'] : null,
+                            $spec['coating'] ?? null,
+                            $spec['dia'] ?? null ? 'DIA ' . $spec['dia'] : null,
+                        ]));
+                        return [
+                            'id' => (int) $c['product_id'],
+                            'label' => trim("{$c['name']} ({$c['code']}) {$specLabel}"),
+                            'name' => $c['name'],
+                            'code' => $c['code'],
+                            'optical_spec' => $c['optical_spec'] ?? null,
+                            'diff_fields' => $c['diff_fields'] ?? [],
+                        ];
+                    }, $res['candidates']);
+                    $result->setCandidates($fieldKey, $candidates, $productQuery);
+                    continue;
+                }
+                if ($res['status'] === 'ambiguous_legacy_catalog') {
+                    $result->setNone($fieldKey, $productQuery, $res['message'] ?? 'Legacy SKU lacks canonical optical identity.');
+                    continue;
+                }
+            }
+
             if ($productQuery !== '') {
                 $res = $this->resolver->resolveProduct($context, $productQuery);
 

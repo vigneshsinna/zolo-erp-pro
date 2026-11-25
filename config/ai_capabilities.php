@@ -74,6 +74,60 @@ return [
                     'lifecycle' => 'active',
                 ],
             ],
+            'optical.lens_candidates.v1' => [
+                'read' => [
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
+                    'aliases' => ['sdk' => 'OpticalLensCandidates', 'mcp' => 'optical_lens_candidates'],
+                    'owner' => 'optical-inventory',
+                    'review_reference' => 'REV-READ-OPT-CAND-V1',
+                    'lifecycle' => 'active',
+                ],
+            ],
+            'optical.power_matrix.v1' => [
+                'read' => [
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => true],
+                    'aliases' => ['sdk' => 'OpticalPowerMatrix', 'mcp' => 'optical_power_matrix'],
+                    'owner' => 'optical-inventory',
+                    'review_reference' => 'REV-READ-OPT-MATRIX-V1',
+                    'lifecycle' => 'active',
+                ],
+            ],
+            'setup.product.create.v1' => [
+                'prepare' => [
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_product_setup'],
+                    'owner' => 'catalog',
+                    'review_reference' => 'REV-U1-PROD-SETUP-V1',
+                    'lifecycle' => 'active',
+                ],
+            ],
+            'setup.unit.create.v1' => [
+                'prepare' => [
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_unit_setup'],
+                    'owner' => 'inventory',
+                    'review_reference' => 'REV-U1-UNIT-SETUP-V1',
+                    'lifecycle' => 'active',
+                ],
+            ],
+            'setup.warehouse.create.v1' => [
+                'prepare' => [
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_warehouse_setup'],
+                    'owner' => 'inventory',
+                    'review_reference' => 'REV-U1-WH-SETUP-V1',
+                    'lifecycle' => 'active',
+                ],
+            ],
+            'setup.branch.create.v1' => [
+                'prepare' => [
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_branch_setup'],
+                    'owner' => 'erp-platform',
+                    'review_reference' => 'REV-U1-BRANCH-SETUP-V1',
+                    'lifecycle' => 'active',
+                ],
+            ],
             'purchase_order.create.v1' => [
                 'prepare' => [
                     'channels' => ['sdk' => true, 'rest' => true, 'mcp' => true, 'automation' => true],

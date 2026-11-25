@@ -175,6 +175,7 @@ class CommercialApplicationService
                 $line['stock_details_json'] = ['base_factor' => round(app(\App\Services\Inventory\UomConversionService::class)->toBase(
                     $products[$line['product_id']], (float) $line['qty'], (int) $line[$kind === 'sale' ? 'sale_unit_id' : 'purchase_unit_id']) / (float) $line['qty'], 8)] + array_intersect_key($line, array_flip([
                     'serials', 'imei_number', 'batch', 'product_batch_id', 'variant_id', 'stock_identity_id', 'dimensions', 'attributes', 'material_sources', 'order_item_id', 'lot_no', 'date',
+                    'sph', 'cyl', 'axis', 'base', 'addition', 'lr', 'dia', 'optical_spec', 'prescription_json',
                 ]));
             }
             unset($line);

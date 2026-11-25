@@ -45,7 +45,7 @@ final class CreateSalesOrderInputSchema implements ActionInputSchemaInterface
             'expected_totals.line_totals.*.tax_amount' => ['nullable', 'numeric'],
             'expected_totals.line_totals.*.line_total' => ['nullable', 'numeric'],
             'note' => ['nullable', 'string', 'max:10000'],
-        ];
+        ] + OpticalSchemaFragment::lineRules() + OpticalSchemaFragment::salesHeaderRules();
     }
 }
 

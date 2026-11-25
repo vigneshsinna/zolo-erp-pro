@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-11-25",
+  "note": "Governance register only. Draft definitions require explicit domain owner signoff before promotion to reviewed.",
+  "pending_owner_signoff": [
+    "core/entities.json",
+    "core/relationships.json",
+    "core/actions.json",
+    "core/policies.json",
+    "core/processes.json",
+    "industries/opticals/entities.json",
+    "industries/opticals/relationships.json",
+    "industries/opticals/policies.json",
+    "industries/opticals/processes.json"
+  ]
+}

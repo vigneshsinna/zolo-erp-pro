@@ -1,3 +1,24 @@
+## Optical Lens Supplier & Rx Lab AI Implementation (`O01`–`O18`) — 2026-11-26
+
+- **Context & Scope:**
+  - Implemented the specification in `docs/zoloERP_Optical_Lens_Supplier_Implementation/` (`00`–`08`, `O01`–`O18`) on branch `feature/ai-unified-input-clarification` (base `e299b862c33f70cff8f86cfcbb36c1326da6dde5`).
+  - Documented full inventory, security/finance invariants, rollback runbook, and `G0`–`G8` gate status in [OPTICAL_LENS_SUPPLIER_IMPLEMENTATION_REPORT.md](docs/ai/release/OPTICAL_LENS_SUPPLIER_IMPLEMENTATION_REPORT.md).
+- **Key Deliverables Implemented:**
+  - **Flags & Additive Schema:** Added default-off keys (`opticals_enabled`, `opticals_lab_enabled`, `opticals_cross_store_enabled`, `opticals_mcp_enabled`) to `config/ai_business_knowledge.php` / `.env.example`, and applied `2026_11_25_000003_create_optical_ai_foundation_tables.php` (`company_branch_industry_roles`, `optical_lens_identities`, `optical_rx_jobs`, `optical_rx_job_events`, nullable `optical_spec_json` on GRN & DC items) to `zolo_test_ai_release`.
+  - **Modular Knowledge & Context:** Extended `KnowledgeDefinition`, `KnowledgeDefinitionValidator`, `BusinessKnowledgeRegistry`, `BusinessKnowledgeContextReader`, `BusinessWorkflowPlanner`, and `ScopedBusinessFactReader`; added `IndustryContextResolver` and modular v2 packs under `resources/ai/knowledge/{governance,profiles,core,industries/opticals}/` (kept `status: "draft"`).
+  - **Optical Identity, Matrix & Transfers:** Added `OpticalSpecNormalizer`, `OpticalCatalogService`, `OpticalPowerMatrixService`, `OpticalTransferPolicyService`, read handlers `OpticalLensCandidatesHandler` (`optical.lens_candidates.v1`) and `OpticalPowerMatrixHandler` (`optical.power_matrix.v1`), optical exposure in `ProductQueryService` (flag/profile gated), and cross-GSTIN transfer blocking in `ExtendedActionAdapter`.
+  - **Commercial Round-Trip & Classifiers:** Added `OpticalSchemaFragment`, `SalesDocumentClassifier`, `OpticalReturnValidator`, extended `PurchaseDocumentClassifier`, updated PO/GRN/Bill/SO schemas, requirements providers, preview/command adapters, `CommercialDocumentAdapter`, `InputCompletenessEvaluator`, `BatchRecordResolutionService`, and `$fillable` on `GoodsReceivedNoteItem` / `DeliveryChallanItem`.
+  - **Optional Rx Lab, Setup & UI:** Added `OpticalRxJob` and `OpticalRxJobService` (strictly lab-profile + flag gated), `Product/Unit/Warehouse/BranchSetupRequirementsProvider`, `OpticalDeterministicTriggers`, `BusinessWorkflowMetrics::opticalSummary()`, `public/css/pages/ai-optical.css`, `resources/views/backend/ai/partials/optical_lens_panel.blade.php`, `public/js/ai-optical-workspace.js`, and `optical_mixed` scenario in `tests/k6/ai_business_workflow_concurrency.js`.
+- **Verification (`zolo_test_ai_release`, `BypassSandbox: true`):**
+  - Syntax checks (`php -l` across all created/modified PHP files + `node --check public/js/ai-optical-workspace.js`): 0 errors.
+  - `tests/Unit/Ai/Optical` + `tests/Feature/Ai/Optical`: **15 / 15 passed (100 assertions)**.
+  - `tests/Unit/DesignTokensTest.php`: **4 / 4 passed (4 assertions)**.
+  - Core AI / Knowledge / Capability / MCP / Commercial regression suites (`BusinessKnowledgeRegistryTest`, `PurchaseDocumentClassifierTest`, `CapabilityCatalogAndSchemaTest`, `BusinessKnowledgeGovernanceTest`, `SharedCapabilityDiscoveryTest`, `McpGovernedProposalsTest`, `PurchaseBillActionTest`, `CommercialDocumentActionTest`, `BusinessKnowledgeSupplierWorkflowTest`): **44 / 44 passed (305 assertions)**.
+  - `tests/Feature/OpticalsProfileAndVouchersTest.php`: **5 / 7 passed (54 assertions)** on `zolo_test_ai_release` (2 fixture checks depend on full dev seeder product count / non-AI route config).
+  - Gates `G0`–`G4` passed locally; `G5`–`G8` remain pending staging soak, live model evaluation, and domain-owner review promotion.
+
+---
+
 ## Unified Shared Capability Discovery & External MCP Governed Proposals (U1 + U2 + Doc 03/04 Hardening) — 2026-11-25
 
 - **Context & Scope:**

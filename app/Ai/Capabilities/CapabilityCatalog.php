@@ -155,6 +155,9 @@ final class CapabilityCatalog
             if ($registration->operationsCapability !== null) {
                 $featureDeps[] = 'operations.enabled';
             }
+            if (str_starts_with($key, 'optical.')) {
+                $featureDeps[] = 'ai_business_knowledge.opticals_enabled';
+            }
 
             $list[] = new CapabilityDescriptor(
                 capabilityKey: $key,

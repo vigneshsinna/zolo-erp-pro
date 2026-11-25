@@ -34,7 +34,36 @@ final class BusinessKnowledgeContextReader
         ];
     }
 
-    public function fact(AiPrincipal $principal, string $kind, int $id): array
+    public function forProfile(AiPrincipal $principal, ?string $actionKey = null, bool $reviewedOnly = true): array
+    {
+        $this->ensureEnabled($principal);
+        $context = $this->security->context($principal);
+        if ($actionKey !== null) {
+            $this->security->definition($actionKey, $principal);
+        }
+        $industry = app(IndustryContextResolver::class)->resolve($context);
+        $definitions = $this->registry->forProfile($industry['profile'], $industry['subtype'], $reviewedOnly);
+
+        return [
+            'profile' => $industry['profile'],
+            'subtype' => $industry['subtype'],
+            'branch_role' => $industry['branch_role'],
+            'profile_revision_hash' => $industry['profile_revision_hash'],
+            'knowledge_hash' => $this->registry->versionHash(),
+            'definitions' => array_map(static fn (KnowledgeDefinition $d): array => [
+                'id' => $d->id,
+                'kind' => $d->kind,
+                'version' => $d->version,
+                'status' => $d->status,
+                'summary' => $d->summary,
+                'source_refs' => $d->sourceRefs,
+            ], $definitions),
+            'source' => 'reviewed_business_knowledge',
+            'writes_executed' => false,
+        ];
+    }
+
+    public function fact(AiPrincipal $principal, string $kind, int|string $id): array
     {
         $this->ensureEnabled($principal);
         $envelope = $this->facts->find($principal, $kind, $id);

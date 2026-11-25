@@ -139,4 +139,56 @@ final class BusinessWorkflowMetrics
             'as_of' => now('UTC')->toIso8601String(),
         ];
     }
+
+    /**
+     * Optical-scoped deterministic and workflow observability counts from persisted ledger tables.
+     *
+     * @return array<string, mixed>
+     */
+    public function opticalSummary(\App\Ai\DTOs\AiPrincipal $principal): array
+    {
+        $companyId = $principal->companyId;
+        $toolInvocations = 0;
+        $actionExecutions = 0;
+        $rxJobsTotal = 0;
+        $rxJobsRemakes = 0;
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('ai_tool_invocations')
+            && \Illuminate\Support\Facades\Schema::hasTable('ai_runs')) {
+            $toolInvocations = (int) \Illuminate\Support\Facades\DB::table('ai_tool_invocations as ati')
+                ->join('ai_runs as ar', 'ar.id', '=', 'ati.run_id')
+                ->where('ar.company_id', $companyId)
+                ->where('ati.tool_key', 'like', 'optical.%')
+                ->count();
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('ai_action_executions')) {
+            $actionExecutions = (int) \Illuminate\Support\Facades\DB::table('ai_action_executions')
+                ->where('company_id', $companyId)
+                ->where('status', 'completed')
+                ->count();
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('optical_rx_jobs')) {
+            $rxJobsTotal = (int) \Illuminate\Support\Facades\DB::table('optical_rx_jobs')
+                ->where('company_id', $companyId)
+                ->count();
+            $rxJobsRemakes = (int) \Illuminate\Support\Facades\DB::table('optical_rx_jobs')
+                ->where('company_id', $companyId)
+                ->whereNotNull('parent_job_id')
+                ->count();
+        }
+
+        return [
+            'scope' => 'current_actor_company',
+            'company_id' => $companyId,
+            'optical_tool_invocations' => $toolInvocations,
+            'commercial_and_setup_executions' => $actionExecutions,
+            'rx_jobs_total' => $rxJobsTotal,
+            'rx_jobs_with_remakes' => $rxJobsRemakes,
+            'deterministic_actions_model_usage' => 0,
+            'deterministic_actions_credits' => 0,
+            'as_of' => now('UTC')->toIso8601String(),
+        ];
+    }
 }

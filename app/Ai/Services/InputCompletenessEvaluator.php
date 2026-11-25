@@ -486,6 +486,11 @@ final class InputCompletenessEvaluator
             if (isset($line['note'])) {
                 $cleanLine['note'] = (string) $line['note'];
             }
+            foreach (\App\Ai\Schemas\OpticalSchemaFragment::LINE_FIELDS as $optField) {
+                if (array_key_exists($optField, $line) && $line[$optField] !== null && $line[$optField] !== '') {
+                    $cleanLine[$optField] = $line[$optField];
+                }
+            }
 
             $cleanLines[] = $cleanLine;
         }

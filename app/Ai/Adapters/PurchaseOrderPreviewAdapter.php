@@ -38,6 +38,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for purchase order preview.');
         }
 
+        \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context, $slots);
+
         $supplierId = (int) ($slots['supplier_id'] ?? 0);
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         $orderDate = !empty($slots['date']) ? (string) $slots['date'] : now()->toDateString();
@@ -168,7 +170,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_rate' => $taxRateStr,
                 'purchase_unit_id' => (int) ($pricedLine['purchase_unit_id'] ?? $pricingItems[$index]['purchase_unit_id']),
                 'note' => isset($rawItems[$index]['note']) ? (string) $rawItems[$index]['note'] : null,
-            ];
+            ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
             if (isset($pricingItems[$index]['tax_rate_override'])) {
                 $normalizedLine['tax_rate_override'] = $pricingItems[$index]['tax_rate_override'];
             }
@@ -184,7 +186,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_rate' => $taxRateStr,
                 'tax_amount' => $taxAmountStr,
                 'line_total' => $lineTotalStr,
-            ];
+            ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
             if (!empty($pricedLine['_tax_snapshot'])) {
                 $previewLine['tax_breakdown'] = [
                     'cgst' => sprintf('%.2f', (float) ($pricedLine['_tax_snapshot']['cgst'] ?? 0)),
@@ -403,6 +405,9 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'tax_categories' => $taxCategories->map(fn($c) => (array) $c)->all(),
             'tax_rates' => $taxRates->map(fn($r) => (array) $r)->all(),
             'tax_registrations' => $taxRegistrations->map(fn($r) => (array) $r)->all(),
+            'industry_setting' => \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
+                ? (array) DB::table('company_industry_settings')->where('company_id', $context->companyId)->first(['profile_key', 'subtype', 'updated_at'])
+                : null,
         ];
 
         return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));

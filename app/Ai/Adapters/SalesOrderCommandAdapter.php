@@ -94,14 +94,36 @@ final class SalesOrderCommandAdapter implements ActionCommandAdapterInterface
             if (!empty($payload['note'])) {
                 $orderData['note'] = (string) $payload['note'];
             }
+            if (!empty($payload['customer_reference_no'])) {
+                $orderData['customer_reference_no'] = (string) $payload['customer_reference_no'];
+            }
 
             // 3. Authoritative ERP domain service execution
-            return $this->orderLifecycleService->createSale(
+            $order = $this->orderLifecycleService->createSale(
                 $orderData,
                 $idempotencyKey,
                 $context,
                 $actorId,
             );
+
+            $opticalMeta = array_intersect_key($payload, array_flip(\App\Ai\Schemas\OpticalSchemaFragment::SALES_HEADER_FIELDS));
+            $opticalLines = array_values(array_map(
+                static fn (array $line): array => \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line),
+                $payload['items'] ?? []
+            ));
+            $hasOpticalLines = collect($opticalLines)->contains(fn (array $l) => $l !== []);
+            if ($opticalMeta !== [] || $hasOpticalLines) {
+                $attrs = is_array($order->attributes_json) ? $order->attributes_json : [];
+                if ($opticalMeta !== []) {
+                    $attrs['optical_header'] = $opticalMeta;
+                }
+                if ($hasOpticalLines) {
+                    $attrs['optical_lines'] = $opticalLines;
+                }
+                $order->forceFill(['attributes_json' => $attrs])->save();
+            }
+
+            return $order;
         });
 
         return new ActionExecutionReceipt(

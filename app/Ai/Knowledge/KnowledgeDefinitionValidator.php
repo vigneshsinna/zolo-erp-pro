@@ -11,11 +11,12 @@ use InvalidArgumentException;
 final class KnowledgeDefinitionValidator
 {
     private const KINDS = ['entity', 'relationship', 'policy', 'action', 'process'];
-    private const STATUSES = ['draft', 'reviewed', 'retired'];
+    private const STATUSES = ['draft', 'reviewed', 'retired', 'deprecated', 'withdrawn'];
     private const STEP_KINDS = ['read_or_clarify', 'reviewed_action', 'external_event', 'read_only_validation', 'unsupported_action'];
     private const ALLOWED_OWNERS = [
         'purchasing', 'finance', 'finance-domain', 'inventory', 'manufacturing',
         'operations', 'security', 'product', 'sales', 'catalog', 'accounting', 'erp-platform',
+        'optical-commercial', 'optical-lab', 'optical-inventory', 'commercial',
     ];
     private const UNSUPPORTED_PROCESSES = [
         'process.expense_payable.v1',
@@ -27,12 +28,15 @@ final class KnowledgeDefinitionValidator
 
     public function validate(array $document, array $manifest, string $repositoryRoot): void
     {
-        $this->assert(($document['schema_version'] ?? null) === 1, 'Knowledge schema version must be 1.');
-        $this->assert(($manifest['schema_version'] ?? null) === 1, 'Manifest schema version must be 1.');
+        $schemaVersion = $document['schema_version'] ?? null;
+        $this->assert(in_array($schemaVersion, [1, 2], true), 'Knowledge schema version must be 1.');
+        $this->assert(in_array($manifest['schema_version'] ?? null, [1, 2], true), 'Manifest schema version must be 1.');
         $rows = $document['definitions'] ?? null;
         $this->assert(is_array($rows) && array_is_list($rows) && $rows !== [], 'Definitions must be a non-empty list.');
         $known = [];
         $actions = [];
+        $aliasesByScope = [];
+
         foreach ($rows as $row) {
             $this->assert(is_array($row), 'Definition must be an object.');
             foreach (['id', 'kind', 'version', 'status', 'owner', 'summary', 'source_refs', 'effective_from'] as $field) {
@@ -49,6 +53,40 @@ final class KnowledgeDefinitionValidator
             $this->assert(is_string($row['owner']) && in_array(trim($row['owner']), self::ALLOWED_OWNERS, true), "Invalid or unassigned owner for {$id}.");
             $this->assert(is_string($row['summary']) && trim($row['summary']) !== '', "Missing summary for {$id}.");
             $this->assert(is_string($row['effective_from']) && (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/D', $row['effective_from']), "Invalid effective date for {$id}.");
+
+            if (array_key_exists('effective_to', $row) && $row['effective_to'] !== null) {
+                $this->assert(
+                    is_string($row['effective_to'])
+                    && (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/D', $row['effective_to'])
+                    && $row['effective_to'] >= $row['effective_from'],
+                    "Invalid effective_to date for {$id}."
+                );
+            }
+
+            if (array_key_exists('profiles', $row)) {
+                $this->assert(is_array($row['profiles']) && array_is_list($row['profiles']), "Invalid profiles list for {$id}.");
+            }
+            if (array_key_exists('subtypes', $row)) {
+                $this->assert(is_array($row['subtypes']) && array_is_list($row['subtypes']), "Invalid subtypes list for {$id}.");
+            }
+            if (array_key_exists('requires_capabilities', $row)) {
+                $this->assert(is_array($row['requires_capabilities']) && array_is_list($row['requires_capabilities']), "Invalid requires_capabilities list for {$id}.");
+            }
+
+            if (!empty($row['aliases']) && is_array($row['aliases'])) {
+                $profileScopes = !empty($row['profiles']) ? $row['profiles'] : ['*'];
+                foreach ($profileScopes as $profileScope) {
+                    foreach ($row['aliases'] as $alias) {
+                        $normalized = mb_strtolower(trim((string) $alias));
+                        if ($normalized === '') {
+                            continue;
+                        }
+                        $scopeKey = $kind.':'.$profileScope.':'.$normalized;
+                        $this->assert(!isset($aliasesByScope[$scopeKey]), "Duplicate alias '{$alias}' in scope {$kind}:{$profileScope} on {$id}.");
+                        $aliasesByScope[$scopeKey] = $id;
+                    }
+                }
+            }
 
             if ($row['status'] === 'reviewed') {
                 $this->assert(!empty($row['reviewed_at']) && (bool) preg_match('/^\d{4}-\d{2}-\d{2}/D', (string) $row['reviewed_at']), "Reviewed definition {$id} needs signoff.");

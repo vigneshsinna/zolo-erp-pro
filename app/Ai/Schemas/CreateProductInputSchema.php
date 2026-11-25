@@ -24,6 +24,11 @@ final class CreateProductInputSchema implements ActionInputSchemaInterface
             'price' => ['nullable', 'numeric', 'min:0'],
             'tax_category_id' => ['nullable', 'integer', 'min:1'],
             'hsn_code' => ['nullable', 'string', 'max:20'],
+            'base' => ['nullable', 'string', 'max:50'],
+            'addition' => ['nullable', 'string', 'max:50'],
+            'lr' => ['nullable', 'string', 'in:R,L,Pair,RE,LE,OU,OD,OS'],
+            'dia' => ['nullable', 'string', 'max:20'],
+            'product_type_id' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

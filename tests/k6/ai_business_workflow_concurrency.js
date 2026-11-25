@@ -177,6 +177,24 @@ export default function () {
         } else {
             workflowSuccessRate.add(0);
         }
+    } else if (testMode === 'optical_mixed') {
+        const capRes = http.get(`${baseUrl}/api/v1/ai/capabilities`, {
+            headers,
+            tags: { name: 'optical_capabilities_list' },
+        });
+        const okCap = check(capRes, {
+            'capabilities status valid': (r) => [200, 403, 404].includes(r.status),
+        });
+        workflowSuccessRate.add(okCap ? 1 : 0);
+
+        const settingsRes = http.get(`${baseUrl}/api/v1/ai/settings`, {
+            headers,
+            tags: { name: 'optical_ai_settings' },
+        });
+        const okSettings = check(settingsRes, {
+            'settings status valid': (r) => [200, 403, 404].includes(r.status),
+        });
+        workflowSuccessRate.add(okSettings ? 1 : 0);
     }
 
     sleep(0.5);

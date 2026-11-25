@@ -27,6 +27,10 @@ final class ActionRequirementsRegistry
         }
         $this->register(new \App\Ai\Requirements\SupplierSetupRequirementsProvider());
         $this->register(new \App\Ai\Requirements\CustomerSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\ProductSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\UnitSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\WarehouseSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\BranchSetupRequirementsProvider());
         foreach (CommercialActionCatalog::definitions() as $definition) {
             $this->register(new \App\Ai\Requirements\CommercialActionRequirementsProvider($definition->key));
         }

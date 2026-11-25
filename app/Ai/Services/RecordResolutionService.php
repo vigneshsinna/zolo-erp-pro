@@ -591,4 +591,16 @@ class RecordResolutionService
 
         return ['status' => 'none', 'grn' => null, 'candidates' => collect()];
     }
+
+    /**
+     * Resolve an optical lens product by exact SKU/alias and canonical optical specification.
+     *
+     * @param array<string, mixed> $opticalSpec
+     * @return array<string, mixed>
+     */
+    public function resolveOpticalProduct(CompanyContext $context, string $query, array $opticalSpec = [], ?int $warehouseId = null): array
+    {
+        return app(\App\Services\Optical\OpticalCatalogService::class)
+            ->resolveExactOrCandidates($context, $query, $opticalSpec, $warehouseId);
+    }
 }

@@ -1,0 +1,9 @@
+{
+  "profile_key": "opticals",
+  "subtype": "wholesale_distributor",
+  "display_name": "Optical Lens Wholesale & Multi-Store Supplier",
+  "supports_optical_rx": true,
+  "supports_lab": false,
+  "allowed_units": ["PRS", "PCS", "BOX"],
+  "default_uom": "PRS"
+}

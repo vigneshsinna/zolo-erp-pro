@@ -120,6 +120,10 @@
                         </section>
                     @endif
 
+                    @if ($canUseCopilot && config('ai_business_knowledge.opticals_enabled', false) && !empty($opticalContext['is_optical']))
+                        @include('backend.ai.partials.optical_lens_panel', ['opticalContext' => $opticalContext ?? []])
+                    @endif
+
                     <div id="chat-messages" role="log" aria-label="Conversation messages" aria-live="polite"
                         aria-relevant="additions" aria-busy="false">
                         <div class="ai-welcome-box">
@@ -263,6 +267,9 @@
 
 @push('css')
     <link rel="stylesheet" href="{{ versioned_asset('css/pages/ai-workspace.css') }}" type="text/css">
+    @if ($canUseCopilot && config('ai_business_knowledge.opticals_enabled', false) && !empty($opticalContext['is_optical']))
+        <link rel="stylesheet" href="{{ versioned_asset('css/pages/ai-optical.css') }}" type="text/css">
+    @endif
 @endpush
 
 @push('scripts')
@@ -2212,5 +2219,8 @@
                 window.zoloAiBusinessWorkflowConfig = { enabled: true };
             </script>
             <script src="{{ versioned_asset('js/ai-business-workflow.js') }}"></script>
+        @endif
+        @if ($canUseCopilot && config('ai_business_knowledge.opticals_enabled', false) && !empty($opticalContext['is_optical']))
+            <script src="{{ versioned_asset('js/ai-optical-workspace.js') }}"></script>
         @endif
 @endpush

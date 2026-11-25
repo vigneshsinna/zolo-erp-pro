@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "definitions": [
+    {
+      "id": "policy.credit_control.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "finance-domain",
+      "summary": "Authoritative customer credit limit and ageing enforcement in CreditControlService",
+      "source_refs": ["app/Services/Commercial/CreditControlService.php"],
+      "enforcer_ref": "app/Services/Commercial/CreditControlService.php"
+    },
+    {
+      "id": "policy.direct_commercial_routes.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "commercial",
+      "summary": "Direct purchase bills and direct sales invoices do not require dummy PO/SO/quotation predecessors",
+      "source_refs": ["app/Services/Commercial/CommercialApplicationService.php"],
+      "enforcer_ref": "app/Services/Commercial/CommercialApplicationService.php"
+    },
+    {
+      "id": "policy.stock_transfer_authorization.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "inventory",
+      "summary": "Internal stock transfers require actor authorization on both source and destination locations and matching GST registration",
+      "source_refs": ["app/Services/Inventory/InventoryMovementService.php"],
+      "enforcer_ref": "app/Services/Inventory/InventoryMovementService.php"
+    }
+  ]
+}

@@ -104,6 +104,10 @@ final class CapabilityExposurePolicy
             if (!config('ai_infrastructure.mcp.enabled', false) || $grant === null) {
                 return false;
             }
+            if (str_starts_with($descriptor->capabilityKey, 'optical.')
+                && !config('ai_business_knowledge.opticals_mcp_enabled', false)) {
+                return false;
+            }
             if (!$grant->allowsCapability($descriptor->capabilityKey, $descriptor->operation)) {
                 return false;
             }
@@ -112,6 +116,12 @@ final class CapabilityExposurePolicy
         if ($descriptor->operation === 'read') {
             if (!$freshPrincipal->hasTool($descriptor->capabilityKey) || !$this->manifest->has($descriptor->capabilityKey)) {
                 return false;
+            }
+            if (str_starts_with($descriptor->capabilityKey, 'optical.')) {
+                $ctx = new \App\Services\Platform\CompanyContext($freshPrincipal->companyId, $freshPrincipal->branchId, $freshPrincipal->financialYearId);
+                if (!app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($ctx)) {
+                    return false;
+                }
             }
 
             return $this->manifest->get($descriptor->capabilityKey)->risk() === 'read_only';
