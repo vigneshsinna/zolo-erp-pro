@@ -32,6 +32,7 @@ class CompanyProfileService
             'gstin' => 'nullable|string|max:15', 'registration_type' => 'nullable|in:regular,composition,unregistered',
             'gst_effective_from' => 'nullable|date_format:Y-m-d',
             'logo' => 'nullable|image|mimes:png,jpg,jpeg|max:1024',
+            'allow_reverse_edited_orders' => 'nullable|boolean',
         ];
     }
 
@@ -53,13 +54,18 @@ class CompanyProfileService
             $data['state_code'] = substr($gstin, 0, 2);
         }
 
-        return DB::transaction(function () use ($company, $data, $gstin, $unregistered, $pan, $logo, $context, $actor) {
+        return DB::transaction(function () use ($company, $data, $gstin, $unregistered, $pan, $logo, $context, $actor, $input) {
             $company = Company::lockForUpdate()->findOrFail($company->id);
             $before = $company->only([...self::FIELDS, 'logo']);
             $values = array_intersect_key($data, array_flip(self::FIELDS));
             if (array_key_exists('pan', $data) || $gstin) $values['pan'] = $pan;
             $values = array_map(fn ($value) => is_string($value) ? (trim($value) === '' ? null : trim($value)) : $value, $values);
             if ($logo) $values['logo'] = $this->storeLogo($company, $logo);
+            if (array_key_exists('allow_reverse_edited_orders', $data) || array_key_exists('allow_reverse_edited_orders', $input)) {
+                $settings = $company->settings_json ?? [];
+                $settings['allow_reverse_edited_orders'] = !empty($data['allow_reverse_edited_orders'] ?? $input['allow_reverse_edited_orders'] ?? false);
+                $values['settings_json'] = $settings;
+            }
             $company->forceFill($values)->save();
             // A GSTIN, or the Unregistered type (no GSTIN; state from the company), keeps the branch's GST registration in step.
             if ($gstin || $unregistered) {

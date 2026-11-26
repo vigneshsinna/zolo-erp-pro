@@ -54,6 +54,7 @@
 
                     <div class="card-body p-2">
                         <form id="product-form" data-product-usage="{{ old('product_usage', $lims_product_data->product_usage ?? 'composite') }}">
+                            @csrf
                             <input type="hidden" name="id" value="{{$lims_product_data->id}}" />
                             <div class="zolo-product-grid">
 
@@ -2249,7 +2250,7 @@
         paramName: 'image',
         clickable: true,
         method: 'POST',
-        url:'../update',
+        url: "{{ route('products.updateProduct') }}",
         headers: {
             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
         },
@@ -2285,8 +2286,11 @@
                                 formData.append('file', fileEl.files[0]);
                             }
                             $.ajax({
-                                type:'POST',
-                                url:'../update',
+                                type: 'POST',
+                                url: "{{ route('products.updateProduct') }}",
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                },
                                 data: formData,
                                 contentType: false,
                                 processData: false,

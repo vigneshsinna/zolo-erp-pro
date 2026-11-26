@@ -501,10 +501,14 @@
                     @php
                         // The server checks again on the reversal form; this only hides a link the user cannot use.
                         $canReverseBills = false;
+                        $allowReverseEditedOrders = false;
                         if (config('commercial.enabled')) {
                             try {
+                                $activeContext = app(\App\Services\Platform\CompanyContextResolver::class)->forActor();
                                 $canReverseBills = app(\App\Services\Commercial\CommercialPermission::class)->allows('sales-delete',
-                                    app(\App\Services\Platform\CompanyContextResolver::class)->forActor(), (int) auth()->id());
+                                    $activeContext, (int) auth()->id());
+                                $companyRecord = \App\Models\Company::find($activeContext->companyId);
+                                $allowReverseEditedOrders = $companyRecord?->allowReverseEditedOrders() ?? false;
                             } catch (\Throwable) {}
                         }
                     @endphp
@@ -560,7 +564,11 @@
                                     <i class="dripicons-return"></i> Return
                                 </a>
                                 @endif
-                                @if($canReverseBills && $bill->branch_id)
+                                @php
+                                    $isEditedOrder = $bill->isEditedOrder();
+                                    $canShowReversal = $canReverseBills && $bill->branch_id && (!$isEditedOrder || $allowReverseEditedOrders);
+                                @endphp
+                                @if($canShowReversal)
                                     @if($bill->reversed_at)
                                     <a href="javascript:void(0)" class="side-action-btn reverse btn-side-delete-options text-secondary" data-id="{{ $bill->id }}" data-ref="{{ $bill->reference_no ?? ('#'.$bill->id) }}" data-status="{{ $bill->sale_status }}" data-reversed="1" data-reversed-at="{{ $bill->reversed_at }}" data-reversal-reason="{{ $bill->reversal_reason ?? '' }}" title="View Reversal History">
                                         <i class="dripicons-history text-secondary"></i>
@@ -2997,10 +3005,9 @@
             return;
         }
         multiItemSearchTimer = setTimeout(function() {
-            CommercialProductLookup.search(term, allProducts, 'sale').then(function(matches) {
-                var filtered = (matches || []).filter(matchesProductMode);
-                filtered.forEach(ensureProductCached);
-                populateMultiItemModal(filtered);
+            CommercialProductLookup.search(term, allProducts, 'sale', matchesProductMode).then(function(matches) {
+                (matches || []).forEach(ensureProductCached);
+                populateMultiItemModal(matches);
             }).catch(function() {
                 var lowerTerm = term.toLowerCase();
                 $('#multi-item-tbody tr').each(function() {

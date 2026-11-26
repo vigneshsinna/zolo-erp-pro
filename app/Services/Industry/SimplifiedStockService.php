@@ -64,7 +64,9 @@ class SimplifiedStockService
             ->where('l.company_id', $context->companyId)
             ->where('m.company_id', $context->companyId)
             ->where('m.projection_mode', 'applied')
-            ->whereIn('m.status', ['posted', 'reversed']);
+            ->where('m.status', 'posted')
+            ->where('m.movement_type', '!=', 'reversal')
+            ->whereNull('m.reversal_of_id');
 
         if (!empty($filters['product_id'])) {
             $movements->where('l.product_id', (int) $filters['product_id']);
@@ -1864,7 +1866,9 @@ class SimplifiedStockService
             ->where('l.company_id', $context->companyId)
             ->where('m.company_id', $context->companyId)
             ->where('m.projection_mode', 'applied')
-            ->whereIn('m.status', ['posted', 'reversed'])
+            ->where('m.status', 'posted')
+            ->where('m.movement_type', '!=', 'reversal')
+            ->whereNull('m.reversal_of_id')
             ->where('l.product_id', $productId)
             ->where('l.qty_base', '>', 0)
             ->when(!empty($internalWhIds), function ($q) use ($internalWhIds) {
@@ -1891,7 +1895,9 @@ class SimplifiedStockService
                 ->where('l.company_id', $context->companyId)
                 ->where('m.company_id', $context->companyId)
                 ->where('m.projection_mode', 'applied')
-                ->whereIn('m.status', ['posted', 'reversed'])
+                ->where('m.status', 'posted')
+                ->where('m.movement_type', '!=', 'reversal')
+                ->whereNull('m.reversal_of_id')
                 ->where('l.product_id', $productId)
                 ->where('l.qty_base', '>', 0)
                 ->when(!empty($internalWhIds), function ($q) use ($internalWhIds) {
@@ -1952,7 +1958,9 @@ class SimplifiedStockService
             ->where('l.company_id', $context->companyId)
             ->where('m.company_id', $context->companyId)
             ->where('m.projection_mode', 'applied')
-            ->whereIn('m.status', ['posted', 'reversed'])
+            ->where('m.status', 'posted')
+            ->where('m.movement_type', '!=', 'reversal')
+            ->whereNull('m.reversal_of_id')
             ->where('l.product_id', $productId)
             ->when(!empty($internalWhIds), function ($q) use ($internalWhIds) {
                 $q->whereIn('l.warehouse_id', $internalWhIds);
@@ -1993,7 +2001,9 @@ class SimplifiedStockService
                                 ->where('l.company_id', $context->companyId)
                                 ->where('m.company_id', $context->companyId)
                                 ->where('m.projection_mode', 'applied')
-                                ->whereIn('m.status', ['posted', 'reversed'])
+                                ->where('m.status', 'posted')
+                                ->where('m.movement_type', '!=', 'reversal')
+                                ->whereNull('m.reversal_of_id')
                                 ->where('l.product_id', $outPid)
                                 ->when(!empty($internalWhIds), function ($q) use ($internalWhIds) {
                                     $q->whereIn('l.warehouse_id', $internalWhIds);
@@ -2035,7 +2045,9 @@ class SimplifiedStockService
                             ->where('l.company_id', $context->companyId)
                             ->where('m.company_id', $context->companyId)
                             ->where('m.projection_mode', 'applied')
-                            ->whereIn('m.status', ['posted', 'reversed'])
+                            ->where('m.status', 'posted')
+                            ->where('m.movement_type', '!=', 'reversal')
+                            ->whereNull('m.reversal_of_id')
                             ->where('l.product_id', $outPid)
                             ->when(!empty($internalWhIds), function ($q) use ($internalWhIds) {
                                 $q->whereIn('l.warehouse_id', $internalWhIds);

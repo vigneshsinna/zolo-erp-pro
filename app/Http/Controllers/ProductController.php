@@ -430,7 +430,7 @@ class ProductController extends Controller
             $lims_product_type_list = $isOptical ? ProductType::forCompany($companyId)->where('is_active', true)->orderBy('name')->get() : collect();
 
             $general_setting = DB::table('general_settings')->select('modules')->first();
-            if(in_array('restaurant',explode(',',$general_setting->modules))){
+            if(in_array('restaurant', explode(',', $general_setting->modules ?? ''))){
                 $kitchen_list = DB::table('kitchens')->where('is_active',1)->get();
                 $menu_type_list = DB::table('menu_type')->where('is_active',1)->get();
 
@@ -1381,7 +1381,16 @@ class ProductController extends Controller
         try {
             $masterContext = app(\App\Services\Platform\CompanyContextResolver::class)->forActor();
             \App\Models\Company::whereKey($masterContext->companyId)->lockForUpdate()->firstOrFail();
-            $lims_product_data = Product::forCompany($masterContext)->whereKey($request->input('id'))->lockForUpdate()->firstOrFail();
+            $lims_product_data = Product::whereKey($request->input('id'))
+                ->where(function ($query) use ($masterContext) {
+                    $query->where('company_id', $masterContext->companyId)
+                          ->orWhereNull('company_id');
+                })
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($lims_product_data->company_id === null) {
+                $lims_product_data->company_id = $masterContext->companyId;
+            }
 
             $this->validate($request, [
                 'name' => 'required|string|max:255',
@@ -1466,7 +1475,7 @@ class ProductController extends Controller
                     $data['is_online'] = 0;
             }
 
-            if(in_array('restaurant', explode(',',$general_setting->modules))) {
+            if(in_array('restaurant', explode(',', $general_setting->modules ?? ''))) {
                 $data['slug'] = Str::slug($data['name'], '-');
                 $data['slug'] = preg_replace('/[^A-Za-z0-9\-]/', '', $data['slug']);
                 $data['slug'] = str_replace( '\/', '/', $data['slug'] );

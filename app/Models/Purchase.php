@@ -143,4 +143,11 @@ class Purchase extends Model
     {
         return $this->morphOne(InstallmentPlan::class, 'reference');
     }
+
+    public function isEditedOrder(): bool
+    {
+        return !empty($this->replaces_id)
+            || !empty($this->attributes_json['is_edited'])
+            || !empty($this->attributes_json['edited_at']);
+    }
 }

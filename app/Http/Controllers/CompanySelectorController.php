@@ -104,8 +104,8 @@ class CompanySelectorController extends Controller
 
     public function storeCompany(Request $request)
     {
-        if (!$request->has('registration_type') && $request->filled('gstin')) {
-            $request->merge(['registration_type' => 'regular']);
+        if (!$request->has('registration_type')) {
+            $request->merge(['registration_type' => $request->filled('gstin') ? 'regular' : 'regular']);
         }
         $request->validate([
             'registration_type' => 'required|in:regular,composition,unregistered',
@@ -117,12 +117,8 @@ class CompanySelectorController extends Controller
             'address', 'city', 'postal_code', 'phone', 'email', 'website', 'pan', 'gstin', 'registration_type',
         ]), $request->file('logo'));
 
-        $target = $request->input('return') === 'workspace'
-            ? redirect()->route('workspace')
-            : redirect()->route('company.select', ['manage' => 1]);
-
-        return $target
-            ->with('status', ($company->trade_name ?: $company->legal_name).' is ready. Open it to start working.');
+        return $this->enter($request, $company->id)
+            ->with('status', ($company->trade_name ?: $company->legal_name).' is ready. Welcome to your new enterprise workspace.');
     }
 
     public function updateCompany(Request $request, int $company)

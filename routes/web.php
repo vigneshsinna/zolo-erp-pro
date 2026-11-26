@@ -315,7 +315,7 @@ Route::group(['middleware' => ['common', 'auth', 'active', 'legacy.company']], f
         Route::get('products/print_barcode', 'printBarcode')->name('product.printBarcode');
         Route::get('products/lims_product_search', 'limsProductSearch')->name('product.search');
         Route::post('products/deletebyselection', 'deleteBySelection')->name('products.deletebyselection');
-        Route::post('products/update', 'updateProduct');
+        Route::post('products/update', 'updateProduct')->name('products.updateProduct');
         Route::get('products/variant-data/{id}', 'variantData');
         Route::get('products/history', 'history')->name('products.history');
         Route::post('products/sale-history-data', 'saleHistoryData');

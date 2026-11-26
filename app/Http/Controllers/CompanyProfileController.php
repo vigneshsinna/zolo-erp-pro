@@ -41,7 +41,7 @@ class CompanyProfileController extends Controller
     public function update(Request $request, CompanyProfileService $profiles)
     {
         $context = $this->context($request); $actor = $request->user()->id;
-        $input = $request->only([...CompanyProfileService::FIELDS, 'gstin', 'registration_type', 'gst_effective_from']);
+        $input = $request->only([...CompanyProfileService::FIELDS, 'gstin', 'registration_type', 'gst_effective_from', 'allow_reverse_edited_orders']);
         $company = $profiles->save(Company::findOrFail($context->companyId), $input, $request->file('logo'), $context, $actor);
         if ($request->boolean('app_currency') && $company->base_currency_id && Schema::hasTable('general_settings')) {
             DB::table('general_settings')->where('id', DB::table('general_settings')->latest()->value('id'))->update(['currency' => $company->base_currency_id]);
