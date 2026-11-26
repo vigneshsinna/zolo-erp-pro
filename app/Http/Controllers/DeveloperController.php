@@ -15,6 +15,7 @@ use App\Services\Platform\CapabilityCatalog;
 use App\Services\Platform\CapabilityService;
 use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
+use App\Services\Platform\CompanyDirectoryService;
 use App\Services\Platform\DeveloperTenantService;
 use App\Services\Platform\LicenseService;
 use App\Services\Platform\MenuSwitches;
@@ -51,15 +52,19 @@ class DeveloperController extends Controller
 
         $search = $request->query('q');
         $statusFilter = $request->query('status', 'all');
+        $groupFilter = (string) $request->query('group', 'all');
         $tab = in_array($request->query('tab'), ['tenants', 'plans', 'admins', 'audits', 'modules'], true)
             ? $request->query('tab')
             : 'tenants';
 
-        $tenants = $this->tenants->listTenants($search, $statusFilter);
-        $allTenants = $search || $statusFilter !== 'all' ? $this->tenants->listTenants() : $tenants;
+        $tenants = $this->tenants->listTenants($search, $statusFilter, $groupFilter);
+        $allTenants = ($search || $statusFilter !== 'all' || $groupFilter !== 'all') ? $this->tenants->listTenants() : $tenants;
 
         $requestedCompanyId = $request->integer('company') ?: (int) ($request->session()->get('company_id') ?: 0);
-        $selectedTenant = $allTenants->firstWhere('id', $requestedCompanyId) ?? $allTenants->first();
+        $selectedTenant = $tenants->firstWhere('id', $requestedCompanyId)
+            ?? $tenants->first()
+            ?? $allTenants->firstWhere('id', $requestedCompanyId)
+            ?? $allTenants->first();
         if ($selectedTenant) {
             $this->shareShellContext($request, (int) $selectedTenant['id']);
         }
@@ -95,8 +100,11 @@ class DeveloperController extends Controller
         $companyNames = $allTenants->pluck('label', 'id');
 
         $groups = Schema::hasTable('company_groups')
-            ? CompanyGroup::orderBy('name')->get(['id', 'code', 'name'])
+            ? CompanyGroup::where('status', 'active')->orderBy('name')->get(['id', 'code', 'name'])
             : collect();
+        $groupedCounts = $allTenants->whereNotNull('group_id')->countBy('group_id');
+        $independentCount = $allTenants->whereNull('group_id')->count();
+
         $currencies = Schema::hasTable('currencies')
             ? DB::table('currencies')->orderBy('code')->get(['id', 'code', 'name'])
             : collect();
@@ -109,6 +117,8 @@ class DeveloperController extends Controller
 
         $stats = [
             'tenants_total' => $allTenants->count(),
+            'groups_total' => $groups->count(),
+            'independent_total' => $independentCount,
             'tenants_active' => $allTenants->whereIn('license.status', ['active', 'unlicensed_legacy'])->count(),
             'tenants_trial_grace' => $allTenants->whereIn('license.status', ['trial', 'grace'])->count(),
             'tenants_blocked' => $allTenants->whereIn('license.status', ['suspended', 'expired', 'cancelled'])->count(),
@@ -122,6 +132,7 @@ class DeveloperController extends Controller
             'tab' => $tab,
             'search' => $search,
             'statusFilter' => $statusFilter,
+            'groupFilter' => $groupFilter,
             'stats' => $stats,
             'tenants' => $tenants,
             'allTenants' => $allTenants,
@@ -140,6 +151,9 @@ class DeveloperController extends Controller
             'actorNames' => $actorNames,
             'companyNames' => $companyNames,
             'groups' => $groups,
+            'groupedCounts' => $groupedCounts,
+            'independentCount' => $independentCount,
+            'theme' => $_COOKIE['theme'] ?? 'light',
             'currencies' => $currencies,
             'defaultCurrencyId' => $defaultCurrencyId,
             'states' => $states,
@@ -168,8 +182,42 @@ class DeveloperController extends Controller
         $this->authorizeDeveloper();
         $group = $this->tenants->createGroup($request->only(['name', 'code']));
 
-        return redirect()->route('developer.index', ['tab' => 'tenants'])
+        return redirect()->route('developer.index', ['tab' => 'tenants', 'group' => $group->id])
             ->with('message', 'Company group '.$group->name.' created.');
+    }
+
+    public function updateGroup(Request $request, int $group, CompanyDirectoryService $directory)
+    {
+        $this->authorizeDeveloper();
+        $saved = $directory->updateGroup((int) Auth::id(), $group, $request->only(['name', 'code']));
+
+        return redirect()->route('developer.index', ['tab' => 'tenants', 'group' => $saved->id])
+            ->with('message', 'Company group '.$saved->name.' updated.');
+    }
+
+    public function deleteGroup(int $group, CompanyDirectoryService $directory)
+    {
+        $this->authorizeDeveloper();
+        $directory->deleteGroup((int) Auth::id(), $group);
+
+        return redirect()->route('developer.index', ['tab' => 'tenants', 'group' => 'independent'])
+            ->with('message', 'Company group removed; member companies moved to Independent Companies.');
+    }
+
+    public function assignGroup(Request $request, int $company)
+    {
+        $this->authorizeDeveloper();
+        $data = $request->validate([
+            'company_group_id' => 'nullable|integer|exists:company_groups,id',
+        ]);
+        $updated = $this->tenants->assignCompanyGroup(
+            $company,
+            !empty($data['company_group_id']) ? (int) $data['company_group_id'] : null,
+            (int) Auth::id()
+        );
+
+        return redirect()->route('developer.index', ['company' => $updated->id, 'tab' => 'tenants'])
+            ->with('message', $updated->group ? "Assigned to group {$updated->group->name}." : 'Moved to Independent Companies.');
     }
 
     public function assignPlan(Request $request, int $company)
