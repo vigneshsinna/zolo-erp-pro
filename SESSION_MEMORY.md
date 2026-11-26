@@ -1,5 +1,20 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## Merge of `feature/ai-unified-input-clarification` (`ai-unified`) into `main` — 2026-11-26
+
+- **Merge Summary (`d84b75fc` on local `main`):**
+  - Merged `feature/ai-unified-input-clarification` (`5ff80b2`) into `main` (`9b8af71`, merge base `d604650`) preserving 100% of both `main` (SaaS Developer Portal & 45-module ERP + AI licensing engine) and `ai-unified` (PR8–PR16 Business Knowledge & Workflows, Unified Shared Capability Discovery & External MCP Governed Proposals, and Multi-Store Optical Lens Supplier & Rx Lab AI Layer `O01`–`O18`).
+  - Zero files, branches, or stashes were deleted (`git diff --diff-filter=D` empty against both `9b8af71` and `5ff80b2`). Five pre-existing untracked whitespace-formatted files in `app/Ai/Knowledge/` were backed up to conversation scratch before merging so canonical committed versions merged cleanly.
+  - Resolved `SESSION_MEMORY.md` preserving both `main`'s 2026-11-26 SaaS licensing header and `feature/ai-unified-input-clarification`'s complete history (recovering the pre-`2026-11-14` tail truncated in `c84ec2e`). Auto-merged `CommercialApplicationService.php`, `main.blade.php`, and `routes/web.php` verified intact on both sides.
+  - Fixed a pre-existing missing closing parenthesis on line 178 of `public/js/ai-business-workflow.js` (`}))));` -> `})))));`).
+  - Detailed merge report recorded at [MERGE_AI_UNIFIED_TO_MAIN_REPORT.md](docs/ai/release/MERGE_AI_UNIFIED_TO_MAIN_REPORT.md). Left `main` local (unpushed) pending user review.
+- **Verification:**
+  - `php -l` across 253 modified/added PHP files (0 failures), `node --check` across 14 JS/MJS files (0 failures), `composer validate --strict` OK, `route:cache` & `view:cache` exited 0 (`optimize:clear` run afterward).
+  - Platform/licensing/design/security suite: **71 tests, 539 assertions, 0 failures, 1 skipped** (MySQL-only DDL test).
+  - `phpunit.ai.xml` on `zolo_test_ai_release` (with `2026_11_26_000001_create_saas_licensing_tables` migrated): **592 / 605 passed**; 12 failures caused by local `.env` `AI_CONVERSATION_ENABLED=true` passed **24 / 24** (`8/8`, `12/12`, `4/4`) when re-run with `AI_CONVERSATION_ENABLED=false`, and 1 global count check in `ProviderGatewayRateLimitAndSettlementTest:254` hit 1,500 pre-existing `usage_debit` rows in shared `zolo_test_ai_release`.
+
+---
+
 ## Active Session & Follow-up — 2026-11-26: Multi-Tenant SaaS Developer Portal & 45-Module Licensing Engine (37 ERP + 8 AI, branch main)
 
 - **Architecture Clarified:**
