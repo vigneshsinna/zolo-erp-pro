@@ -102,6 +102,150 @@ class AiChatApiAndWorkspaceTest extends TestCase
         app(AiFeatureGate::class)->setCompanySetting($this->company->id, true, true);
     }
 
+    public function test_deterministic_gstin_and_arithmetic_never_call_or_bill_model(): void
+    {
+        config()->set('erp_ai.conversation_enabled', false);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+
+        $valid = \App\Services\Tax\Gstin::make('33AVMPK0140L1Z');
+        $first = $this->postJson(route('ai.chat'), ['message' => 'Validate GSTIN '.$valid])
+            ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+            ->assertJsonPath('usage.model_calls', 0)
+            ->assertJsonPath('usage.credits_debited', 0)
+            ->assertJsonPath('usage.input_tokens', 0)
+            ->assertJsonPath('usage.output_tokens', 0);
+        $this->assertStringContainsString('format and checksum are valid', $first->json('message'));
+        $run = $first->json('run_id');
+        $this->assertDatabaseHas('ai_runs', [
+            'id' => $run, 'model_provider' => 'deterministic', 'model_key' => 'php_sql.v1',
+        ]);
+        $this->assertSame(0, DB::table('ai_model_invocations')->where('run_id', $run)->count());
+
+        $second = $this->postJson(route('ai.chat'), [
+            'thread_id' => $first->json('thread_id'),
+            'message' => 'Calculate 12.50 * 3',
+        ])->assertOk()->assertJsonPath('message', 'Result: 37.5')
+            ->assertJsonPath('usage.model_calls', 0);
+        $this->assertSame(0, DB::table('ai_model_invocations')
+            ->whereIn('run_id', [$first->json('run_id'), $second->json('run_id')])->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_supplier_setup_can_preview_and_approve_in_the_same_chat_as_erp_reads(): void
+    {
+        config([
+            'erp_ai.conversation_enabled' => true, 'ai_actions.foundation_enabled' => true,
+            'ai_actions.execution_enabled' => true, 'ai_infrastructure.async_execution_enabled' => false,
+        ]);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        $threadId = $this->postJson(route('ai.chat'), ['message' => 'Show stock summary'])
+            ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')->json('thread_id');
+        $supplierName = 'Same Chat Supplier';
+        $send = fn (string $message, array $extra = []) => $this->postJson(route('ai.chat'), [
+            'thread_id' => $threadId, 'message' => $message, 'client_turn_id' => (string) \Illuminate\Support\Str::uuid(), ...$extra,
+        ]);
+        $draft = $send('create a supplier')->assertOk()
+            ->assertJsonPath('thread_id', $threadId)->assertJsonPath('interaction_type', 'workflow_continuation')
+            ->assertJsonPath('workflow.action_key', 'setup.supplier.create.v1')->assertSee('You can type, dictate, record, or attach a photo.')->json('workflow');
+        $context = ['active_task_id' => $draft['task_id'], 'expected_task_revision' => $draft['task_revision']];
+        $details = $send('Supplier name is '.$supplierName.'. Phone number is 98653210. E-mail is receiving@example.com. City is Tiruppur. GST and you can put anything.', $context)
+            ->assertOk()->assertSee('GSTIN checksum is invalid')->json('workflow');
+        $context['expected_task_revision'] = $details['task_revision'];
+        $corrected = $send('no GSTIN', $context)->assertOk()->assertSee('preview supplier')->json('workflow');
+        $context['expected_task_revision'] = $corrected['task_revision'];
+        $proposal = $send('preview supplier', $context)->assertOk()->assertJsonPath('workflow.preview.city', 'Tiruppur')
+            ->assertJsonPath('workflow.preview.email', 'receiving@example.com')
+            ->assertJsonPath('workflow.preview.phone_number', '98653210')->json('workflow');
+        $oldProposalId = $proposal['proposal_id'];
+        $context['expected_task_revision'] = $proposal['task_revision'];
+        $edited = $send('change the phone to 1234567890', $context)->assertOk()->json('workflow');
+        $this->assertDatabaseHas('ai_action_proposals', ['id' => $oldProposalId, 'status' => 'cancelled']);
+        $context['expected_task_revision'] = $edited['task_revision'];
+        $proposalId = $send('preview supplier', $context)->assertOk()
+            ->assertJsonPath('workflow.preview.phone_number', '1234567890')->json('workflow.proposal_id');
+        $request = ['thread_id' => $threadId, 'action_key' => 'setup.supplier.create.v1',
+            'slots' => ['name' => $supplierName, 'city' => 'Tiruppur']];
+        $this->assertDatabaseMissing('suppliers', ['company_id' => $this->company->id, 'name' => $supplierName]);
+        $this->assertDatabaseHas('ai_action_proposals', ['id' => $proposalId, 'thread_id' => $threadId, 'status' => 'pending']);
+
+        $this->postJson(route('ai.proposals.approve', $proposalId), ['expected_version' => 1])
+            ->assertOk()->assertJsonPath('status', 'completed')->assertJsonPath('execution.receipt.details.name', $supplierName);
+        $history = $this->getJson(route('ai.threads.show', $threadId))->assertOk()->json('messages');
+        $this->assertSame('completed', last($history)['facts'][1]['data']['proposal_status']);
+        $this->postJson(route('ai.proposals.store'), $request)->assertUnprocessable()->assertJsonValidationErrors('name');
+        $this->postJson(route('ai.proposals.store'), array_replace($request, ['thread_id' => (string) \Illuminate\Support\Str::uuid()]))
+            ->assertNotFound();
+        $this->postJson(route('ai.chat'), ['thread_id' => $threadId, 'message' => 'Calculate 2 + 3'])
+            ->assertOk()->assertJsonPath('thread_id', $threadId)->assertJsonPath('message', 'Result: 5');
+        Http::assertNothingSent();
+    }
+
+    public function test_deterministic_financial_reports_use_authorized_tools_without_nemotron(): void
+    {
+        config()->set('erp_ai.conversation_enabled', false);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        foreach ([
+            ['Show receivables aging', 'receivables.outstanding.v1'],
+            ['Show open purchase orders', 'orders.open.v1'],
+            ['Show low stock', 'inventory.stock_summary.v1'],
+            ['Check duplicate supplier invoice ABC-2026-100', 'erp_checks.duplicate_purchase.v1'],
+        ] as [$question, $tool]) {
+            $response = $this->postJson(route('ai.chat'), ['message' => $question])
+                ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+                ->assertJsonPath('usage.model_calls', 0)
+                ->assertJsonPath('usage.credits_debited', 0);
+            $run = $response->json('run_id');
+            $this->assertDatabaseHas('ai_tool_invocations', ['run_id' => $run, 'tool_key' => $tool]);
+            $this->assertSame(0, DB::table('ai_model_invocations')->where('run_id', $run)->count());
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_deterministic_business_rule_checks_never_guess_or_fall_back_to_model(): void
+    {
+        config()->set('erp_ai.conversation_enabled', false);
+        Http::fake();
+        $this->actingAs($this->adminUser)->withSession($this->workspaceContext());
+        foreach ([
+            'Calculate GST for a purchase bill',
+            'Check duplicate supplier invoice',
+            'Compare PO vs GRN vs Bill',
+            'Calculate 1 / 0',
+        ] as $question) {
+            $response = $this->postJson(route('ai.chat'), ['message' => $question])
+                ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+                ->assertJsonPath('answer_status', 'needs_input')
+                ->assertJsonPath('usage.model_calls', 0);
+            $run = $response->json('run_id');
+            $this->assertSame(0, DB::table('ai_model_invocations')->where('run_id', $run)->count());
+            $this->assertSame(0, DB::table('ai_tool_invocations')->where('run_id', $run)->count());
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_deterministic_router_never_converts_ambiguous_language_to_erp_write_or_read(): void
+    {
+        $router = app(\App\Ai\Deterministic\DeterministicReadRouter::class);
+        $this->assertNull($router->plan('Why did the three-way match fail?'));
+        $this->assertNull($router->plan('Create a purchase bill with 18% GST'));
+        $this->assertNull($router->plan('Draft a supplier reminder based on aging'));
+        $this->assertNull($router->plan('Show stock and then create a reorder'));
+        $this->assertSame(['type' => 'answer', 'message' => 'Result: 90'],
+            $router->plan('What is 18% of 500'));
+        $this->assertSame(['type' => 'answer', 'message' => 'True.'],
+            $router->plan('Is 5 < 10?'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'inventory.stock_summary.v1',
+            'input' => ['below_reorder_only' => true]], $router->plan('Show products below reorder level'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'tax.gst_summary.v1', 'input' => []],
+            $router->plan('Show GST summary'));
+        $this->assertSame(['type' => 'tool', 'tool' => 'erp_checks.duplicate_purchase.v1',
+            'input' => ['supplier_invoice_no' => 'ABC-2026-100']],
+            $router->plan('Check duplicate supplier invoice ABC-2026-100'));
+    }
+
     public function test_workspace_view_renders_for_authenticated_actor(): void
     {
         DB::table('general_settings')->insert([
@@ -126,12 +270,14 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $response->assertSee($this->company->legal_name ?? $this->company->name);
         $response->assertSee('Search conversations');
         $response->assertSee('AI engine');
+        $response->assertSee('window.ZoloAiStreamEnabled = false;', false);
         $response->assertSee('Provider requests / minute');
         $response->assertDontSee('RPM: --/35');
 
         if (getenv('ERP_EXPORT_AI_WORKSPACE_BROWSER') === '1') {
             file_put_contents(base_path('scratch/ai-workspace-disabled.html'), $response->getContent());
             config(['ai_multimodal.enabled' => true]);
+            config(['erp_ai.conversation_enabled' => getenv('ERP_EXPORT_AI_CONVERSATION') === '1']);
             app(AiFeatureGate::class)->setCompanyMultimodal($this->company->id, true);
             $enabled = $this->get(route('ai.workspace'))->assertOk();
             file_put_contents(base_path('scratch/ai-workspace-enabled.html'), $enabled->getContent());
@@ -783,7 +929,7 @@ class AiChatApiAndWorkspaceTest extends TestCase
         app(PartyOpeningBalanceService::class)->post($customer, 12500.00, $context);
         $report = app(FinancialReportService::class)->ageing($context, 'customer', actorId: $this->adminUser->id);
 
-        // Model returns tool call in step 1, then EMPTY text in step 2
+        // Repeated tool results share one verified summary when the model returns no text.
         Http::fake([
             'https://provider.example/v1/responses' => Http::sequence()
                 ->push($this->providerResponse([
@@ -792,17 +938,32 @@ class AiChatApiAndWorkspaceTest extends TestCase
                     'name' => 'CustomerOutstanding',
                     'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
                 ], 120, 18))
+                ->push($this->providerResponse([
+                    'type' => 'function_call',
+                    'call_id' => 'call_summary_retry',
+                    'name' => 'CustomerOutstanding',
+                    'arguments' => json_encode(['as_of' => $report['as_of_date'], 'limit' => 5]),
+                ], 180, 18))
                 ->push($this->providerResponse($this->providerMessage(''), 250, 5))
         ]);
 
         $res = $this->postJson(route('ai.chat'), ['message' => 'What are customer dues?'])->assertOk();
-        $res->assertJsonPath('answer_status', 'verified');
+        $res->assertJsonPath('answer_status', 'verified')->assertJsonCount(1, 'facts');
         $message = $res->json('message');
 
         $this->assertNotEmpty($message);
         $this->assertStringContainsString('Customer Outstanding Summary', $message);
         $this->assertStringContainsString('Summary Test Customer', $message);
         $this->assertStringNotContainsString('Verified ERP results are below.', $message);
+
+        $legacyFacts = array_merge($res->json('facts'), $res->json('facts'));
+        DB::table('agent_conversation_messages')->where('conversation_id', $res->json('thread_id'))
+            ->where('role', 'assistant')->update([
+                'content' => app(\App\Ai\Services\VerifiedSummaryBuilder::class)->build($legacyFacts),
+                'meta' => json_encode(['facts' => $legacyFacts], JSON_THROW_ON_ERROR),
+            ]);
+        $this->getJson(route('ai.threads.show', ['id' => $res->json('thread_id')]))
+            ->assertOk()->assertJsonCount(1, 'messages.1.facts')->assertJsonPath('messages.1.content', $message);
     }
 
     public function test_model_written_narrative_is_preserved_when_present(): void
@@ -869,6 +1030,19 @@ class AiChatApiAndWorkspaceTest extends TestCase
         $this->assertEquals('application/pdf', $response->headers->get('Content-Type'));
         $this->assertStringContainsString('.pdf', (string) $response->headers->get('Content-Disposition'));
         $this->assertNotEmpty($response->getContent());
+
+        // Hyphenated type 'purchase-order' (matches frontend URL generation)
+        $poHyphen = $this->get(route('ai.documents.pdf', ['type' => 'purchase-order', 'id' => $purchase->id]));
+        $poHyphen->assertOk();
+        $this->assertEquals('application/pdf', $poHyphen->headers->get('Content-Type'));
+        $this->assertStringContainsString('inline;', (string) $poHyphen->headers->get('Content-Disposition'));
+
+        // Reference number string lookup with download=1
+        $poDownload = $this->get(route('ai.documents.pdf', ['type' => 'purchase-order', 'id' => $purchase->reference_no, 'download' => 1]));
+        $poDownload->assertOk();
+        $this->assertEquals('application/pdf', $poDownload->headers->get('Content-Type'));
+        $this->assertStringContainsString('attachment;', (string) $poDownload->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('PO-TEST-PDF.pdf', (string) $poDownload->headers->get('Content-Disposition'));
     }
 
     private function providerResponse(array $output, int $inputTokens, int $outputTokens): array

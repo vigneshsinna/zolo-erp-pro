@@ -41,6 +41,8 @@
         'Source DC / GRN' => implode(', ', array_column($d['material_documents'] ?? [], 'reference_no')),
         'Due Date' => !empty($d['due_date']) ? \Carbon\Carbon::parse($d['due_date'])->format('d-m-Y') : null,
         'Order No.' => $d['references']['order_no'] ?? null,
+        'Commercial Terms' => isset($d['references']['payment_terms_type'])
+            ? ucfirst($d['references']['payment_terms_type']).' / '.($d['references']['credit_days'] ?? 0).' days' : null,
         'Transport' => $d['transport']['transport_name'] ?? null,
         'Vehicle No.' => $d['transport']['vehicle_number'] ?? null,
         'LR No.' => ($d['transport']['lr_number'] ?? null) ?: ($d['references']['lr_no'] ?? null),

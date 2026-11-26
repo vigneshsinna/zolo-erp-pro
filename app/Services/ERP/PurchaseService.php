@@ -175,7 +175,7 @@ class PurchaseService
                         'expired_date' => $batchData['expired_date'] ?? ($item['expired_date'] ?? null),
                         'mfg_date' => $batchData['mfg_date'] ?? ($item['mfg_date'] ?? null),
                         'mrp' => isset($batchData['mrp']) ? (float) $batchData['mrp'] : (isset($item['mrp']) ? (float) $item['mrp'] : null),
-                    ];
+                    ] + ($deferPosting ? $batchData : []);
                     $expiryRequired = app(\App\Services\Platform\CapabilityService::class)->enabled('inventory.batch_expiry', $context->companyId);
                     if ($expiryRequired && empty($batchAttributes['expired_date'])) {
                         throw new InvalidArgumentException("New batch {$batchNo} needs an expiry date.");

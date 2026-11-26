@@ -1,0 +1,170 @@
+{
+  "source_remote_branch": "feature/ai-unified-input-clarification",
+  "source_sha": "ee9be8cb3b42776e5f338d760b1940db8f497dca",
+  "d08_parent_sha": "7c1993563b6cc7f7f63e88d759091edcd5cf8783",
+  "release_status": "blocked",
+  "production_verified": false,
+  "live_provider_calls": false,
+  "disposable_schema": "zolo_test_conversation_20261117",
+  "mysql_port": 3308,
+  "runs": {
+    "full_ai": {
+      "artifact": "scratch/d08-release-all.xml",
+      "tests": "403",
+      "assertions": "4070",
+      "errors": "4",
+      "failures": "2",
+      "skipped": "0",
+      "time": "96.928102",
+      "issues": [
+        {
+          "kind": "error",
+          "class": "Tests\\Unit\\Ai\\Billing\\SubscriptionAndPaymentHardeningTest",
+          "test": "test_webhook_signature_verification_succeeds_with_valid_hmac_sha256",
+          "message": "Illuminate\\Contracts\\Container\\BindingResolutionException: Target class [env] does not exist."
+        },
+        {
+          "kind": "failure",
+          "class": "Tests\\Unit\\Ai\\Billing\\SubscriptionAndPaymentHardeningTest",
+          "test": "test_multimodal_configuration_defaults_to_false_for_direct_purchase_bill",
+          "message": "Failed asserting that true is false."
+        },
+        {
+          "kind": "failure",
+          "class": "Tests\\Unit\\Ai\\Billing\\SubscriptionAndPaymentHardeningTest",
+          "test": "test_credits_configuration_includes_plan_catalog_and_require_subscription_flag",
+          "message": "Failed asserting that false is true."
+        },
+        {
+          "kind": "error",
+          "class": "Tests\\Feature\\Ai\\Billing\\ConcurrentCreditLoadTest",
+          "test": "test_concurrent_duplicate_payment_webhooks_grant_credits_exactly_once",
+          "message": "ErrorException: Undefined variable $rawPayload"
+        },
+        {
+          "kind": "error",
+          "class": "Tests\\Feature\\Ai\\Billing\\CreditLedgerRulesTest",
+          "test": "test_cr_17_refund_creates_compensating_ledger_entries",
+          "message": "ErrorException: Undefined variable $rawPayload"
+        },
+        {
+          "kind": "error",
+          "class": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest",
+          "test": "test_sec_13_valid_webhook_repeated_100x_grants_exactly_once",
+          "message": "ErrorException: Undefined variable $rawPayload"
+        }
+      ]
+    },
+    "focused_before_final_line_case": {
+      "artifact": "scratch/d08-final-focused.xml",
+      "tests": "69",
+      "assertions": "568",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "time": "22.334286",
+      "issues": []
+    },
+    "complete_voice_flow": {
+      "artifact": "scratch/d08-flow-final.xml",
+      "tests": "1",
+      "assertions": "36",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "time": "1.436958",
+      "issues": []
+    },
+    "sse_red": {
+      "artifact": "scratch/d08-stream-red.xml",
+      "tests": "1",
+      "assertions": "3",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "time": "0.574625",
+      "issues": [
+        {
+          "kind": "failure",
+          "class": "Tests\\Feature\\Ai\\Conversation\\ActiveTaskRoutingTest",
+          "test": "test_stream_emits_one_workflow_state_without_duplicate_task",
+          "message": "Failed asserting that 0 is identical to 1."
+        }
+      ]
+    },
+    "sse_green": {
+      "artifact": "scratch/d08-stream-green.xml",
+      "tests": "1",
+      "assertions": "6",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "time": "0.570496",
+      "issues": []
+    },
+    "uom_conversion_red": {
+      "artifact": "scratch/d08-uom-freshness-red.xml",
+      "tests": "1",
+      "assertions": "8",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "time": "0.635647",
+      "issues": [
+        {
+          "kind": "failure",
+          "class": "Tests\\Feature\\Ai\\Commercial\\PurchaseOrderActionTest",
+          "test": "test_selected_purchase_unit_is_preserved_and_unknown_named_unit_blocks",
+          "message": "Expected response status code [422] but received 200."
+        }
+      ]
+    },
+    "uom_correction_red": {
+      "artifact": "scratch/d08-uom-correct-red.xml",
+      "tests": "1",
+      "assertions": "9",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "time": "0.527125",
+      "issues": [
+        {
+          "kind": "failure",
+          "class": "Tests\\Feature\\Ai\\Commercial\\PurchaseOrderActionTest",
+          "test": "test_selected_purchase_unit_is_preserved_and_unknown_named_unit_blocks",
+          "message": "Failed asserting that false is identical to true."
+        }
+      ]
+    },
+    "committed_focused": {
+      "command": "php vendor/bin/phpunit -c scratch/conversation.phpunit.xml tests/Feature/Ai/Conversation tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php tests/Feature/Ai/Clarification --log-junit scratch/d08-committed-focused.xml",
+      "tests": "70",
+      "assertions": "578",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "time": "23.910740"
+    }
+  },
+  "tested_php_sha256": {
+    "app/Ai/Adapters/PurchaseOrderCommandAdapter.php": "4dcf184551b65d4975036f120e34c7b6c49ec4e6ca6539374bbaff1973c18153",
+    "app/Ai/Adapters/PurchaseOrderPreviewAdapter.php": "d5a9cda393dbb054347bbf538a86899dd141f27b34ba00bc4bada17f23c76cad",
+    "app/Ai/Conversation/ConversationTurnRouter.php": "3730669695081b7eefbb53a274c75ae49ac62f8598d852ef4fee2de7da0a3a81",
+    "app/Ai/Conversation/ConversationalSlotInterpreter.php": "76b75876df3040d6b6132e103b103a35babff4af068649d58ae2519954b5bd32",
+    "app/Ai/Services/BatchRecordResolutionService.php": "e919b2b44bfcd1863c2b0ac2b5c4e809d2b5d6482deed6179f9984d3a0d1f7df",
+    "app/Ai/Services/InputCompletenessEvaluator.php": "0730d55e5c6ed6a73cf909157a7f5b44a368b7aa9ddc438aec380e3ae5e31c66",
+    "app/Ai/Services/TaskCorrectionService.php": "35910bd37df66c52765d07f913e174d405e898b82d509592ef3bd999349528b8",
+    "app/Http/Controllers/Api/V1/AiChatController.php": "cc364b91198051dfa864561404b3d6b205d7b99c36c6ef93e06d761e10ef3a79",
+    "tests/Feature/Ai/Commercial/PurchaseOrderActionTest.php": "3e66ef23612a2d660933f1dd946d4e0b1aa14cd207a24b87466c84b8547514e8",
+    "tests/Feature/Ai/Conversation/ActiveTaskRoutingTest.php": "441e6b319a882b734771ceef5961e4d9030587e371da33a80c476280a945e633"
+  },
+  "unchanged_baseline_blobs": {
+    "app/Ai/Billing/Services/AiTopupService.php": "75ddfbdffbc54b760ced63075507e8457772d4a6",
+    "tests/Unit/Ai/Billing/SubscriptionAndPaymentHardeningTest.php": "a286cf132bfeb82f36245e73b9ddc0eca523f7c3",
+    "config/ai_credits.php": "201d1800df47221693b15a495a28f21129bca90c",
+    "config/ai_multimodal.php": "46613917888720c2be232e2c7eb64d954086f769",
+    "phpunit.ai.xml": "9195c639cd8ea7fca6c1486e6d4c65078b5e7922"
+  },
+  "validated_implementation_sha": "57e07c68ced907c7a922347908eab5755300dffd",
+  "draft_pr": "https://github.com/vigneshsinna/zolo-erp-pro/pull/15"
+}

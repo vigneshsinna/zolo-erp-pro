@@ -54,6 +54,15 @@ class DependentMasterOrchestrator
             ];
         }
 
+        if ($field === 'product_id' || $field === 'items') {
+            return [
+                'entity_type' => 'product',
+                'capability_key' => 'setup.product.create.v1',
+                'permission' => 'products-add',
+                'client_line_id' => null,
+            ];
+        }
+
         return match ($field) {
             'supplier_id' => [
                 'entity_type' => 'supplier',
@@ -99,6 +108,9 @@ class DependentMasterOrchestrator
 
         $slots = json_decode((string) $task->slots_json, true) ?? [];
         $prefilled = $this->extractPrefilledSlots($field, $entityMeta, $slots, $companyContext);
+        if ($entityMeta['entity_type'] === 'product' && $this->isConversationTask($context, $task)) {
+            unset($prefilled['unit_id'], $prefilled['tax_category_id'], $prefilled['hsn_code'], $prefilled['code']);
+        }
         $tenantDefaults = $this->loadTenantDefaults($entityMeta['entity_type'], $companyContext);
 
         return [
@@ -133,6 +145,13 @@ class DependentMasterOrchestrator
 
         $principal = $this->resolvePrincipal($context);
 
+        $linkedMasters = json_decode((string) ($task->dependent_masters_json ?? '{}'), true) ?? [];
+        $conversational = (bool) ($linkedMasters[$field]['conversation'] ?? false) || $this->isConversationTask($context, $task);
+        if ($conversational && $entityMeta['entity_type'] === 'product') {
+            validator($masterData, ['code' => 'required|string', 'unit_id' => 'required|integer|min:1',
+                'tax_category_id' => 'required|integer|min:1', 'hsn_code' => 'required|string'])->validate();
+        }
+
         // Ensure sensible defaults for warehouse and customer when missing
         if ($entityMeta['entity_type'] === 'warehouse') {
             unset($masterData['branch_id']);
@@ -157,9 +176,11 @@ class DependentMasterOrchestrator
             'action_key' => $entityMeta['capability_key'],
             'entity_type' => $entityMeta['entity_type'],
             'updated_at' => now()->toIso8601String(),
+            'conversation' => $conversational,
         ];
 
-        DB::table('ai_workflow_tasks')->where('id', $taskId)->update([
+        DB::table('ai_workflow_tasks')->where('company_id', $context->companyId())->where('branch_id', $context->branchId())
+            ->where('financial_year_id', $context->financialYearId())->where('actor_id', $context->actorId())->where('id', $taskId)->update([
             'dependent_masters_json' => json_encode($dependentMasters),
             'updated_at' => now(),
         ]);
@@ -184,6 +205,7 @@ class DependentMasterOrchestrator
         string $masterProposalId,
         int $expectedVersion = 1
     ): array {
+        $parent = $this->getAuthorizedTask($context, $taskId);
         $entityMeta = $this->resolveFieldEntity($field);
         $companyContext = new CompanyContext($context->companyId(), $context->branchId(), $context->financialYearId());
 
@@ -193,8 +215,19 @@ class DependentMasterOrchestrator
 
         $principal = $this->resolvePrincipal($context);
 
+        $bindings = json_decode((string) ($parent->dependent_masters_json ?? '{}'), true) ?? [];
+        if (($bindings[$field]['proposal_id'] ?? null) !== $masterProposalId) {
+            throw new AuthorizationException('Master proposal is not bound to this parent field.');
+        }
+        $proposal = $this->proposalService->getOwned($principal, $masterProposalId);
+        if ($proposal['action_key'] !== $entityMeta['capability_key'] || (int) $proposal['version'] !== $expectedVersion) {
+            throw ValidationException::withMessages(['master_proposal' => 'Master proposal type or version changed.']);
+        }
+
         // 1. Approve the master proposal (HMAC verified, version locked)
-        $this->approvalService->approve($principal, $masterProposalId, $expectedVersion);
+        if ($proposal['status'] === 'pending') {
+            $this->approvalService->approve($principal, $masterProposalId, $expectedVersion);
+        }
 
         // 2. Execute the master proposal through authoritative ERP domain command adapter
         $executionResult = $this->actionExecutor->execute($principal, $masterProposalId, $expectedVersion);
@@ -208,10 +241,13 @@ class DependentMasterOrchestrator
         }
 
         // 3. Resumption: Atomically update parent workflow task with newly created ERP resource ID
-        return DB::transaction(function () use ($context, $taskId, $field, $entityMeta, $masterProposalId, $createdResourceId, $createdResourceType, $receipt): array {
+        try {
+            return DB::transaction(function () use ($context, $taskId, $field, $entityMeta, $masterProposalId, $createdResourceId, $createdResourceType, $receipt): array {
             $task = DB::table('ai_workflow_tasks')
                 ->where('id', $taskId)
                 ->where('company_id', $context->companyId())
+                ->where('branch_id', $context->branchId())
+                ->where('financial_year_id', $context->financialYearId())
                 ->where('actor_id', $context->actorId())
                 ->lockForUpdate()
                 ->first();
@@ -222,6 +258,13 @@ class DependentMasterOrchestrator
 
             $slots = json_decode((string) $task->slots_json, true) ?? [];
             $dependentMasters = json_decode((string) ($task->dependent_masters_json ?? '{}'), true) ?? [];
+            if (($dependentMasters[$field]['status'] ?? '') === 'completed'
+                && ($dependentMasters[$field]['proposal_id'] ?? '') === $masterProposalId) {
+                return ['status' => 'resumed', 'parent_task_id' => $taskId, 'revision' => (int) $task->revision,
+                    'replayed' => true, 'newly_created' => ['field' => $field, 'resource_type' => $createdResourceType,
+                        'resource_id' => $createdResourceId, 'name' => $receipt['details']['name'] ?? null],
+                    'can_prepare_proposal' => $task->status === 'ready'];
+            }
 
             // Inject the new ID into the slots
             $this->injectSlotValue($slots, $field, $entityMeta, $createdResourceId);
@@ -243,7 +286,8 @@ class DependentMasterOrchestrator
             $newRevision = (int) $task->revision + 1;
             $newStatus = $evaluation->isReady() ? 'ready' : 'collecting';
 
-            DB::table('ai_workflow_tasks')->where('id', $taskId)->update([
+            DB::table('ai_workflow_tasks')->where('company_id', $context->companyId())->where('branch_id', $context->branchId())
+                ->where('financial_year_id', $context->financialYearId())->where('actor_id', $context->actorId())->where('id', $taskId)->update([
                 'slots_json' => json_encode($slots),
                 'resolution_json' => json_encode($batchResult->toArray()),
                 'issues_json' => json_encode($evaluation->issuesArray()),
@@ -266,7 +310,13 @@ class DependentMasterOrchestrator
                 'evaluation' => $evaluation->toArray(),
                 'can_prepare_proposal' => $evaluation->isReady(),
             ];
-        });
+            });
+        } catch (\Throwable $error) {
+            return ['status' => 'master_created_parent_pending', 'parent_task_id' => $taskId,
+                'newly_created' => ['field' => $field, 'resource_type' => $createdResourceType, 'resource_id' => $createdResourceId],
+                'error_code' => 'PARENT_RESUMPTION_REQUIRED', 'can_prepare_proposal' => false,
+                'message' => 'The master was created. The parent draft needs correction before resumption; retry reuses the master receipt.'];
+        }
     }
 
     /**
@@ -454,7 +504,10 @@ class DependentMasterOrchestrator
         $task = DB::table('ai_workflow_tasks')
             ->where('id', $taskId)
             ->where('company_id', $context->companyId())
+            ->where('branch_id', $context->branchId())
+            ->where('financial_year_id', $context->financialYearId())
             ->where('actor_id', $context->actorId())
+            ->whereIn('status', ['collecting', 'ready', 'proposal_created', 'awaiting_master'])
             ->first();
 
         if (!$task) {
@@ -480,5 +533,12 @@ class DependentMasterOrchestrator
             $context->branchId(),
             $context->financialYearId()
         );
+    }
+
+    private function isConversationTask(WorkflowTaskContext $context, object $task): bool
+    {
+        return config('erp_ai.conversation_enabled', false) && DB::table('ai_thread_scopes')->where('id', $task->thread_id)
+            ->where('company_id', $context->companyId())->where('branch_id', $context->branchId())
+            ->where('financial_year_id', $context->financialYearId())->where('user_id', $context->actorId())->exists();
     }
 }

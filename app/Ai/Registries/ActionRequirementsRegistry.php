@@ -22,6 +22,15 @@ final class ActionRequirementsRegistry
         $this->register(new SalesOrderRequirementsProvider());
         $this->register(new GoodsReceivedNoteRequirementsProvider());
         $this->register(new PurchaseBillRequirementsProvider());
+        if (config('ai_business_knowledge.service_bill_enabled', false)) {
+            $this->register(new \App\Ai\Requirements\ServicePurchaseBillRequirementsProvider());
+        }
+        $this->register(new \App\Ai\Requirements\SupplierSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\CustomerSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\ProductSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\UnitSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\WarehouseSetupRequirementsProvider());
+        $this->register(new \App\Ai\Requirements\BranchSetupRequirementsProvider());
         foreach (CommercialActionCatalog::definitions() as $definition) {
             $this->register(new \App\Ai\Requirements\CommercialActionRequirementsProvider($definition->key));
         }

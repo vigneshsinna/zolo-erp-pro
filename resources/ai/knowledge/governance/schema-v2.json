@@ -1,0 +1,7 @@
+{
+  "schema_version": 2,
+  "description": "Modular Business Knowledge Schema v2 supporting core ERP and industry-scoped extensions.",
+  "required_fields": ["id", "kind", "version", "status", "owner", "summary", "source_refs", "effective_from"],
+  "statuses": ["draft", "reviewed", "retired", "deprecated", "withdrawn"],
+  "step_kinds": ["read_or_clarify", "reviewed_action", "external_event", "read_only_validation", "unsupported_action"]
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "definitions": [
+    {
+      "id": "relationship.opticals.identity_product.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-inventory",
+      "profiles": ["opticals"],
+      "summary": "lens_stock_identity maps 1:1 to an active company product SKU",
+      "source_refs": ["app/Models/Product.php"],
+      "from": "entity.opticals.lens_stock_identity.v1",
+      "to": "entity.product.v1"
+    },
+    {
+      "id": "relationship.opticals.rx_job_dealer.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-lab",
+      "profiles": ["opticals"],
+      "subtypes": ["lens_manufacturing"],
+      "summary": "rx_job belongs to an authorized dealer customer",
+      "source_refs": ["app/Models/Customer.php"],
+      "from": "entity.opticals.rx_job.v1",
+      "to": "entity.opticals.dealer.v1"
+    }
+  ]
+}

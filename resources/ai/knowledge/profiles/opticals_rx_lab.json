@@ -1,0 +1,10 @@
+{
+  "profile_key": "opticals",
+  "subtype": "lens_manufacturing",
+  "display_name": "Optical Lens Supplier & Rx Processing Lab",
+  "supports_optical_rx": true,
+  "supports_lab": true,
+  "allowed_units": ["PRS", "PCS", "BOX"],
+  "default_uom": "PRS",
+  "lab_processes": ["SURFACING", "COATING", "TINTING", "FITTING"]
+}

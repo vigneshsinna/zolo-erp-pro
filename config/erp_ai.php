@@ -16,6 +16,12 @@ return [
 
     'enabled' => env('AI_ENABLED', false),
 
+    'conversation_enabled' => env('AI_CONVERSATION_ENABLED', false),
+
+    // JSON transport is the default until SDK/model streaming is verified
+    // for this installation. The SSE endpoint remains available for opt-in use.
+    'streaming_enabled' => (bool) env('AI_CHAT_STREAMING_ENABLED', false),
+
     /*
     |--------------------------------------------------------------------------
     | Global Read-Only Enforcement

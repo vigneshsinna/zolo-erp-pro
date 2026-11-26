@@ -85,6 +85,7 @@ final class PurchaseBillCommandAdapter implements ActionCommandAdapterInterface
             }
 
             // 1. Transactional source-state verification: verify underlying business conditions have not changed
+            $isNonGst = !empty($payload['is_non_gst']) || !empty($payload['non_gst']) || ($payload['bill_type'] ?? '') === 'non_gst';
             $currentSourceStateHash = PurchaseBillPreviewAdapter::computeSourceStateHash(
                 $context,
                 $supplierId,
@@ -92,6 +93,7 @@ final class PurchaseBillCommandAdapter implements ActionCommandAdapterInterface
                 array_values(array_unique($productIds)),
                 $poId > 0 ? $poId : null,
                 $grnId > 0 ? $grnId : null,
+                $isNonGst,
             );
 
             if (!hash_equals($expectedSourceStateHash, $currentSourceStateHash)) {
@@ -104,6 +106,10 @@ final class PurchaseBillCommandAdapter implements ActionCommandAdapterInterface
             $data = $payload;
             $data['status'] = 1;
             $data['payment_status'] = 1; // Due / unpaid
+            $data['is_non_gst'] = $isNonGst;
+            if ($isNonGst) {
+                $data['bill_type'] = 'non_gst';
+            }
             $data['business_date'] = !empty($payload['date']) ? (string) $payload['date'] : now()->toDateString();
             unset($data['expected_totals']);
 

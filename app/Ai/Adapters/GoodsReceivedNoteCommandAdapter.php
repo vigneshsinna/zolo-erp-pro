@@ -140,10 +140,12 @@ final class GoodsReceivedNoteCommandAdapter implements ActionCommandAdapterInter
             }
 
             // 4. Save items
+            $hasOpticalCol = \Illuminate\Support\Facades\Schema::hasColumn('goods_received_note_items', 'optical_spec_json');
             foreach ($items as $line) {
                 $qty = (float) ($line['qty'] ?? 1);
                 $cost = (float) ($line['cost'] ?? 0);
                 $amount = round($qty * $cost, 4);
+                $optFields = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line);
 
                 GoodsReceivedNoteItem::create([
                     'company_id' => $context->companyId,
@@ -158,7 +160,7 @@ final class GoodsReceivedNoteCommandAdapter implements ActionCommandAdapterInter
                     'total' => $amount,
                     'batch_no' => $line['batch_no'] ?? null,
                     'remarks' => $line['remarks'] ?? null,
-                ]);
+                ] + ($hasOpticalCol && $optFields !== [] ? ['optical_spec_json' => json_encode($optFields, JSON_THROW_ON_ERROR)] : []));
             }
 
             // 5. If PO linked, prepare consumer plan before posting

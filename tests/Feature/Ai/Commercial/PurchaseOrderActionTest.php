@@ -219,6 +219,215 @@ final class PurchaseOrderActionTest extends TestCase
         ];
     }
 
+    public function test_po_terms_round_trip_match_normal_domain_without_payments(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $context = new CompanyContext($this->company->id, $this->branch->id, $this->fiscalYear->id);
+        $payments = DB::table('payments')->count();
+        $journals = DB::table('journal_entries')->where('company_id', $this->company->id)->count();
+        foreach ([['cash', 0], ['credit', 30], ['credit', 45]] as [$type, $days]) {
+            $slots = ['supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id,
+                'date' => '2026-11-17', 'payment_terms_type' => $type, 'credit_days' => $days,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]];
+            $proposal = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+                'action_key' => 'purchase_order.create.v1', 'slots' => $slots,
+            ])->assertCreated()->json('proposal');
+            $this->assertSame($type, $proposal['preview']['payment_terms']['payment_terms_type']);
+            $this->assertSame($days, $proposal['preview']['payment_terms']['credit_days']);
+            $created = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals/'.$proposal['id'].'/approve', [
+                'expected_version' => 1, 'execute' => true,
+            ])->assertOk()->json('execution');
+            $purchase = Purchase::where('company_id', $this->company->id)->findOrFail($created['receipt']['resource_id']);
+            $this->assertSame($type, $purchase->attributes_json['payment_terms_type']);
+            $this->assertSame($days, $purchase->attributes_json['credit_days']);
+            $this->assertEquals(4, $purchase->status);
+            $this->assertEquals(0, $purchase->paid_amount);
+            $this->assertEquals(2, $purchase->payment_status);
+            $this->assertSame('2026-11-17', $purchase->created_at->toDateString());
+            unset($slots['payment_terms_type']);
+            $normal = app(\App\Services\Commercial\CommercialApplicationService::class)->create('purchase', $slots + [
+                'status' => 4, 'payment_status' => 1, 'paid_amount' => 0, 'paying_method' => ucfirst($type), 'business_date' => $slots['date'],
+            ], 'terms-normal-'.\Illuminate\Support\Str::uuid(), $this->adminUser->id, $context);
+            $this->assertSame($purchase->attributes_json['payment_terms_type'], $normal->attributes_json['payment_terms_type']);
+            $this->assertSame($purchase->attributes_json['due_date'], $normal->attributes_json['due_date']);
+        }
+        $this->assertSame($payments, DB::table('payments')->count());
+        $this->assertSame($journals, DB::table('journal_entries')->where('company_id', $this->company->id)->count());
+    }
+
+    public function test_terms_edit_requires_new_signed_version_and_supplier_default_is_fresh(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        config(['ai_actions.execution_enabled' => false]);
+        $proposal = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => ['supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id, 'date' => '2026-11-17', 'payment_terms_type' => 'credit', 'credit_days' => 30,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertCreated()->json('proposal');
+        $url = '/api/v1/ai/proposals/'.$proposal['id'];
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/approve', ['expected_version' => 1])->assertOk();
+        $changed = $this->withHeaders($this->contextHeaders())->postJson($url.'/change-request', [
+            'expected_version' => 1, 'changes' => ['payment_terms_type' => 'credit', 'credit_days' => 45],
+        ])->assertOk()->assertJsonPath('proposal.version', 2)->json('proposal');
+        $this->assertSame('2027-01-01', $changed['preview']['payment_terms']['due_date']);
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/approve', ['expected_version' => 1])->assertUnprocessable();
+        $this->supplier->update(['credit_days' => 60]);
+        config(['ai_actions.execution_enabled' => true]);
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/approve', ['expected_version' => 2])->assertUnprocessable();
+    }
+
+    public function test_cash_with_credit_days_is_rejected_before_proposal_creation(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/proposals', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => ['supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id, 'payment_terms_type' => 'cash', 'credit_days' => 30,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertUnprocessable();
+    }
+
+    public function test_complete_conversation_with_fixture_voice_approval_and_authoritative_readback(): void
+    {
+        config(['erp_ai.conversation_enabled' => true, 'ai_multimodal.enabled' => true]);
+        app(\App\Ai\Services\AiFeatureGate::class)->setCompanyMultimodal($this->company->id, true);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        $this->actingAs($this->adminUser, 'sanctum')->withHeaders($this->contextHeaders());
+        foreach (['D08 Supplier Chennai', 'D08 Supplier Erode'] as $name) {
+            $supplier = Supplier::create(['company_id' => $this->company->id, 'name' => $name, 'phone_number' => '7000000011',
+                'vat_number' => '33AAACC1206D1ZN', 'state' => 'Tamil Nadu', 'is_active' => true]);
+            DB::table('party_tax_profiles')->updateOrInsert(['company_id' => $this->company->id, 'party_type' => 'supplier', 'party_id' => $supplier->id],
+                ['gstin' => '33AAACC1206D1ZN', 'state_code' => '33', 'registration_type' => 'regular', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $unit = Unit::forceCreate(['company_id' => $this->company->id, 'unit_code' => 'PAIR', 'unit_name' => 'Pairs', 'is_active' => true]);
+        $this->productA->update(['name' => 'Cotton Shirt Blue', 'unit_id' => $unit->id, 'purchase_unit_id' => $unit->id, 'sale_unit_id' => $unit->id]);
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $task = $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'message' => 'Create purchase order',
+            'client_turn_id' => (string) \Illuminate\Support\Str::uuid()])->assertOk()->json('workflow');
+        $send = function (string $message, array $extra = []) use ($thread, &$task): array {
+            $task = $this->postJson(route('ai.chat'), $extra + ['thread_id' => $thread, 'active_task_id' => $task['task_id'],
+                'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) \Illuminate\Support\Str::uuid(), 'message' => $message])
+                ->assertOk()->json('workflow');
+            return $task;
+        };
+        $send('D08 Supplier');
+        $this->assertCount(2, $task['choices']);
+        $label = $task['choices'][1]['label'];
+        $media = \App\Models\AiMediaAsset::create(['company_id' => $this->company->id, 'branch_id' => $this->branch->id,
+            'financial_year_id' => $this->fiscalYear->id, 'actor_id' => $this->adminUser->id, 'thread_id' => $thread, 'workflow_task_id' => $task['task_id'],
+            'source_kind' => 'audio', 'original_mime' => 'audio/wav', 'canonical_mime' => 'audio/wav', 'size_bytes' => 100,
+            'sha256' => hash('sha256', 'D08 fixture'), 'private_disk' => 'local', 'private_key' => 'fixture.wav', 'state' => 'extracted', 'expires_at' => now()->addHour()]);
+        $extraction = \App\Models\AiMediaExtraction::create(['company_id' => $this->company->id, 'media_id' => $media->id,
+            'revision' => 1, 'model_provider' => 'fixture', 'model_key' => 'fixture', 'prompt_version' => 'fixture',
+            'extraction_schema_version' => 'media.transcript.v1', 'extracted_json' => ['transcript_text' => 'Use the second supplier', 'warnings' => []],
+            'confirmation_status' => 'confirmed', 'confirmed_by' => $this->adminUser->id, 'confirmed_at' => now()]);
+        $send('Use the second supplier', ['choice_set_id' => $task['choice_set_id'], 'media_ids' => [$media->id], 'voice_extraction_revision' => 1]);
+        $this->assertStringStartsWith('D08 Supplier', $label);
+        $transcript = 'add 100 pairs of Cotton Shirt Blue at 480';
+        $reply = $extraction->replicate();
+        $reply->revision = 2;
+        $reply->extracted_json = ['transcript_text' => $transcript, 'warnings' => []];
+        $reply->save();
+        $send($transcript, ['media_ids' => [$media->id], 'voice_extraction_revision' => 2]);
+        $this->assertSame('needs_input', $task['status']);
+        // Conversational PO now requires the explicit destination warehouse.
+        $send('warehouse '.$this->warehouse->name);
+        $send('Credit 30 days');
+        $this->assertSame('proposal_created', $task['status']);
+        $this->assertSame('50400.00', $task['preview']['totals']['grand_total']);
+        $this->assertSame($label, $task['preview']['supplier']['name'].' (GSTIN: '.$task['preview']['supplier']['gst_number'].')');
+        $this->assertSame(1, DB::table('ai_workflow_tasks')->where('thread_id', $thread)->count());
+        $this->assertSame(1, DB::table('ai_action_proposals')->where('thread_id', $thread)->count());
+        $this->assertSame(2, DB::table('ai_media_extractions')->where('media_id', $media->id)->count());
+        $history = $this->getJson(route('ai.threads.show', $thread))->assertOk()->json('messages');
+        $this->assertCount(12, $history);
+        foreach (array_filter($history, fn ($message) => $message['role'] === 'assistant') as $message) {
+            $this->assertSame($task['task_id'], $message['facts'][0]['data']['task_id']);
+        }
+        $this->assertSame(0, Purchase::where('company_id', $this->company->id)->count());
+        $payments = DB::table('payments')->count();
+        $journals = DB::table('journal_entries')->where('company_id', $this->company->id)->count();
+        $url = '/api/v1/ai/proposals/'.$task['proposal_id'].'/approve';
+        $approval = ['expected_version' => $task['version'], 'execute' => true];
+        $execution = $this->postJson($url, $approval)->assertOk()->json('execution');
+        $this->postJson($url, $approval)->assertOk();
+        $purchase = Purchase::where('company_id', $this->company->id)->findOrFail($execution['receipt']['resource_id']);
+        $this->assertEquals(4, $purchase->status);
+        $this->assertEquals(0, $purchase->paid_amount);
+        $this->assertSame('credit', $purchase->attributes_json['payment_terms_type']);
+        $this->assertSame(30, $purchase->attributes_json['credit_days']);
+        $this->assertSame(1, Purchase::where('company_id', $this->company->id)->count());
+        $this->assertSame($payments, DB::table('payments')->count());
+        $this->assertSame($journals, DB::table('journal_entries')->where('company_id', $this->company->id)->count());
+        $this->getJson('/api/v1/ai/workflow-tasks/'.$task['task_id'])->assertOk()->assertJsonPath('proposal.status', 'completed');
+        $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['task_id'], 'message' => 'quantity 50',
+            'expected_task_revision' => $task['task_revision'], 'client_turn_id' => (string) \Illuminate\Support\Str::uuid()])->assertForbidden();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_selected_purchase_unit_is_preserved_and_unknown_named_unit_blocks(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $unit = Unit::forceCreate(['company_id' => $this->company->id, 'unit_code' => 'BALE', 'unit_name' => 'Bale',
+            'base_unit' => $this->productA->unit_id, 'operator' => '*', 'operation_value' => 100, 'is_active' => true]);
+        $slots = ['supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id,
+            'date' => '2026-11-17', 'payment_terms_type' => 'cash', 'credit_days' => 0,
+            'items' => [['client_line_id' => 'keep', 'product_id' => $this->productA->id, 'qty' => '0.125',
+                'net_unit_cost' => '250.125', 'purchase_unit_id' => $unit->id]]];
+        $task = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => $slots,
+        ])->assertCreated()->json('task');
+        $proposal = $this->postJson('/api/v1/ai/workflow-tasks/'.$task['id'].'/prepare-proposal')->assertCreated()->json('proposal');
+        $line = json_decode(DB::table('ai_action_proposals')->where('id', $proposal['id'])->value('payload_json'), true)['items'][0];
+        $this->assertSame($unit->id, $line['purchase_unit_id']);
+        $this->assertSame('0.125', $proposal['preview']['items'][0]['qty']);
+        $this->assertSame('250.125', $proposal['preview']['items'][0]['net_unit_cost']);
+        unset($slots['items'][0]['purchase_unit_id']);
+        $slots['items'][0]['uom'] = 'Unknown unit';
+        $invalid = $this->postJson('/api/v1/ai/workflow-tasks', ['action_key' => 'purchase_order.create.v1', 'slots' => $slots])
+            ->assertCreated()->json('task');
+        $this->assertNotSame('ready', $invalid['status']);
+        $this->patchJson('/api/v1/ai/workflow-tasks/'.$invalid['id'].'/inputs', ['expected_revision' => $invalid['revision'],
+            'corrections' => [['field' => 'items[keep].purchase_unit_id', 'value' => $unit->id, 'confirmation' => 'user_selected']]])
+            ->assertOk()->assertJsonPath('evaluation.is_ready', true);
+        $unit->update(['operation_value' => 200]);
+        $this->postJson('/api/v1/ai/proposals/'.$proposal['id'].'/approve', ['expected_version' => 1, 'execute' => true])->assertUnprocessable();
+        $this->assertSame(0, Purchase::where('company_id', $this->company->id)->count());
+    }
+
+    public function test_cancelled_conversation_revokes_linked_preview_approval(): void
+    {
+        config(['erp_ai.conversation_enabled' => true]);
+        $this->actingAs($this->adminUser, 'sanctum')->withHeaders($this->contextHeaders());
+        $thread = $this->postJson(route('ai.threads.store'))->assertCreated()->json('id');
+        $task = $this->postJson('/api/v1/ai/workflow-tasks', ['thread_id' => $thread, 'action_key' => 'purchase_order.create.v1',
+            'slots' => ['supplier_id' => $this->supplier->id, 'warehouse_id' => $this->warehouse->id, 'payment_terms_type' => 'cash', 'credit_days' => 0,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertCreated()->json('task');
+        $proposal = $this->postJson('/api/v1/ai/workflow-tasks/'.$task['id'].'/prepare-proposal')->assertCreated()->json('proposal');
+        $revision = DB::table('ai_workflow_tasks')->where('id', $task['id'])->value('revision');
+        $this->postJson(route('ai.chat'), ['thread_id' => $thread, 'active_task_id' => $task['id'], 'expected_task_revision' => $revision,
+            'client_turn_id' => (string) \Illuminate\Support\Str::uuid(), 'message' => 'Cancel this purchase order'])->assertOk();
+        $this->assertSame('cancelled', DB::table('ai_action_proposals')->where('id', $proposal['id'])->value('status'));
+        $this->postJson('/api/v1/ai/proposals/'.$proposal['id'].'/approve', ['expected_version' => 1, 'execute' => true])->assertUnprocessable();
+        $this->assertSame(0, Purchase::where('company_id', $this->company->id)->count());
+    }
+
+    public function test_reloading_ready_task_reuses_unchanged_proposal_version(): void
+    {
+        $this->actingAs($this->adminUser, 'sanctum');
+        $task = $this->withHeaders($this->contextHeaders())->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1', 'slots' => ['supplier_id' => $this->supplier->id,
+                'warehouse_id' => $this->warehouse->id, 'date' => '2026-11-17', 'payment_terms_type' => 'cash', 'credit_days' => 0,
+                'items' => [['product_id' => $this->productA->id, 'qty' => '2.00', 'net_unit_cost' => '250.00']]],
+        ])->assertCreated()->json('task');
+        $url = '/api/v1/ai/workflow-tasks/'.$task['id'];
+        $first = $this->withHeaders($this->contextHeaders())->postJson($url.'/prepare-proposal')->assertCreated()->json('proposal');
+        $this->withHeaders($this->contextHeaders())->postJson($url.'/prepare-proposal')->assertOk()
+            ->assertJsonPath('proposal.id', $first['id'])->assertJsonPath('proposal.version', 1);
+        $this->withHeaders($this->contextHeaders())->getJson($url)->assertOk()->assertJsonPath('proposal.status', 'pending');
+        $this->assertSame(1, DB::table('ai_action_proposals')->where('company_id', $this->company->id)->where('id', $first['id'])->count());
+    }
+
     public function test_unauthorized_user_cannot_create_purchase_order_proposal(): void
     {
         $this->actingAs($this->restrictedUser, 'sanctum');

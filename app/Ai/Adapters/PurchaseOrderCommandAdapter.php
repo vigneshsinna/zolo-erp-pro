@@ -67,6 +67,8 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
             DB::table('party_tax_profiles')->where('company_id', $context->companyId)->where('party_type', 'supplier')->where('party_id', $supplierId)->lockForUpdate()->first();
             DB::table('warehouses')->where('company_id', $context->companyId)->where('id', $warehouseId)->lockForUpdate()->first();
             DB::table('products')->where('company_id', $context->companyId)->whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->get();
+            DB::table('units')->where('company_id', $context->companyId)->orderBy('id')->lockForUpdate()->get();
+            DB::table('product_uom_conversions')->where('company_id', $context->companyId)->whereIn('product_id', $productIds)->orderBy('id')->lockForUpdate()->get();
 
             // 1. Transactional source-state verification: verify underlying business conditions have not changed
             $currentSourceStateHash = PurchaseOrderPreviewAdapter::computeSourceStateHash(
@@ -84,8 +86,12 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
 
             // 2. Prepare domain command data: status 4 = Purchase Order (Ordered)
             $data = $payload;
+            if (!empty($payload['date'])) {
+                $data['business_date'] = $payload['date'];
+            }
             $data['status'] = 4;
             $data['payment_status'] = 1; // Due / unpaid
+            $data['paid_amount'] = 0;
             unset($data['expected_totals']);
 
             // CommercialApplicationService rejects non-empty order_tax_rate, shipping_cost, or order_discount if zero
@@ -238,6 +244,7 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
                 'warehouse_id' => (int) $purchase->warehouse_id,
                 'grand_total' => sprintf('%.2f', (float) $purchase->grand_total),
                 'order_status' => 'ordered',
+                'payment_terms' => array_intersect_key($purchase->attributes_json ?? [], array_flip(['payment_terms_type', 'credit_days', 'due_date'])),
                 'items_count' => $purchase->productPurchases()->count(),
                 'source_type' => 'purchase_order',
             ],

@@ -24,8 +24,8 @@ return new class extends Migration
             $table->json('inputs_json');
             $table->unsignedInteger('interval_minutes');
             $table->unsignedSmallInteger('max_runs_per_day')->default(1);
-            $table->timestamp('next_run_at');
-            $table->timestamp('expires_at');
+            $table->timestamp('next_run_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
             $table->timestamp('cancelled_at')->nullable();
             $table->timestamps();
             $table->index(['company_id', 'actor_id', 'is_active']);
@@ -37,7 +37,7 @@ return new class extends Migration
             $table->unsignedBigInteger('company_id');
             $table->unsignedBigInteger('actor_id');
             $table->unsignedInteger('rule_revision');
-            $table->timestamp('scheduled_for');
+            $table->timestamp('scheduled_for')->nullable();
             $table->date('quota_date');
             $table->string('status', 32)->default('queued');
             $table->uuid('task_id')->nullable();

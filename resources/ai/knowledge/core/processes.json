@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "definitions": [
+    {
+      "id": "process.direct_stock_sale.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "sales",
+      "summary": "Direct dealer/customer sales invoice without mandatory SO or quotation",
+      "source_refs": ["app/Services/Commercial/CommercialApplicationService.php"],
+      "steps": [
+        {"id": "resolve_customer_and_items", "kind": "read_or_clarify", "depends_on": []},
+        {"id": "sales_invoice", "kind": "reviewed_action", "action_key": "sales_invoice.create.v1", "depends_on": ["resolve_customer_and_items"]}
+      ]
+    },
+    {
+      "id": "process.order_to_cash.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "sales",
+      "summary": "Sales order allocation, delivery challan dispatch, sales invoice, and payment receipt",
+      "source_refs": ["app/Services/Commercial/OrderLifecycleService.php"],
+      "steps": [
+        {"id": "identify_customer", "kind": "read_or_clarify", "depends_on": []},
+        {"id": "sales_order", "kind": "reviewed_action", "action_key": "sales_order.create.v1", "depends_on": ["identify_customer"]},
+        {"id": "delivery_challan", "kind": "reviewed_action", "action_key": "delivery_challan.create.v1", "depends_on": ["sales_order"]},
+        {"id": "sales_invoice", "kind": "reviewed_action", "action_key": "sales_invoice.create.v1", "depends_on": ["delivery_challan"]},
+        {"id": "payment_receipt", "kind": "reviewed_action", "action_key": "payment_receipt.create.v1", "depends_on": ["sales_invoice"]}
+      ]
+    },
+    {
+      "id": "process.order_to_invoice.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "sales",
+      "summary": "Sales order directly billed via sales invoice without separate delivery challan",
+      "source_refs": ["app/Services/Commercial/OrderLifecycleService.php"],
+      "steps": [
+        {"id": "identify_customer", "kind": "read_or_clarify", "depends_on": []},
+        {"id": "sales_order", "kind": "reviewed_action", "action_key": "sales_order.create.v1", "depends_on": ["identify_customer"]},
+        {"id": "sales_invoice", "kind": "reviewed_action", "action_key": "sales_invoice.create.v1", "depends_on": ["sales_order"]}
+      ]
+    },
+    {
+      "id": "process.stock_transfer.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "inventory",
+      "summary": "Authorized intra-company warehouse stock transfer",
+      "source_refs": ["app/Services/Inventory/InventoryMovementService.php"],
+      "steps": [
+        {"id": "verify_stock_and_locations", "kind": "read_only_validation", "depends_on": []},
+        {"id": "stock_transfer", "kind": "reviewed_action", "action_key": "stock_transfer.create.v1", "depends_on": ["verify_stock_and_locations"]}
+      ]
+    }
+  ]
+}

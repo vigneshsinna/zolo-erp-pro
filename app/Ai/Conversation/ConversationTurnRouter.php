@@ -1,0 +1,459 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Conversation;
+
+use App\Ai\DTOs\AiPrincipal;
+use App\Ai\DTOs\WorkflowTaskContext;
+use App\Ai\Services\ActionSecurity;
+use App\Ai\Services\TaskCorrectionService;
+use App\Ai\Services\WorkflowTaskStateService;
+use App\Services\Platform\CompanyContext;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+
+final class ConversationTurnRouter
+{
+    public function __construct(
+        private readonly ActiveWorkflowTaskResolver $resolver,
+        private readonly WorkflowTaskStateService $state,
+        private readonly TaskCorrectionService $corrections,
+    ) {}
+
+    public function startsPurchaseOrder(string $message): bool
+    {
+        return app(VoiceIntentResolver::class)->resolve($message) === 'purchase_order.create.v1';
+    }
+
+    // The caller holds the owned thread row lock until its messages are stored.
+    public function route(AiPrincipal $principal, string $threadId, array $input, ?array $interpretation = null): ?array
+    {
+        $message = trim($input['message']);
+        $hash = hash('sha256', json_encode($input, JSON_THROW_ON_ERROR));
+        $receipt = DB::table('ai_workflow_task_events')->whereIn('task_id', $this->resolver->tasks($principal, $threadId)->select('id'))
+            ->where('event_type', 'conversation_turn')->where('metadata_json->client_turn_id', $input['client_turn_id'] ?? '')->first();
+        if ($receipt) {
+            $receiptTask = $this->state->getTask($principal, $receipt->task_id);
+            app(ActionSecurity::class)->definition($receiptTask['action_key'], $principal);
+            if ($receiptTask['expires_at'] <= now('UTC')->toDateTimeString()) {
+                throw ValidationException::withMessages(['task' => 'The draft expired. Start a new draft.']);
+            }
+            $metadata = json_decode($receipt->metadata_json, true, flags: JSON_THROW_ON_ERROR);
+            if (!hash_equals($metadata['request_hash'], $hash)) {
+                throw new ConflictHttpException('The conversation turn UUID was already used for different input.');
+            }
+            return $metadata['result'] + ['replayed' => true];
+        }
+        $semantic = $interpretation['business_intent'] ?? null;
+        if ($semantic !== null && $semantic['role'] === 'ambiguous') {
+            app(PendingPartyIntentService::class)->ask($principal, $threadId);
+            return ['status' => 'needs_input', 'message' =>
+                'Will you buy from this party (supplier), or will the party buy from you (customer)?',
+                'question_type' => 'party_direction', 'can_prepare_proposal' => false];
+        }
+        if ($semantic !== null && $semantic['role'] === 'both') {
+            app(PendingPartyIntentService::class)->ask($principal, $threadId);
+            return ['status' => 'needs_input', 'message' =>
+                'Supplier and customer are separate ERP roles with separate approvals. Which role should I create first?',
+                'question_type' => 'party_role', 'can_prepare_proposal' => false];
+        }
+        if ($semantic !== null && $semantic['role'] === 'unsupported') {
+            return ['status' => 'needs_input', 'message' =>
+                'I could not safely identify a supported party-creation action. Please specify supplier or customer.',
+                'can_prepare_proposal' => false];
+        }
+        $customer = app(CustomerSetupConversation::class);
+        $customerName = ($semantic !== null && $semantic['role'] === 'customer')
+            ? (string) ($semantic['facts']['name'] ?? '')
+            : $customer->start($message);
+        if (($semantic['continuation'] ?? null) === 'pending_party' && $semantic['role'] === 'customer') {
+            app(PendingPartyIntentService::class)->resolve($principal, $threadId);
+        }
+        $supplier = app(SupplierSetupConversation::class);
+        $supplierName = ($semantic !== null && $semantic['role'] === 'supplier')
+            ? (string) ($semantic['facts']['name'] ?? '')
+            : $supplier->start($message);
+        if (($semantic['continuation'] ?? null) === 'pending_party' && $semantic['role'] === 'supplier') {
+            app(PendingPartyIntentService::class)->resolve($principal, $threadId);
+        }
+        $requestedTask = ($supplierName === null && $customerName === null) ? ($input['active_task_id'] ?? null) : null;
+        $tasks = $this->resolver->resolve($principal, $threadId, $requestedTask);
+        $customerTasks = array_values(array_filter($tasks, fn (array $task): bool => $task['action_key'] === CustomerSetupConversation::KEY));
+        if ($customerName !== null || ($customerTasks !== [] && ($requestedTask !== null || count($tasks) === 1))) {
+            if (app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
+                return null;
+            }
+            if (empty($input['client_turn_id'])) {
+                throw ValidationException::withMessages(['client_turn_id' => 'A conversation turn UUID is required.']);
+            }
+            app(ActionSecurity::class)->definition(CustomerSetupConversation::KEY, $principal);
+            $task = $customerTasks[0] ?? $this->state->createTask(new WorkflowTaskContext(
+                $principal, new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
+                threadId: $threadId,
+            ), CustomerSetupConversation::KEY);
+            if ($customerTasks !== [] && $requestedTask !== null) {
+                $this->assertRevision($task, $input);
+            }
+            if (isset($interpretation['customer_facts'])
+                && ($interpretation['task_id'] ?? null) !== $task['id']) {
+                throw new ConflictHttpException('Customer task changed while interpreting the reply.');
+            }
+            if (isset($interpretation['customer_facts'])
+                && ($interpretation['revision'] ?? null) !== (int) $task['revision']) {
+                throw new ConflictHttpException('Customer draft changed while parsing; reload and retry.');
+            }
+            if (isset($interpretation['customer_role'])
+                && $interpretation['customer_role'] !== 'customer') {
+                return $this->summary($task,
+                    'This draft is for a customer. Start a separate supplier draft or confirm the customer details.');
+            }
+            $semanticFacts = $interpretation['customer_facts'] ?? $semantic['facts'] ?? [];
+            $result = $customer->reply($principal, $task, $message, $customerName, $input['customer_photo'] ?? [], $semanticFacts);
+            if ($result !== null) {
+                if (config('ai_business_knowledge.enabled', false)) {
+                    try {
+                        $result['knowledge'] = app(\App\Ai\Knowledge\BusinessKnowledgeContextReader::class)->forAction($principal, $task['action_key']);
+                    } catch (\Throwable) {}
+                }
+                $this->saveReceipt($principal, $task, $input, $hash, $result);
+            }
+            return $result;
+        }
+        $supplierTasks = array_values(array_filter($tasks, fn (array $task): bool => $task['action_key'] === SupplierSetupConversation::KEY));
+        if ($supplierName !== null || ($supplierTasks !== [] && ($requestedTask !== null || count($tasks) === 1))) {
+            if (app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
+                return null;
+            }
+            if (empty($input['client_turn_id'])) {
+                throw ValidationException::withMessages(['client_turn_id' => 'A conversation turn UUID is required.']);
+            }
+            app(ActionSecurity::class)->definition(SupplierSetupConversation::KEY, $principal);
+            $task = $supplierTasks[0] ?? $this->state->createTask(new WorkflowTaskContext(
+                $principal, new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
+                threadId: $threadId,
+            ), SupplierSetupConversation::KEY);
+            if ($supplierTasks !== [] && $requestedTask !== null) {
+                $this->assertRevision($task, $input);
+            }
+            if (isset($interpretation['supplier_facts'])
+                && ($interpretation['task_id'] ?? null) !== $task['id']) {
+                throw new ConflictHttpException('Supplier task changed while interpreting the reply.');
+            }
+            if (isset($interpretation['supplier_facts'])
+                && ($interpretation['revision'] ?? null) !== (int) $task['revision']) {
+                throw new ConflictHttpException('Supplier draft changed while parsing; reload and retry.');
+            }
+            if (isset($interpretation['supplier_role'])
+                && $interpretation['supplier_role'] !== 'supplier') {
+                return $this->summary($task,
+                    'This draft is for a supplier. Start a separate customer draft or confirm the supplier details.');
+            }
+            $semanticFacts = $interpretation['supplier_facts'] ?? $semantic['facts'] ?? [];
+            $result = $supplier->reply($principal, $task, $message, $supplierName, $input['supplier_photo'] ?? [], $semanticFacts);
+            if ($result !== null) {
+                if (config('ai_business_knowledge.enabled', false)) {
+                    try {
+                        $result['knowledge'] = app(\App\Ai\Knowledge\BusinessKnowledgeContextReader::class)->forAction($principal, $task['action_key']);
+                    } catch (\Throwable) {}
+                }
+                $this->saveReceipt($principal, $task, $input, $hash, $result);
+            }
+            return $result;
+        }
+        if (!$this->startsPurchaseOrder($message) && $tasks === []) {
+            return null;
+        }
+        if (empty($input['client_turn_id'])) {
+            throw ValidationException::withMessages(['client_turn_id' => 'A conversation turn UUID is required.']);
+        }
+        if (count($tasks) > 1) {
+            return ['status' => 'needs_input', 'message' => 'Which draft should I continue?',
+                'tasks' => array_map(fn ($task) => ['task_id' => $task['id'], 'action_key' => $task['action_key'], 'task_revision' => (int) $task['revision']], $tasks)];
+        }
+        if ($tasks === []) {
+            app(ActionSecurity::class)->definition('purchase_order.create.v1', $principal);
+            $task = $this->state->createTask(new WorkflowTaskContext(
+                principal: $principal,
+                context: new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId),
+                threadId: $threadId,
+            ), 'purchase_order.create.v1');
+        } else {
+            $task = $tasks[0];
+            app(ActionSecurity::class)->definition($task['action_key'], $principal);
+        }
+        $directoryTypes = app(ConversationDirectoryIntent::class)->types($message);
+        // Read-only questions must not be sent through the correction model.
+        if ($directoryTypes === [] && app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
+            return null;
+        }
+        if (preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $message)) {
+            return $this->summary($task, 'The purchase draft is preserved. Select or start a separate operation explicitly.');
+        }
+        if ($directoryTypes !== []) {
+            $result = $this->withDirectories(
+                $principal, $task,
+                $this->summary($task, 'Here are the eligible records in your company. Choose one or tell me the product and quantity to add.'),
+                $directoryTypes, $message,
+            );
+        } elseif (preg_match('/^cancel\b/i', $message)) {
+            $this->assertRevision($task, $input);
+            if ($task['linked_proposal_id']) {
+                $service = app(\App\Ai\Services\ActionProposalService::class);
+                $proposal = $service->getOwned($principal, $task['linked_proposal_id']);
+                $service->reject($principal, $proposal['id'], (int) $proposal['version']);
+            }
+            $this->state->updateTaskState($principal, $task['id'], (int) $task['revision'],
+                json_decode($task['slots_json'], true), status: 'cancelled');
+            $result = $this->summary($this->state->getTask($principal, $task['id']), 'Draft cancelled. No ERP document was changed.');
+            $result['status'] = 'cancelled';
+        } elseif (app(ConversationMasterContinuation::class)->handles($task, $message)) {
+            $this->assertRevision($task, $input);
+            $result = app(ConversationMasterContinuation::class)->turn($principal, $task, $message);
+        } else {
+            $interpreter = app(ConversationalSlotInterpreter::class);
+            $selection = null;
+            if (app(ConversationChoices::class)->isSelection($message, $input)) {
+                $selection = app(ConversationChoices::class)->select($principal, $task, $input);
+            }
+            $interpretTask = $task;
+            if ($selection !== null && $selection['remaining_message'] !== '') {
+                // When selecting a product into an empty draft, the remaining spoken
+                // quantity/rate belongs to that newly selected line, not a different line.
+                $previewSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+                foreach ($selection['corrections'] as $selected) {
+                    if (preg_match('/^items\[([a-zA-Z0-9_-]+)\]\.product_id$/D', $selected['field'], $lineMatch)) {
+                        if (!collect($previewSlots['items'] ?? [])->contains('client_line_id', $lineMatch[1])) {
+                            $previewSlots['items'][] = ['client_line_id' => $lineMatch[1]];
+                        }
+                    }
+                }
+                $interpretTask['slots_json'] = json_encode($previewSlots, JSON_THROW_ON_ERROR);
+            }
+            $parsed = $interpreter->interpret($interpretTask, $selection['remaining_message'] ?? $message);
+            if ($selection !== null) {
+                $parsed['corrections'] = [...$selection['corrections'], ...$parsed['corrections']];
+            }
+            if ($interpretation !== null) {
+                if ($interpretation['task_id'] !== $task['id'] || $interpretation['revision'] !== (int) $task['revision']) {
+                    throw new ConflictHttpException('Task changed while interpreting the reply. Reload the current draft.');
+                }
+                $parsed = $interpretation['parsed'];
+            }
+            if ($tasks !== [] && $parsed['corrections'] !== []) {
+                $this->assertRevision($task, $input);
+            }
+            if (isset($input['voice_source'])) {
+                foreach ($parsed['corrections'] as &$correction) {
+                    $correction['confirmation'] = 'user_voice';
+                }
+                unset($correction);
+            }
+            if ($tasks === [] || $parsed['corrections'] !== [] || preg_match('/^(?:continue|resume|preview)$/i', $message)) {
+                $applied = $this->corrections->applyCorrections($principal, $task['id'], (int) $task['revision'], $parsed['corrections']);
+                $task = $applied['task'];
+                $result = $applied['clarification'] ?? $this->corrections->prepareProposal($principal, $task, $applied['evaluation']);
+            } else {
+                $result = $this->summary($task, 'Confirm the intended values or use the existing detail controls.');
+            }
+            $result['warnings'] = array_values(array_unique([...$parsed['warnings'], ...($input['voice_source']['warnings'] ?? [])]));
+        }
+        $task = $this->state->getTask($principal, $task['id']);
+        if (($result['status'] ?? '') === 'needs_input' && $directoryTypes === []) {
+            $unresolved = array_values(array_filter($result['required_inputs'] ?? [], static fn (array $issue): bool =>
+                in_array(($issue['status'] ?? ''), ['missing', 'invalid', 'ambiguous', 'blocked_by_dependency'], true)));
+            $missing = array_column($unresolved, 'field');
+            $has = static fn (string $field): bool => in_array($field, $missing, true);
+            $hasLine = static fn (string $suffix): bool => count(array_filter($missing, static fn (string $field): bool =>
+                str_ends_with($field, $suffix))) > 0;
+            if ($has('items') || $hasLine('.product_id')) $remaining[] = 'Product';
+            if ($hasLine('.qty')) $remaining[] = 'Quantity';
+            if ($hasLine('.net_unit_cost')) $remaining[] = 'Purchase Rate';
+            if ($has('warehouse_id')) $remaining[] = 'Destination Warehouse';
+            if ($has('payment_terms_type')) $remaining[] = 'Cash/Credit';
+            if ($has('credit_days')) $remaining[] = 'Credit Days';
+            if ($has('date')) $remaining[] = 'Order Date';
+
+            if ($has('items') || $hasLine('.product_id')) {
+                $result['message'] = 'Which product should I add to this Purchase Order? Choose an existing product or request a new one.';
+            } elseif ($hasLine('.qty')) {
+                $result['message'] = 'What quantity should I order? For one product, reply “100 pairs”.';
+            } elseif ($hasLine('.net_unit_cost')) {
+                $result['message'] = 'What purchase Rate should I use? Reply “rate 600” or “change the unit cost to 600”. This rate must be confirmed, not assumed from product master data.';
+            } elseif ($has('warehouse_id')) {
+                $result['message'] = 'Which Destination Warehouse should receive the goods? Choose an existing warehouse or request a new one.';
+            } elseif ($has('supplier_id')) {
+                $result['message'] = 'Which supplier should I use? Choose an existing supplier or request a new one.';
+            } elseif ($has('payment_terms_type')) {
+                $result['message'] = 'Should this Purchase Order use Cash or Credit terms? No payment is posted by creating an order.';
+            } elseif ($has('credit_days')) {
+                $result['message'] = 'How many credit days should I use for this Purchase Order?';
+            } elseif ($has('date')) {
+                $result['message'] = 'What Purchase Order date should I use?';
+            }
+            // Ask one actionable question at a time. The complete unresolved
+            // list remains in required_inputs for progress and optional review.
+            // On a new PO or after a record selection, offer the next available
+            // choices. Browsing itself remains read-only; only selection changes slots.
+            if ($tasks === [] || app(ConversationChoices::class)->isSelection($message, $input)
+                || preg_match('/^(?:resume|continue)$/i', $message)) {
+                $next = [];
+                if (in_array('supplier_id', $missing, true)) {
+                    $next[] = 'supplier';
+                }
+                if (in_array('warehouse_id', $missing, true)) {
+                    $next[] = 'warehouse';
+                }
+                if (in_array('items', $missing, true) || collect($result['required_inputs'] ?? [])
+                    ->contains(fn ($issue) => str_ends_with((string) ($issue['field'] ?? ''), '.product_id')
+                        && ($issue['status'] ?? '') === 'missing')) {
+                    $next[] = 'product';
+                }
+                if ($next !== []) {
+                    $result = $this->withDirectories($principal, $task, $result, $next, '', true, 6);
+                }
+            }
+        }
+        $result = app(ConversationChoices::class)->publish($principal, $task, $result);
+        $this->saveReceipt($principal, $task, $input, $hash, $result);
+        return $result;
+    }
+
+    private function saveReceipt(AiPrincipal $principal, array $task, array $input, string $hash, array $result): void
+    {
+        DB::table('ai_workflow_task_events')->insert([
+            'id' => (string) Str::uuid(), 'task_id' => $task['id'], 'actor_id' => $principal->actorId,
+            'event_type' => 'conversation_turn', 'revision' => $result['task_revision'],
+            'metadata_json' => json_encode(['client_turn_id' => $input['client_turn_id'], 'request_hash' => $hash,
+                'source' => isset($input['voice_source']) ? array_diff_key($input['voice_source'], ['warnings' => true]) : ['kind' => 'text'], 'result' => $result], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+        ]);
+    }
+
+    // Provider billing must commit outside the draft transaction, including rejected or stale output.
+    public function interpretTurn(AiPrincipal $principal, string $threadId, array $input): ?array
+    {
+        if (app(SupplierSetupConversation::class)->start($input['message']) !== null
+            || app(CustomerSetupConversation::class)->start($input['message']) !== null) {
+            return null;
+        }
+        if (DB::table('ai_workflow_task_events')->whereIn('task_id', $this->resolver->tasks($principal, $threadId)->select('id'))
+            ->where('event_type', 'conversation_turn')->where('metadata_json->client_turn_id', $input['client_turn_id'] ?? '')->exists()) {
+            return null;
+        }
+        $tasks = $this->resolver->resolve($principal, $threadId, $input['active_task_id'] ?? null);
+        if ($tasks === []) {
+            $semantic = app(BusinessIntentInterpreter::class)->start($principal, $threadId, $input['message']);
+            return $semantic === null ? null : ['business_intent' => $semantic];
+        }
+        if (count($tasks) !== 1 || app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($input['message'])
+            || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
+            || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])
+            || preg_match('/^(?:find|search)\s+(?:suppliers?|warehouses?|products?|units?)\b/i', $input['message'])
+            || app(ConversationChoices::class)->isSelection($input['message'], $input)) {
+            return null;
+        }
+        $task = $tasks[0];
+        if ($task['action_key'] === CustomerSetupConversation::KEY) {
+            $draftSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+            $details = app(BusinessIntentInterpreter::class)->customerDetails(
+                $principal, $threadId, $input['message'], empty($draftSlots['name']));
+            return $details === null ? null : [
+                'task_id' => $task['id'], 'revision' => (int) $task['revision'],
+                'customer_facts' => $details['facts'], 'customer_role' => $details['role'],
+            ];
+        }
+        if ($task['action_key'] === SupplierSetupConversation::KEY) {
+            $draftSlots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+            $details = app(BusinessIntentInterpreter::class)->supplierDetails(
+                $principal, $threadId, $input['message'], empty($draftSlots['name']));
+            return $details === null ? null : [
+                'task_id' => $task['id'], 'revision' => (int) $task['revision'],
+                'supplier_facts' => $details['facts'], 'supplier_role' => $details['role'],
+            ];
+        }
+        if (app(ConversationMasterContinuation::class)->handles($task, $input['message'])) return null;
+        app(ActionSecurity::class)->definition($task['action_key'], $principal);
+        $interpreter = app(ConversationalSlotInterpreter::class);
+        $parsed = $interpreter->interpret($task, $input['message']);
+        if ($parsed['turn_intent'] !== 'unknown') {
+            return null;
+        }
+        $this->assertRevision($task, $input);
+        $gateway = app(\App\Ai\Gateway\ApprovedModelGateway::class);
+        $model = $gateway->resolveApprovedModel();
+        $gateway->admitRequest($principal, now('UTC')->toDateString(), $threadId);
+        $slots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+        $response = (new ConversationParseAgent($principal))->prompt(json_encode(['utterance' => $input['message'],
+            'lines' => array_map(fn ($line) => array_intersect_key($line, array_flip(['client_line_id', 'product_query', 'qty'])), $slots['items'] ?? [])], JSON_THROW_ON_ERROR),
+            provider: $model['provider'], model: $model['model'], timeout: 20);
+        $raw = $response->toArray();
+        foreach ($raw['corrections'] ?? [] as $index => $correction) {
+            if (($correction['operation'] ?? '') === 'add_line' && is_string($correction['value'])) {
+                $raw['corrections'][$index]['value'] = json_decode($correction['value'], true, 8, JSON_THROW_ON_ERROR);
+            }
+        }
+        return ['task_id' => $task['id'], 'revision' => (int) $task['revision'], 'parsed' => $interpreter->validateModelResult($task, $raw)];
+    }
+
+    private function assertRevision(array $task, array $input): void
+    {
+        if (($input['expected_task_revision'] ?? null) !== (int) $task['revision']) {
+            throw new ConflictHttpException('Task revision changed. Reload the current draft before applying your reply.');
+        }
+    }
+
+
+    /**
+     * Build scoped directory cards and server-versioned options without writing
+     * supplier, product or warehouse IDs into the draft.
+     */
+    private function withDirectories(
+        AiPrincipal $principal,
+        array $task,
+        array $result,
+        array $types,
+        string $message = '',
+        bool $append = false,
+        int $limit = 20,
+    ): array {
+        $issues = $append ? ($result['required_inputs'] ?? []) : [];
+        $directories = [];
+        foreach ($types as $type) {
+            $query = $message === '' ? '' : app(ConversationDirectoryIntent::class)->query($message, $type, count($types));
+            $issue = app(ConversationChoices::class)->directory($principal, $task, $type, $query);
+            $issue['candidates'] = array_slice($issue['candidates'], 0, $limit);
+            $hasMore = (bool) $issue['has_more'] || (int) $issue['total'] > count($issue['candidates']);
+            $directories[] = [
+                'entity_type' => $type,
+                'items' => array_map(static fn (array $candidate): array => [
+                    'name' => (string) ($candidate['name'] ?? $candidate['label'] ?? ''),
+                    'code' => (string) ($candidate['code'] ?? ''),
+                ], $issue['candidates']),
+                'total' => (int) $issue['total'],
+                'has_more' => $hasMore,
+                'can_create' => (bool) $issue['can_create'],
+                'create_disabled_reason' => $issue['create_disabled_reason'],
+            ];
+            if (in_array($type, ['supplier', 'warehouse'], true)
+                || str_starts_with($issue['field'], 'items[')) {
+                $issues[] = $issue;
+            }
+        }
+        $result['required_inputs'] = $issues;
+        $result['directories'] = $directories;
+        if (array_sum(array_map(static fn (array $directory): int => count($directory['items']), $directories)) === 0) {
+            $result['message'] = 'No eligible matches. Search another name or request approved creation of a new record.';
+        }
+        return $result;
+    }
+
+    private function summary(array $task, string $message): array
+    {
+        return ['status' => 'needs_input', 'task_id' => $task['id'], 'task_revision' => (int) $task['revision'],
+            'action_key' => $task['action_key'], 'message' => $message,
+            'required_inputs' => json_decode($task['issues_json'] ?: '[]', true), 'can_prepare_proposal' => false];
+    }
+}

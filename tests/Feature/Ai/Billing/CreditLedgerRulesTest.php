@@ -309,7 +309,8 @@ final class CreditLedgerRulesTest extends TestCase
         $creditMeter = app(AiCreditMeter::class);
 
         $order = $topupService->createOrder($this->company->id, 'PACK-5K', 'topup_order_cr17_' . Str::uuid());
-        $topupService->recordPaymentSuccess($order->id, 'pay_17', 'evt_17', 'razorpay', ['amount' => 19900]);
+        $topupService->recordPaymentSuccess($order->id, 'pay_17', 'evt_17', 'razorpay', ['status' => 'captured', 'amount' => $order->amount_minor_inr + $order->tax_minor_inr,
+                    'currency' => 'INR', 'order_id' => $order->provider_order_id, 'id' => 'pay_17']);
 
         $balancePaid = $creditMeter->balance($this->company->id);
 

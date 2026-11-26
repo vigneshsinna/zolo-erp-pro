@@ -161,7 +161,30 @@ final class ExtendedActionAdapter implements ActionPreviewAdapterInterface, Acti
         $this->assertDate($slots['business_date'], $context);
         $warehouse = $this->warehouse((int) $slots['warehouse_id'], $context);
         $transfer = $key === 'stock_transfer.create.v1';
-        $destination = $transfer ? $this->warehouse((int) ($slots['to_warehouse_id'] ?? 0), $context) : null;
+        $destination = null;
+        if ($transfer) {
+            $toId = (int) ($slots['to_warehouse_id'] ?? 0);
+            if (config('ai_business_knowledge.opticals_cross_store_enabled', false)) {
+                $actorId = (int) (auth()->id() ?: 0);
+                $destination = Warehouse::where('company_id', $context->companyId)->where('is_active', true)->find($toId);
+                if (!$destination || $destination->external_job_order_id) {
+                    $this->fail('to_warehouse_id', 'Choose an active internal destination warehouse in the selected company.');
+                }
+                if ((int) ($destination->branch_id ?: $context->branchId) !== $context->branchId) {
+                    if ($actorId <= 0) {
+                        $this->fail('to_warehouse_id', 'Cross-branch transfer requires an authenticated actor.');
+                    }
+                    $policy = app(\App\Services\Optical\OpticalTransferPolicyService::class)->evaluate($context, $actorId, $warehouse->id, $destination->id);
+                    if (!$policy['allowed']) {
+                        $this->fail('to_warehouse_id', $policy['reason'] === 'cross_gst_registration_requires_tax_route'
+                            ? 'Cross-GST registration transfer requires an approved tax/commercial route, not an internal stock transfer.'
+                            : 'Destination store is outside your authorized branches.');
+                    }
+                }
+            } else {
+                $destination = $this->warehouse($toId, $context);
+            }
+        }
         if ($destination && $destination->id === $warehouse->id) {
             $this->fail('to_warehouse_id', 'Choose a different destination warehouse.');
         }
@@ -541,6 +564,10 @@ final class ExtendedActionAdapter implements ActionPreviewAdapterInterface, Acti
             $state[$table] = DB::table($table)->where('company_id', $context->companyId)->whereIn('product_id', $productIds)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
         }
         $state['semantic_account_mappings'] = DB::table('semantic_account_mappings')->where('company_id', $context->companyId)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        if ($key === 'stock_transfer.create.v1' && \Illuminate\Support\Facades\Schema::hasTable('tax_registrations')) {
+            $state['tax_registrations'] = DB::table('tax_registrations')->where('company_id', $context->companyId)
+                ->where('status', 'active')->orderBy('id')->get(['id', 'branch_id', 'gstin', 'status', 'updated_at'])->map(fn ($row) => (array) $row)->all();
+        }
         if (isset($payload['bom_id'])) {
             $state['bom_lines'] = DB::table('bom_lines')->where('company_id', $context->companyId)->where('bom_id', $payload['bom_id'])->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
         }

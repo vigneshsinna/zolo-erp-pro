@@ -71,7 +71,7 @@ class DocumentRenderingService
             // An order owes nothing yet; its supplier-invoice date field holds the expected delivery date.
             'due_date' => $order ? null : ($attributes['due_date'] ?? null), 'paid_amount' => $note || $order ? null : (float) ($source->paid_amount ?? 0),
             'order' => $order, 'delivery_date' => $order ? $source->supplier_invoice_date : null,
-            'references' => array_intersect_key($attributes, array_flip(['order_no', 'lr_no', 'station_to', 'credit_days'])),
+            'references' => array_intersect_key($attributes, array_flip(['order_no', 'lr_no', 'station_to', 'credit_days', 'payment_terms_type'])),
             'material_documents' => $attributes['source_documents'] ?? [],
             'note' => $note ? null : ($source->{$sale ? 'sale_note' : 'note'} ?? null),
             'print' => $this->printSettings($context), 'title' => $note ? ucfirst($source->note_type).' note' : ($sale ? ($tax ? match ($tax['registration_type']) { 'composition' => 'Bill of supply', 'unregistered' => 'Invoice', default => 'Tax invoice' } : 'Invoice') : ($order ? 'Purchase order' : 'Purchase bill')),

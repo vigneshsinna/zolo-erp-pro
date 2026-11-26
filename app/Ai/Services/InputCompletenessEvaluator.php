@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Services;
 
+use App\Ai\Adapters\CommercialDecimal;
 use App\Ai\Contracts\ActionRequirementsProviderInterface;
 use App\Ai\DTOs\ActionFieldRequirement;
 use App\Ai\DTOs\BatchResolutionResult;
@@ -43,11 +44,11 @@ final class InputCompletenessEvaluator
 
         foreach ($requirements as $req) {
             if ($req->isList) {
-                $this->evaluateListRequirement($req, $taskContext, $slots, $batchResult, $issues, $confirmed, $cleanSlots);
+                $this->evaluateListRequirement($req, $taskContext, $slots, $batchResult, $issues, $confirmed, $cleanSlots, $provider);
                 continue;
             }
 
-            $this->evaluateScalarRequirement($req, $taskContext, $slots, $batchResult, $issues, $confirmed, $cleanSlots);
+            $this->evaluateScalarRequirement($req, $taskContext, array_replace($slots, $cleanSlots), $batchResult, $issues, $confirmed, $cleanSlots, $provider->actionKey());
         }
 
         // Add downstream pending checks when prerequisite entities are unresolved
@@ -70,11 +71,26 @@ final class InputCompletenessEvaluator
         if (empty($issues)) {
             $validationErrors = $provider->validate($taskContext, $cleanSlots);
             foreach ($validationErrors as $field => $message) {
+                $humanLabel = ucwords(str_replace(['.', '_'], ' ', $field));
+                $humanReason = $message;
+
+                if (preg_match('/^items\.(\d+)\.net_unit_cost$/', $field, $m)) {
+                    $lineNum = ((int) $m[1]) + 1;
+                    $humanLabel = "Item {$lineNum} Rate";
+                    $humanReason = "Please confirm the purchase rate for this item.";
+                } elseif (preg_match('/^items\.(\d+)\.qty$/', $field, $m)) {
+                    $lineNum = ((int) $m[1]) + 1;
+                    $humanLabel = "Item {$lineNum} Quantity";
+                } elseif (preg_match('/^items\.(\d+)\.product_id$/', $field, $m)) {
+                    $lineNum = ((int) $m[1]) + 1;
+                    $humanLabel = "Item {$lineNum} Product";
+                }
+
                 $issues[] = new FieldIssue(
                     field: $field,
-                    label: ucwords(str_replace(['.', '_'], ' ', $field)),
+                    label: $humanLabel,
                     status: 'invalid',
-                    reason: $message,
+                    reason: $humanReason,
                 );
             }
         }
@@ -95,11 +111,22 @@ final class InputCompletenessEvaluator
         array &$issues,
         array &$confirmed,
         array &$cleanSlots,
+        string $actionKey,
     ): void {
         $field = $req->fieldPath;
         $resolvedId = $batchResult->getResolvedId($field);
         $entity = $batchResult->getEntity($field);
         $resolution = $batchResult->getResolution($field);
+
+        if ($field === 'warehouse_id' && $actionKey === 'purchase_order.create.v1'
+            && config('erp_ai.conversation_enabled', false)
+            && !isset($slots['warehouse_id'])
+            && trim((string) ($slots['warehouse_query'] ?? '')) === '') {
+            // A single branch warehouse is a useful candidate, not a user's
+            // authorization to select the destination for this purchase order.
+            $resolvedId = null;
+            $resolution = null;
+        }
 
         if ($resolvedId !== null) {
             $displayName = $entity && isset($entity->name) ? (string) $entity->name : (string) $resolvedId;
@@ -167,10 +194,18 @@ final class InputCompletenessEvaluator
         // Check default policy
         $default = $req->resolveDefault($taskContext, $slots);
         if ($default !== null) {
+            $displayVal = (string) $default;
+            if ($req->entityType === 'warehouse' && is_numeric($default)) {
+                $wh = Warehouse::where('company_id', $taskContext->companyId())->find($default);
+                if ($wh) {
+                    $displayVal = $wh->name;
+                    $cleanSlots['warehouse_name'] = $wh->name;
+                }
+            }
             $confirmed[] = [
                 'field' => $field,
                 'label' => $req->label,
-                'display' => (string) $default,
+                'display' => $displayVal,
                 'source' => 'erp_default',
             ];
             $cleanSlots[$field] = $default;
@@ -203,6 +238,7 @@ final class InputCompletenessEvaluator
         array &$issues,
         array &$confirmed,
         array &$cleanSlots,
+        ?ActionRequirementsProviderInterface $provider = null,
     ): void {
         $rawItems = (array) ($slots[$req->fieldPath] ?? []);
 
@@ -213,7 +249,8 @@ final class InputCompletenessEvaluator
                     label: $req->label,
                     status: 'missing',
                     reason: 'At least one line item is required.',
-                    control: 'list',
+                    control: 'line_items',
+                    entityType: 'product',
                 );
             }
             return;
@@ -300,10 +337,10 @@ final class InputCompletenessEvaluator
                 $confirmed[] = [
                     'field' => $qtyFieldKey,
                     'label' => "Line {$lineIndex} Quantity",
-                    'display' => sprintf('%.2f units', $qtyVal),
+                    'display' => CommercialDecimal::format($qtyVal).' units',
                     'source' => 'user',
                 ];
-                $cleanLine['qty'] = sprintf('%.2f', $qtyVal);
+                $cleanLine['qty'] = CommercialDecimal::format($qtyVal);
             } else {
                 $issues[] = new FieldIssue(
                     field: $qtyFieldKey,
@@ -316,10 +353,74 @@ final class InputCompletenessEvaluator
             }
 
             // 3. Evaluate Unit Price / Cost for this line
-            $isSale = isset($slots['customer_id']) || isset($slots['customer_query']) || isset($line['net_unit_price']) || isset($line['unit_price']);
-            if ($isSale) {
+            $actionKey = $provider !== null ? $provider->actionKey() : '';
+            $isPurchase = str_contains($actionKey, 'purchase')
+                || str_contains($actionKey, 'grn')
+                || str_contains($actionKey, 'bill')
+                || isset($slots['supplier_id'])
+                || isset($slots['supplier_query']);
+            $isSale = !$isPurchase && (
+                str_contains($actionKey, 'sale')
+                || isset($slots['customer_id'])
+                || isset($slots['customer_query'])
+            );
+
+            if ($isPurchase) {
+                $costFieldKey = "items[{$clientLineId}].net_unit_cost";
+                $userCost = $line['net_unit_cost'] ?? $line['net_unit_price'] ?? $line['rate'] ?? $line['unit_price'] ?? $line['unit_cost'] ?? null;
+                if ($userCost !== null && is_numeric($userCost) && (float) $userCost >= 0) {
+                    $costVal = (float) $userCost;
+                    $confirmed[] = [
+                        'field' => $costFieldKey,
+                        'label' => "Line {$lineIndex} Rate",
+                        'display' => '₹'.CommercialDecimal::format($costVal),
+                        'source' => 'user',
+                    ];
+                    $cleanLine['net_unit_cost'] = CommercialDecimal::format($costVal);
+                } elseif ($provider?->actionKey() === 'purchase_order.create.v1'
+                    && config('erp_ai.conversation_enabled', false)) {
+                    // Product master cost/price are reference values. They are not
+                    // agreement to a Purchase Order rate and must not be silently used.
+                    $reference = ($productEntity && is_numeric($productEntity->cost ?? null) && (float) $productEntity->cost > 0)
+                        ? ' Product master cost is ₹'.CommercialDecimal::format((float) $productEntity->cost).'.'
+                        : '';
+                    $issues[] = new FieldIssue(
+                        field: $costFieldKey,
+                        label: "Line {$lineIndex} Rate",
+                        status: 'missing',
+                        reason: "Confirm the purchase rate for line {$lineIndex}.{$reference} Say 'rate 600' or choose another verified rate.",
+                        control: 'number',
+                        clientLineId: $clientLineId,
+                    );
+                } elseif ($productEntity && isset($productEntity->cost) && (float) $productEntity->cost > 0) {
+                    $cleanLine['net_unit_cost'] = CommercialDecimal::format((float) $productEntity->cost);
+                    $confirmed[] = [
+                        'field' => $costFieldKey,
+                        'label' => "Line {$lineIndex} Rate",
+                        'display' => sprintf('₹%.2f (Master Cost)', (float) $productEntity->cost),
+                        'source' => 'erp_default',
+                    ];
+                } elseif ($productEntity && isset($productEntity->price) && (float) $productEntity->price > 0) {
+                    $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $productEntity->price);
+                    $confirmed[] = [
+                        'field' => $costFieldKey,
+                        'label' => "Line {$lineIndex} Rate",
+                        'display' => sprintf('₹%.2f (Master Price)', (float) $productEntity->price),
+                        'source' => 'erp_default',
+                    ];
+                } else {
+                    // Default to 0.00 if rate is unknown or not provided yet (rate to be finalized on bill)
+                    $cleanLine['net_unit_cost'] = '0.00';
+                    $confirmed[] = [
+                        'field' => $costFieldKey,
+                        'label' => "Line {$lineIndex} Rate",
+                        'display' => '₹0.00 (Pending rate)',
+                        'source' => 'erp_default',
+                    ];
+                }
+            } else {
                 $priceFieldKey = "items[{$clientLineId}].net_unit_price";
-                $userPrice = $line['net_unit_price'] ?? $line['unit_price'] ?? null;
+                $userPrice = $line['net_unit_price'] ?? $line['net_unit_cost'] ?? $line['rate'] ?? $line['unit_price'] ?? null;
                 if ($userPrice !== null && is_numeric($userPrice) && (float) $userPrice >= 0) {
                     $priceVal = (float) $userPrice;
                     $confirmed[] = [
@@ -329,7 +430,7 @@ final class InputCompletenessEvaluator
                         'source' => 'user',
                     ];
                     $cleanLine['net_unit_price'] = sprintf('%.2f', $priceVal);
-                } elseif ($productEntity && isset($productEntity->price)) {
+                } elseif ($productEntity && isset($productEntity->price) && (float) $productEntity->price > 0) {
                     $cleanLine['net_unit_price'] = sprintf('%.2f', (float) $productEntity->price);
                     $confirmed[] = [
                         'field' => $priceFieldKey,
@@ -337,45 +438,42 @@ final class InputCompletenessEvaluator
                         'display' => sprintf('₹%.2f (Master Price)', (float) $productEntity->price),
                         'source' => 'erp_default',
                     ];
-                }
-            } else {
-                $costFieldKey = "items[{$clientLineId}].net_unit_cost";
-                if (isset($line['net_unit_cost']) && is_numeric($line['net_unit_cost']) && (float) $line['net_unit_cost'] >= 0) {
-                    $costVal = (float) $line['net_unit_cost'];
+                } else {
+                    $cleanLine['net_unit_price'] = '0.00';
                     $confirmed[] = [
-                        'field' => $costFieldKey,
-                        'label' => "Line {$lineIndex} Unit Cost",
-                        'display' => sprintf('₹%.2f', $costVal),
-                        'source' => 'user',
-                    ];
-                    $cleanLine['net_unit_cost'] = sprintf('%.2f', $costVal);
-                } elseif ($productEntity && isset($productEntity->cost)) {
-                    $cleanLine['net_unit_cost'] = sprintf('%.2f', (float) $productEntity->cost);
-                    $confirmed[] = [
-                        'field' => $costFieldKey,
-                        'label' => "Line {$lineIndex} Unit Cost",
-                        'display' => sprintf('₹%.2f (Master Cost)', (float) $productEntity->cost),
+                        'field' => $priceFieldKey,
+                        'label' => "Line {$lineIndex} Unit Price",
+                        'display' => '₹0.00 (Pending rate)',
                         'source' => 'erp_default',
                     ];
                 }
             }
 
             // 4. Evaluate Unit for this line
-            if ($isSale) {
-                $unitFieldKey = "items[{$clientLineId}].sale_unit_id";
-                $resolvedUnitId = $batchResult->getResolvedId($unitFieldKey);
-                if ($resolvedUnitId !== null) {
-                    $cleanLine['sale_unit_id'] = (int) $resolvedUnitId;
-                } elseif ($productEntity) {
-                    $cleanLine['sale_unit_id'] = (int) ($productEntity->sale_unit_id ?? $productEntity->unit_id ?? 1);
-                }
-            } else {
+            $unitKey = "items[{$clientLineId}].".($isPurchase ? 'purchase_unit_id' : 'sale_unit_id');
+            if (($batchResult->getResolution($unitKey)['status'] ?? null) === 'none') {
+                $issues[] = new FieldIssue(field: $unitKey, label: "Line {$lineIndex} Unit of Measure", status: 'invalid',
+                    reason: $batchResult->getResolution($unitKey)['error'], control: 'entity_select', clientLineId: $clientLineId, entityType: 'unit');
+            }
+            if ($isPurchase) {
                 $unitFieldKey = "items[{$clientLineId}].purchase_unit_id";
                 $resolvedUnitId = $batchResult->getResolvedId($unitFieldKey);
                 if ($resolvedUnitId !== null) {
                     $cleanLine['purchase_unit_id'] = (int) $resolvedUnitId;
                 } elseif ($productEntity) {
                     $cleanLine['purchase_unit_id'] = (int) ($productEntity->purchase_unit_id ?? $productEntity->unit_id ?? 1);
+                } else {
+                    $cleanLine['purchase_unit_id'] = (int) ($line['purchase_unit_id'] ?? 1);
+                }
+            } else {
+                $unitFieldKey = "items[{$clientLineId}].sale_unit_id";
+                $resolvedUnitId = $batchResult->getResolvedId($unitFieldKey);
+                if ($resolvedUnitId !== null) {
+                    $cleanLine['sale_unit_id'] = (int) $resolvedUnitId;
+                } elseif ($productEntity) {
+                    $cleanLine['sale_unit_id'] = (int) ($productEntity->sale_unit_id ?? $productEntity->unit_id ?? 1);
+                } else {
+                    $cleanLine['sale_unit_id'] = (int) ($line['sale_unit_id'] ?? 1);
                 }
             }
 
@@ -387,6 +485,11 @@ final class InputCompletenessEvaluator
             }
             if (isset($line['note'])) {
                 $cleanLine['note'] = (string) $line['note'];
+            }
+            foreach (\App\Ai\Schemas\OpticalSchemaFragment::LINE_FIELDS as $optField) {
+                if (array_key_exists($optField, $line) && $line[$optField] !== null && $line[$optField] !== '') {
+                    $cleanLine[$optField] = $line[$optField];
+                }
             }
 
             $cleanLines[] = $cleanLine;
@@ -414,11 +517,11 @@ final class InputCompletenessEvaluator
         $cleanQuery = trim((string) $query);
 
         [$permission, $capabilityKey, $searchEndpoint] = match ($entityType) {
-            'supplier' => ['suppliers-add', 'setup.supplier.create.v1', '/api/v1/parties?type=supplier'],
-            'warehouse' => ['warehouse', 'setup.warehouse.create.v1', '/api/v1/warehouses'],
-            'product' => ['products-add', 'setup.product.create.v1', '/api/v1/products'],
-            'customer' => ['customers-add', 'setup.customer.create.v1', '/api/v1/parties?type=customer'],
-            'unit' => ['unit', 'setup.unit.create.v1', '/api/v1/units'],
+            'supplier' => ['suppliers-add', 'setup.supplier.create.v1', '/api/v1/ai/entity-options?type=supplier'],
+            'warehouse' => ['warehouse', 'setup.warehouse.create.v1', '/api/v1/ai/entity-options?type=warehouse'],
+            'product' => ['products-add', 'setup.product.create.v1', '/api/v1/ai/entity-options?type=product'],
+            'customer' => ['customers-add', 'setup.customer.create.v1', '/api/v1/ai/entity-options?type=customer'],
+            'unit' => ['unit', 'setup.unit.create.v1', '/api/v1/ai/entity-options?type=unit'],
             default => [null, null, null],
         };
 

@@ -199,11 +199,13 @@ final class WorkflowTaskCorrectionMismatchRegressionTest extends TestCase
     public function test_typed_corrections_with_expected_revision_succeeds_and_increments_revision(): void
     {
         $this->actingAs($this->adminUser);
+        config()->set('erp_ai.conversation_enabled', true);
 
         $initResponse = $this->postJson('/api/v1/ai/workflow-tasks', [
             'action_key' => 'purchase_order.create.v1',
             'slots' => [
                 'supplier_id' => $this->supplier->id,
+                'payment_terms_type' => 'cash',
                 'items' => [
                     ['product_id' => $this->product->id, 'qty' => 10, 'net_unit_cost' => 150.0],
                 ],
@@ -230,7 +232,8 @@ final class WorkflowTaskCorrectionMismatchRegressionTest extends TestCase
 
         $updatedRevision = (int) $patchResp->json('task.revision');
         $this->assertSame($initialRevision + 1, $updatedRevision);
-        $this->assertTrue($patchResp->json('evaluation.is_ready'));
+        $patchResp->assertJsonPath('task.slots.warehouse_id', $this->warehouse->id)
+            ->assertJsonPath('evaluation.is_ready', true);
     }
 
     /**

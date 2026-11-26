@@ -38,6 +38,8 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for sales order preview.');
         }
 
+        \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context, $slots);
+
         $customerId = (int) ($slots['customer_id'] ?? 0);
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         $orderDate = !empty($slots['date']) ? (string) $slots['date'] : now()->toDateString();
@@ -169,6 +171,7 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
             $taxAmountStr = sprintf('%.2f', $lineTaxAmount);
             $totalStr = sprintf('%.2f', $lineTotal);
 
+            $optLine = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
             $normalizedLine = [
                 'product_id' => $productId,
                 'qty' => $qtyStr,
@@ -176,7 +179,7 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'sale_unit_id' => (int) ($pricingItems[$index]['sale_unit_id'] ?? 1),
                 'discount' => $discountStr,
                 'tax_rate' => $taxRateStr,
-            ];
+            ] + $optLine;
 
             if (!empty($rawItems[$index]['note'])) {
                 $normalizedLine['note'] = (string) $rawItems[$index]['note'];
@@ -195,7 +198,7 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_amount' => $taxAmountStr,
                 'total' => $totalStr,
                 'sale_unit_id' => (int) ($pricingItems[$index]['sale_unit_id'] ?? 1),
-            ];
+            ] + $optLine;
         }
 
         $grandTotal = (float) ($pricingResult['grand_total'] ?? 0);
@@ -243,6 +246,13 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
         }
         if (!empty($slots['note'])) {
             $normalizedPayload['note'] = (string) $slots['note'];
+        }
+        foreach (\App\Ai\Schemas\OpticalSchemaFragment::SALES_HEADER_FIELDS as $optHeader) {
+            if (isset($slots[$optHeader]) && $slots[$optHeader] !== '' && $slots[$optHeader] !== null) {
+                $normalizedPayload[$optHeader] = in_array($optHeader, ['fitting_charge', 'tinting_cost'], true)
+                    ? CommercialDecimal::format((float) $slots[$optHeader])
+                    : (string) $slots[$optHeader];
+            }
         }
 
         $previewData = [
@@ -372,6 +382,9 @@ final class SalesOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'warehouse' => $warehouse ? (array) $warehouse : null,
             'fiscal_year' => $fiscalYear ? (array) $fiscalYear : null,
             'products' => $products->map(fn($p) => (array) $p)->all(),
+            'industry_setting' => \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
+                ? (array) DB::table('company_industry_settings')->where('company_id', $context->companyId)->first(['profile_key', 'subtype', 'updated_at'])
+                : null,
         ];
 
         return hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR));

@@ -51,6 +51,15 @@ final class NormalizedInputWorkflowBridge
         ?AiMediaExtraction $companionExtraction = null,
         bool $allowTrustedPreparation = false,
     ): array {
+        // When conversational AI is enabled, standalone voice instructions
+        // must pass transcript confirmation and the owned conversation router.
+        // Do not let legacy handoff silently create a bill/task instead.
+        if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
+            throw MultimodalException::extractionFailed(
+                'VOICE_CONVERSATION_REQUIRED',
+                'Confirm the transcript and continue through the conversational workflow. No ERP action was staged.'
+            );
+        }
         if (! $this->policy->canAccessPrincipal($principal, $asset)) {
             throw MultimodalException::crossTenantForbidden();
         }

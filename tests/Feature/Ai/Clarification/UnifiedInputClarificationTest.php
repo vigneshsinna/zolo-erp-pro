@@ -483,6 +483,10 @@ final class UnifiedInputClarificationTest extends TestCase
         $prepareResponse->assertJsonFragment(['status' => 'proposal_created']);
         $proposalId = $prepareResponse->json('proposal.id');
         $this->assertNotEmpty($proposalId);
+        $this->assertIsArray($prepareResponse->json('proposal.preview'));
+        $this->assertNotEmpty($prepareResponse->json('proposal.preview.supplier'));
+        $this->assertNotEmpty($prepareResponse->json('proposal.preview.items'));
+        $this->assertSame('purchase_order.create.v1', $prepareResponse->json('action_key'));
 
         // Zero physical ERP writes
         $this->assertSame(0, Purchase::where('company_id', $this->company->id)->count());
@@ -634,5 +638,138 @@ final class UnifiedInputClarificationTest extends TestCase
         $this->assertSame('ready', $task->status);
         $resolution = json_decode($task->resolution_json, true);
         $this->assertSame((int) $this->warehouse->id, (int) $resolution['resolved_ids']['warehouse_id']);
+    }
+
+    /**
+     * Warehouse resolution returns candidate list when multiple active warehouses exist in the active branch.
+     * Prevents silent first() auto-match.
+     */
+    public function test_warehouse_resolution_returns_candidates_when_multiple_branch_warehouses_exist(): void
+    {
+        $this->actingAs($this->adminUser);
+
+        // Create a second warehouse in the same branch
+        $secondWarehouse = Warehouse::create([
+            'name' => 'Secondary Tiruppur Storage',
+            'address' => '102 Mill Road, Tiruppur',
+            'is_active' => true,
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch->id,
+        ]);
+
+        $initResponse = $this->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplierA->id,
+                'items' => [
+                    ['product_id' => $this->productYarn->id, 'qty' => 50, 'net_unit_cost' => 250.0],
+                ],
+            ],
+        ], $this->contextHeaders());
+
+        $initResponse->assertStatus(201);
+        $this->assertFalse($initResponse->json('evaluation.is_ready'));
+
+        $issues = $initResponse->json('evaluation.required_inputs');
+        $whIssue = collect($issues)->firstWhere('field', 'warehouse_id');
+        $this->assertNotNull($whIssue);
+        $this->assertSame('ambiguous', $whIssue['status']);
+
+        $candidateIds = collect($whIssue['candidates'])->pluck('id')->all();
+        $this->assertContains((int) $this->warehouse->id, $candidateIds);
+        $this->assertContains((int) $secondWarehouse->id, $candidateIds);
+
+        // Clean up second warehouse so other tests aren't impacted
+        $secondWarehouse->delete();
+    }
+
+    /**
+     * Warehouse resolution ignores warehouses belonging to other branches of the same company.
+     */
+    public function test_warehouse_resolution_ignores_warehouses_from_other_branches(): void
+    {
+        $this->actingAs($this->adminUser);
+
+        // Create a different branch in same company
+        $otherBranch = $this->company->branches()->create([
+            'code' => 'COIMBATORE',
+            'name' => 'Coimbatore Branch',
+            'branch_type' => 'branch',
+        ]);
+
+        $otherBranchWarehouse = Warehouse::create([
+            'name' => 'Coimbatore Hub',
+            'address' => '500 Avinashi Road, Coimbatore',
+            'is_active' => true,
+            'company_id' => $this->company->id,
+            'branch_id' => $otherBranch->id,
+        ]);
+
+        // When evaluating under $this->branch, other branch warehouse must never be chosen
+        $initResponse = $this->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplierA->id,
+                'warehouse_query' => 'Coimbatore Hub',
+                'items' => [
+                    ['product_id' => $this->productYarn->id, 'qty' => 50, 'net_unit_cost' => 250.0],
+                ],
+            ],
+        ], $this->contextHeaders());
+
+        $initResponse->assertStatus(201);
+        $this->assertFalse($initResponse->json('evaluation.is_ready'));
+
+        $issues = $initResponse->json('evaluation.required_inputs');
+        $whIssue = collect($issues)->firstWhere('field', 'warehouse_id');
+        $this->assertNotNull($whIssue);
+        $this->assertSame('missing', $whIssue['status']);
+
+        // Clean up
+        $otherBranchWarehouse->delete();
+        $otherBranch->delete();
+    }
+
+    /**
+     * Submitting legacy slots_patch fails validation with HTTP 422, while corrections array succeeds.
+     */
+    public function test_patch_inputs_rejects_legacy_slots_patch_and_accepts_corrections(): void
+    {
+        $this->actingAs($this->adminUser);
+
+        $initResponse = $this->postJson('/api/v1/ai/workflow-tasks', [
+            'action_key' => 'purchase_order.create.v1',
+            'slots' => [
+                'supplier_id' => $this->supplierA->id,
+                'items' => [
+                    ['product_id' => $this->productYarn->id, 'qty' => 50, 'net_unit_cost' => 250.0],
+                ],
+            ],
+        ], $this->contextHeaders());
+
+        $taskId = $initResponse->json('task.id');
+        $revision = (int) $initResponse->json('task.revision');
+
+        // Legacy slots_patch payload MUST fail validation
+        $legacyResponse = $this->patchJson("/api/v1/ai/workflow-tasks/{$taskId}/inputs", [
+            'expected_revision' => $revision,
+            'slots_patch' => [
+                'warehouse_id' => (int) $this->warehouse->id,
+            ],
+        ], $this->contextHeaders());
+
+        $legacyResponse->assertStatus(422);
+        $legacyResponse->assertJsonValidationErrors(['corrections']);
+
+        // Correct corrections payload succeeds
+        $validResponse = $this->patchJson("/api/v1/ai/workflow-tasks/{$taskId}/inputs", [
+            'expected_revision' => $revision,
+            'corrections' => [
+                ['field' => 'warehouse_id', 'value' => (int) $this->warehouse->id, 'confirmation' => 'user_selected'],
+            ],
+        ], $this->contextHeaders());
+
+        $validResponse->assertStatus(200);
+        $this->assertTrue($validResponse->json('evaluation.is_ready'));
     }
 }

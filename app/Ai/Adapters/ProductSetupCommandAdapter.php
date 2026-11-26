@@ -94,6 +94,11 @@ final class ProductSetupCommandAdapter implements ActionCommandAdapterInterface
                 'cost' => $payload['cost'] ?? '0.00',
                 'price' => $payload['price'] ?? '0.00',
             ];
+            foreach (['base', 'addition', 'lr', 'dia', 'product_type_id'] as $optAttr) {
+                if (isset($payload[$optAttr]) && $payload[$optAttr] !== '') {
+                    $attributes[$optAttr] = $payload[$optAttr];
+                }
+            }
 
             $hsnCode = !empty($payload['hsn_code']) ? trim((string) $payload['hsn_code']) : null;
             if (!$hsnCode && \Illuminate\Support\Facades\Schema::hasTable('hsn_sac_codes')) {

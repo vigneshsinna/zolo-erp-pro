@@ -242,6 +242,7 @@ Route::prefix('v1')->group(function () {
         Route::prefix('ai')->middleware('company.context')->group(function () {
             require __DIR__ . '/ai-documents.php';
             Route::get('settings', [\App\Http\Controllers\Api\V1\AiChatController::class, 'settings'])->name('api.v1.ai.settings');
+            Route::get('capabilities', [\App\Http\Controllers\Api\V1\AiCapabilityDiscoveryController::class, 'index'])->name('api.v1.ai.capabilities.index');
             Route::get('monitoring', [\App\Http\Controllers\Api\V1\AiChatController::class, 'monitoring'])->name('api.v1.ai.monitoring');
             Route::get('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'threads'])->name('api.v1.ai.threads.index');
             Route::post('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'createThread'])->name('api.v1.ai.threads.store');
@@ -267,7 +268,25 @@ Route::prefix('v1')->group(function () {
 
             // Task T03: Scoped ERP Entity Directory Lookup
             Route::get('entity-lookup', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-lookup');
-            Route::get('entity-options', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-options');
+
+            // Reviewed business processes: scoped plan previews, human-driven steps and readonly status.
+            Route::prefix('business-workflows')->controller(\App\Http\Controllers\Api\V1\AiBusinessWorkflowController::class)->group(function () {
+                Route::get('/', 'index')->name('api.v1.ai.business-workflows.index');
+                Route::get('metrics', 'metrics')->name('api.v1.ai.business-workflows.metrics');
+                Route::get('definitions/{processId}', 'preview')->where('processId', '[a-z0-9_.]+')->name('api.v1.ai.business-workflows.preview');
+                Route::post('/', 'store')->name('api.v1.ai.business-workflows.store');
+                Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.business-workflows.show');
+                Route::patch('{id}/facts', 'correct')->whereUuid('id')->name('api.v1.ai.business-workflows.correct');
+                Route::post('{id}/pause', 'pause')->whereUuid('id')->name('api.v1.ai.business-workflows.pause');
+                Route::post('{id}/resume', 'resume')->whereUuid('id')->name('api.v1.ai.business-workflows.resume');
+                Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('api.v1.ai.business-workflows.cancel');
+                Route::post('{id}/clarify', 'clarify')->whereUuid('id')->name('api.v1.ai.business-workflows.clarify');
+                Route::post('{id}/validate', 'validateStep')->whereUuid('id')->name('api.v1.ai.business-workflows.validate');
+                Route::post('{id}/verify-event', 'verifyEvent')->whereUuid('id')->name('api.v1.ai.business-workflows.verify-event');
+                Route::post('{id}/link-proposal', 'linkProposal')->whereUuid('id')->name('api.v1.ai.business-workflows.link-proposal');
+                Route::post('{id}/verify-return', 'verifyReturn')->whereUuid('id')->name('api.v1.ai.business-workflows.verify-return');
+                Route::post('{id}/reconcile', 'reconcile')->whereUuid('id')->name('api.v1.ai.business-workflows.reconcile');
+            });
 
             // Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine
             Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {
@@ -282,6 +301,9 @@ Route::prefix('v1')->group(function () {
                 Route::post('{id}/dependent-masters/preview', 'previewDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.preview');
                 Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.approve-and-execute');
             });
+
+            // Phase 2.4: Scoped Entity Directory & Disambiguation Options
+            Route::get('entity-options', [\App\Http\Controllers\Api\V1\AiEntityOptionsController::class, 'index'])->name('api.v1.ai.entity-options');
 
             // Phase 2.3: Private Multimodal Uploads, Perception & Revisioned Extractions
             Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {

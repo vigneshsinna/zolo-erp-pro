@@ -34,12 +34,11 @@
             <span>{{__('db.dashboard')}}</span>
         </a>
     </li>
-    @if(config('erp_ai.enabled'))
-        <li id="ai-workspace-menu" class="{{ request()->is('ai*') ? 'active' : '' }}">
-            <a href="{{ url('/ai') }}">
-                <i class="dripicons-sparkles text-primary"></i>
-                <span>{{ __('AI Workspace') }}</span>
-                <span class="badge badge-primary ml-auto u-fs-10px">PRO</span>
+    @if(config('erp_ai.enabled') && $navigationContext && $nav->allows('ai.use'))
+        <li id="ai-operations-menu" class="{{ request()->is('ai/operations*', 'ai/action-review*') ? 'active' : '' }}">
+            <a href="{{ route('ai.operations') }}" data-keywords="ai automation agents approvals copilot">
+                <i class="dripicons-sparkles" aria-hidden="true"></i>
+                <span>AI Operations</span>
             </a>
         </li>
     @endif

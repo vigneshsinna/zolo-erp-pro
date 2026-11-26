@@ -1,0 +1,194 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Knowledge;
+
+use App\Ai\DTOs\AiPrincipal;
+use App\Ai\Services\ActionSecurity;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
+
+/** Read-only, tenant-authorized metadata aggregation. No prompt text or raw invoice data. */
+final class BusinessWorkflowMetrics
+{
+    public function __construct(private readonly ActionSecurity $security) {}
+
+    public function summary(AiPrincipal $principal): array
+    {
+        if (!config('ai_business_knowledge.enabled', false)
+            || !config('ai_business_knowledge.planner_enabled', false)) {
+            throw new AuthorizationException('Business workflow metrics are disabled.');
+        }
+        $this->security->assertEnabled($principal);
+        $this->security->context($principal);
+        $base = DB::table('ai_business_workflows')->where([
+            'company_id' => $principal->companyId,
+            'branch_id' => $principal->branchId,
+            'financial_year_id' => $principal->financialYearId,
+            'actor_id' => $principal->actorId,
+        ]);
+        $rows = (clone $base)->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')->pluck('total', 'status')->all();
+        $stepRows = DB::table('ai_business_workflow_steps as s')
+            ->join('ai_business_workflows as w', 's.workflow_id', '=', 'w.id')
+            ->where('w.company_id', $principal->companyId)
+            ->where('w.branch_id', $principal->branchId)
+            ->where('w.financial_year_id', $principal->financialYearId)
+            ->where('w.actor_id', $principal->actorId)
+            ->selectRaw('s.status, COUNT(*) as total')->groupBy('s.status')
+            ->pluck('total', 's.status')->all();
+        $executionsBase = DB::table('ai_action_executions as e')
+            ->join('ai_action_proposals as p', 'p.id', '=', 'e.proposal_id')
+            ->where('p.company_id', $principal->companyId)
+            ->where('p.branch_id', $principal->branchId)
+            ->where('p.financial_year_id', $principal->financialYearId)
+            ->where('p.actor_id', $principal->actorId);
+
+        $completedActions = (int) (clone $executionsBase)->where('e.status', 'completed')->count();
+        $failedActions = (int) (clone $executionsBase)->where('e.status', 'failed')->count();
+
+        $rejectedProposals = (int) DB::table('ai_action_proposals')
+            ->where('company_id', $principal->companyId)
+            ->where('branch_id', $principal->branchId)
+            ->where('financial_year_id', $principal->financialYearId)
+            ->where('actor_id', $principal->actorId)
+            ->where('status', 'rejected')->count();
+
+        $exceptionCategories = (clone $executionsBase)->where('e.status', 'failed')
+            ->selectRaw('COALESCE(e.domain_service, "general") as category, COUNT(*) as total')
+            ->groupBy('category')
+            ->pluck('total', 'category')->all();
+
+        $avgLatencyMs = (float) ((clone $executionsBase)->where('e.status', 'completed')
+            ->whereNotNull('e.duration_ms')->avg('e.duration_ms') ?? 0.0);
+        $maxLatencyMs = (int) ((clone $executionsBase)->where('e.status', 'completed')
+            ->whereNotNull('e.duration_ms')->max('e.duration_ms') ?? 0);
+
+        $reconciledSteps = (int) ($stepRows['reconciled'] ?? 0) + (int) ($stepRows['failed'] ?? 0);
+        $completedSteps = (int) ($stepRows['completed'] ?? 0);
+        $totalEvaluatedSteps = $reconciledSteps + $completedSteps;
+        $recoveryRate = $totalEvaluatedSteps > 0
+            ? round(($completedSteps / $totalEvaluatedSteps) * 100, 2)
+            : 100.0;
+
+        // Authoritative Model Telemetry & Centralized Credit Ledger Joins
+        $hasModelInvocations = \Illuminate\Support\Facades\Schema::hasTable('ai_model_invocations');
+        $hasCreditLedger = \Illuminate\Support\Facades\Schema::hasTable('ai_credit_ledger');
+
+        $modelTokens = 0;
+        $modelInvocationsCount = 0;
+        if ($hasModelInvocations) {
+            $invocations = DB::table('ai_model_invocations')
+                ->where('company_id', $principal->companyId);
+            $modelTokens = (int) ($invocations->sum(DB::raw('COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)')) ?? 0);
+            $modelInvocationsCount = (int) $invocations->count();
+        }
+
+        $creditsDebited = 0;
+        $costMinorInr = 0;
+        if ($hasCreditLedger) {
+            $ledgerDebits = DB::table('ai_credit_ledger')
+                ->where('company_id', $principal->companyId)
+                ->where('actor_id', $principal->actorId)
+                ->where('kind', 'usage_debit');
+            $creditsDebited = abs((int) ($ledgerDebits->sum('amount_credits') ?? 0));
+            $costMinorInr = (int) ($ledgerDebits->sum('cost_minor_inr') ?? 0);
+        }
+
+        $perStepCostCredits = $completedSteps > 0 ? round($creditsDebited / $completedSteps, 4) : 0.0;
+
+        $proposalsByChannel = [];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ai_action_proposals', 'source_channel')) {
+            $proposalsByChannel = array_map(
+                'intval',
+                DB::table('ai_action_proposals')
+                    ->where('company_id', $principal->companyId)
+                    ->where('branch_id', $principal->branchId)
+                    ->where('financial_year_id', $principal->financialYearId)
+                    ->where('actor_id', $principal->actorId)
+                    ->selectRaw('COALESCE(source_channel, "internal") as channel, COUNT(*) as total')
+                    ->groupBy('channel')
+                    ->pluck('total', 'channel')
+                    ->all()
+            );
+        }
+
+        return [
+            'scope' => 'current_actor_company_branch_fy',
+            'workflow_status_counts' => array_map('intval', $rows),
+            'step_status_counts' => array_map('intval', $stepRows),
+            'proposals_by_channel' => $proposalsByChannel,
+            'completed_erp_actions' => $completedActions,
+            'failed_erp_actions' => $failedActions,
+            'rejected_proposals' => $rejectedProposals,
+            'exception_categories' => array_map('intval', $exceptionCategories),
+            'recovery_rate' => $recoveryRate,
+            'execution_latency_ms' => [
+                'avg_duration_ms' => round($avgLatencyMs, 2),
+                'max_duration_ms' => $maxLatencyMs,
+            ],
+            'model_tokens' => $modelTokens,
+            'model_credits' => $creditsDebited,
+            'model_cost_minor_inr' => $costMinorInr,
+            'model_invocations_count' => $modelInvocationsCount,
+            'per_step_cost_credits' => $perStepCostCredits,
+            'deterministic_actions_model_usage' => 0,
+            'deterministic_actions_credits' => 0,
+            'model_usage_source' => 'authoritative ai_credit_ledger and ai_model_invocations; zero cost for deterministic steps',
+            'as_of' => now('UTC')->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Optical-scoped deterministic and workflow observability counts from persisted ledger tables.
+     *
+     * @return array<string, mixed>
+     */
+    public function opticalSummary(\App\Ai\DTOs\AiPrincipal $principal): array
+    {
+        $companyId = $principal->companyId;
+        $toolInvocations = 0;
+        $actionExecutions = 0;
+        $rxJobsTotal = 0;
+        $rxJobsRemakes = 0;
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('ai_tool_invocations')
+            && \Illuminate\Support\Facades\Schema::hasTable('ai_runs')) {
+            $toolInvocations = (int) \Illuminate\Support\Facades\DB::table('ai_tool_invocations as ati')
+                ->join('ai_runs as ar', 'ar.id', '=', 'ati.run_id')
+                ->where('ar.company_id', $companyId)
+                ->where('ati.tool_key', 'like', 'optical.%')
+                ->count();
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('ai_action_executions')) {
+            $actionExecutions = (int) \Illuminate\Support\Facades\DB::table('ai_action_executions')
+                ->where('company_id', $companyId)
+                ->where('status', 'completed')
+                ->count();
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('optical_rx_jobs')) {
+            $rxJobsTotal = (int) \Illuminate\Support\Facades\DB::table('optical_rx_jobs')
+                ->where('company_id', $companyId)
+                ->count();
+            $rxJobsRemakes = (int) \Illuminate\Support\Facades\DB::table('optical_rx_jobs')
+                ->where('company_id', $companyId)
+                ->whereNotNull('parent_job_id')
+                ->count();
+        }
+
+        return [
+            'scope' => 'current_actor_company',
+            'company_id' => $companyId,
+            'optical_tool_invocations' => $toolInvocations,
+            'commercial_and_setup_executions' => $actionExecutions,
+            'rx_jobs_total' => $rxJobsTotal,
+            'rx_jobs_with_remakes' => $rxJobsRemakes,
+            'deterministic_actions_model_usage' => 0,
+            'deterministic_actions_credits' => 0,
+            'as_of' => now('UTC')->toIso8601String(),
+        ];
+    }
+}

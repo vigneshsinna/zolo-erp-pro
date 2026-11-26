@@ -37,8 +37,8 @@ return new class extends Migration
             Schema::create('ai_credit_periods', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->uuid('account_id')->index();
-                $table->timestamp('period_start_utc');
-                $table->timestamp('period_end_utc');
+                $table->timestamp('period_start_utc')->nullable();
+                $table->timestamp('period_end_utc')->nullable();
                 $table->bigInteger('included_granted')->default(0);
                 $table->bigInteger('topups_granted')->default(0);
                 $table->bigInteger('spent_credits')->default(0);
@@ -71,7 +71,7 @@ return new class extends Migration
                 $table->string('source_type')->nullable();
                 $table->string('source_id')->nullable();
                 $table->string('idempotency_key')->nullable()->index();
-                $table->timestamp('occurred_at');
+                $table->timestamp('occurred_at')->nullable();
                 $table->timestamp('created_at')->useCurrent();
 
                 $table->unique(['account_id', 'idempotency_key'], 'uniq_ledger_account_idempotency');
@@ -92,7 +92,7 @@ return new class extends Migration
                 $table->integer('remaining_held_credits');
                 $table->string('status')->default('active'); // active, partially_settled, settled, released, reconcile_required
                 $table->string('idempotency_key')->index();
-                $table->timestamp('expires_at');
+                $table->timestamp('expires_at')->nullable();
                 $table->timestamps();
 
                 $table->unique(['account_id', 'idempotency_key'], 'uniq_res_account_idempotency');
@@ -107,7 +107,7 @@ return new class extends Migration
                 $table->string('model')->index();
                 $table->string('billable_unit'); // input_token, output_token, cached_input, image, audio_second
                 $table->decimal('unit_price_usd_decimal', 14, 8);
-                $table->timestamp('effective_from');
+                $table->timestamp('effective_from')->nullable();
                 $table->timestamp('effective_to')->nullable();
                 $table->string('approved_by')->nullable();
                 $table->timestamps();

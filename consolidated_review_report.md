@@ -1,163 +1,175 @@
-# EGM Consolidated Goldfish Review Report: Phase 2.1 Multi-Slot Clarification Engine
+# Consolidated Goldfish Review Report: Intelligent ERP Entity Selection & Missing-Master Workflow
 
-**Document Audited:** `design_draft.md` (Lines 1–578)  
-**Date:** 2026-11-11  
-**Review Standard:** Multi-Perspective EGM Swarm (`zoom-out-standard.md`, `feature-spec-standard.md`, `re-implementation-standard.md`)  
-**Target Repository:** `vigneshsinna/zolo-erp-pro` (`feature/ai-unified-input-clarification`)  
+**Target Document:** [`docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md`](file:///v:/pers/Freelance/zolo-erp-pro/docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md)  
+**Evaluated Scope:** Full Document (Lines 1–659)  
+**Execution Mode:** Uninterrupted Full Flow (5 Stages Completed)  
+**Reviewers:**
+- `egm-zoom-out` (Skeptical Architect — Stages 5 & 8)
+- `egm-inventive-catalyst` (Inventive & Systems Architect — Stage 5)
+- `egm-comprehension` (Naive Reader — Stage 6)
+- `egm-design` (Hostile Design Critic — Stage 7)
+- `egm-structural` (Document Architect — Stage 7)
+- `egm-style` (Technical Copy Editor — Stages 7 & 9)
+- `egm-implementation-readiness` (Pragmatic Tech Lead — Stage 9)
+- `egm-codebase-details` (Pedantic Code Auditor — Stage 9)
 
----
-
-## Reviewer Status
-
-| Reviewer Lens | Persona | Status | Primary Focus |
-|---|---|:---:|---|
-| `egm-zoom-out` | Skeptical Architect | ✅ Completed | Simplicity, YAGNI, codebase reuse, abstraction sanity |
-| `egm-comprehension` | Naive Reader Persona | ✅ Completed | Self-containment, terminology, lifecycle clarity |
-| `egm-design` | Hostile Design Critic | ✅ Completed | Multi-tenant isolation, concurrency, immutability, data leaks |
-| `egm-codebase-details` | Technical Quality Auditor | ✅ Completed | Laravel 13 parity, PHP 8.5 DTOs, domain service contracts |
-| `egm-implementation-readiness` | Pragmatic Tech Lead | ✅ Completed | Testability, API contracts, line item addressing, exit gates |
-| `egm-inventive-catalyst` | Inventive Problem Solver | ✅ Completed | TRIZ trade-off resolution, query storm elimination |
-| `egm-style` | Technical Copy Editor | ✅ Completed | Plain-English standards, concurrency terminology, tone |
+**Consolidated Gate Verdict:** 🔴 **REVISION REQUIRED BEFORE IMPLEMENTATION**  
+(10 Consolidated Blockers, 16 Consolidated Majors, 9 Consolidated Nits)
 
 ---
 
-## Prioritized Findings Breakdown
+## 1. Executive Summary & Root Trade-offs
 
-### 🔴 Blockers (Must Remediate Before Finalization)
+The target specification correctly diagnoses the two most pressing bugs in the current `feature/ai-unified-input-clarification` branch:
+1. **P0 Frontend Contract Crash:** In `public/js/ai-media-input.js` (lines 742 & 863), the clarification and edit cards submit `slots_patch`, while `AiWorkflowTaskController::updateInputs()` strictly mandates a `corrections` array of `{field, value, confirmation}`, causing an immediate 422 Unprocessable Entity error.
+2. **P0 Unsafe Warehouse Selection:** `RecordResolutionService::resolveWarehouse` uses `LIKE '%query%' -> first()` and defaults to the first branch warehouse or company warehouse, silently collapsing multiple warehouses into an arbitrary selection.
 
-#### B-01: Sales Order Domain Service Delegation Contradicts Codebase
-*   **Lenses:** `egm-codebase-details` (Finding 1.1), `egm-zoom-out` (Finding 1)
-*   **Affected Scope:** `design_draft.md` Lines 54, 204, 551
-*   **Discrepancy:** The design states that commercial execution delegates to `CommercialApplicationService`. In `zolo-erp-pro`, `CommercialApplicationService::create(kind: 'sale')` creates a posted **Sales Invoice** (`Sale`), which immediately triggers stock deductions and ledger postings. Sales Orders (`SalesOrder`) are unposted commercial promises created exclusively through `OrderLifecycleService::createSale(array $data, string $key, CompanyContext $context, int $actor): SalesOrder`.
-*   **Remediation:** Explicitly route Sales Order execution through `OrderLifecycleService::createSale()` and reserve `CommercialApplicationService` for Sales Invoices and Purchase Bills.
-
-#### B-02: Missing Action Proposal Pipeline for Sales Order & Quotation
-*   **Lenses:** `egm-codebase-details` (Finding 1.2), `egm-implementation-readiness` (Finding 2.1)
-*   **Affected Scope:** `design_draft.md` Lines 489–497, 525, 551
-*   **Discrepancy:** Promoting a task to a proposal via `ActionProposalService::create()` mandates an `ActionDefinition` registered in `ActionCapabilityRegistry` with an input schema, preview adapter, and command adapter. The plan only lists requirements providers for the task layer, omitting `CreateSalesOrderInputSchema`, `SalesOrderPreviewAdapter`, `SalesOrderCommandAdapter`, and registry bindings for `sales_order.create.v1`.
-*   **Remediation:** Enumerate and implement the complete Action Foundation adapter pipeline (`CreateSalesOrderInputSchema`, `SalesOrderPreviewAdapter`, `SalesOrderCommandAdapter`) and register them in `ActionCapabilityRegistry::registerCommercialCapabilities()`.
-
-#### B-03: Multi-Tenancy Security & Nullable `company_id` Defect
-*   **Lenses:** `egm-design` (Finding F-02), `egm-zoom-out` (Finding 6), `egm-comprehension` (Finding 1)
-*   **Affected Scope:** `design_draft.md` Lines 286, 300–302, 337–345
-*   **Discrepancy:** `ai_workflow_tasks.company_id` is defined as nullable, violating Tenancy Law 1 (*Zero Unscoped Reads or Writes*). An actor-only index `(actor_id, status)` allows cross-company leakage if an operator switches companies in their web session.
-*   **Remediation:** Alter `company_id` to `BIGINT UNSIGNED NOT NULL` for company workflows. Separate bootstrap tasks from company tasks or enforce strict non-null compound checks `WHERE id = :id AND company_id = :company_id AND actor_id = :actor_id` on all task queries.
-
-#### B-04: Dynamic Line Item Addressing in Requirements Contract
-*   **Lenses:** `egm-implementation-readiness` (Finding 1.1), `egm-comprehension` (Finding 5)
-*   **Affected Scope:** `design_draft.md` Lines 225, 245, 470–473
-*   **Discrepancy:** `ActionRequirementsProviderInterface::requirements(WorkflowTaskContext $context)` accepts only context without input slots. Commercial orders contain dynamic line items (`items[client_line_id]`), making it impossible for the provider to evaluate dynamic line rules without passing current slots.
-*   **Remediation:** Update interface signature to `requirements(WorkflowTaskContext $context, array $currentSlots = []): array` or define a wildcard expansion rule (`items[*].product_id`) evaluated dynamically against current draft slots.
-
-#### B-05: Unbounded Query Storms during Batch Record Resolution
-*   **Lenses:** `egm-inventive-catalyst` (Finding 1), `egm-design` (Finding F-07)
-*   **Affected Scope:** `design_draft.md` Lines 49, 164–171, 254–260
-*   **Discrepancy:** Resolving 50 line items line-by-line across multiple strategies (SKU, barcode, exact name, fuzzy candidate queries) creates connection starvation on MySQL. Re-evaluating clean lines on incremental patches compounds the bottleneck.
-*   **Remediation:**
-    1. Vectorize queries into set-based bulk lookups (`WHERE code IN (...) OR barcode IN (...)`).
-    2. Segment resolution into Dirty Slots vs. Clean Slots; reuse memoized resolutions in `resolution_json`.
-    3. Enforce candidate caps (maximum 5) and execution timeout limits.
-
-#### B-06: Concurrency & Atomicity on Proposal Promotion
-*   **Lenses:** `egm-design` (Findings F-03, F-04), `egm-inventive-catalyst` (Finding 3)
-*   **Affected Scope:** `design_draft.md` Lines 320–330, 343
-*   **Discrepancy:** `POST /prepare-proposal` omits `expected_revision` and lacks database row locks, allowing race conditions and concurrent duplicate proposal creation. Furthermore, task mutation endpoints lack status guards, allowing clients to patch a task after it has been promoted to a proposal.
-*   **Remediation:**
-    1. Require `expected_revision` in `/prepare-proposal`.
-    2. Wrap proposal promotion in `DB::transaction()` with `lockForUpdate()`.
-    3. Enforce atomic status transition to `sealed` / `proposal_created`. Reject patches on sealed tasks with HTTP 423 Locked.
-
-#### B-07: Customer Resolution & Sales UOM Omission
-*   **Lenses:** `egm-codebase-details` (Finding 1.3), `egm-zoom-out` (Finding 1)
-*   **Affected Scope:** `design_draft.md` Lines 254–260, 508–509
-*   **Discrepancy:** `RecordResolutionService` and `BatchRecordResolutionService` currently implement only supplier and warehouse resolution with hardcoded `purchase_unit_id`. They completely lack `resolveCustomer()` and `sale_unit_id` resolution required for Sales Orders (CUJ 1).
-*   **Remediation:** Expand `RecordResolutionService` and `BatchRecordResolutionService` to implement customer resolution (`resolveCustomer()`) and sales unit of measure resolution (`sale_unit_id`).
+However, the Goldfish Review swarm revealed that the proposed implementation plan suffers from:
+- **Breaking Domain Contracts:** Attempting to alter `RecordResolutionService::resolveWarehouse`'s return type to scalar IDs breaks `BatchRecordResolutionService`, which expects Eloquent models and Collections.
+- **Architectural Scope Creep:** Attempting to re-architect all master entities (products, customers, suppliers, units, PO/GRN matching) across the entire ERP, expanding a focused bug-fix into a multi-week high-risk migration.
+- **UI Component Proliferation:** Designing 11 pseudo-classes across multiple loose JavaScript files instead of a lean jQuery modal/drawer helper adhering to ZoloERP's established Blade + Bootstrap 4 + jQuery desk architecture.
+- **Missing Specification Standards:** Total absence of mandatory `Alternatives Considered`, `Risks & Mitigations`, and `Goals & Non-Goals` sections required by the Feature Specification Standard.
+- **Non-Existent Target Citations:** Directing implementers to poll a non-existent async execution polling endpoint.
 
 ---
 
-### 🟡 Majors (Actionable Architectural Improvements)
+## 2. Traceability Matrix
 
-#### M-01: Scope Calibration — Text-First Commercial Focus vs. Speculative Multi-Modal Scope
-*   **Lenses:** `egm-zoom-out` (Finding 3), `egm-comprehension` (Finding 6), `egm-style` (Finding 1.3)
-*   **Discrepancy:** The draft dedicates significant architectural weight to OCR invoice scans and audio voice notes, despite the repository having zero OCR or speech libraries installed.
-*   **Remediation:** Calibrate Phase 2.1 scope to text-based multi-slot commercial entry (chat, pasted text, structured import). Clearly mark multi-modal OCR/voice as future extensions (Phase 3).
-
-#### M-02: Explicit Line Item Mutation Semantics (Add, Delete, Reorder)
-*   **Lenses:** `egm-implementation-readiness` (Finding 1.2)
-*   **Discrepancy:** The patch protocol for line items does not define how lines are deleted, added, or reordered during clarification.
-*   **Remediation:** Formally specify line mutation payload: new lines supply client UUIDs; deletions supply `_destroy: true`; modifications update specific field paths without clobbering siblings.
-
-#### M-03: HTTP 409 Conflict Contract & Client Reconciliation
-*   **Lenses:** `egm-implementation-readiness` (Finding 1.3)
-*   **Discrepancy:** The plan specifies HTTP 409 on revision mismatch but omits the response payload schema and client-side reconciliation protocol.
-*   **Remediation:** Specify the 409 payload (`{"error": "revision_conflict", "server_revision": int, "task": {...}}`) and client behavior (prompt user to refresh with latest server state).
-
-#### M-04: Explicit File Operation Markers (`[Create]`, `[Modify]`, `[Delete]`)
-*   **Lenses:** `egm-codebase-details` (Finding 2.1)
-*   **Discrepancy:** All 43 enumerated files in the Detailed Implementation Plan lack operation markers, obscuring which files already exist, which are modified, and which are created.
-*   **Remediation:** Prepend explicit `[Create]`, `[Modify]`, or `[Delete]` tags to all file entries in Slices 1 through 6.
-
-#### M-05: Missing Mandatory "Risks & Mitigations" Section
-*   **Lenses:** `egm-design` (Finding F-01)
-*   **Discrepancy:** The design document lacks a formal "Risks & Mitigations" section mandated by `feature-spec-standard.md`.
-*   **Remediation:** Insert `## Risks & Mitigations` covering concurrency races, query storms, payload bloat, and mitigations.
-
-#### M-06: Discarding Ephemeral Event Sourcing (`ai_workflow_task_events`)
-*   **Lenses:** `egm-zoom-out` (Finding 2)
-*   **Discrepancy:** An append-only event-sourcing table (`ai_workflow_task_events`) for transient 24-hour drafts adds unneeded database writes and schema weight without regulatory audit value.
-*   **Remediation:** Drop `ai_workflow_task_events` from Phase 2.1. Persist audit history exclusively at the proposal and execution stages (`ai_action_proposals`, `ai_action_executions`).
-
-#### M-07: Invalidation Cascades & Slot Sourcing
-*   **Lenses:** `egm-design` (Finding F-05)
-*   **Discrepancy:** Changing a root entity (customer/supplier) leaves previously derived prices or tax allocations in `slots_json`, risking customer pricing leakage.
-*   **Remediation:** Tag slot sources (`user_explicit` vs. `derived_default`). Purge all `derived_default` slots downstream of modified root fields upon patch application.
-
-#### M-08: Terminology Calibration (Concurrency vs. Batched Lookups)
-*   **Lenses:** `egm-style` (Finding 1.1), `egm-implementation-readiness` (Finding 2.3)
-*   **Discrepancy:** Wording like "parallel lookups" and "executes concurrently" is misleading in single-threaded PHP-FPM.
-*   **Remediation:** Replace "concurrently/parallel" with "batched lookups / single-pass `whereIn` queries".
-
-#### M-09: Unimplemented `validate` Endpoint & Request Schemas
-*   **Lenses:** `egm-codebase-details` (Finding 2.2), `egm-comprehension` (Finding 3)
-*   **Discrepancy:** `POST /api/v1/ai/workflow-tasks/{id}/validate` is listed in the REST table but absent from routes and controller.
-*   **Remediation:** Add `validate` action to `AiWorkflowTaskController` and `routes/api.php`, or document that validation is performed via `GET {id}` and `PATCH {id}/inputs`.
-
-#### M-10: Inactivity Expiration Lifecycle & HTTP 410 Semantics
-*   **Lenses:** `egm-codebase-details` (Finding 2.4), `egm-design` (Finding F-09), `egm-implementation-readiness` (Finding 2.5)
-*   **Discrepancy:** Expiration currently falls back to proposal TTL (60 mins) rather than 24 hours, and error response on expired tasks is unspecified.
-*   **Remediation:** Introduce `config('ai_workflow.task_ttl_hours', 24)` and return HTTP 410 Gone for operations on expired tasks.
+| Raw Finding ID | Source Stage | Reviewer Persona | Consolidated Action Item | Consolidated Priority |
+|---|---|---|---|---|
+| ZM-01 | Stage 5 | `egm-zoom-out` | ACT-02: Unify UI into Lean jQuery Helper (No 11 Components) | 🟡 Major |
+| ZM-02 | Stage 5 | `egm-zoom-out` | ACT-03: Eliminate Siloed Entity Options Service Layer | 🟡 Major |
+| ZM-03 | Stage 5 | `egm-zoom-out` | ACT-04: Bound Milestone to Warehouse & Bug Fix (Defer Phase 4) | 🔴 Blocker |
+| IC-01 | Stage 5 | `egm-inventive-catalyst` | ACT-05: In-Process Auto-Prepare Option on `updateInputs` | 🟡 Major |
+| IC-02 | Stage 5 | `egm-inventive-catalyst` | ACT-06: Pre-populate Low-Cardinality Master Data in Clarification | 🟡 Major |
+| CP-01 | Stage 6 | `egm-comprehension` | ACT-07: Document Dependent Master API Payloads & Contracts | 🔴 Blocker |
+| CP-02 | Stage 6 | `egm-comprehension` | ACT-08: Clarify Server-Authoritative Task Resumption | 🔴 Blocker |
+| CP-03 | Stage 6 | `egm-comprehension` | ACT-09: Specify Line-Item Nested Bracket Syntax `items[id].field` | 🟡 Major |
+| CP-04 | Stage 6 | `egm-comprehension` | ACT-10: Standardize Task Lifecycle & Evaluation Status Strings | 🟡 Major |
+| CP-05 | Stage 6 | `egm-comprehension` | ACT-11: Define SQL Criteria for Warehouse Branch Eligibility | 🔴 Blocker |
+| ST-01 | Stage 7 | `egm-structural` | ACT-12: Add Mandatory "Alternatives Considered" Section | 🔴 Blocker |
+| ST-02 | Stage 7 | `egm-structural` | ACT-13: Add Mandatory "Risks & Mitigations" Section | 🔴 Blocker |
+| ST-03 | Stage 7 | `egm-structural` | ACT-14: Add Formal "Problem Statement" and "Goals & Non-Goals" | 🟡 Major |
+| DS-01 | Stage 7 | `egm-design` | ACT-12: Evaluate 3 Core Architectural Alternatives | 🔴 Blocker |
+| DS-03 | Stage 7 | `egm-design` | ACT-15: Apply Prefix Search & B-Tree Indexes on Master Queries | 🟡 Major |
+| DS-04 | Stage 7 | `egm-design` | ACT-16: Enforce Task-Slot & Domain Authorization on Options Route | 🟡 Major |
+| DS-05 | Stage 7 | `egm-design` | ACT-17: Document Concurrency & Revision Adoption on Resumption | 🟡 Major |
+| SY-01 | Stage 7/9 | `egm-style` | ACT-18: Strip Vendor Jargon ("for Codex") and Conversational Coaching | 🟡 Major |
+| ZM-07 | Stage 8 | `egm-zoom-out` | ACT-19: Reject Composite Sagas (Retain Sequential Two-Gate Model) | 🔴 Blocker |
+| IR-01 | Stage 9 | `egm-implementation-readiness` | ACT-20: Lock Down API Route Group, Path, and Controller Class | 🔴 Blocker |
+| IR-02 | Stage 9 | `egm-implementation-readiness` | ACT-01: Preserve Domain Return Types in `RecordResolutionService` | 🔴 Blocker |
+| IR-04 | Stage 9 | `egm-implementation-readiness` | ACT-21: Concrete Implementation for `patchWorkflowTask` Helper | 🟡 Major |
+| IR-06 | Stage 9 | `egm-implementation-readiness` | ACT-22: Specify Concrete PHPUnit Test Methods and Assertions | 🟡 Major |
+| CD-01 | Stage 9 | `egm-codebase-details` | ACT-01: Prevent Fatal Type Error in `BatchRecordResolutionService` | 🔴 Blocker |
+| CD-02 | Stage 9 | `egm-codebase-details` | ACT-23: Remove Non-Existent Async Polling Target Reference | 🔴 Blocker |
+| CD-04 | Stage 9 | `egm-codebase-details` | ACT-11: Enforce `$context->branchId` in Warehouse Resolution | 🔴 Blocker |
+| CD-05 | Stage 9 | `egm-codebase-details` | ACT-24: Preserve `branch_id` in Warehouse Prefill (`DependentMasterOrchestrator`) | 🟡 Major |
+| CD-06 | Stage 9 | `egm-codebase-details` | ACT-25: Update `InputCompletenessEvaluator` Hardcoded Route | 🟡 Major |
 
 ---
 
-### 🟢 Nits (Clarity, Layout & Style Polish)
+## 3. Consolidated Action Items by Priority
 
-1.  **N-01:** Remove all instances of `*Rejected by author*` in the Alternatives section; frame rejections purely as technical trade-offs. (`egm-design` F-06, `egm-style` 2.3)
-2.  **N-02:** Remove anthropomorphic and pejorative phrasing (*"blindness"*, *"naive systems"*, *"hallucinate"*). (`egm-style` 1.5)
-3.  **N-03:** Add terminology definitions for regional and domain acronyms (`GSTIN`, `HSN`, `UOM`, `SKU`). (`egm-comprehension` 8)
-4.  **N-04:** Align DTO parameter names with codebase conventions (`$inputControl`, `$isReady()`). (`egm-codebase-details` 3.1)
-5.  **N-05:** Clarify that secondary performance indexes are used instead of relational foreign key constraints. (`egm-implementation-readiness` 3.3, `egm-codebase-details` 3.2)
-6.  **N-06:** Enforce `UsesAiMysql` trait and disposable test database isolation across all planned test suites. (`egm-codebase-details` 3.3)
+### 🔴 Blockers (Must Be Resolved in Document Before Implementation)
+
+* **ACT-01: Preserve Domain Return Types in `RecordResolutionService::resolveWarehouse`**
+  - *Finding:* Proposing an array with `'selected_id'` and plain array `'candidates'` throws a fatal error in `BatchRecordResolutionService::resolveWarehouseField` (`$res['candidates']->map(...)`).
+  - *Resolution:* Retain `'warehouse' => ?Warehouse` (Eloquent model) and `'candidates' => Collection<int, Warehouse>` in `RecordResolutionService`. Add optional `'recommendation_reason'` and `'match_kind'` keys without breaking existing Eloquent collection expectations.
+
+* **ACT-04: Bound Milestone Scope Strictly to Warehouse & Clarification Crash**
+  - *Finding:* Phase 4 expands into a massive re-architecture of customer lookups, multi-unit conversions, and PO/GRN matching, delaying urgent P0 bug fixes.
+  - *Resolution:* Mark Phase 4 as an explicit Non-Goal for this milestone. Bound implementation to: (1) `corrections` payload fix, (2) warehouse candidate disambiguation, and (3) dependent master resumption.
+
+* **ACT-07: Document Dependent Master API Payloads & Contracts**
+  - *Finding:* The document mandates calling `dependent-masters/spawn`, `preview`, and `approve-and-execute` but provides zero request/response schemas.
+  - *Resolution:* Document the exact JSON request bodies, validation rules, and response DTOs for all three dependent-master endpoints.
+
+* **ACT-08: Clarify Server-Authoritative Task Resumption**
+  - *Finding:* The document contains contradictory language implying the frontend must manually bind the new ID and re-resolve the task.
+  - *Resolution:* Explicitly specify that `DependentMasterOrchestrator::approveAndExecuteMaster` is 100% server-authoritative: it mutates `slots_json`, re-evaluates completeness, increments `revision`, and returns the updated task in the response. The frontend simply takes the returned task and re-renders the card.
+
+* **ACT-11: Enforce `$context->branchId` in Warehouse Resolution and Eligibility**
+  - *Finding:* `RecordResolutionService` queries warehouses company-wide without branch scoping, but `PurchaseBillPreviewAdapter` strictly enforces `branch_id == $context->branchId`.
+  - *Resolution:* Update `resolveWarehouse` to filter by `where('branch_id', $context->branchId)` as the primary active scope. Flag any warehouses belonging to other branches as ineligible for purchase receiving.
+
+* **ACT-12: Add Mandatory "Alternatives Considered" Section**
+  - *Finding:* The document violates "The Alternatives Rule" in `feature-spec-standard.md`.
+  - *Resolution:* Add a formal `## Alternatives Considered` section evaluating:
+    1. Dedicated entity options route vs. pre-populating candidates in clarification payloads vs. standard REST endpoints.
+    2. Two-gate sequential approval vs. atomic composite transactions (composite saga).
+    3. Lean jQuery helper/modal vs. 11 separate Vanilla JS component classes.
+
+* **ACT-13: Add Mandatory "Risks & Mitigations" Section**
+  - *Finding:* Fails `feature-spec-standard.md` risk documentation requirements.
+  - *Resolution:* Add `## Risks & Mitigations` covering database index utilization, privilege escalation, concurrent task revision conflicts, and orphaned master records upon task abandonment.
+
+* **ACT-19: Formally Reject Composite Sagas in Favor of Proven Two-Gate Model**
+  - *Finding:* Wrapping master creation and bill booking into a distributed two-phase commit violates Law 3 (Immutability) and introduces severe cascading rollback anomalies.
+  - *Resolution:* Reaffirm the sequential two-gate model in `DependentMasterOrchestrator`: Gate 1 (Approve Master) -> In-process bind & resume -> Gate 2 (Approve Purchase Bill).
+
+* **ACT-20: Lock Down API Route Group, Path, and Controller Class**
+  - *Finding:* Routing is left indecisive across `routes/web.php` and `routes/api.php` with speculative naming.
+  - *Resolution:* Formally declare:
+    - FQCN: `App\Http\Controllers\Api\V1\AiEntityOptionsController`
+    - Path: `GET /api/v1/ai/entity-options` under `auth:sanctum` and `company.context` middleware, mirrored to `routes/web.php` under session auth for Copilot Desk.
+
+* **ACT-23: Remove Non-Existent Async Polling Target Reference**
+  - *Finding:* Directs developers to poll an async execution endpoint that does not exist in the codebase.
+  - *Resolution:* Remove polling language. Synchronous approval returns the completed receipt immediately. If async execution is enabled, the UI renders the queued status receipt with proposal ID and version.
 
 ---
 
-## Traceability Matrix
+### 🟡 Majors (Critical Quality & Maintainability Improvements)
 
-| Finding ID | Title | Source Reviewer | Target Document Section |
-|:---:|---|---|---|
-| **B-01** | Sales Order Domain Service Delegation | `egm-codebase-details`, `egm-zoom-out` | Section 1, Slice 5 (Item 32) |
-| **B-02** | Missing Sales Order Action Proposal Artifacts | `egm-codebase-details`, `egm-readiness` | Slice 2, Slice 4, Slice 5 |
-| **B-03** | Multi-Tenancy Security & Nullable `company_id` | `egm-design`, `egm-zoom-out`, `egm-comprehension` | Section 2.5, Section 3, Slice 1 |
-| **B-04** | Dynamic Line Item Requirements Signature | `egm-readiness`, `egm-comprehension` | Section 2.1, Slice 1 (Item 2) |
-| **B-05** | Batch Resolution Query Storms & Vectorization | `egm-inventive-catalyst`, `egm-design` | Section 2.3, Slice 3 (Item 16) |
-| **B-06** | Atomicity & Lock on Proposal Promotion | `egm-design`, `egm-inventive-catalyst` | Section 2.6, Section 3, Slice 4 |
-| **B-07** | Customer & Sales UOM Resolution | `egm-codebase-details`, `egm-zoom-out` | Section 2.3, Slice 3 (Item 16) |
-| **M-01** | Scope Calibration (Text-First vs OCR) | `egm-zoom-out`, `egm-comprehension`, `egm-style` | Overview, CUJ 3, Goals |
-| **M-02** | Line Item Mutation Semantics | `egm-readiness` | Section 2.6, Section 3 |
-| **M-03** | HTTP 409 Conflict Contract | `egm-readiness` | Section 2.6, Section 3 |
-| **M-04** | File Operation Markers | `egm-codebase-details` | Slices 1–6 (Items 1–43) |
-| **M-05** | Mandatory Risks & Mitigations Section | `egm-design` | New Section 6 |
-| **M-06** | Discarding `ai_workflow_task_events` | `egm-zoom-out` | Section 2.5, Slice 1 |
-| **M-07** | Invalidation Cascades & Slot Sourcing | `egm-design` | Section 2.6 |
-| **M-08** | Concurrency Terminology Calibration | `egm-style`, `egm-readiness` | Section 1, Section 2.3 |
-| **M-09** | Validation Endpoint & Schemas | `egm-codebase-details`, `egm-comprehension` | Section 3, Slice 4 |
-| **M-10** | Expiration Lifecycle & 410 Semantics | `egm-codebase-details`, `egm-design` | Section 2.5, Section 3 |
+* **ACT-02: Unify UI into a Single Lean jQuery Modal/Drawer Helper**
+  - Do not create 11 standalone component abstractions across multiple scripts. Extract a single lean jQuery helper that reuses the proven Triad pattern from `workspace.blade.php`.
+* **ACT-03: Eliminate Siloed Entity Options Service Layer**
+  - Keep entity lookup simple. Implement the lookup directly in `AiEntityOptionsController` or a concise action on `AiWorkflowTaskController` using existing tenant query scopes.
+* **ACT-05: In-Process Auto-Prepare Option on `updateInputs`**
+  - Allow `AiWorkflowTaskController::updateInputs()` to optionally prepare the proposal in-process when `evaluation.is_ready` is true, saving an extra client-orchestrated network round-trip.
+* **ACT-06: Pre-populate Low-Cardinality Master Data in Clarification Payload**
+  - For bounded entities like warehouses (1–20 records per branch), embed active options directly in the initial clarification JSON envelope to eliminate typeahead network latency.
+* **ACT-09: Specify Line-Item Nested Bracket Syntax `items[id].field`**
+  - Document the required regex `items[<client_line_id>].<property>` for multi-line corrections to prevent submitting full array overrides that bypass `TaskCorrectionService`.
+* **ACT-10: Standardize Task Lifecycle & Evaluation Status Strings**
+  - Define a single canonical enum for task status (`draft`, `needs_input`, `ready_for_proposal`, `proposal_linked`, `completed`, `failed`).
+* **ACT-14: Add Formal "Problem Statement" and "Goals & Non-Goals"**
+  - Bounding feature scope to single-master guided resolution and purchase bill vouchers.
+* **ACT-15: Apply Prefix Search & B-Tree Indexes on Master Queries**
+  - Enforce `name LIKE 'query%'` as the primary search to utilize composite B-Tree indexes, falling back to substring search only when prefix results are `< 5`.
+* **ACT-16: Enforce Task-Slot & Domain Authorization on Options Route**
+  - Validate that `type` and `field` correspond to valid entities and assert granular Spatie read permissions (`warehouses-index`, `suppliers-index`, `products-index`).
+* **ACT-17: Document Concurrency & Revision Adoption on Resumption**
+  - Enforce that the frontend adopts the returned `task.revision` directly from `approveAndExecuteMaster` without local optimistic increments.
+* **ACT-18: Strip Vendor Jargon ("for Codex") and Conversational Coaching**
+  - Rename sections to vendor-neutral engineering headers (`## 9. Code-level contract requirements`).
+* **ACT-21: Concrete Implementation for `patchWorkflowTask` Helper**
+  - Provide the concrete JavaScript implementation of `patchWorkflowTask` directly inside `public/js/ai-media-input.js`.
+* **ACT-22: Specify Concrete PHPUnit Test Methods and Assertions**
+  - Map the 12 feature requirements to concrete test methods in `UnifiedInputClarificationTest.php` and `DependentMasterResolutionTest.php`.
+* **ACT-24: Preserve `branch_id` in Warehouse Prefill (`DependentMasterOrchestrator`)**
+  - Do not unset `branch_id` in `previewMasterProposal` for warehouse masters; explicitly bind it to the parent task's active branch.
+* **ACT-25: Update `InputCompletenessEvaluator` Hardcoded Route**
+  - Update `buildTriadOptions` in `InputCompletenessEvaluator.php` to emit the new `/api/v1/ai/entity-options?type=warehouse` path.
+
+---
+
+### 🟢 Nits (Editorial & Minor Code Polish)
+
+1. Map abstract permission references to concrete Spatie capabilities (`warehouses-add`, `purchases-add`).
+2. Define domain acronyms inline on first use ("FY" = Fiscal Year, "Triad" = three-way disambiguation UX).
+3. Update `NormalizedInputWorkflowBridge` to omit `confirmed_*` audit timestamps during automated trusted preparation.
+4. Restore decimal numbering symmetry in Section 6 subsections (`### 6.1 Warehouse`, `### 6.2 Supplier`, etc.).
+5. Remove markdown bolding and editorial directives from heading titles (Line 262).
+6. Document the feature flag configuration key: `config('ai_workflow.entity_picker_enabled')`.
+7. Document that orphaned master records created during an abandoned workflow persist intentionally as non-transactional master data.
+8. Calibrate acceptance criteria to describe observable system behaviors rather than internal implementation negatives.
+9. Standardize failure recovery matrix entries to specify concrete HTTP status codes (`409 Conflict`, `422 Unprocessable Entity`, `403 Forbidden`).
+
+---
+
+## 4. Next Step Recommendation
+
+All 5 Goldfish Review stages are complete. The findings are compiled into this master deliverable.
+
+Before proceeding to code implementation, the design document [`docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md`](file:///v:/pers/Freelance/zolo-erp-pro/docs/ZOLOERP_AI_INTELLIGENT_ENTITY_RESOLUTION_UI_IMPLEMENTATION.md) should be updated using `egm-resolve` to incorporate these resolutions. Once the document is aligned with the codebase contracts and standards, implementation can proceed with zero ambiguity across Phases 0 through 3.

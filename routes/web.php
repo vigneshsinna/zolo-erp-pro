@@ -182,6 +182,28 @@ Route::middleware(['auth', 'company.context', 'common'])->group(function () {
 
     // AI Operating Layer Workspace
     Route::get('ai', [\App\Http\Controllers\Ai\AiWorkspaceController::class, 'index'])->name('ai.workspace');
+    Route::get('ai/operations', [\App\Http\Controllers\Ai\AiOperationsController::class, 'index'])->name('ai.operations');
+    Route::get('ai/operations/exceptions', [\App\Http\Controllers\Ai\AiExceptionTriageController::class, 'index'])->name('ai.exceptions.index');
+    Route::get('ai/operations/events', [\App\Http\Controllers\Ai\AiEventInboxController::class, 'index'])->name('ai.events.index');
+    Route::get('ai/operations/builder', [\App\Http\Controllers\Ai\AiAutomationBuilderController::class, 'index'])->name('ai.builder.index');
+    Route::get('ai/operations/builder/catalog', [\App\Http\Controllers\Ai\AiAutomationBuilderController::class, 'catalog'])
+        ->middleware('throttle:60,1')->name('ai.builder.catalog');
+    Route::post('ai/operations/builder', [\App\Http\Controllers\Ai\AiAutomationBuilderController::class, 'store'])
+        ->middleware('throttle:10,1')->name('ai.builder.store');
+    Route::post('ai/operations/builder/{id}/cancel', [\App\Http\Controllers\Ai\AiAutomationBuilderController::class, 'cancel'])
+        ->whereUuid('id')->middleware('throttle:10,1')->name('ai.builder.cancel');
+    Route::get('ai/operations/builder/{id}/runs', [\App\Http\Controllers\Ai\AiAutomationBuilderController::class, 'runs'])
+        ->whereUuid('id')->name('ai.builder.runs');
+    Route::get('ai/operations/performance', [\App\Http\Controllers\Ai\AiAutomationPerformanceController::class, 'index'])
+        ->name('ai.performance.index');
+    Route::post('ai/operations/performance/reviews', [\App\Http\Controllers\Ai\AiAutomationPerformanceController::class, 'review'])
+        ->middleware('throttle:10,1')->name('ai.performance.review');
+    Route::get('ai/operations/reversals', [\App\Http\Controllers\Ai\AiReversalReviewController::class, 'index'])->name('ai.reversals.index');
+    Route::post('ai/operations/reversals', [\App\Http\Controllers\Ai\AiReversalReviewController::class, 'store'])
+        ->middleware('throttle:10,1')->name('ai.reversals.store');
+    Route::get('ai/operations/policies', [\App\Http\Controllers\Ai\AiAutonomyPolicyController::class, 'index'])->name('ai.autonomy.index');
+    Route::post('ai/operations/policies/{actionKey}', [\App\Http\Controllers\Ai\AiAutonomyPolicyController::class, 'store'])
+        ->where('actionKey', '[a-z0-9_.]+')->name('ai.autonomy.store');
     // PH1 review desk is read-only until an explicitly reviewed action capability is enabled.
     Route::get('ai/action-review', [\App\Http\Controllers\Ai\ActionReviewCenterController::class, 'index'])->name('ai.actions.review');
 });

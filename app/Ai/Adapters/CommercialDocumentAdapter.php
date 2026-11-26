@@ -39,6 +39,7 @@ final class CommercialDocumentAdapter implements ActionPreviewAdapterInterface, 
         if (!$context instanceof CompanyContext) {
             throw new \InvalidArgumentException('A company context is required.');
         }
+        \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context, $slots);
         $date = $slots['date'] ?? now()->toDateString();
         app(CompanyContextResolver::class)->assertPostingDate($context, $date);
         $customer = Customer::where('company_id', $context->companyId)->where('is_active', true)->find($slots['customer_id']);
@@ -61,17 +62,21 @@ final class CommercialDocumentAdapter implements ActionPreviewAdapterInterface, 
             if ($definition->key === 'delivery_challan.create.v1' && ($product->type !== 'standard' || $product->is_imei)) {
                 throw ValidationException::withMessages(['items' => 'Delivery challans support non-serialized stock products.']);
             }
+            $optLine = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($slots['items'][$index] ?? []);
             $items[] = [
                 'product_id' => (int) $product->id, 'qty' => (string) $line['qty'],
                 'sale_unit_id' => (int) $line['sale_unit_id'], 'net_unit_price' => (string) $line['net_unit_price'],
                 'discount' => (string) ($line['discount'] ?? 0), 'tax_rate' => (string) $line['tax_rate'],
                 ...array_intersect_key($slots['items'][$index], array_flip(['order_item_id', 'batch_no', 'note', 'tax_rate_override'])),
-            ];
+            ] + $optLine;
             if (isset($items[$index]['tax_rate_override'])) $items[$index]['tax_rate_override'] = (string) $items[$index]['tax_rate_override'];
         }
-        $payload = array_intersect_key($slots, array_flip(['note', 'order_discount', 'shipping_cost', 'valid_until', 'due_date', 'sales_order_id', 'delivery_challan_id', 'purpose']));
+        $payload = array_intersect_key($slots, array_flip([
+            'note', 'order_discount', 'shipping_cost', 'valid_until', 'due_date', 'sales_order_id', 'delivery_challan_id', 'purpose',
+            ...\App\Ai\Schemas\OpticalSchemaFragment::SALES_HEADER_FIELDS,
+        ]));
         $payload += ['customer_id' => (int) $customer->id, 'warehouse_id' => (int) $warehouse->id, 'date' => $date, 'items' => $items];
-        foreach (['order_discount', 'shipping_cost'] as $field) {
+        foreach (['order_discount', 'shipping_cost', 'fitting_charge', 'tinting_cost'] as $field) {
             if (isset($payload[$field])) $payload[$field] = (string) $payload[$field];
         }
         if ($definition->key === 'quotation.create.v1') {
@@ -193,11 +198,15 @@ final class CommercialDocumentAdapter implements ActionPreviewAdapterInterface, 
             'total_qty' => array_sum(array_column($payload['items'], 'qty')), 'total_amount' => 0, 'total_tax' => 0,
             'grand_total' => 0, 'remarks' => $payload['note'] ?? null, 'created_by' => $actor,
         ]);
-        foreach ($payload['items'] as $line) DeliveryChallanItem::create([
-            'company_id' => $context->companyId, 'delivery_challan_id' => $challan->id, 'product_id' => $line['product_id'],
-            'unit_id' => $line['sale_unit_id'], 'qty' => $line['qty'], 'rate' => 0, 'amount' => 0,
-            'tax_rate' => 0, 'tax_amount' => 0, 'total' => 0, 'batch_no' => $line['batch_no'] ?? null,
-        ]);
+        $hasOpticalCol = \Illuminate\Support\Facades\Schema::hasColumn('delivery_challan_items', 'optical_spec_json');
+        foreach ($payload['items'] as $line) {
+            $optFields = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line);
+            DeliveryChallanItem::create([
+                'company_id' => $context->companyId, 'delivery_challan_id' => $challan->id, 'product_id' => $line['product_id'],
+                'unit_id' => $line['sale_unit_id'], 'qty' => $line['qty'], 'rate' => 0, 'amount' => 0,
+                'tax_rate' => 0, 'tax_amount' => 0, 'total' => 0, 'batch_no' => $line['batch_no'] ?? null,
+            ] + ($hasOpticalCol && $optFields !== [] ? ['optical_spec_json' => json_encode($optFields, JSON_THROW_ON_ERROR)] : []));
+        }
         $plan = empty($payload['sales_order_id']) ? [] : app(OrderLifecycleService::class)->prepareConsumer('dc',
             $payload + ['business_date' => $payload['date']], $context, $actor, $challan);
         app(MaterialDocumentService::class)->post($challan, $context, $actor);
@@ -259,6 +268,10 @@ final class CommercialDocumentAdapter implements ActionPreviewAdapterInterface, 
             $state['warehouse_stock'] = DB::table('product_warehouse')->where('company_id', $context->companyId)
                 ->where('warehouse_id', $payload['warehouse_id'])->whereIn('product_id', array_column($payload['items'], 'product_id'))
                 ->orderBy('id')->get()->all();
+        }
+        if (\Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')) {
+            $state['industry_setting'] = (array) DB::table('company_industry_settings')
+                ->where('company_id', $context->companyId)->first(['profile_key', 'subtype', 'updated_at']);
         }
         return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }

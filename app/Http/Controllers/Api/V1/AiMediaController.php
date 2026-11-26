@@ -104,6 +104,10 @@ class AiMediaController extends Controller
                     throw new MultimodalException($me->errorCode, $me->getMessage(), $me->httpStatus, $details);
                 }
 
+                if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
+                    return $this->initialVoiceReview($principal, $asset, $extraction, $request->input('thread_id'), $alreadyExisted ? 200 : 201);
+                }
+
                 $result = $this->workflowBridge->handoff(
                     principal: $principal,
                     asset: $asset->fresh(),
@@ -431,6 +435,15 @@ class AiMediaController extends Controller
             $actionKey = $request->input('action_key');
             $threadId = $request->input('thread_id');
 
+            $voiceReplyTask = null;
+            if (config('erp_ai.conversation_enabled', false) && $request->filled('workflow_task_id')) {
+                $voiceInput = $request->validate(['thread_id' => 'required|uuid', 'workflow_task_id' => 'required|uuid', 'expected_task_revision' => 'required|integer|min:1']);
+                $voiceReplyTask = app(\App\Ai\Conversation\VoiceWorkflowReply::class)->assertTask($principal, $voiceInput['thread_id'], $voiceInput['workflow_task_id']);
+                if ((int) $voiceReplyTask['revision'] !== (int) $voiceInput['expected_task_revision']) {
+                    throw new \Symfony\Component\HttpKernel\Exception\ConflictHttpException('Draft changed. Review the current draft before recording a reply.');
+                }
+            }
+
             $asset = null;
             if ($request->hasFile('file')) {
                 $asset = $this->ingestionService->ingest(
@@ -456,6 +469,26 @@ class AiMediaController extends Controller
                     idempotencyKey: $idempotencyKey,
                     companionText: $companionText,
                 );
+            }
+
+            if ($voiceReplyTask !== null) {
+                if ($voiceReplyTask['action_key'] === \App\Ai\Conversation\SupplierSetupConversation::KEY && $asset->source_kind !== 'audio') {
+                    if ($asset->thread_id !== $threadId || $asset->workflow_task_id !== $voiceReplyTask['id']
+                        || !app(\App\Policies\AiMediaAssetPolicy::class)->canStageWriteAction($principal, $asset)) {
+                        throw new \Illuminate\Auth\Access\AuthorizationException('Photo does not belong to the supplier draft.');
+                    }
+                    return response()->json(['status' => 'supplier_photo_review_ready', 'task_id' => $voiceReplyTask['id'],
+                        'task_revision' => (int) $voiceReplyTask['revision'], 'thread_id' => $threadId,
+                        'media' => $this->presentAsset($asset->fresh()), 'extraction' => $this->presentExtraction($extraction->fresh())]);
+                }
+                app(\App\Ai\Conversation\VoiceWorkflowReply::class)->assertAsset($principal, $asset, (string) $threadId, $voiceReplyTask['id']);
+                return response()->json(['status' => 'voice_reply_ready', 'task_id' => $voiceReplyTask['id'], 'task_revision' => (int) $voiceReplyTask['revision'],
+                    'thread_id' => $threadId, 'media' => $this->presentAsset($asset->fresh()), 'extraction' => $this->presentExtraction($extraction->fresh()),
+                    'message' => 'Review and confirm the transcript, then send it as an answer to this draft.']);
+            }
+
+            if (config('erp_ai.conversation_enabled', false) && $asset->source_kind === 'audio') {
+                return $this->initialVoiceReview($principal, $asset, $extraction, $threadId);
             }
 
             // Orchestrate automatic preparation into workflow proposal
@@ -484,6 +517,40 @@ class AiMediaController extends Controller
         } catch (Throwable $e) {
             return $this->handleException($e);
         }
+    }
+
+    /**
+     * First-turn audio is reviewed as a conversation, never staged as a bill,
+     * PO or other ERP action just because a model supplied an intent guess.
+     */
+    private function initialVoiceReview(
+        AiPrincipal $principal,
+        AiMediaAsset $asset,
+        AiMediaExtraction $extraction,
+        mixed $threadId,
+        int $status = 200,
+    ): JsonResponse {
+        if (! is_string($threadId) || ! \Illuminate\Support\Str::isUuid($threadId)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'thread_id' => 'An owned conversation thread is required for a voice instruction.',
+            ]);
+        }
+        app(\App\Ai\Conversation\VoiceWorkflowReply::class)
+            ->assertInitialAsset($principal, $asset, $threadId);
+
+        $transcript = (string) ($extraction->extracted_json['transcript_text'] ?? '');
+        $intent = app(\App\Ai\Conversation\VoiceIntentResolver::class)->resolve($transcript);
+
+        return response()->json([
+            'status' => 'voice_intent_review_ready',
+            'thread_id' => $threadId,
+            'media' => $this->presentAsset($asset->fresh()),
+            'extraction' => $this->presentExtraction($extraction->fresh()),
+            'intent_key' => $intent,
+            'message' => $intent === 'purchase_order.create.v1'
+                ? 'Review and confirm the transcription to start a Purchase Order conversation.'
+                : 'Review the transcription and specify the intended transaction. Nothing was staged.',
+        ], $status);
     }
 
     public function prepareExisting(Request $request, string $id): JsonResponse

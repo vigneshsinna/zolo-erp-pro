@@ -27,7 +27,7 @@ return new class extends Migration
             $table->string('status', 40)->default('queued');
             $table->unsignedSmallInteger('attempts')->default(0);
             $table->string('failure_category', 60)->nullable();
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamp('attempted_at')->nullable();
             $table->timestamp('sent_at')->nullable();
             $table->timestamps();

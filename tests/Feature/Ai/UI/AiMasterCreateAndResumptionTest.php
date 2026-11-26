@@ -260,9 +260,9 @@ final class AiMasterCreateAndResumptionTest extends TestCase
     }
 
     /**
-     * Test 4: Replaying approve-and-execute with stale version or already approved proposal fails cleanly.
+     * Test 4: Approved master retries are idempotent and mismatched versions fail.
      */
-    public function test_replay_with_stale_version_is_rejected(): void
+    public function test_master_approval_retry_reuses_receipt_and_rejects_mismatched_version(): void
     {
         $initRes = $this->actingAs($this->adminUser, 'sanctum')
             ->postJson('/api/v1/ai/workflow-tasks', [
@@ -287,7 +287,7 @@ final class AiMasterCreateAndResumptionTest extends TestCase
             ]);
         $firstExec->assertOk();
 
-        // Replaying with expected_version 1 should now fail (proposal is no longer in draft status)
+        // A retry can arrive after execution succeeded but before the client received the result.
         $replayExec = $this->actingAs($this->adminUser, 'sanctum')
             ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/dependent-masters/approve-and-execute", [
                 'field' => 'warehouse_id',
@@ -295,8 +295,18 @@ final class AiMasterCreateAndResumptionTest extends TestCase
                 'expected_version' => 1,
             ]);
 
-        // Expect 409 or 422 or error indicating proposal cannot be re-approved
-        $this->assertTrue(in_array($replayExec->status(), [409, 422, 500, 400], true));
+        $replayExec->assertOk()
+            ->assertJsonPath('replayed', true)
+            ->assertJsonPath('revision', $firstExec->json('revision'))
+            ->assertJsonPath('newly_created.resource_id', $firstExec->json('newly_created.resource_id'));
+        $this->assertSame(1, Warehouse::where('company_id', $this->company->id)->where('name', 'Stale Version Test Godown')->count());
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->postJson("/api/v1/ai/workflow-tasks/{$taskId}/dependent-masters/approve-and-execute", [
+                'field' => 'warehouse_id',
+                'master_proposal_id' => $masterProposalId,
+                'expected_version' => 2,
+            ])->assertUnprocessable()->assertJsonValidationErrors('master_proposal');
     }
 
     /**

@@ -1,0 +1,145 @@
+{
+    "timestamp": "2026-11-18T08:15:56+00:00",
+    "environment": "isolated_staging_rehearsal",
+    "provider": "nvidia",
+    "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "stages": {
+        "stage_1": {
+            "status": "PASS",
+            "elapsed_seconds": 0.204,
+            "company_id": 83,
+            "branch_id": 63,
+            "fiscal_year_id": 63,
+            "purchaser_id": 145,
+            "clerk_id": 146,
+            "external_user_id": 147
+        },
+        "stage_2": {
+            "status": "PASS",
+            "elapsed_seconds": 6.079,
+            "task_id": "d952afb9-14ff-488e-b217-e9a1920453c1",
+            "final_revision": 4,
+            "task_status": "ready",
+            "purchases_pre_approval": 0
+        },
+        "stage_3": {
+            "status": "PASS",
+            "elapsed_seconds": 0.095,
+            "clerk_unauthorized_rejection": true,
+            "created_warehouse_id": 131,
+            "parent_resumed_status": "resumed",
+            "parent_resumed_revision": 5
+        },
+        "stage_4": {
+            "status": "PASS",
+            "elapsed_seconds": 0.086,
+            "cash_po_status": 4,
+            "cash_po_paid_amount": 0,
+            "cash_po_payments_count": 0,
+            "idempotent_replay": true,
+            "tenant_isolation": true
+        },
+        "stage_5": {
+            "status": "PASS",
+            "elapsed_seconds": 0.079,
+            "uom_lock_avg_ms": 15.79
+        }
+    },
+    "uom_lock_metrics": {
+        "iterations": 5,
+        "timings_ms": [
+            14.2,
+            16.07,
+            16.02,
+            16.32,
+            16.35
+        ],
+        "avg_ms": 15.79,
+        "max_ms": 16.35,
+        "threshold_ms": 250,
+        "contention_acceptable": true
+    },
+    "provider_telemetry": {
+        "voice_transcription": {
+            "latency_seconds": 5.975,
+            "input_tokens": 313,
+            "output_tokens": 226,
+            "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "raw_text_length": 736
+        }
+    },
+    "financial_checks": {
+        "intra_state_gst": {
+            "subtotal": 32000,
+            "grand_total": "32000.00",
+            "tax_total": "0.00"
+        },
+        "inter_state_gst": {
+            "subtotal": 32000,
+            "grand_total": "32000.00",
+            "tax_total": "0.00"
+        }
+    },
+    "security_checks": [],
+    "verdict": "ACCEPTED",
+    "skips_reviewed": {
+        "CommercialPerformanceTest": {
+            "condition": "getenv('ERP_COMMERCIAL_PERF') !== '1'",
+            "reason": "Large 50,000-fixture bulk indexing proof. Opt-in only to avoid slowing standard CI runs.",
+            "status": "REVIEWED_AND_ACCEPTED"
+        },
+        "DeploymentReadinessTest": {
+            "condition": "getenv('ERP_DELIVERY_MYSQL_BACKUP') !== '1'",
+            "reason": "Dedicated restricted-user native MySQL dump and restore rehearsal. Requires isolated restore schema.",
+            "status": "REVIEWED_AND_ACCEPTED"
+        }
+    },
+    "stacked_prs": [
+        {
+            "pr": "#8",
+            "branch": "codex/d01-conversation-task-binding",
+            "title": "D01 Active Task & Thread Binding"
+        },
+        {
+            "pr": "#9",
+            "branch": "codex/d02-conversation-corrections",
+            "title": "D02 Conversational Corrections & Merge"
+        },
+        {
+            "pr": "#10",
+            "branch": "codex/d03-voice-continuation",
+            "title": "D03 Voice Continuation & Transcoding"
+        },
+        {
+            "pr": "#11",
+            "branch": "codex/d04-purchase-order-terms",
+            "title": "D04 Purchase Order Terms Parity"
+        },
+        {
+            "pr": "#12",
+            "branch": "codex/d05-conversation-choices",
+            "title": "D05 Candidate Entity Choices"
+        },
+        {
+            "pr": "#13",
+            "branch": "codex/d06-conversation-master-continuation",
+            "title": "D06 Dependent Master Continuation"
+        },
+        {
+            "pr": "#14",
+            "branch": "codex/d07-conversation-workspace",
+            "title": "D07 Blade AI Conversational Workspace"
+        },
+        {
+            "pr": "#15",
+            "branch": "codex/d08-conversation-integration-evidence",
+            "title": "D08 Conversational CW Contracts"
+        },
+        {
+            "pr": "#16",
+            "branch": "codex/d08-release-blockers",
+            "title": "D08 Release Blocker Follow-up"
+        }
+    ],
+    "completed_at": "2026-11-18T08:16:03+00:00"
+}

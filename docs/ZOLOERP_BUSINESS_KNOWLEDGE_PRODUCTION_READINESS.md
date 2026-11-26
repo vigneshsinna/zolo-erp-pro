@@ -1,0 +1,451 @@
+# zoloERP Pro — ERP Business Knowledge Layer: Remaining Work to Production Readiness
+
+**Document version:** 1.0  
+**Assessment date:** 21 November 2026 (Asia/Kolkata)  
+**Repository:** [vigneshsinna/zolo-erp-pro](https://github.com/vigneshsinna/zolo-erp-pro)  
+**Implementation baseline:** Seven stacked draft PRs, [#40](https://github.com/vigneshsinna/zolo-erp-pro/pull/40) through [#46](https://github.com/vigneshsinna/zolo-erp-pro/pull/46).  
+**Purpose:** An actionable implementation and acceptance plan for a **safe, reliable, usable, financially correct production release** of the ERP Business Knowledge Layer.
+
+> **Release decision: NO-GO at the time of this assessment.** PRs #45 and #46 have failing ERP acceptance workflows. Knowledge definitions remain `draft`, so the business process planner is intentionally unable to start complete workflows. Other end-to-end, security, model and staging acceptance evidence is still missing. This document is a backlog and release specification, **not evidence that the system has already passed those gates**.
+
+---
+
+## 1. What is already in the repository
+
+| Implemented stack | Draft PR | Main contribution | CI observed on the PR head |
+|---|---|---|---|
+| PR1 | [#40](https://github.com/vigneshsinna/zolo-erp-pro/pull/40) | Typed knowledge registry, draft entities, relationships, action/process/policy metadata, source manifest | AI 506 tests/4,851 assertions; ERP gate passed |
+| PR2 | [#41](https://github.com/vigneshsinna/zolo-erp-pro/pull/41) | Permission-scoped, read-only ERP fact reader | AI 510/4,857; ERP gate passed |
+| PR3 | [#42](https://github.com/vigneshsinna/zolo-erp-pro/pull/42) | Deterministic-first supplier/customer role recognition, structured semantic extraction, guided supplier questions | AI 514/4,887; ERP gate passed |
+| PR4 | [#43](https://github.com/vigneshsinna/zolo-erp-pro/pull/43) | Persistent workflow planner and steps, audit events, revisioned plan controls | AI 515/4,888; ERP gate passed |
+| PR5 | [#44](https://github.com/vigneshsinna/zolo-erp-pro/pull/44) | Purchase-document classifier, advisory PO/GRN matching, gated service-bill adapter | AI 521/4,911; ERP gate passed |
+| PR6 | [#45](https://github.com/vigneshsinna/zolo-erp-pro/pull/45) | Job-work order/processing bill and principal-job invoice adapters, physical receipt evidence | AI 525/4,935 passed; **ERP gate FAILED** |
+| PR7 | [#46](https://github.com/vigneshsinna/zolo-erp-pro/pull/46) | Copilot workflow timeline, scoped APIs/metrics, 120-utterance synthetic corpus, concurrency harness | AI 530/5,193 passed; **ERP gate FAILED** |
+
+The recorded CI result is **specific to each PR head at assessment time**, not a guarantee about a future merged head. All seven PRs were **open, draft and unmerged** when checked. PR1–PR7 form a **stacked dependency chain**; do not merge out of sequence without explicitly rebasing the dependents.
+
+### Confirmed CI defect — fix first
+
+- **Failed workflow:** ERP completion acceptance on [PR #45](https://github.com/vigneshsinna/zolo-erp-pro/pull/45) and [PR #46](https://github.com/vigneshsinna/zolo-erp-pro/pull/46).
+- **Failed job:** `MySQL / operations` (MySQL 8.4). Both clean-database migration jobs passed, showing that clean migrations alone do not prove the custom test fixtures are compatible.
+- **Failed test:** `Tests\Feature\TextileScenarioMatrixTest::test_dyeing_unit_processes_customer_material_without_owning_it_and_bills_only_the_charge`.
+- **Actual error:** `SQLSTATE[42S22]: Unknown column 'financial_year_id' in 'field list'` while inserting into `principal_job_orders`.
+- **Origin:** `app/Services/JobWork/PrincipalJobService.php` now writes `financial_year_id`; PR6 introduced `database/migrations/2026_11_20_235003_add_principal_job_financial_year_ownership.php`, but the operations test database/fixture setup does not contain that column at the point of the insert.
+- **Required fix:** Update **every** schema setup route (normal migrations, operations/legacy test fixture builders, restored database paths) to use the additive FY migration, or safely migrate before creating principal jobs. Do **not** silence this by deleting FY isolation or suppressing the test. Prove the backfill handles ambiguous historic FY records without assigning an invented year.
+- **Evidence:** [PR6 failed ERP workflow](https://github.com/vigneshsinna/zolo-erp-pro/actions/runs/44783687174), [PR7 failed ERP workflow](https://github.com/vigneshsinna/zolo-erp-pro/actions/runs/44785796351).
+
+### Known functional gaps or review risks
+
+These are **implementation findings or acceptance gaps**, not claims that all paths were already proven broken:
+
+1. **Knowledge remains in draft.** A process or action must be `reviewed` before the planner can start it. No owner-reviewed process set has been released.
+2. **Incomplete progress transitions.** The planner creates `read_or_clarify` and `read_only_validation` steps, but there is no sufficiently validated completion transition for these steps. Non-job-work external events also need explicit verification adapters. Therefore process completion must **not** be inferred from the presence of a plan or chat answer.
+3. **Conversational reach is partial.** PR3 supports guided supplier capture; customer guided creation, full purchase-to-pay questions and comprehensive service/job-work conversations are not implemented across all paths. `PurchaseDocumentClassifier` is a deterministic utility, not by itself a fully wired chat workflow.
+4. **Expense-only AP is deliberately unsupported.** PR5 classifies expense bills but does not provide a reviewed expense-payable posting action. Do not create a fake stock/service line to work around this.
+5. **Customer-owned job work is incomplete.** PR6 has a guarded service-invoice adapter, but principal job order, customer-material receipt, and material-return AI actions are still `unsupported_action` in the process definition.
+6. **Financial-year model alignment is unfinished.** Beyond the confirmed test failure, examine `PrincipalJobService::find()`, its balance/movement queries and invoice execution for company **and** branch/FY ownership. The existing domain methods were originally company-oriented. Do not assume the new adapter's precheck automatically secures all domain paths.
+7. **Permissions need dedicated read roles.** PR2 currently uses conservative, often create-oriented permission keys when obtaining facts. Review access policy with business owners rather than grant all writers read-all privileges.
+8. **Preview is not proof of financial correctness.** Three-way match summaries, GST splits and stock-cost impact require real fixtures and authoritative reconciliation; advisory text cannot authorize posting.
+9. **Operational metrics are incomplete.** Plan counts are not success rate, extraction accuracy, latency, recovery reliability or financial impact; credits/tokens remain sourced elsewhere.
+10. **User-facing workflow UI has not passed desktop/mobile accessibility and usability testing.** The 120 synthetic utterances are **not** a real Nemotron or invoice benchmark.
+
+---
+
+## 2. Non-negotiable production architecture
+
+**Natural language understanding:** `ApprovedModelGateway`/Nemotron may extract or disambiguate unstructured user text, voice, and document facts. Its outputs are **provisional claims**, not authoritative master records, tax rules, IDs or commands.
+
+**Deterministic application layer:** PHP/MySQL verifies role, company, branch, FY, permissions, supplier/product/warehouse existence, GSTIN and registration status, GST/RCM eligibility, UOM conversion, prices/discounts/taxes, PO/GRN quantities, job-work receipts/losses, fiscal period and duplicates. **Never call the model to perform arithmetic or decide ledger journal entries.**
+
+**Explicit action boundary:** The model can propose `action_key` plus candidate slots only. `ActionCapabilityRegistry` and approved schema allowlist the command. `ActionProposalService` seals exact input/source version. A **human approves that version**. `ApprovedActionExecutor` then invokes only the authoritative domain service, with transaction locks, idempotency, source-state rechecks and durable receipts. Every financial step has its **own** approval.
+
+**Workflow knowledge:** A reviewed process definition only describes what **may** happen, in which order and under which evidence requirements. It never grants extra permissions, automatically posts a receipt, approves a bill or changes a tax rate.
+
+**Tenant isolation:** All lookups, entity disambiguation, plans, documents, models/notes, execution receipts, logs and metrics are scoped to the authenticated **company/branch/FY/actor** as required. No user-supplied scope, uploaded document or LLM response may override server context.
+
+---
+
+## 3. Proposed remaining implementation PRs
+
+The following is a proposed **PR8–PR16 remediation series**, not PRs already created. Each PR includes tests and an explicit merge gate. P0 means production blocker; P1 means required for the stated complete experience. Create separate branches from a verified and rebased integration tip.
+
+### PR8 — P0: Repair CI, migration coverage, tenant ownership and regressions
+
+**Goal:** Make the already-written code deployable on both fresh and existing databases, and eliminate the confirmed operations-suite failure.
+
+**Changes**
+- Reproduce the two failed workflow runs locally/in CI. Inspect `TextileScenarioMatrixTest`, fixture DDL, `UsesAiMysql`, `phpunit.operations.xml`, legacy schema restorations and the principal-job migration.
+- Ensure `principal_job_orders.financial_year_id` exists **before** FY-stamped inserts on each supported test/deployment path. Keep migration additive and safe to rerun; establish explicit behavior for pre-migration orders and backfills that match zero or multiple FY records.
+- Do not assign a default FY when missing or ambiguous; report those records for administrative review and block AI financial posting against them.
+- Validate actual columns, indexes and foreign-key policy of `ai_business_workflows`, `ai_business_workflow_steps`, `ai_pending_party_intents`, `principal_job_orders` and relevant operation receipts.
+- Harden principal-job domain reads/writes where needed to enforce branch and FY ownership consistently; verify existing non-AI UI workflows continue to function.
+- Review schema assumptions in `BusinessWorkflowPlanner::start` for linked thread/task ownership and the actual table fields.
+- Ensure no migration silently changes already-posted stock or journal entries.
+
+**Acceptance criteria**
+- [ ] Both failed ERP acceptance runs rerun and pass, including the named textile test.
+- [ ] Fresh MySQL 8.0 and 8.4 migrations pass, and existing-data upgrade/backfill test passes without data loss.
+- [ ] Cross-company, branch and FY principal-job access returns not-found/forbidden; no posting or information leak.
+- [ ] Existing textile/customer-owned processing, quantity, valuation and ledger assertions still pass.
+- [ ] Zero schema errors in PR6/PR7 workflows.
+
+**Files to inspect:** `app/Services/JobWork/PrincipalJobService.php`, migration `2026_11_20_235003_*`, `tests/Feature/TextileScenarioMatrixTest.php`, test database setup, relevant FY and job-work repositories.
+
+### PR9 — P0: Complete the workflow state machine and verified evidence bridge
+
+**Goal:** Let users actually complete eligible, reviewed multi-step plans **without** faking approvals or physical events.
+
+**Changes**
+- Specify a finite state machine with `blocked`, `needs_input`, `needs_validation`, `awaiting_proposal`, `awaiting_approval`, `awaiting_execution`, `awaiting_real_event`, `completed`, `needs_reconciliation`, `failed`, `cancelled` and `expired` where applicable.
+- Implement **typed, validated completion** for `read_or_clarify` steps. Require the exact server-validated named inputs, resolved entities and a recorded actor/timestamp; never a raw `"done"` message.
+- Implement `read_only_validation` completion through named, deterministic validators and source-state hashes.
+- Provide verified external-event adapters per process: actual goods receipt, dispatch, job-work receipt, return, etc. Accept only authoritative persisted posted records, never free-text descriptions.
+- Bridge a step to a current, scoped, approved proposal and its **same-version** execution receipt. Revalidate on reconciliation, including reversal/rejection/expiry and missing evidence; do not leave a step permanently completed on stale evidence.
+- Bind the action to exactly one workflow/step to prevent the same receipt satisfying unrelated steps. Design idempotent replays, CAS revision conflicts, recovery from worker failures, cancellation rules and historical audit.
+- Review the outward flow so `receipt` and `physical_return` cannot produce duplicate or contradictory material-event assertions.
+- Add a **completed plan** transition only if all required steps are verified and no unresolved exception remains.
+
+**Acceptance criteria**
+- [ ] A reviewed test purchase-to-pay plan progresses from clarification through PO, verified GRN, bill and completion with an independent approval for each financial command.
+- [ ] A user's typed "goods received" without a posted GRN **cannot** advance the physical receipt step.
+- [ ] Reversed GRN, superseded proposal, stale approval and failed posting all block downstream progression.
+- [ ] Two competing revisions yield one committed update and one `409` without duplicate posting.
+- [ ] Paused/cancelled/expired plans cannot advance; retries are safe.
+- [ ] Read-only plan inspection is possible after a failure; no unauthorized resource is exposed.
+
+**Files to inspect:** `BusinessWorkflowPlanner.php`, `BusinessWorkflowProgress.php`, `ActionProposalService.php`, `ApprovedActionExecutor.php`, `ai_business_workflow_*` tables and domain document status services.
+
+### PR10 — P0: Financial document contracts, GST/Non-GST and job-work accounting parity
+
+**Goal:** Close accounting loopholes before enabling supplier invoices, service bills, or capitalized job-work charges.
+
+**Changes**
+- Define independent authoritative flows for **goods purchase**, **service purchase**, **expense-only AP**, **job-worker processing bill**, and **customer-owned processing service invoice**. An unsupported kind must ask a question or refuse posting; never invent a catalog item.
+- For the expense-only AP path, add a reviewed capability **only after** Finance identifies an authoritative accounting domain service, permissible GL accounts, input-tax behavior and reversal/approval policy. If unavailable, keep `unsupported_action` clearly visible and label this scope as not released.
+- For all bill types, require explicit choice/verification of GST registered, composition, unregistered, non-GST, reverse-charge and interstate/intrastate conditions **as applicable**. Do not equate `no GSTIN` with `unregistered` or `0% GST`. GSTIN checksum, HSN/SAC and party registration rules stay in PHP/domain tax services.
+- Verify invoices with discounts, round-off, freight, taxable base, CGST/SGST/IGST/cess, RCM, ITC restrictions, credit notes, due dates, supplier invoice duplicates and company tax registrations.
+- Verify linked PO/GRN quantities using actual **base-UOM conversions and source line IDs**, aggregate repeated bill lines, handle partial receipts and overbilling, and distinguish identity-only advisory matching from enforceable posting checks.
+- Job work: explicitly compare `capitalise` vs `expense`, remaining finished stock vs already consumed stock/COGS, processing loss, wastage, batch/lot tracking, material return/rework and job-worker challan compliance. Require Finance signoff on inventory valuation and ledger effects.
+- Lock authoritative source records in the posting transaction, recompute the tax/valuation preview and reject a changed source state. Ensure replayed idempotency keys cannot duplicate stock, AP/AR or journals.
+
+**Acceptance criteria**
+- [ ] No incorrect financial posting, cross-branch journal or repeated stock movement in the bill matrix.
+- [ ] Goods bill after GRN settles accrual **without receiving stock again**.
+- [ ] Service bill posts payable/tax according to the authoritative service-billing policy and **moves zero inventory**.
+- [ ] Job-work charge capitalizes into eligible stock/COGS according to signed-off policy; expense mode follows approved ledger treatment.
+- [ ] Invalid GSTIN, wrong tax location, duplicate supplier invoice, overstated qty and stale approval are blocked before posting.
+- [ ] Full reversal and recovery test suite passes without deletion of posted accounting history.
+
+**Files to inspect:** `PurchaseBillPreviewAdapter.php`, `PurchaseBillCommandAdapter.php`, `ServicePurchaseBillAdapter.php`, `PurchaseBillMatchAudit.php`, `CommercialPricing.php`, `TaxDeterminationService.php`, `PurchasePostingService.php`, `JobWorkCosting.php`, `JobWorkService.php`, `PrincipalJobService.php`.
+
+### PR11 — P1: Complete end-to-end job-work orchestration in both directions
+
+**Goal:** Support **our material sent to a job worker** and **customer-owned material sent to us** as separate, auditable flows.
+
+**Outward (company-owned)**
+1. Choose job worker (existing/new via separately approved supplier master), process type and business date.
+2. Create and approve a job-work order.
+3. Create and approve material dispatch/challan; validate real stock ownership and quantities.
+4. Receive actual returned processed material or material return; validate losses, output SKUs, units, valuation and batch/lot.
+5. Create and approve the job-worker processing service bill; reconcile receipt, supplier invoice and costing.
+6. Close only when all material and payable exceptions are resolved.
+
+**Inward (customer-owned)**
+1. Create principal/customer job-work order with approved customer and service catalog item.
+2. Record the customer's actual material receipt **off our owned stock**.
+3. Record processing, permitted wastage and customer return challan.
+4. Generate a processing service sales invoice for **returned and not-yet-billed qty** using the existing `PrincipalJobService::bill` contract.
+5. Reconcile customer material balances, billing and reverse/return scenarios.
+
+**Work remaining:** PR6 only adds selected adapters. Build missing reviewed principal-job order/receive/return capabilities or explicitly narrow the production scope and do not advertise end-to-end inward job work. Verify challan information, source-of-truth quantities and operation idempotency.
+
+**Acceptance criteria**
+- [ ] Both directions run end-to-end under **separate company/branch/FY** and separate human approvals, with correct stock ownership.
+- [ ] Partial returns, rework, lost quantities and over-receipt/over-billing are handled with durable errors and recovery.
+- [ ] No customer-owned raw material appears in owned company inventory or company asset valuation.
+- [ ] Full accepted quantity, value and ledger balance can be traced by job-work order, dispatch, receipt and invoice.
+
+### PR12 — P1: Business knowledge governance, ownership and permission model
+
+**Goal:** Make the knowledge layer *trustworthy, updateable and reviewable*, not simply a collection of JSON strings.
+
+**Changes**
+- Identify accountable reviewers for Purchasing, Finance/GST, Inventory, Manufacturing/Job Work, Security and Product. Define `CODEOWNERS`, branch protection and required reviewers for `resources/ai/knowledge` and action capabilities.
+- Require documented sources, owner, version, effective date, lifecycle status, domain policy reference, impacted workflows, rollback expectations and signoff evidence for every `reviewed` definition.
+- Prevent arbitrary status flipping to `reviewed` by adding a signed/CI-enforced governance rule; never interpret a raw JSON review field as business authorization.
+- Add semantic change detection: action keys, provider schemas, permissions, workflow topology and source references must remain compatible with the deployed implementation; require major version/new review when breaking changes occur.
+- Maintain entity synonyms, relationships, eligibility/required inputs, lawful defaults and industry-specific terminology (fabric/linen, supplier, customer, warehouse, service, job work) as **reviewed metadata**, not hardcoded branching per prompt.
+- Implement dedicated read permissions, scoped fact views, row redaction, branch/FY isolation, document/party-level permissions where relevant, and an explicit allowlist for what may enter the model context.
+- Deploy a **minimum approved vertical slice first** (e.g., supplier + PO + GRN + goods bill). Do not mark unsupported expense or inward job-work processes reviewed until their actions exist.
+
+**Acceptance criteria**
+- [ ] `draft`, `retired`, unowned, unsupported and tampered definitions cannot start executable workflows.
+- [ ] Reviewer approval and source/content integrity are independently auditable.
+- [ ] Role can read **only** authorized entities; no create permission is granted by knowledge search.
+- [ ] A change to a required schema/policy causes affected knowledge to fail review until updated.
+
+### PR13 — P1: Unified natural-language and multimodal conversation completion
+
+**Goal:** Let users express business outcomes naturally while the application decides the *safe next question* rather than requiring fixed phrases.
+
+**Changes**
+- Wire `BusinessKnowledgeContextReader`, approved action/process catalogs, the classifier and the workflow planner into the real `ConversationTurnRouter`/Copilot path. Avoid a separate demo-only intent path.
+- Build a common `ActionConversationProfile`/schema-driven field planner for supplier, **customer**, product, warehouse, PO, GRN, goods bill, service bill and job-work. Conditions come from capability schema and reviewed business policy; not hardcoded one-question-per-prompt flows.
+- Use deterministic parsing/resolution first (exact action, known record, named field, date, quantity, tax keyword). Use the approved model **only** for ambiguous language, unstructured images/audio and context-dependent intent; sanitize and type-check output.
+- Handle party direction: "We buy linen from them" → supplier; "They buy linen from us" → customer; "Create a new party for buying linen" → ask who buys from whom.
+- Handle missing masters by searching **scoped** candidates first, showing relevant choices, then offering **separate reviewed master proposals**. Never invent supplier/customer/product IDs.
+- Preserve thread/task/company/branch/FY, active step, source evidence, field lineage, per-field confirmation, attachments, skip decisions, draft revisions, model/version and retry state across follow-ups.
+- Allow natural corrections: "change qty to 120 metres", "use supplier B", "different warehouse", "this is a non-GST bill", "split 80 and 40 across two lines". Recalculate deterministically, invalidate prior proposal and require approval of the new version.
+- Do not call the model for the final tax calculation, stock check, UOM conversion, permission check, source hash, approval or ERP write.
+- For voice/images/PDF: user must confirm extraction before a financial proposal. Document-to-record matching uses source references and confidence/abstention rules; never auto-post an OCR-like guess.
+- Provide explicit safe fallback for unsupported expense-only AP and missing job-work process steps.
+
+**Acceptance criteria**
+- [ ] Complete supplier, customer, PO, GRN and bill workflows can be performed in chat without typing rigid field labels.
+- [ ] Multi-field messages work in **one** turn and correctly distinguish missing from user-skipped details.
+- [ ] Editing approved/proposed monetary or party fields creates a new proposal version; old approval cannot execute.
+- [ ] Unclear ownership, tax treatment or duplicate entities triggers clarification, never a guessed posting.
+- [ ] No LLM request for fully deterministic utterances; all model calls pass central quota/metering.
+
+**Example scenario**
+
+> User: "Create a PO for 200 metres of linen from New Trader, delivered to Erode warehouse."  
+> Copilot: finds matching supplier, product/UOM and permitted warehouse; asks only unresolved fields.  
+> User: "Actually 180 metres and put 20 in a separate line. It is a GST bill."  
+> Copilot: verifies GST supplier/product/location policy and recalculates with PHP; shows a fresh line-item proposal.  
+> User approves **that exact version**.  
+> **No GRN, purchase bill or journal is created merely because the PO was approved.** Each subsequent verified event/financial action has its own gate.
+
+### PR14 — P0/P1: Security, correctness and reliability hardening
+
+**Goal:** Prove that the layer cannot cross organizational boundaries or bypass governance even under failures or concurrency.
+
+**Required test matrix**
+- Identity: 2+ companies, 2 branches each, 2 fiscal years, admin/read-only/purchasing/finance/job-work users.
+- Attack surfaces: prompt injection in supplier notes, uploaded bills, tax fields, product descriptions, emails, voice transcripts; SQL-like and model-command inputs; malicious or enormous JSON; direct API vs chat bypass.
+- Controls: tenant/branch/FY isolation in **every** query and model context; permissions/feature flags; approved action/version/expiry; server-side IDs and ownership; hash integrity; file/media ACL; no leaked GSTIN/account/PII in metrics.
+- Concurrency: simultaneous draft corrections, proposal approvals, supplier invoice submission, bill/GRN posting, partial receipt and rework; duplicate client turn IDs; idempotent retries; deadlock handling; worker crash/restart; out-of-order events.
+- Ledger safety: no duplicate inventory movement, AP/AR, taxes, credit consumption or approval; reversal is an auditable compensating action, not a hard delete.
+- Operational recovery: persisted failure/reconciliation states, timeouts, missing model provider, replay-safe outbox/events and bounded retries with backoff.
+- Vulnerability gates: composer/npm advisory scan, Snyk or existing scanners, secret scanning and authz checks; no open dynamic tool execution from user content.
+
+**Acceptance criteria**
+- [ ] **Zero** unauthorized cross-company/branch/FY data disclosures or writes in the release test matrix.
+- [ ] **Zero** unapproved financial executions and **zero** duplicate postings under retry/concurrency tests.
+- [ ] Every failed/uncertain action can be reconciled from authoritative domain receipts without double execution.
+- [ ] Entire plan and evidence chain is audit-visible to authorized users only.
+- [ ] All CI safety/operations/ERP tests green at the **final integrated head**, not only individual earlier heads.
+
+### PR15 — P1: Model evaluation, centralized credits, load and monitoring
+
+**Goal:** Meet the cost, speed and quality requirements of the actual production workload.
+
+**Model evaluation (run, store anonymized results, and sign off)**
+- **100 real Indian purchase bills** covering valid/invalid GSTIN, HSN/SAC, CGST/SGST/IGST, discount, round-off, handwritten/multi-page bills, different units, credit notes, RCM, registered/unregistered parties and discrepancies. Explicitly consent to using non-public documents in a secure test tenant; redact data where practical.
+- **100 real Copilot workflows**, including supplier/customer/product/warehouse creation, PO/GRN, goods/service bills, corrections, changes to supplier/quantity/warehouse/GST and approval/rejection.
+- **50 difficult/negative scenarios**, including missing masters, wrong UOM, ambiguous trade direction, incorrect GST, duplicate invoice, stale proposal, stock shortage, job-work loss, fraudulent uploaded document instructions and disallowed entities.
+- Evaluate **Tamil, English and mixed Tamil-English** prompts where relevant to expected users.
+- Record intent accuracy, entity/field precision-recall, abstention rate, wrong-record selection, duplicate rate, manual correction rate, successful approved completion, rate of unsafe proposed postings, model latency and cost/credits **per business outcome**.
+- Proposed go/no-go targets for Product/Finance/Security to approve: **zero unauthorized posting; zero incorrect final ledger totals; zero cross-tenant leakage; zero model-invented ERP IDs accepted; at least 95% correct intent classification on the approved evaluation set; at least 98% precision on verified key financial fields.** A model may abstain instead of guessing. Adjust non-safety thresholds only with documented business-owner agreement, never to mask unsafe cases.
+
+**Performance and cost**
+- Run `tests/k6/ai_business_workflow_concurrency.js` against an **authorized staging tenant** with 5, 10 and 20 virtual users, then run realistic **write** workflows separately with approved fixtures; the existing k6 script is **read-only** and not proof of write concurrency.
+- Measure server p50/p95/p99, model request count, 429 rate, retries, token/credit consumption, DB lock wait, queue depth, action approval-to-post latency and error/reconciliation rates. Set SLOs from measured baseline and capacity (the original test script's p95 < 1.5s is an **engineering test threshold**, not a demonstrated production SLO).
+- Enforce the actual approved NVIDIA model quota (historical project planning cited **35 RPM**; verify current provider/account limits instead of hardcoding a claimed quota), per-company quota, backpressure and service-level circuit breakers.
+- Charge only actual model operations through existing centralized metering; deterministic PHP/SQL checks must consume **zero** LLM requests and **zero** model credits. Define correct reserves/refunds for failed and retried calls.
+- Extend BusinessWorkflowMetrics with actual posted success/failure, rejection, exception category, recovery rate, execution latency and per-step cost; join actual metering and execution receipt tables. Do not invent "cost saved" without a documented baseline formula.
+- PII-safe logs, tracing with correlation IDs, dashboard panels, actionable alerts and on-call runbook.
+
+**Acceptance criteria**
+- [ ] Real test corpora executed with stored expected-vs-actual results and manually reviewed failure samples.
+- [ ] Provider 429/backpressure behaves safely with no approval bypass and no duplicate billing.
+- [ ] Actual credit usage reconciles with gateway calls; deterministic actions show zero model usage.
+- [ ] Staging 5/10/20-user test passes agreed SLOs and error ceilings, including **write** concurrency.
+- [ ] Observability metrics show actual execution and reconciliation, not just planned workflows.
+
+### PR16 — P0/P1: UI/UAT, rollout gates, runbooks and production launch
+
+**Goal:** Finish the product and operational release, not merely merge code.
+
+**UI acceptance**
+- Single Copilot workflow surface: identify intent, ask clarifying questions, show editable fields, entity disambiguation, line-item tables, GST treatment, tax/ledger preview, source evidence and explicit step status.
+- Show *Draft*, *Requires information*, *Requires approval*, *Approved*, *Executing*, *Posted*, *Failed/reconcile* and *Cancelled* accurately; never label an unposted proposal "bill created".
+- Allow users to amend **supplier, product, warehouse, quantity, tax choice, date, line discounts and payment terms** before a new proposal preview; show changed fields and invalidate prior approvals.
+- Desktop/mobile and keyboard testing; accessible labels/errors, focus, screen-reader state updates, text wrapping, high contrast and touch usability. Test text-only, image/voice confirmation and reconnect/session expiry.
+- Reconcile existing "Automation Builder", approval center, model/credit visibility and workflow timeline so users understand the difference between a **plan**, an **approved proposal**, an **execution receipt** and an **automation**.
+
+**Operations, migrations and release**
+- Confirm deploy compatibility: PHP 8.5/Laravel 13, MySQL 8.0/8.4, queue workers, web/API, fiscal period, company settings, model connectivity, database indexes and task cleanup/expiry.
+- Run production-like data migration rehearsal on backup/sanitized copy, record execution and lock times, verify orphan principal-job FY records and rollback strategy.
+- Create release runbooks: feature switch matrix, tenant allowlist, support/error codes, action-replay reconciliation, approval audit access, credit provider outage, emergency disable, on-call escalation and customer communication.
+- Start **read-only** knowledge search in internal pilot; enable guided supplier/customer drafts second; then controlled PO/GRN and billing in isolated pilot companies after verified finance tests; job-work and expense flows last.
+- Ensure each rollout switch is independently reversible without deleting posted ERP records. Keep audit and idempotency history even if AI is disabled.
+- Product, Finance/Tax, Operations, Security and Engineering sign off separately; record a **final integrated** release SHA and CI run URLs.
+
+**Acceptance criteria**
+- [ ] Sign-off by named Product Owner, Finance/GST, Inventory/Job Work owner, Security and Engineering release lead.
+- [ ] Full QA/UAT matrix green, including failure/retry, corrections and voice/image paths.
+- [ ] Migration rehearsal and recovery drill completed; critical support runbook approved.
+- [ ] Feature flags verified **OFF by default**, enabled only for approved pilot tenants and roles.
+- [ ] Post-deploy smoke tests: scoped knowledge read; safe draft; explicit approval; verified domain receipt; no cross-tenant access; no duplicate posting; model metering.
+- [ ] 24–72-hour pilot monitoring window or another explicitly approved observation period, then documented expansion decision.
+
+---
+
+## 4. End-to-end acceptance matrix
+
+Use real fixture data and assert **database/ledger state**, not just chat wording. These are required test cases; more cases should be added when discovered.
+
+| ID | Request/scenario | Expected result | Primary test layer |
+|---|---|---|---|
+| A01 | "Create a supplier named New Trader" | Guided missing information, duplicate check, sealed proposal, separate approval | API/MySQL + UI |
+| A02 | "Create a customer who buys linen from us" | Classified as customer, not supplier; verified customer action | Intent + E2E |
+| A03 | "Create new party for buying linen" | Ask whether **we buy from** or **sell to** party; retain original thread | Intent + E2E |
+| A04 | Supplier GSTIN invalid or supplier unregistered | Deterministic GST validation; no invented GST treatment | Compliance |
+| A05 | Create PO for 200m linen; change to 180m | Recalculate; invalidate earlier proposal; approve only new version | Concurrency + E2E |
+| A06 | Supplier/product/warehouse absent | Scoped lookup then separate master proposal; no guessed master ID | Security + E2E |
+| A07 | Partial GRN for 160m of 180m PO | Real posted GRN; correct outstanding quantities | Inventory + E2E |
+| A08 | PO 180m, GRN 160m, bill 175m | Reject excess where authorized policy requires GRN-backed billing | Commercial |
+| A09 | Bill the same GRN twice | No double receipt/stock/accrual settlement; reject overbilling | Commercial + concurrency |
+| A10 | Service bill for consultancy | Authorized service item; expense/payable/tax preview; zero stock movement | Finance |
+| A11 | Electricity expense bill with no stock product | Dedicated expense AP action or explicit unsupported response; never dummy goods | Finance |
+| A12 | Non-GST supplier bill and interstate GST purchase | Correct separate tax policy, registration evidence, totals | Compliance |
+| A13 | Job worker dyes company-owned fabric | Order → dispatch → posted receipt → separate processing bill; correct inventory valuation | Operations + Finance |
+| A14 | Processing charge: capitalise vs expense | Correct AS 2/approved accounting treatment; closing stock/COGS reconciliation | Finance |
+| A15 | Customer sends their linen for our processing | Customer-owned quantity remains off owned stock; return, service invoice, AR | Operations + Finance |
+| A16 | Job-work loss exceeds approved threshold | Block return/receipt or require approved exception route | Operations |
+| A17 | Wrong branch/FY / other company's ID | No data disclosure or action, including through model context | Security |
+| A18 | Approve V1 then change quantity in chat | Version V1 approval unusable; new version/re-approval mandatory | Approval + E2E |
+| A19 | Same action executes 20 times concurrently | Exactly one durable posting/receipt and consistent retries | MySQL concurrency |
+| A20 | Provider times out or is rate-limited | Preserved draft, bounded retry, zero speculative posting or duplicate credit | Reliability |
+| A21 | Inject instructions in invoice PDF/voice transcript | Treat as untrusted document data; no privileged action | Red-team |
+| A22 | Reversed job-work receipt after plan completion | Revalidation/reconciliation state; downstream actions blocked, audit retained | Operations + workflow |
+| A23 | Finance user lacks supplier create permission | Can request eligible workflows but cannot silently create supplier | RBAC |
+| A24 | Draft/reviewed/retired knowledge change | Only owner-reviewed compatible definitions eligible for process start | Governance |
+| A25 | K6 5/10/20 users + active approvals | No duplicates, correct scope, measured latency and per-tenant rate limiting | Load/staging |
+
+**Mandatory assertions on every financial scenario:** exact quantity/base UOM; party/company/branch/FY; authoritative posted resource ID; source action and approval version; tax split and ledger balance; inventory movement count; idempotency key; reversal/retention policy; and whether a model request was necessary.
+
+---
+
+## 5. Required deployment flags, safe progression and rollback
+
+The following flags are already part of the PR1–PR7 stack and should remain `false` by default until their respective gates pass:
+
+```dotenv
+AI_BUSINESS_KNOWLEDGE_ENABLED=false
+AI_BUSINESS_SEMANTIC_ENABLED=false
+AI_BUSINESS_WORKFLOW_PLANNER_ENABLED=false
+AI_BUSINESS_SERVICE_BILL_ENABLED=false
+AI_BUSINESS_JOB_WORK_ENABLED=false
+```
+
+These are **global feature flags in the proposed stack**, not a complete substitute for company/role authorization. Add or use audited **per-company pilot allowlists** and the existing `ai_actions.foundation_enabled` / `ai_actions.execution_enabled` governance controls. Never set execution enabled solely because a language model is returning valid JSON.
+
+**Progressive release sequence**
+
+1. **Gate 0 — CI/DB safe:** PR8, all seven original PRs and integration tests pass; migrations/recovery drill pass; no financial feature enabled.
+2. **Gate 1 — Read-only internal pilot:** reviewed non-executable catalog and tenant-scoped knowledge retrieval; monitor accuracy and data privacy.
+3. **Gate 2 — Guided draft pilot:** structured supplier/customer and PO draft collection; correction and approval UX; no automatic posting.
+4. **Gate 3 — Controlled purchases:** explicitly permitted and approved PO/GRN/goods and service bills after Finance/Tax signoff, full reconciliation tests and audit monitoring.
+5. **Gate 4 — Job work:** enable outward/inward paths only for fully reviewed, tested process variants; unimplemented paths remain disabled/unsupported.
+6. **Gate 5 — Wider rollout:** performance/security/UAT thresholds met, pilot metrics stable and documented release committee approval.
+
+**Emergency rollback:** Switch off semantic/planner/service/job-work/new action permissions, stop accepting new workflow executions, preserve in-flight approved commands for reconciliation, retain audit and financial history, and reconcile uncertain outcomes by authoritative domain receipts. **Never delete posted journals, invoices, stock movements or completed operation history** as an AI rollback shortcut.
+
+---
+
+## 6. Exit checklist — one release decision, no partial greenwashing
+
+### Source, CI and database
+- [ ] PR1–PR7 and remediations reviewed and merged in order with no unresolved blocker.
+- [ ] CI **green at final integrated SHA**: AI, ERP operations, commercial, compliance, company, delivery, legacy, concurrency, autonomy security, credit metering and clean MySQL 8.0/8.4 migration.
+- [ ] Named textile scenario failure fixed and regression test retained.
+- [ ] Existing-data migrations, ambiguous FY backfill, backups and restore drill validated.
+- [ ] Deployment configuration/feature flags verified with production-like workers and caches.
+
+### Business/domain correctness
+- [ ] All enabled knowledge definitions signed off; unsupported steps not advertised as available.
+- [ ] Each enabled process has complete validated transitions and real event/receipt evidence.
+- [ ] Supplier/customer/product/warehouse creation and amendments validated in chat.
+- [ ] PO → GRN → bill, service bill and both job-work directions reconciled against domain ledger and stock.
+- [ ] Registered/non-GST/RCM/ITC and inter-/intrastate scenarios approved by Finance/Tax.
+- [ ] Reversals, credit notes, cancellations and multi-FY edge cases handled without history deletion.
+
+### Security and reliability
+- [ ] Multi-company, branch, FY, role and attachment isolation tests pass; no leaks/unauthorized writes.
+- [ ] Every financial action enforces explicit approval of its current exact version.
+- [ ] Retries, parallel users, stale source state and worker failure produce no duplicate postings.
+- [ ] Uncertain executions can be reconciled; evidence events are tamper-evident and auditable.
+- [ ] Prompt-injection, malformed uploads and unsupported intent tests pass.
+
+### AI and product quality
+- [ ] 100 real bills, 100 complete Copilot tasks, 50 difficult cases evaluated against approved ground truth.
+- [ ] Model cost, token/credit accounting and current provider rate limit verified.
+- [ ] 5/10/20-user staging load and real write concurrency tests meet signed-off SLOs.
+- [ ] Chat, voice, image/PDF, mobile and accessible UI workflows pass UAT.
+- [ ] Support team has runbooks, error mapping, alerts, observability and disable switches.
+
+### Sign-off
+
+| Role | Required decision | Status at assessment |
+|---|---|---|
+| Product Owner | Workflow scope, expected UX, acceptance criteria | Pending |
+| Purchasing/Inventory owner | PO/GRN, quantities, stock, receiving | Pending |
+| Finance/GST owner | Supplier bills, GST/RCM/ITC, job-work valuation, ledgers | Pending |
+| Operations/Manufacturing owner | Both job-work directions, challans and losses | Pending |
+| Security owner | Tenant isolation, permissions, audit, threat model | Pending |
+| Engineering/QA release lead | CI, migration, concurrency, recovery, rollout | **Blocked: PR6/PR7 ERP CI failure** |
+
+**Release status:** **NO-GO** until every mandatory safety, finance and deployment gate is green, required process definitions are reviewed, and responsible owners approve the exact release commit.
+
+---
+
+## 7. Suggested sequence for the implementation team
+
+| Order | PR | Priority | Dependency / decision |
+|---|---|---|---|
+| 1 | **PR8** — CI + principal-job FY migration/tenant fix | **P0** | Fix known failed ERP gate before merging the stack |
+| 2 | **PR9** — Complete workflow state/evidence transitions | **P0** | Required to operate real multi-step plans |
+| 3 | **PR10** — Finance/GST/three-way match and job-work costing parity | **P0** | Finance signoff before financial action pilot |
+| 4 | **PR12** — Governed reviewed knowledge and read permissions | **P1** | Owner signoff blocks process starts; execute before enabling |
+| 5 | **PR11** — Both-direction job-work completion | **P1** | Can be scoped out of first pilot, but not out of promised full release |
+| 6 | **PR13** — Conversational integration and customer/master flows | **P1** | Needed for true natural-language end-to-end user experience |
+| 7 | **PR14** — Security and failure/concurrency hardening | **P0/P1** | Required for any financial production pilot |
+| 8 | **PR15** — Real data/model/load evaluation and metrics | **P1** | Required for broad production rollout |
+| 9 | **PR16** — UX/UAT, rollout, runbooks and signoff | **P0/P1** | Final production gate |
+
+Parallelize tests/documentation and stakeholder reviews where practical, **but merge only when dependency and safety gates remain green**. Features intentionally deferred (such as expense-only AP or principal-job inbound document creation) must stay visibly unsupported and out of the released feature claim until their PRs pass.
+
+---
+
+## 8. Pull request delivery contract for PR8 onward
+
+Every PR should provide:
+
+1. **Scope and actual changed files.** Reference the authoritative ERP domain services and the knowledge/process definitions touched.
+2. **Safety statement.** Describe whether it introduces ERP writes; enumerate required permissions, company/branch/FY scope, approval and idempotency boundaries.
+3. **Backward compatibility.** Database migrations, historical records, legacy UI, existing chat, other company data and feature-off behavior.
+4. **Repeatable tests.** Named PHPUnit suites; clean and upgrade MySQL; negative tenant tests; financial correctness and concurrency; actual CI run URLs.
+5. **Evidence.** Exact SHA, passed/failed/skipped tests, coverage for new paths, unrun evaluations, screenshots for UI and outstanding risks.
+6. **Rollout and rollback.** Flags, pilot scope, support owner, behavior during a provider outage and how uncertain transactions are reconciled.
+7. **Explicit blocker list.** No claims of "fully production-ready" if any mandatory finance, security, model or data migration gate is pending.
+
+**Definition of done:** Code merged, tested on the **final integrated branch**, domain-owner reviewed, protected by scoped authorization and human approval, verified against real financial outcomes, observable and safely reversible without deleting ERP history.
+
+---
+
+## 9. Implementation source references
+
+- [PR1 — Knowledge registry](https://github.com/vigneshsinna/zolo-erp-pro/pull/40)
+- [PR2 — Scoped knowledge context](https://github.com/vigneshsinna/zolo-erp-pro/pull/41)
+- [PR3 — Guided semantic supplier conversation](https://github.com/vigneshsinna/zolo-erp-pro/pull/42)
+- [PR4 — Durable planner](https://github.com/vigneshsinna/zolo-erp-pro/pull/43)
+- [PR5 — Purchase/service bill](https://github.com/vigneshsinna/zolo-erp-pro/pull/44)
+- [PR6 — Job work](https://github.com/vigneshsinna/zolo-erp-pro/pull/45)
+- [PR7 — Copilot timeline and release checks](https://github.com/vigneshsinna/zolo-erp-pro/pull/46)
+- [PR6 failing acceptance run](https://github.com/vigneshsinna/zolo-erp-pro/actions/runs/44783687174)
+- [PR7 failing acceptance run](https://github.com/vigneshsinna/zolo-erp-pro/actions/runs/44785796351)
+- Existing implementation reports in `docs/ai-knowledge/PR01_IMPLEMENTATION_TEST_REPORT.md` through `PR07_IMPLEMENTATION_TEST_REPORT.md` on the stacked `feature/ai-knowledge-07-release` branch.
+
+*This file was prepared from the cited repository PRs, implementation reports, source contracts and GitHub Actions results available at the assessment time. Forward-looking PR8–PR16 plans and proposed evaluation thresholds are recommendations and require team signoff.*
