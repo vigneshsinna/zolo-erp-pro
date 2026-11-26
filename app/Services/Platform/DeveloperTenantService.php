@@ -24,7 +24,7 @@ class DeveloperTenantService
     ) {
     }
 
-    public function listTenants(?string $search = null, ?string $status = null): Collection
+    public function listTenants(?string $search = null, ?string $status = null, ?string $groupFilter = null): Collection
     {
         $companies = Company::with('group')->orderBy('trade_name')->orderBy('legal_name')->get();
         $names = $companies->countBy(fn ($c) => $c->trade_name ?: $c->legal_name);
@@ -52,7 +52,9 @@ class DeveloperTenantService
                 'trade_name' => $company->trade_name,
                 'legal_name' => $company->legal_name,
                 'company_status' => $company->status,
+                'group_id' => $company->company_group_id ? (int) $company->company_group_id : null,
                 'group_name' => $company->group?->name,
+                'group_code' => $company->group?->code,
                 'industry' => $profile->profile_key ?? 'general_trading',
                 'industry_label' => CapabilityCatalog::PROFILES[$profile->profile_key ?? 'general_trading'][0] ?? 'General Trading',
                 'subtype' => $profile->subtype ?? null,
@@ -62,14 +64,14 @@ class DeveloperTenantService
                 'total_modules' => $totalModules,
                 'menu_switches_off' => (int) ($switchesCount[$company->id] ?? 0),
             ];
-        })->filter(function (array $row) use ($search, $status) {
+        })->filter(function (array $row) use ($search, $status, $groupFilter) {
             if ($search !== null && trim($search) !== '') {
                 $needle = mb_strtolower(trim($search));
                 $haystack = mb_strtolower(implode(' ', [
                     $row['label'],
                     $row['legal_name'],
                     $row['code'],
-                    $row['group_name'] ?? '',
+                    $row['group_name'] ?? 'Independent',
                     $row['license']['license_key'] ?? '',
                     $row['license']['plan']['name'] ?? '',
                 ]));
@@ -78,7 +80,17 @@ class DeveloperTenantService
                 }
             }
             if ($status !== null && $status !== '' && $status !== 'all') {
-                return ($row['license']['status'] ?? '') === $status;
+                if (($row['license']['status'] ?? '') !== $status) {
+                    return false;
+                }
+            }
+            if ($groupFilter !== null && $groupFilter !== '' && $groupFilter !== 'all') {
+                if ($groupFilter === 'independent') {
+                    return $row['group_id'] === null;
+                }
+                if (ctype_digit($groupFilter)) {
+                    return $row['group_id'] === (int) $groupFilter;
+                }
             }
             return true;
         })->values();
@@ -165,7 +177,44 @@ class DeveloperTenantService
             'code' => 'required|string|max:50|regex:/^[A-Z0-9_-]+$/|unique:company_groups,code',
         ])->validate();
 
-        return CompanyGroup::create($validated + ['status' => 'active']);
+        $group = CompanyGroup::create($validated + ['status' => 'active']);
+        CompanyDirectoryService::clearCache();
+
+        return $group;
+    }
+
+    /** Move a tenant company into a parent group or detach it as an Independent Company (null). */
+    public function assignCompanyGroup(int $companyId, ?int $groupId, int $actor): Company
+    {
+        $company = Company::findOrFail($companyId);
+        $group = $groupId ? CompanyGroup::where('status', 'active')->findOrFail($groupId) : null;
+        $beforeGroupId = $company->company_group_id;
+
+        DB::transaction(function () use ($company, $group, $actor, $beforeGroupId) {
+            $company->forceFill(['company_group_id' => $group?->id])->save();
+            if ($group && Schema::hasTable('company_group_admins')) {
+                foreach (DB::table('company_group_admins')->where('company_group_id', $group->id)->pluck('user_id') as $adminId) {
+                    $this->grantUserToCompany((int) $adminId, $company->id, false);
+                }
+            }
+            $this->grantAllDevelopersAccess($company->id);
+            if (Schema::hasTable('company_license_audits')) {
+                DB::table('company_license_audits')->insert([
+                    'company_id' => $company->id,
+                    'actor_id' => $actor,
+                    'action' => 'group_updated',
+                    'summary' => $group ? "Assigned company to group {$group->name} ({$group->code})" : 'Detached company to Independent Company',
+                    'before_json' => json_encode(['company_group_id' => $beforeGroupId]),
+                    'after_json' => json_encode(['company_group_id' => $group?->id]),
+                    'created_at' => now(),
+                ]);
+            }
+        });
+
+        CompanyDirectoryService::clearCache();
+        $this->licenses->forgetCompany($company->id);
+
+        return $company->fresh('group');
     }
 
     public function grantAllDevelopersAccess(int $companyId): void

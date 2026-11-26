@@ -276,6 +276,9 @@ Route::middleware(['auth', 'common'])->prefix('developer')->name('developer.')->
     Route::get('/', 'index')->name('index');
     Route::post('tenants', 'storeTenant')->name('tenants.store');
     Route::post('groups', 'storeGroup')->name('groups.store');
+    Route::post('groups/{group}', 'updateGroup')->whereNumber('group')->name('groups.update');
+    Route::delete('groups/{group}', 'deleteGroup')->whereNumber('group')->name('groups.destroy');
+    Route::post('tenants/{company}/group', 'assignGroup')->whereNumber('company')->name('tenants.group');
     Route::post('tenants/{company}/plan', 'assignPlan')->whereNumber('company')->name('tenants.plan');
     Route::post('tenants/{company}/modules', 'saveModules')->whereNumber('company')->name('tenants.modules');
     Route::post('tenants/{company}/lifecycle', 'lifecycle')->whereNumber('company')->name('tenants.lifecycle');

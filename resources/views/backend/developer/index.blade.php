@@ -1,14 +1,3 @@
-@extends('backend.layout.main')
-@section('title', 'Developer Portal · SaaS Licensing')
-@push('css')
-<link rel="stylesheet" href="{{ versioned_asset('css/pages/developer.css') }}">
-@endpush
-@section('content')
-<x-section-command-bar title="Developer Portal" icon="dripicons-code" badge="Multi-Tenant SaaS Licensing &amp; Module Control" :links="[]" />
-
-@if(session('message'))<div class="alert alert-success dev-flash" role="status">{{ session('message') }}</div>@endif
-@if($errors->any())<div class="alert alert-danger dev-flash" role="alert">{{ $errors->first() }}</div>@endif
-
 @php
     $badgeClass = fn (string $status): string => match ($status) {
         'active', 'unlicensed_legacy' => 'dev-badge-active',
@@ -17,15 +6,66 @@
         'suspended', 'expired', 'cancelled' => 'dev-badge-blocked',
         default => 'dev-badge-neutral',
     };
+    $aiModCount = collect($moduleCatalog)->where('group_key', 'ai')->count();
+    $groupedTenants = $tenants->whereNotNull('group_id')->groupBy('group_id');
+    $independentTenants = $tenants->whereNull('group_id')->values();
 @endphp
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Developer Portal · SaaS Licensing &amp; Multi-Group Control</title>
+    <link rel="stylesheet" href="{{ versioned_asset('vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ versioned_asset('vendor/dripicons/webfont.css') }}">
+    <link rel="stylesheet" href="{{ versioned_asset('vendor/font-awesome/css/font-awesome.min.css') }}">
+    <link rel="stylesheet" href="{{ versioned_asset('css/zolo-tokens.css') }}">
+    <link rel="stylesheet" href="{{ versioned_asset('css/zolo-utilities.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/zolo-erp-neo.css') }}">
+    <link rel="stylesheet" href="{{ versioned_asset('css/zolo-components.css') }}">
+    <link rel="stylesheet" href="{{ versioned_asset('css/pages/developer.css') }}">
+</head>
+<body class="dev-page {{ ($theme ?? 'light') === 'dark' ? 'dark-mode' : '' }}">
+<header class="dev-topbar">
+    <a href="{{ route('developer.index') }}" class="dev-brand">
+        <span class="dev-brand-mark" aria-hidden="true">z</span>
+        <div>
+            <div class="dev-topbar-title">zoloERP Developer Portal</div>
+            <div class="dev-topbar-sub">Multi-Tenant SaaS · Groups, Independent Companies, Licenses &amp; Modules</div>
+        </div>
+    </a>
+    <div class="dev-topbar-actions">
+        <a href="{{ route('company.select') }}" class="btn btn-secondary btn-sm"><i class="dripicons-exit"></i> ERP Workspace</a>
+        <button type="button" class="btn btn-secondary btn-sm" id="dev-theme-toggle" title="Toggle light or dark theme"><i class="dripicons-brightness-max"></i> Theme</button>
+        <span class="dev-user-pill"><i class="dripicons-code" aria-hidden="true"></i> {{ Auth::user()->name }}</span>
+        <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit" class="btn btn-secondary btn-sm">Sign Out</button>
+        </form>
+    </div>
+</header>
 
-<section class="dev-shell">
+@if(session('message'))<div class="alert alert-success dev-flash" role="status">{{ session('message') }}</div>@endif
+@if($errors->any())<div class="alert alert-danger dev-flash" role="alert">{{ $errors->first() }}</div>@endif
+
+<main class="dev-shell">
     {{-- Platform KPI Strip --}}
     <div class="dev-kpi-strip">
         <div class="dev-kpi">
-            <span class="dev-kpi-label">Tenants (Companies)</span>
-            <span class="dev-kpi-val">{{ $stats['tenants_total'] }}</span>
-            <span class="dev-kpi-sub">{{ $stats['tenants_active'] }} active · {{ $stats['tenants_trial_grace'] }} trial/grace · {{ $stats['tenants_blocked'] }} paused</span>
+            <span class="dev-kpi-label">Company Groups</span>
+            <span class="dev-kpi-val">{{ $stats['groups_total'] }}</span>
+            <span class="dev-kpi-sub">{{ $stats['tenants_total'] - $stats['independent_total'] }} grouped companies</span>
+        </div>
+        <div class="dev-kpi">
+            <span class="dev-kpi-label">Independent Companies</span>
+            <span class="dev-kpi-val">{{ $stats['independent_total'] }}</span>
+            <span class="dev-kpi-sub">Single-tenant ungrouped companies</span>
+        </div>
+        <div class="dev-kpi">
+            <span class="dev-kpi-label">License Status</span>
+            <span class="dev-kpi-val">{{ $stats['tenants_active'] }}/{{ $stats['tenants_total'] }}</span>
+            <span class="dev-kpi-sub">{{ $stats['tenants_trial_grace'] }} trial/grace · {{ $stats['tenants_blocked'] }} blocked</span>
         </div>
         <div class="dev-kpi">
             <span class="dev-kpi-label">SaaS Plans</span>
@@ -33,48 +73,37 @@
             <span class="dev-kpi-sub">{{ $plans->count() }} total templates</span>
         </div>
         <div class="dev-kpi">
-            <span class="dev-kpi-label">ERP + AI Module Catalog</span>
+            <span class="dev-kpi-label">Module Catalog</span>
             <span class="dev-kpi-val">{{ $stats['modules_total'] }}</span>
-            @php $aiModCount = collect($moduleCatalog)->where('group_key', 'ai')->count(); @endphp
             <span class="dev-kpi-sub">{{ $stats['modules_total'] - $aiModCount }} ERP · {{ $aiModCount }} AI modules</span>
-        </div>
-        <div class="dev-kpi">
-            <span class="dev-kpi-label">Tenant Seats Used</span>
-            <span class="dev-kpi-val">{{ $stats['total_users'] }}</span>
-            <span class="dev-kpi-sub">Active non-developer users</span>
-        </div>
-        <div class="dev-kpi">
-            <span class="dev-kpi-label">Monthly Invoices</span>
-            <span class="dev-kpi-val">{{ $stats['total_monthly_invoices'] }}</span>
-            <span class="dev-kpi-sub">Across all active tenants</span>
         </div>
     </div>
 
     {{-- Top Navigation Tabs --}}
     <nav class="dev-tabs" aria-label="Developer Portal Sections">
-        <a href="{{ route('developer.index', ['tab' => 'tenants', 'company' => $selectedTenant['id'] ?? null]) }}" class="dev-tab {{ $tab === 'tenants' ? 'is-active' : '' }}">
-            <i class="dripicons-store" aria-hidden="true"></i> Tenants &amp; Licensing <span class="dev-tab-count">{{ $allTenants->count() }}</span>
+        <a href="{{ route('developer.index', ['tab' => 'tenants', 'company' => $selectedTenant['id'] ?? null, 'group' => $groupFilter]) }}" class="dev-tab {{ $tab === 'tenants' ? 'is-active' : '' }}">
+            <i class="dripicons-store" aria-hidden="true"></i> Groups, Companies &amp; Licensing <span class="dev-tab-count">{{ $allTenants->count() }}</span>
         </a>
-        <a href="{{ route('developer.index', ['tab' => 'plans', 'company' => $selectedTenant['id'] ?? null]) }}" class="dev-tab {{ $tab === 'plans' ? 'is-active' : '' }}">
+        <a href="{{ route('developer.index', ['tab' => 'plans', 'company' => $selectedTenant['id'] ?? null, 'group' => $groupFilter]) }}" class="dev-tab {{ $tab === 'plans' ? 'is-active' : '' }}">
             <i class="dripicons-tags" aria-hidden="true"></i> SaaS Plans <span class="dev-tab-count">{{ $plans->count() }}</span>
         </a>
-        <a href="{{ route('developer.index', ['tab' => 'admins', 'company' => $selectedTenant['id'] ?? null]) }}" class="dev-tab {{ $tab === 'admins' ? 'is-active' : '' }}">
-            <i class="dripicons-user-group" aria-hidden="true"></i> Admin Logins <span class="dev-tab-count">{{ $admins->count() }}</span>
-        </a>
-        <a href="{{ route('developer.index', ['tab' => 'modules', 'company' => $selectedTenant['id'] ?? null]) }}" class="dev-tab {{ $tab === 'modules' ? 'is-active' : '' }}">
+        <a href="{{ route('developer.index', ['tab' => 'modules', 'company' => $selectedTenant['id'] ?? null, 'group' => $groupFilter]) }}" class="dev-tab {{ $tab === 'modules' ? 'is-active' : '' }}">
             <i class="dripicons-view-thumb" aria-hidden="true"></i> Module Catalog <span class="dev-tab-count">{{ $stats['modules_total'] }}</span>
         </a>
-        <a href="{{ route('developer.index', ['tab' => 'audits', 'company' => $selectedTenant['id'] ?? null]) }}" class="dev-tab {{ $tab === 'audits' ? 'is-active' : '' }}">
+        <a href="{{ route('developer.index', ['tab' => 'admins', 'company' => $selectedTenant['id'] ?? null, 'group' => $groupFilter]) }}" class="dev-tab {{ $tab === 'admins' ? 'is-active' : '' }}">
+            <i class="dripicons-user-group" aria-hidden="true"></i> Admin Logins <span class="dev-tab-count">{{ $admins->count() }}</span>
+        </a>
+        <a href="{{ route('developer.index', ['tab' => 'audits', 'company' => $selectedTenant['id'] ?? null, 'group' => $groupFilter]) }}" class="dev-tab {{ $tab === 'audits' ? 'is-active' : '' }}">
             <i class="dripicons-document" aria-hidden="true"></i> License Audit Log <span class="dev-tab-count">{{ $audits->count() }}</span>
         </a>
     </nav>
 
-    {{-- TAB 1: TENANTS & MODULE LICENSING --}}
+    {{-- TAB 1: MULTIPLE GROUPS, INDEPENDENT COMPANIES & LICENSING --}}
     @if($tab === 'tenants')
-        <details class="dev-collapsible">
-            <summary>+ Provision New Tenant Company (or Company Group)</summary>
-            <div class="mt-2">
-                <form method="POST" action="{{ route('developer.tenants.store') }}" class="dev-card mb-2">
+        <div class="dev-action-strip">
+            <details class="dev-collapsible">
+                <summary>+ Provision New Company (Grouped or Independent)</summary>
+                <form method="POST" action="{{ route('developer.tenants.store') }}" class="dev-card mt-2">
                     @csrf
                     <h2><i class="dripicons-plus" aria-hidden="true"></i> Onboard Tenant Company</h2>
                     <div class="dev-form-grid">
@@ -93,9 +122,9 @@
                         <div class="dev-field">
                             <label>Company Group</label>
                             <select name="company_group_id" class="form-control">
-                                <option value="">Independent Tenant</option>
+                                <option value="">Independent Company (No Group)</option>
                                 @foreach($groups as $g)
-                                    <option value="{{ $g->id }}">{{ $g->name }} ({{ $g->code }})</option>
+                                    <option value="{{ $g->id }}" @selected(ctype_digit($groupFilter) && (int) $groupFilter === (int) $g->id)>{{ $g->name }} ({{ $g->code }})</option>
                                 @endforeach
                             </select>
                         </div>
@@ -158,33 +187,69 @@
                         </div>
                     </div>
                     <div>
-                        <button type="submit" class="btn btn-primary btn-sm"><i class="dripicons-checkmark"></i> Provision Tenant &amp; Issue License</button>
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="dripicons-checkmark"></i> Provision Company &amp; Issue License</button>
                     </div>
                 </form>
+            </details>
 
-                <form method="POST" action="{{ route('developer.groups.store') }}" class="dev-card">
-                    @csrf
-                    <div class="dev-inline">
-                        <strong>Create Parent Company Group:</strong>
-                        <input name="name" class="form-control form-control-sm" placeholder="Group Name" required>
-                        <input name="code" class="form-control form-control-sm" placeholder="Code (optional)">
-                        <button type="submit" class="btn btn-secondary btn-sm">Add Group</button>
+            <details class="dev-collapsible">
+                <summary><i class="dripicons-folder-open" aria-hidden="true"></i> Manage Company Groups ({{ $groups->count() }} Groups · {{ $independentCount }} Independent)</summary>
+                <div class="dev-card mt-2">
+                    <form method="POST" action="{{ route('developer.groups.store') }}" class="dev-inline">
+                        @csrf
+                        <input name="name" class="form-control form-control-sm" placeholder="New Group Name" required maxlength="255">
+                        <input name="code" class="form-control form-control-sm" placeholder="Code (optional)" maxlength="50">
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="dripicons-plus"></i> Create Group</button>
+                    </form>
+                    <div class="dev-group-manage-list">
+                        @forelse($groups as $grp)
+                            @php $grpCount = (int) ($groupedCounts[$grp->id] ?? 0); @endphp
+                            <div class="dev-group-manage-row">
+                                <form method="POST" action="{{ route('developer.groups.update', $grp->id) }}" class="dev-inline">
+                                    @csrf
+                                    <input name="name" class="form-control form-control-sm" value="{{ $grp->name }}" required maxlength="255" aria-label="Group name">
+                                    <input name="code" class="form-control form-control-sm" value="{{ $grp->code }}" required maxlength="50" aria-label="Group code">
+                                    <span class="dev-badge dev-badge-neutral">{{ $grpCount }} {{ \Illuminate\Support\Str::plural('company', $grpCount) }}</span>
+                                    <button type="submit" class="btn btn-secondary btn-sm">Rename</button>
+                                </form>
+                                <form method="POST" action="{{ route('developer.groups.destroy', $grp->id) }}" class="dev-inline">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Deletes group container and converts members into Independent Companies">Delete Group</button>
+                                </form>
+                            </div>
+                        @empty
+                            <p class="dev-muted">No company groups created yet. Independent companies stand alone.</p>
+                        @endforelse
                     </div>
-                </form>
-            </div>
-        </details>
+                </div>
+            </details>
+        </div>
 
         <div class="dev-split">
-            {{-- Left Tenant Directory Rail --}}
+            {{-- Left Multi-Group + Independent Companies Directory --}}
             <aside class="dev-card">
                 <div class="dev-card-head">
-                    <h2><i class="dripicons-list" aria-hidden="true"></i> Tenants</h2>
+                    <h2><i class="dripicons-store" aria-hidden="true"></i> Groups &amp; Companies</h2>
                     <span class="dev-badge dev-badge-neutral">{{ $tenants->count() }}</span>
                 </div>
+
+                <div class="dev-group-pills" role="navigation" aria-label="Filter by group">
+                    <a href="{{ route('developer.index', ['tab' => 'tenants', 'q' => $search, 'status' => $statusFilter, 'group' => 'all']) }}"
+                       class="dev-group-pill {{ $groupFilter === 'all' ? 'is-active' : '' }}">All ({{ $allTenants->count() }})</a>
+                    <a href="{{ route('developer.index', ['tab' => 'tenants', 'q' => $search, 'status' => $statusFilter, 'group' => 'independent']) }}"
+                       class="dev-group-pill {{ $groupFilter === 'independent' ? 'is-active' : '' }}">Independent ({{ $independentCount }})</a>
+                    @foreach($groups as $grp)
+                        <a href="{{ route('developer.index', ['tab' => 'tenants', 'q' => $search, 'status' => $statusFilter, 'group' => (string) $grp->id]) }}"
+                           class="dev-group-pill {{ $groupFilter === (string) $grp->id ? 'is-active' : '' }}">{{ $grp->name }} ({{ (int) ($groupedCounts[$grp->id] ?? 0) }})</a>
+                    @endforeach
+                </div>
+
                 <form method="GET" action="{{ route('developer.index') }}" class="dev-filter-form">
                     <input type="hidden" name="tab" value="tenants">
+                    <input type="hidden" name="group" value="{{ $groupFilter }}">
                     <div class="dev-filter-row">
-                        <input name="q" class="form-control" value="{{ $search }}" placeholder="Search name, code, key...">
+                        <input name="q" class="form-control" value="{{ $search }}" placeholder="Search company, code, key...">
                         <select name="status" class="form-control">
                             <option value="all" @selected($statusFilter === 'all')>All status</option>
                             @foreach(['active', 'trial', 'grace', 'suspended', 'expired', 'unlicensed_legacy'] as $st)
@@ -194,35 +259,80 @@
                         <button type="submit" class="btn btn-secondary btn-sm">Go</button>
                     </div>
                 </form>
+
                 <div class="dev-tenant-list">
-                    @forelse($tenants as $t)
-                        @php $isSel = $selectedTenant && (int) $selectedTenant['id'] === (int) $t['id']; @endphp
-                        <a href="{{ route('developer.index', ['tab' => 'tenants', 'company' => $t['id'], 'q' => $search, 'status' => $statusFilter]) }}"
-                           class="dev-tenant-item {{ $isSel ? 'is-selected' : '' }}">
-                            <div class="dev-tenant-top">
-                                <span class="dev-tenant-name">{{ $t['label'] }}</span>
-                                <span class="dev-badge {{ $badgeClass($t['license']['status']) }}">{{ str_replace('_', ' ', $t['license']['status']) }}</span>
+                    @forelse($groups as $grp)
+                        @php $groupMembers = $groupedTenants->get($grp->id, collect()); @endphp
+                        @if($groupMembers->isNotEmpty())
+                            <div class="dev-dir-section">
+                                <div class="dev-dir-heading">
+                                    <span>{{ $grp->name }} · <code>{{ $grp->code }}</code></span>
+                                    <span>{{ $groupMembers->count() }}</span>
+                                </div>
+                                @foreach($groupMembers as $t)
+                                    @php $isSel = $selectedTenant && (int) $selectedTenant['id'] === (int) $t['id']; @endphp
+                                    <a href="{{ route('developer.index', ['tab' => 'tenants', 'company' => $t['id'], 'q' => $search, 'status' => $statusFilter, 'group' => $groupFilter]) }}"
+                                       class="dev-tenant-item {{ $isSel ? 'is-selected' : '' }}">
+                                        <div class="dev-tenant-top">
+                                            <span class="dev-tenant-name">{{ $t['label'] }}</span>
+                                            <span class="dev-badge {{ $badgeClass($t['license']['status']) }}">{{ str_replace('_', ' ', $t['license']['status']) }}</span>
+                                        </div>
+                                        <div class="dev-tenant-meta">
+                                            <span>{{ $t['license']['plan']['name'] ?? 'Legacy/Custom' }}</span>
+                                            <span>·</span>
+                                            <span>{{ $t['licensed_count'] }}/{{ $t['total_modules'] }} modules</span>
+                                            <span>·</span>
+                                            <span>{{ $t['usage']['users'] }} users</span>
+                                        </div>
+                                        <div class="dev-tenant-meta">
+                                            <code>{{ $t['code'] }}</code>
+                                            @if($t['license']['expires_at'])<span>· Exp {{ $t['license']['expires_at'] }}</span>@endif
+                                        </div>
+                                    </a>
+                                @endforeach
                             </div>
-                            <div class="dev-tenant-meta">
-                                <span>{{ $t['license']['plan']['name'] ?? 'Legacy/Custom' }}</span>
-                                <span>·</span>
-                                <span>{{ $t['licensed_count'] }}/{{ $t['total_modules'] }} modules</span>
-                                <span>·</span>
-                                <span>{{ $t['usage']['users'] }} users</span>
-                            </div>
-                            <div class="dev-tenant-meta">
-                                <code>{{ $t['code'] }}</code>
-                                @if($t['group_name'])<span>· {{ $t['group_name'] }}</span>@endif
-                                @if($t['license']['expires_at'])<span>· Exp {{ $t['license']['expires_at'] }}</span>@endif
-                            </div>
-                        </a>
+                        @endif
                     @empty
-                        <p class="dev-muted">No matching tenant companies found.</p>
                     @endforelse
+
+                    @if($independentTenants->isNotEmpty())
+                        <div class="dev-dir-section">
+                            <div class="dev-dir-heading">
+                                <span>Independent Companies</span>
+                                <span>{{ $independentTenants->count() }}</span>
+                            </div>
+                            @foreach($independentTenants as $t)
+                                @php $isSel = $selectedTenant && (int) $selectedTenant['id'] === (int) $t['id']; @endphp
+                                <a href="{{ route('developer.index', ['tab' => 'tenants', 'company' => $t['id'], 'q' => $search, 'status' => $statusFilter, 'group' => $groupFilter]) }}"
+                                   class="dev-tenant-item {{ $isSel ? 'is-selected' : '' }}">
+                                    <div class="dev-tenant-top">
+                                        <span class="dev-tenant-name">{{ $t['label'] }}</span>
+                                        <span class="dev-badge {{ $badgeClass($t['license']['status']) }}">{{ str_replace('_', ' ', $t['license']['status']) }}</span>
+                                    </div>
+                                    <div class="dev-tenant-meta">
+                                        <span>{{ $t['license']['plan']['name'] ?? 'Legacy/Custom' }}</span>
+                                        <span>·</span>
+                                        <span>{{ $t['licensed_count'] }}/{{ $t['total_modules'] }} modules</span>
+                                        <span>·</span>
+                                        <span>{{ $t['usage']['users'] }} users</span>
+                                    </div>
+                                    <div class="dev-tenant-meta">
+                                        <code>{{ $t['code'] }}</code>
+                                        <span>· Independent</span>
+                                        @if($t['license']['expires_at'])<span>· Exp {{ $t['license']['expires_at'] }}</span>@endif
+                                    </div>
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @if($tenants->isEmpty())
+                        <p class="dev-muted">No matching companies found.</p>
+                    @endif
                 </div>
             </aside>
 
-            {{-- Right Selected Tenant Control Plane --}}
+            {{-- Right Selected Company Workspace --}}
             @if($selectedTenant)
                 @php
                     $selId = $selectedTenant['id'];
@@ -231,18 +341,28 @@
                     $limits = $lic['limits'];
                 @endphp
                 <div class="dev-detail-stack">
-                    {{-- Tenant Hero Header --}}
+                    {{-- Company Hero Header + Group Assignment --}}
                     <div class="dev-hero">
                         <div>
                             <h2>{{ $selectedTenant['label'] }} <code>{{ $selectedTenant['code'] }}</code></h2>
                             <div class="dev-hero-sub">
                                 {{ $selectedTenant['legal_name'] }} · {{ $selectedTenant['industry_label'] }}
-                                @if($selectedTenant['group_name']) · Group: {{ $selectedTenant['group_name'] }}@endif
+                                · {{ $selectedTenant['group_name'] ? 'Group: '.$selectedTenant['group_name'] : 'Independent Company' }}
                                 · Plan: <strong>{{ $lic['plan']['name'] ?? ($lic['has_license'] ? 'Custom' : 'Unconstrained Legacy') }}</strong>
                             </div>
                         </div>
                         <div class="dev-hero-actions">
                             <span class="dev-badge {{ $badgeClass($lic['status']) }}">{{ strtoupper(str_replace('_', ' ', $lic['status'])) }}</span>
+                            <form method="POST" action="{{ route('developer.tenants.group', $selId) }}" class="dev-hero-group-form">
+                                @csrf
+                                <select name="company_group_id" class="form-control form-control-sm" aria-label="Company group ownership">
+                                    <option value="" @selected(!$selectedTenant['group_id'])>Independent Company</option>
+                                    @foreach($groups as $grp)
+                                        <option value="{{ $grp->id }}" @selected((int) ($selectedTenant['group_id'] ?? 0) === (int) $grp->id)>Group: {{ $grp->name }} ({{ $grp->code }})</option>
+                                    @endforeach
+                                </select>
+                                <button type="submit" class="btn btn-secondary btn-sm">Move</button>
+                            </form>
                             <form method="POST" action="{{ route('developer.tenants.lifecycle', $selId) }}" class="dev-inline">
                                 @csrf
                                 <input type="hidden" name="action" value="renew">
@@ -281,7 +401,7 @@
                     {{-- License Contract & Plan Assignment --}}
                     <div class="dev-card">
                         <div class="dev-card-head">
-                            <h2><i class="dripicons-lock" aria-hidden="true"></i> License Contract &amp; Plan Assignment</h2>
+                            <h2><i class="dripicons-lock" aria-hidden="true"></i> License Contract, Quotas &amp; AI Entitlements</h2>
                             @if($lic['license_key'])
                                 <div class="dev-inline">
                                     <span class="dev-key-box" id="dev-license-key">{{ $lic['license_key'] }}</span>
@@ -409,7 +529,7 @@
                         <div class="dev-card-head">
                             <div>
                                 <h2><i class="dripicons-toggles" aria-hidden="true"></i> Module Licensing ({{ $selectedTenant['licensed_count'] }}/{{ $selectedTenant['total_modules'] }} licensed)</h2>
-                                <p class="dev-muted">Controls both sidebar visibility and server-side capability/API access. Non-developer admins cannot activate unlicensed modules.</p>
+                                <p class="dev-muted">Controls both navigation availability and server-side capability/API access across ERP and AI modules.</p>
                             </div>
                             <div class="dev-inline">
                                 <button type="button" class="btn btn-secondary btn-sm" id="dev-modules-all">Select All {{ $stats['modules_total'] }}</button>
@@ -473,28 +593,31 @@
                         </div>
                     </form>
 
-                    {{-- Screen / Sidebar Menu Switches --}}
-                    <form method="POST" action="{{ route('developer.tenants.switches', $selId) }}" class="dev-card">
-                        @csrf
-                        <div class="dev-card-head">
-                            <div>
-                                <h2><i class="dripicons-menu" aria-hidden="true"></i> Screen &amp; Menu Switches for {{ $selectedTenant['label'] }}</h2>
-                                <p class="dev-muted">Fine-grained UI route blocker on top of licensed modules. Unticked screens hide from sidebar and return HTTP 403 for non-developers.</p>
+                    {{-- Advanced: Screen Switches & Industry Preset (collapsed by default) --}}
+                    <details class="dev-collapsible">
+                        <summary><i class="dripicons-menu" aria-hidden="true"></i> Advanced: Screen &amp; Menu Route Switches ({{ $selectedTenant['menu_switches_off'] }} off)</summary>
+                        <form method="POST" action="{{ route('developer.tenants.switches', $selId) }}" class="dev-card mt-2">
+                            @csrf
+                            <div class="dev-card-head">
+                                <div>
+                                    <h2><i class="dripicons-menu" aria-hidden="true"></i> Screen &amp; Menu Switches for {{ $selectedTenant['label'] }}</h2>
+                                    <p class="dev-muted">Fine-grained UI route blocker on top of licensed modules. Unticked screens return HTTP 403 for non-developers.</p>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-sm"><i class="dripicons-checkmark"></i> Save Screen Switches</button>
                             </div>
-                            <button type="submit" class="btn btn-primary btn-sm"><i class="dripicons-checkmark"></i> Save Screen Switches</button>
-                        </div>
-                        <div class="dev-section-grid">
-                            @foreach($catalog as $section)
-                                @php $sectionOn = !in_array($section['key'], $off, true); @endphp
-                                <fieldset class="dev-section" data-section>
-                                    <legend><label><input type="checkbox" name="on[]" value="{{ $section['key'] }}" data-section-toggle @checked($sectionOn)> {{ $section['label'] }}</label></legend>
-                                    @foreach($section['items'] as $item)
-                                        <label class="dev-item"><input type="checkbox" name="on[]" value="{{ $item['key'] }}" @checked(!in_array($item['key'], $off, true)) @disabled(!$sectionOn)> {{ $item['label'] }}</label>
-                                    @endforeach
-                                </fieldset>
-                            @endforeach
-                        </div>
-                    </form>
+                            <div class="dev-section-grid">
+                                @foreach($catalog as $section)
+                                    @php $sectionOn = !in_array($section['key'], $off, true); @endphp
+                                    <fieldset class="dev-section" data-section>
+                                        <legend><label><input type="checkbox" name="on[]" value="{{ $section['key'] }}" data-section-toggle @checked($sectionOn)> {{ $section['label'] }}</label></legend>
+                                        @foreach($section['items'] as $item)
+                                            <label class="dev-item"><input type="checkbox" name="on[]" value="{{ $item['key'] }}" @checked(!in_array($item['key'], $off, true)) @disabled(!$sectionOn)> {{ $item['label'] }}</label>
+                                        @endforeach
+                                    </fieldset>
+                                @endforeach
+                            </div>
+                        </form>
+                    </details>
                 </div>
             @endif
         </div>
@@ -667,7 +790,7 @@
     @if($tab === 'modules')
         <div class="dev-card">
             <div class="dev-card-head">
-                <h2><i class="dripicons-view-thumb" aria-hidden="true"></i> Complete ERP Module Catalog ({{ count($moduleCatalog) }} Capabilities)</h2>
+                <h2><i class="dripicons-view-thumb" aria-hidden="true"></i> Complete ERP &amp; AI Module Catalog ({{ count($moduleCatalog) }} Capabilities)</h2>
                 <span class="dev-muted">Single-DB Multi-Company SaaS (`company_id` scoped) · Profiles are capability presets</span>
             </div>
             <div class="dev-table-wrap">
@@ -701,7 +824,7 @@
     {{-- TAB 5: LICENSE AUDIT LOG --}}
     @if($tab === 'audits')
         <div class="dev-card">
-            <h2><i class="dripicons-document" aria-hidden="true"></i> Licensing &amp; Tenant Lifecycle Audit Log</h2>
+            <h2><i class="dripicons-document" aria-hidden="true"></i> Licensing, Group &amp; Lifecycle Audit Log</h2>
             <div class="dev-table-wrap">
                 <table class="table dev-table">
                     <thead><tr><th>Timestamp</th><th>Tenant / Scope</th><th>Action</th><th>Summary</th><th>Actor</th></tr></thead>
@@ -722,12 +845,18 @@
             </div>
         </div>
     @endif
-</section>
-@endsection
+</main>
 
-@push('scripts')
 <script>
 (function () {
+    var themeBtn = document.getElementById('dev-theme-toggle');
+    if (themeBtn) {
+        themeBtn.addEventListener('click', function () {
+            var isDark = document.body.classList.toggle('dark-mode');
+            document.cookie = 'theme=' + (isDark ? 'dark' : 'light') + '; path=/; max-age=31536000';
+        });
+    }
+
     document.querySelectorAll('[data-section-toggle]').forEach(function (toggle) {
         toggle.addEventListener('change', function () {
             toggle.closest('[data-section]').querySelectorAll('.dev-item input').forEach(function (box) { box.disabled = !toggle.checked; });
@@ -788,4 +917,5 @@
     }
 })();
 </script>
-@endpush
+</body>
+</html>
