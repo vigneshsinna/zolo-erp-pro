@@ -48,6 +48,10 @@ class CompanyDirectoryService
 
     public function canManageGroup(int $userId, ?int $groupId): bool
     {
+        $user = User::find($userId);
+        if ($user && MenuSwitches::isDeveloper($user)) {
+            return true;
+        }
         if ($groupId === null) {
             return $this->isInstallationAdmin($userId);
         }
@@ -129,10 +133,18 @@ class CompanyDirectoryService
             $current = $years->first(fn ($year) => $year->start_date->toDateString() <= $today($company)
                 && $year->end_date->toDateString() >= $today($company));
             $profile = $profiles->get($company->id);
+            $licenseSnap = app(LicenseService::class)->snapshot($company->id);
             $entry = [
                 'id' => $company->id, 'code' => $company->code,
                 'name' => $company->trade_name ?: $company->legal_name, 'legal_name' => $company->legal_name,
                 'industry' => $profile->profile_key ?? 'general_trading', 'subtype' => $profile->subtype ?? null,
+                'license' => [
+                    'status' => $licenseSnap['status'],
+                    'plan_name' => $licenseSnap['plan']['name'] ?? ($licenseSnap['has_license'] ? 'Custom' : null),
+                    'expires_at' => $licenseSnap['expires_at'],
+                    'is_blocked' => $licenseSnap['is_blocked'],
+                    'block_reason' => $licenseSnap['block_reason'],
+                ],
                 'branches' => $branches->map->only(['id', 'name'])->all(),
                 'years' => $years->map(fn ($year) => ['id' => $year->id, 'name' => $year->name, 'status' => $year->status])->all(),
                 'current_year_id' => $current?->id,
@@ -243,7 +255,10 @@ class CompanyDirectoryService
             $year = $company->fiscalYears()->create(['name' => $this->yearName($data['fy_start'], $data['fy_end']),
                 'start_date' => $data['fy_start'], 'end_date' => $data['fy_end'], 'status' => 'open', 'is_closed' => false]);
             $admins = $groupId ? DB::table('company_group_admins')->where('company_group_id', $groupId)->pluck('user_id')->all() : [];
-            foreach (array_unique([$actor, ...$admins]) as $userId) {
+            $developers = Schema::hasColumn('users', 'is_developer')
+                ? User::where('is_deleted', false)->where('is_developer', true)->pluck('id')->all()
+                : [];
+            foreach (array_unique([$actor, ...$admins, ...$developers]) as $userId) {
                 $this->grant($company->id, (int) $userId);
             }
             DB::table('warehouses')->insert(['name' => (($data['trade_name'] ?? '') ?: $data['legal_name']).' - Main', 'address' => '-',

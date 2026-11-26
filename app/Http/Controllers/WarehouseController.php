@@ -35,9 +35,13 @@ class WarehouseController extends Controller
         $input['is_active'] = true;
 
         DB::transaction(function () use ($input, $request) {
+            $context = $request->attributes->get(\App\Services\Platform\CompanyContext::class);
+            if ($context instanceof \App\Services\Platform\CompanyContext) {
+                app(\App\Services\Platform\LicenseService::class)->assertCanAddWarehouse($context->companyId);
+            }
             $warehouse = Warehouse::create($input);
             app(\App\Services\Inventory\InventoryMovementService::class)->initializeWarehouse(
-                $warehouse->id, $request->attributes->get(\App\Services\Platform\CompanyContext::class),
+                $warehouse->id, $context,
             );
         });
 

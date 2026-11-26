@@ -46,6 +46,14 @@ final class CapabilityCatalog
         'sales.coupons' => ['Coupons', ['core.sales']],
         'operations.scheduling' => ['Scheduling', []],
         'inventory.lot_report' => ['Stock by lot report', ['core.inventory']],
+        'ai.copilot' => ['AI Copilot & Chat', []],
+        'ai.actions' => ['AI Action Proposals & Execution', ['ai.copilot']],
+        'ai.multimodal' => ['AI Multimodal Perception (Image/PDF/Voice)', ['ai.copilot']],
+        'ai.documents' => ['AI Documents, Imports & RAG Knowledge', ['ai.copilot']],
+        'ai.workflows' => ['AI Workflows & Optical AI', ['ai.copilot']],
+        'ai.operations' => ['AI Operations, Triage & Automation Builder', ['ai.copilot']],
+        'ai.schedules' => ['AI Scheduled Rules', ['ai.copilot']],
+        'ai.mcp' => ['AI MCP Server & Agent Bindings', ['ai.copilot']],
     ];
 
     /**

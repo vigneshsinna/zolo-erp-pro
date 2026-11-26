@@ -249,9 +249,19 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group
     });
 });
 
-// Developer console: admin logins and the sections switched off for the active company (developer accounts only).
-Route::middleware(['auth', 'company.context', 'common'])->prefix('developer')->name('developer.')->controller(\App\Http\Controllers\DeveloperController::class)->group(function () {
+// Developer portal: multi-tenant SaaS licensing, plans, module entitlements, tenant onboarding, screen switches & admin logins.
+Route::middleware(['auth', 'common'])->prefix('developer')->name('developer.')->controller(\App\Http\Controllers\DeveloperController::class)->group(function () {
     Route::get('/', 'index')->name('index');
+    Route::post('tenants', 'storeTenant')->name('tenants.store');
+    Route::post('groups', 'storeGroup')->name('groups.store');
+    Route::post('tenants/{company}/plan', 'assignPlan')->whereNumber('company')->name('tenants.plan');
+    Route::post('tenants/{company}/modules', 'saveModules')->whereNumber('company')->name('tenants.modules');
+    Route::post('tenants/{company}/lifecycle', 'lifecycle')->whereNumber('company')->name('tenants.lifecycle');
+    Route::post('tenants/{company}/switches', 'switches')->whereNumber('company')->name('tenants.switches');
+    Route::post('tenants/{company}/profile', 'applyIndustry')->whereNumber('company')->name('tenants.profile');
+    Route::post('plans', 'storePlan')->name('plans.store');
+    Route::post('plans/{plan}', 'updatePlan')->whereNumber('plan')->name('plans.update');
+    Route::post('plans/{plan}/toggle', 'togglePlan')->whereNumber('plan')->name('plans.toggle');
     Route::post('admins', 'storeAdmin')->name('admins.store');
     Route::post('admins/{user}/status', 'status')->whereNumber('user')->name('admins.status');
     Route::post('admins/{user}/password', 'password')->whereNumber('user')->name('admins.password');

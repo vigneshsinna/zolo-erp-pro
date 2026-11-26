@@ -43,6 +43,9 @@ class CommercialApplicationService
                 return ($kind === 'sale' ? Sale::class : Purchase::class)::visibleIn($context)->findOrFail($retry->response_ref);
             }
             $date = $guard->begin($context, $guard->businessDate($data));
+            if ($kind === 'sale' && !$replacesId) {
+                app(\App\Services\Platform\LicenseService::class)->assertCanIssueInvoice($context->companyId);
+            }
             $guard->warehouse($data['warehouse_id'] ?? null, $context, $actor);
             $party = $guard->owned($kind === 'sale' ? Customer::class : Supplier::class,
                 $data[$kind === 'sale' ? 'customer_id' : 'supplier_id'] ?? null, $context, 'party_id');

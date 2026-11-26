@@ -7,13 +7,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use App\Services\Platform\CapabilityService;
 use App\Services\Platform\LegacyModuleAdapter;
+use App\Services\Platform\LicenseService;
 
 class AddonApiController extends BaseApiController
 {
     /**
      * Get active addons and enabled features for current tenant / instance
      */
-    public function status(Request $request, CapabilityService $capabilities): JsonResponse
+    public function status(Request $request, CapabilityService $capabilities, LicenseService $licenses): JsonResponse
     {
         $context = $this->companyContext($request);
         $company = DB::table('companies')->where('id', $context->companyId)->first();
@@ -35,10 +36,18 @@ class AddonApiController extends BaseApiController
             'api' => in_array('api', $activeModules),
         ];
 
+        $license = $licenses->snapshot($context->companyId);
+
         return $this->sendResponse([
             'system' => 'zoloERP SaaS Engine',
             'company_name' => $company->trade_name ?: $company->legal_name,
             'currency' => $company->base_currency_id,
+            'license' => [
+                'status' => $license['status'],
+                'plan' => $license['plan'],
+                'expires_at' => $license['expires_at'],
+                'limits' => $license['limits'],
+            ],
             'active_modules' => array_values($activeModules),
             'features' => $features,
             'capabilities' => $capabilities->forNavigation($context),

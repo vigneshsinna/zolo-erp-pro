@@ -62,6 +62,7 @@ class SaleService
 
         return DB::transaction(function () use ($data, $userId, $context, $guard, $deferPosting) {
             $date = $guard->begin($context, $guard->businessDate($data));
+            app(\App\Services\Platform\LicenseService::class)->assertCanIssueInvoice($context->companyId);
             $guard->rejectUnscopedReferences($data);
             $guard->owned(Customer::class, $data['customer_id'] ?? null, $context, 'customer_id');
             $guard->warehouse($data['warehouse_id'] ?? null, $context, $userId);

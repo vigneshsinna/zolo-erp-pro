@@ -39,6 +39,20 @@
         opacity: 1 !important;
       }
     }
+    .z-license-banner {
+      margin: 6px 12px 0;
+      padding: 6px 12px;
+      border-radius: var(--z-radius-sm);
+      border: 1px solid var(--z-warning-border);
+      background: var(--z-warning-soft);
+      color: var(--z-warning);
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
 
 /* --------------------------------------------------------------------------
    Top Navbar Right Items: Switch Theme, Fullscreen, Admin Profile Dropdown

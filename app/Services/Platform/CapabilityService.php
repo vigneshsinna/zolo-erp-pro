@@ -104,15 +104,59 @@ class CapabilityService
     {
         $states = DB::transactionLevel() > 0 ? $this->load($companyId)
             : Cache::remember($this->cacheKey($companyId), 300, fn () => $this->load($companyId));
-        // Cache configured states; activation gates and dependency checks always apply on read.
+        $licenses = app(LicenseService::class);
+        // Cache configured states; license entitlements, activation gates, and dependency checks always apply on read.
         foreach ($states as $key => &$state) {
-            if (!$this->dependenciesEnabled($key, $states)
+            if (!$licenses->allowsCapability($key, $companyId)
+                || !$this->dependenciesEnabled($key, $states)
                 || (!$this->optionalActivationReady() && !$this->exemptFromActivationGate($key))) {
                 $state['enabled'] = false;
             }
         }
         unset($state);
         return $states;
+    }
+
+    public function forgetCompany(int $companyId): void
+    {
+        Cache::forget($this->cacheKey($companyId));
+    }
+
+    /**
+     * Synchronize company_capabilities with developer-assigned module licenses (preserving saved config).
+     *
+     * @param list<string> $licensedKeys
+     */
+    public function syncFromLicense(int $companyId, array $licensedKeys, int $actor): void
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('capabilities')
+            || !\Illuminate\Support\Facades\Schema::hasTable('company_capabilities')) {
+            return;
+        }
+        $ids = DB::table('capabilities')->pluck('id', 'key');
+        foreach (CapabilityCatalog::DEFINITIONS as $key => $definition) {
+            if (!isset($ids[$key])) {
+                continue;
+            }
+            $enabled = ($definition[2] ?? false) || in_array($key, $licensedKeys, true);
+            $existing = DB::table('company_capabilities')
+                ->where('company_id', $companyId)
+                ->where('capability_id', $ids[$key])
+                ->first();
+            $newlyEnabled = $enabled && !$existing?->enabled;
+            DB::table('company_capabilities')->updateOrInsert(
+                ['company_id' => $companyId, 'capability_id' => $ids[$key]],
+                [
+                    'enabled' => $enabled,
+                    'config_json' => $existing?->config_json ?? json_encode(null),
+                    'enabled_at' => $newlyEnabled ? now() : $existing?->enabled_at,
+                    'enabled_by' => $newlyEnabled ? $actor : $existing?->enabled_by,
+                    'created_at' => $existing?->created_at ?? now(),
+                    'updated_at' => now(),
+                ]
+            );
+        }
+        DB::afterCommit(fn () => $this->forgetCompany($companyId));
     }
 
     private function load(int $companyId): array
@@ -152,16 +196,29 @@ class CapabilityService
             \App\Models\Company::whereKey($context->companyId)->lockForUpdate()->firstOrFail();
             $previousStates = $this->load($context->companyId);
             $states = $change($previousStates);
+            $licenses = app(LicenseService::class);
+            $isDeveloper = MenuSwitches::isDeveloper();
             foreach (CapabilityCatalog::DEFINITIONS as $key => $definition) {
                 if (($definition[2] ?? false) && empty($states[$key]['enabled'])) {
                     throw ValidationException::withMessages(['capability' => 'Core capabilities cannot be disabled.']);
+                }
+                if (!$importOnly && !$isDeveloper && !empty($states[$key]['enabled']) && !$licenses->allowsCapability($key, $context->companyId)) {
+                    if ($profileKey !== null) {
+                        $states[$key]['enabled'] = false;
+                    } else {
+                        throw new AuthorizationException('Module "'.$definition[0].'" is not licensed for this company. Ask your platform developer to enable it.');
+                    }
                 }
                 if (!$importOnly && !$this->optionalActivationReady() && !$this->exemptFromActivationGate($key)
                     && !empty($states[$key]['enabled']) && empty($previousStates[$key]['enabled'])) {
                     throw ValidationException::withMessages(['capability' => 'Optional activation waits for full Phase 1 isolation acceptance.']);
                 }
                 if (!empty($states[$key]['enabled']) && !$this->dependenciesEnabled($key, $states)) {
-                    throw ValidationException::withMessages(['capability' => $key.' requires '.implode(', ', $definition[1]).'.']);
+                    if ($profileKey !== null && !$isDeveloper) {
+                        $states[$key]['enabled'] = false;
+                    } else {
+                        throw ValidationException::withMessages(['capability' => $key.' requires '.implode(', ', $definition[1]).'.']);
+                    }
                 }
             }
             $ids = DB::table('capabilities')->pluck('id', 'key');
