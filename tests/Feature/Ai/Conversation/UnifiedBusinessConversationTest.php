@@ -159,6 +159,7 @@ final class UnifiedBusinessConversationTest extends TestCase
             'erp_ai.enabled' => true,
             'erp_ai.conversation_enabled' => true,
             'ai_actions.foundation_enabled' => true,
+            'ai_actions.execution_enabled' => true,
             'ai_business_knowledge.enabled' => true,
             'ai_business_knowledge.semantic_enabled' => true,
             'ai_business_knowledge.planner_enabled' => true,

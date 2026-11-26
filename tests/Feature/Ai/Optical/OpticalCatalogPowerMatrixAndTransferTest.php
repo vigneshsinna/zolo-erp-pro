@@ -48,6 +48,7 @@ final class OpticalCatalogPowerMatrixAndTransferTest extends TestCase
             'ai_business_knowledge.enabled' => true,
             'ai_business_knowledge.opticals_enabled' => true,
             'ai_business_knowledge.opticals_cross_store_enabled' => true,
+            'ai_actions.foundation_enabled' => true,
             'erp_ai.enabled' => true,
         ]);
 

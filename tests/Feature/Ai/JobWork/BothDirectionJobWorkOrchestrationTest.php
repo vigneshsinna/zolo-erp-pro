@@ -62,8 +62,10 @@ final class BothDirectionJobWorkOrchestrationTest extends TestCase
         config()->set('ai_actions.execution_enabled', true);
         config()->set('commercial.enabled', true);
         config()->set('compliance.enabled', true);
+        config()->set('operations.enabled', true);
         config()->set('erp_ai.enabled', true);
         config()->set('erp_ai.read_only', false);
+        config()->set('app.erp_optional_activation_ready', true);
 
         DB::table('roles')->updateOrInsert(['id' => 1], ['name' => 'Admin', 'is_active' => true, 'guard_name' => 'web']);
 

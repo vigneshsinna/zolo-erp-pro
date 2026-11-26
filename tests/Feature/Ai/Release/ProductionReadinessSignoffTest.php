@@ -42,6 +42,7 @@ final class ProductionReadinessSignoffTest extends TestCase
 
         RateLimiter::clear('ai:rpm:nvidia');
         config()->set('erp_ai.enabled', true);
+        config()->set('ai_actions.foundation_enabled', true);
         config()->set('ai_credits.enabled', true);
         config()->set('ai_business_knowledge.enabled', true);
         config()->set('ai_business_knowledge.semantic_enabled', true);
