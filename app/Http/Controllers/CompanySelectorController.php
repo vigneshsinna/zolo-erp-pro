@@ -146,6 +146,9 @@ class CompanySelectorController extends Controller
     {
         try {
             $context = $this->resolver->resolve($request->user()->id, $companyId, $branchId, $yearId);
+        } catch (\App\Exceptions\CompanyLicenseBlockedException $error) {
+            return redirect()->route('company.select', ['manage' => 1])
+                ->withErrors(['company_id' => $error->getMessage()]);
         } catch (CompanyFinancialYearSetupRequired $error) {
             if (!$this->resolver->canManageFinancialYears($request->user()->id, $error->companyId)) {
                 return redirect()->route('company.select', ['manage' => 1])

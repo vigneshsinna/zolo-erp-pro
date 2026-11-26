@@ -563,6 +563,7 @@ body.dark-mode .cp-dialog input[type=file]::file-selector-button {
 .cp-card-tools { display: flex; align-items: center; gap: 4px; }
 .cp-icon-btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 8px;
   background: none; color: var(--neo-text-muted); cursor: pointer; opacity: .55; transition: opacity .15s, background .15s, color .15s; }
+.cp-chip-blocked { background: var(--z-danger-soft); color: var(--z-danger); border-color: var(--z-danger-border); }
 .cp-icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .cp-card:hover .cp-icon-btn, .cp-card:focus-within .cp-icon-btn { opacity: 1; }
 .cp-icon-btn:hover, .cp-icon-btn:focus-visible { background: var(--neo-surface-hover, rgba(100, 116, 139, .1)); color: var(--neo-text-primary); opacity: 1; }

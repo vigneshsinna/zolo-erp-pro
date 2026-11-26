@@ -461,6 +461,17 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
 
 
     <div id="content">
+      @if($activeCompany)
+        @php $licenseBanner = app(\App\Services\Platform\LicenseService::class)->snapshot($activeCompany->id)['banner_warning'] ?? null; @endphp
+        @if($licenseBanner)
+          <div class="z-license-banner d-print-none" role="status">
+            <span><i class="dripicons-warning mr-1" aria-hidden="true"></i>{{ $licenseBanner }}</span>
+            @if(\App\Services\Platform\MenuSwitches::isDeveloper())
+              <a href="{{ route('developer.index', ['company' => $activeCompany->id]) }}" class="btn btn-sm btn-secondary">Manage License</a>
+            @endif
+          </div>
+        @endif
+      @endif
       @include('backend.layout.partials.print-letterhead')
       @yield('content')
     </div>

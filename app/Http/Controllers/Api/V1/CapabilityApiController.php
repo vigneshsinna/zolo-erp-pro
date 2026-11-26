@@ -3,11 +3,23 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Services\Platform\CapabilityService;
+use App\Services\Platform\LicenseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CapabilityApiController extends BaseApiController
 {
+    public function license(Request $request, LicenseService $licenses)
+    {
+        $companyId = $this->companyContext($request)->companyId;
+
+        return $this->sendResponse([
+            'license' => $licenses->snapshot($companyId),
+            'usage' => $licenses->quotaUsage($companyId),
+            'ai' => $licenses->aiEntitlement($companyId),
+        ]);
+    }
+
     public function index(Request $request, CapabilityService $service)
     {
         return $this->sendResponse([

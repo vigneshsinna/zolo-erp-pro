@@ -107,6 +107,10 @@ class UserController extends Controller
         }
         if(!isset($data['is_active']))
             $data['is_active'] = false;
+        $context = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
+        if ($context instanceof \App\Services\Platform\CompanyContext && $data['is_active']) {
+            app(\App\Services\Platform\LicenseService::class)->assertCanAddUser($context->companyId);
+        }
         $data['is_deleted'] = false;
         $data['password'] = bcrypt($data['password']);
         $data['phone'] = $data['phone_number'];
@@ -201,6 +205,12 @@ class UserController extends Controller
 
         if ($user) {
             $this->guardDeveloper($user);
+            if ($request->boolean('is_active') && !$user->is_active && !($user->is_developer ?? false)) {
+                $context = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
+                if ($context instanceof \App\Services\Platform\CompanyContext) {
+                    app(\App\Services\Platform\LicenseService::class)->assertCanAddUser($context->companyId);
+                }
+            }
             $user->is_active = $request->is_active;
             $user->save();
 

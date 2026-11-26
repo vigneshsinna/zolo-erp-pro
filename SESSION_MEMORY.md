@@ -1,5 +1,28 @@
 # zoloERP Pro â€” Persistent Session Memory & State
 
+## Active Session & Follow-up — 2026-11-26: Multi-Tenant SaaS Developer Portal & 45-Module Licensing Engine (37 ERP + 8 AI, branch main)
+
+- **Architecture Clarified:**
+  - Confirmed zoloERP Pro uses **single-DB multi-company SaaS isolation** (`company_groups` -> `companies` -> `company_branches` -> `fiscal_years`, scoped by `company_id` via `ResolveCompanyContext` and `ScopesCompanyQueries`), while legacy SalePro `stancl/tenancy` / `zoloerp_landlord` references (`TenantInfo`, `SuperAdminAuth`, `AddonInstallController::saasInstall`) are retired/unused.
+  - Mapped all **45 capabilities** in `CapabilityCatalog::DEFINITIONS`: **37 ERP modules** (5 core + 32 optional/switchable) across 10 groups (`core`, `inventory`, `sales`, `manufacturing`, `operations`, `service`, `hrm`, `printing`, `communications`, `integrations`), **6 industry profiles** (`general_trading`, `fmcg`, `textile`, `timber`, `solar`, `opticals`), plus **8 AI Operating Layer modules** (`ai.copilot`, `ai.actions`, `ai.multimodal`, `ai.documents`, `ai.workflows`, `ai.operations`, `ai.schedules`, `ai.mcp` — merged-ready for `feature/ai-unified-input-clarification`).
+- **Deliverables Implemented:**
+  1. **Schema & Models (`database/migrations/2026_11_26_000001_create_saas_licensing_tables.php`, `SaasPlanSeeder`):**
+     - Created idempotent tables `saas_plans`, `company_licenses`, `company_license_modules`, and `company_license_audits` with models under `app/Models/Platform/`.
+     - Included ERP quotas (`max_users`, `max_branches`, `max_warehouses`, `max_monthly_invoices`) and AI quotas (`ai_monthly_credits`, `ai_monthly_media_pages`, `ai_max_concurrent_runs`, `ai_daily_token_limit`, `ai_read_only`).
+     - Seeded 5 SaaS tiers (`trial`, `starter`, `growth`, `industry_pro`, `enterprise`) with tiered AI entitlements and auto-initialized existing companies onto `enterprise` baseline.
+  2. **Licensing & Provisioning Services (`app/Services/Platform/LicenseService.php`, `DeveloperTenantService.php`):**
+     - Added status lifecycle (`trial`, `active`, `grace`, `suspended`, `expired`, `cancelled`), license key generation/rotation, 45-module dependency-aware entitlement resolution (`ai.*` actions depend on `ai.copilot`), per-module add-on expiries, live ERP + AI quota metering (`quotaUsage`), `aiEntitlement()`, automatic `ai_feature_settings` sync (`enabled`, `read_only`, `multimodal_enabled`, `daily_token_limit`, `daily_media_upload_limit` guarded by `SchemaCache`), and full tenant onboarding.
+  3. **Runtime Enforcement & Admin Bypass Lock:**
+     - Fixed static schema cache cross-test leak in `MenuSwitches` via `SchemaCache`.
+     - Wired license checks into `CapabilityService` (`snapshot`, `enable`, `applyProfile`, `syncFromLicense`), locked `POST /addon/toggle` and unlicensed `CompanyProfileController` toggles for non-developers, blocked suspended/expired companies in `CompanyContextResolver` and `ResolveCompanyContext` (`CompanyLicenseBlockedException` + `backend/developer/blocked.blade.php`), and enforced seat/branch/warehouse/monthly-invoice quotas in `UserController`, `CompanySetupService`, `WarehouseController`, `CommercialApplicationService`, `SaleService`, and `SaleController`.
+  4. **Developer Portal UI, API & CLI (`/developer`, `DeveloperController`, `ManageLicense`):**
+     - Replaced basic `/developer` console with a 5-tab SaaS Control Plane (`Tenants & Licensing`, `SaaS Plans`, `Admin Logins`, `Module Catalog`, `License Audit Log`) styled with `zolo-tokens.css` (`public/css/pages/developer.css`), including ERP + AI quota overrides and AI read-only controls, grace/trial topbar warning banner, `GET /api/v1/company-context/license` (returning `license`, `usage`, and `ai`), and `php artisan erp:license`.
+- **Verification (`tests/Feature/DeveloperLicensingPortalTest.php` + Regression):**
+  - Ran `php artisan optimize:clear; php vendor/bin/phpunit` across `DesignTokensTest`, `DeveloperLicensingPortalTest` (9 tests including `test_ai_modules_and_credit_quotas_are_licensed_and_synced_cleanly`), `MenuSwitchesTest`, `CapabilityEngineTest`, `WorkspaceSecurityTest`, `CompanyGroupDirectoryTest`, `CompanyGroupIndustryTest`, `NavigationAuditResolutionTest`, and `PlatformMigrationTest`: **71 tests, 539 assertions, 0 failures, 0 errors, 1 skipped** (MySQL-only `PlatformMigrationTest` check).
+  - Pre-existing note on `main`: `SwitchableCapabilityTest` (run separately earlier) has 1 pre-existing failure at line 55 because `resources/views/backend/layout/sidebar.blade.php:499` renders `#stock-by-lot-menu` unconditionally in Reporting.
+
+---
+
 ## Active Session & Follow-up â€” 2026-11-11: Resolution of `Cannot read properties of undefined (reading 'recalcTableSummary')` on Sales & Purchase Desk (`media_1794406297690_7f2a8e5c.jpg`)
 
 - **User Inquiry Addressed:**

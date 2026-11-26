@@ -71,6 +71,14 @@ class HomeController extends Controller
 
         $general_setting = DB::table('general_settings')->first();
         $activeModules = array_filter(explode(',', $general_setting->modules ?? ''));
+        $context = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
+        if ($context instanceof \App\Services\Platform\CompanyContext) {
+            $capabilities = app(\App\Services\Platform\CapabilityService::class);
+            $activeModules = array_keys(array_filter(
+                \App\Services\Platform\LegacyModuleAdapter::MODULES,
+                fn ($capKey) => $capabilities->enabled($capKey, $context)
+            ));
+        }
 
         $addons = [
             [
@@ -190,6 +198,13 @@ class HomeController extends Controller
 
     public function addonToggle(Request $request)
     {
+        if (app(\App\Services\Platform\LicenseService::class)->tablesReady()
+            && !\App\Services\Platform\MenuSwitches::isDeveloper()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Module licensing is controlled from the Developer Portal (/developer).',
+            ], 403);
+        }
         $key = $request->key;
         $general_setting = DB::table('general_settings')->first();
         $current = array_filter(explode(',', $general_setting->modules ?? ''));

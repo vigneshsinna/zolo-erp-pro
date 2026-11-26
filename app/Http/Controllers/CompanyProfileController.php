@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Services\Industry\{IndustryCatalog, IndustryProfileService};
-use App\Services\Platform\{CapabilityCatalog, CapabilityService, CompanyContext, CompanyContextResolver, CompanyProfileService};
+use App\Services\Platform\{CapabilityCatalog, CapabilityService, CompanyContext, CompanyContextResolver, CompanyProfileService, LicenseService};
 use App\Services\Tax\{Gstin, GstSetupService};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Schema};
@@ -33,8 +33,11 @@ class CompanyProfileController extends Controller
             'industry' => $industry, 'industries' => collect(CapabilityCatalog::PROFILES)->map(fn ($profile) => $profile[0])->all(),
             'subtypes' => IndustryCatalog::SUBTYPES,
             'features' => collect(CapabilityCatalog::SWITCHABLE)->mapWithKeys(fn ($key) => [$key => [
-                'label' => CapabilityCatalog::DEFINITIONS[$key][0], 'enabled' => app(CapabilityService::class)->enabled($key, $context),
+                'label' => CapabilityCatalog::DEFINITIONS[$key][0],
+                'enabled' => app(CapabilityService::class)->enabled($key, $context),
+                'licensed' => app(LicenseService::class)->allowsCapability($key, $context->companyId),
             ]])->all(),
+            'license' => app(LicenseService::class)->snapshot($context->companyId),
         ]);
     }
 

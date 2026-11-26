@@ -75,6 +75,7 @@ class CompanySetupService
                 }
                 return $existing;
             }
+            app(LicenseService::class)->assertCanAddWarehouse($company->id);
             $warehouse = Warehouse::forceCreate($data + ['company_id' => $company->id, 'is_active' => true]);
             $this->audit($company->id, $actor, 'warehouse_setup', [], ['warehouse_id' => $warehouse->id, 'branch_id' => $branch->id, 'name' => $warehouse->name]);
             return $warehouse;
@@ -90,6 +91,7 @@ class CompanySetupService
             $branch = $company->branches()->where('code', $data['code'])->first();
             if ($branch && $branch->name !== $data['name']) throw ValidationException::withMessages(['code' => 'Branch code already has different details.']);
             if (!$branch) {
+                app(LicenseService::class)->assertCanAddBranch($company->id);
                 $branch = $company->branches()->create($data + ['branch_type' => 'branch']);
                 $this->audit($company->id, $actor, 'branch_setup', [], ['branch_id' => $branch->id] + $data);
                 // A new branch numbers its documents from the start, not through automatic fallback series.

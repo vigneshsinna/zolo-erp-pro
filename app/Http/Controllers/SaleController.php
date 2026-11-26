@@ -772,6 +772,10 @@ class SaleController extends Controller
 
     private function storeSale(StoreSaleRequest $request)
     {
+        $context = $request->attributes->get(\App\Services\Platform\CompanyContext::class);
+        if ($context instanceof \App\Services\Platform\CompanyContext) {
+            app(\App\Services\Platform\LicenseService::class)->assertCanIssueInvoice($context->companyId);
+        }
 
         $data = $request->all();
 

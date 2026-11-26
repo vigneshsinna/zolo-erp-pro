@@ -25,12 +25,14 @@ class MenuSwitches
     private const NEVER_UNDER = ['/user/profile', '/user/update_profile', '/user/changepass', '/developer'];
 
     private array $offByCompany = [];
-    /** Schema answers do not change while the app runs; asked once instead of once per menu link. */
-    private static array $schema = [];
 
     private static function ready(string $what): bool
     {
-        return self::$schema[$what] ??= $what === 'column' ? Schema::hasColumn('users', 'is_developer') : Schema::hasTable('company_menu_switches');
+        $schema = app(\App\Support\Database\SchemaCache::class);
+        $conn = DB::connection();
+        return $what === 'column'
+            ? $schema->hasColumn($conn, 'users', 'is_developer')
+            : $schema->hasTable($conn, 'company_menu_switches');
     }
 
     public static function isDeveloper($user = null): bool

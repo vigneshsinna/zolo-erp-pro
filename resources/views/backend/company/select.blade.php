@@ -109,6 +109,9 @@
                         <p class="cp-meta">
                             <span class="cp-chip">{{ $industries[$company['industry']] ?? 'General Trading' }}@if($company['subtype']) · {{ \App\Services\Industry\IndustryCatalog::subtypeLabel($company['subtype']) }}@endif</span>
                             <code>{{ $company['code'] }}</code>
+                            @if(!empty($company['license']) && ($company['license']['status'] ?? 'unlicensed_legacy') !== 'unlicensed_legacy')
+                                <span class="cp-chip {{ !empty($company['license']['is_blocked']) ? 'cp-chip-blocked' : '' }}">{{ $company['license']['plan_name'] ?? 'Licensed' }} · {{ ucfirst($company['license']['status']) }}</span>
+                            @endif
                         </p>
                         <div class="cp-fields">
                             @if(count($company['branches']) > 1)

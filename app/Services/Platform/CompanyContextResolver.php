@@ -98,6 +98,16 @@ class CompanyContextResolver
         if (!$company) {
             throw new AuthorizationException('Company access denied.');
         }
+        if (!MenuSwitches::isDeveloper($user)) {
+            $license = app(LicenseService::class)->snapshot($company->id);
+            if ($license['is_blocked']) {
+                throw new \App\Exceptions\CompanyLicenseBlockedException(
+                    $company->id,
+                    (string) $license['status'],
+                    (string) ($license['block_reason'] ?: 'Company license is not active.')
+                );
+            }
+        }
         if (!in_array($company->timezone, timezone_identifiers_list(), true)) {
             throw ValidationException::withMessages(['company_id' => 'Company timezone requires valid setup.']);
         }

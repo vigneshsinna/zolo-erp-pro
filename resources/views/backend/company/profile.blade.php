@@ -84,14 +84,23 @@
         @endif
 
         <div class="cpf-card">
-            <h2>Features</h2>
+            <h2>Features
+                @if(!empty($license['has_license']))
+                    <span class="badge badge-light border ml-2">{{ $license['plan']['name'] ?? 'Custom' }} · {{ ucfirst($license['status']) }}</span>
+                @endif
+            </h2>
             <input type="hidden" name="features_submitted" value="1">
             <div class="cpf-grid cpf-features">
                 @foreach($features as $key => $feature)
-                    <label class="cpf-check"><input type="checkbox" name="features[]" value="{{ $key }}" @checked($feature['enabled'])> {{ $feature['label'] }}</label>
+                    @php $licensed = $feature['licensed'] ?? true; @endphp
+                    <label class="cpf-check">
+                        <input type="checkbox" name="features[]" value="{{ $key }}" @checked($feature['enabled']) @disabled(!$licensed)>
+                        {{ $feature['label'] }}
+                        @unless($licensed)<small class="text-muted">(Requires license)</small>@endunless
+                    </label>
                 @endforeach
             </div>
-            <p class="cpf-muted">Switched-off features leave the menu and their pages refuse access. Records already saved are kept. Changing the industry resets these to its preset.</p>
+            <p class="cpf-muted">Switched-off features leave the menu and their pages refuse access. Records already saved are kept. Modules locked by your SaaS plan are managed in the Developer Portal.</p>
         </div>
 
         <div class="cpf-actions"><button type="submit" class="btn btn-primary">Save company profile</button></div>

@@ -34,6 +34,19 @@ class ResolveCompanyContext
                 $this->id($request, 'X-Branch-ID', 'branch_id', $useSessionDependents),
                 $this->id($request, 'X-Financial-Year-ID', 'financial_year_id', $useSessionDependents),
             );
+        } catch (\App\Exceptions\CompanyLicenseBlockedException $error) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'message' => $error->getMessage(),
+                    'license_status' => $error->licenseStatus,
+                    'company_id' => $error->companyId,
+                ], 403);
+            }
+            return response()->view('backend.developer.blocked', [
+                'message' => $error->getMessage(),
+                'status' => $error->licenseStatus,
+                'company' => \App\Models\Company::find($error->companyId),
+            ], 403);
         } catch (\App\Exceptions\CompanyFinancialYearSetupRequired $error) {
             $admin = $this->resolver->canManageFinancialYears($user->id, $error->companyId);
             if (!$request->expectsJson() && $admin) {
