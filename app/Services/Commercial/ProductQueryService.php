@@ -22,7 +22,8 @@ class ProductQueryService
                 'products.id', 'products.name', 'products.code', 'products.type',
                 'products.price', 'products.cost', 'products.tax_id', 'products.tax_category_id',
                 'products.tax_method', 'products.unit_id', 'units.unit_name', 'units.unit_code',
-                'products.is_batch', 'products.is_imei', 'products.is_variant'
+                'products.is_batch', 'products.is_imei', 'products.is_variant',
+                'products.base', 'products.addition', 'products.lr', 'products.dia', 'products.product_type_id'
             ]);
 
         if ($partyType === 'customer' || $partyType === 'supplier') {
@@ -56,15 +57,18 @@ class ProductQueryService
             [$rawTerm, $escapedTerm.'%']
         )->limit(80)->get();
 
-        return $this->formatResults($candidates, $normalized, $rank);
+        return $this->formatResults($candidates, $normalized, $rank, $context);
     }
 
-    private function formatResults($products, string $normalized, $rank): array
+    private function formatResults($products, string $normalized, $rank, ?CompanyContext $context = null): array
     {
         $gstRates = app(GstSetupService::class)->currentRates();
         $exclusive = fn ($amount, $prod, $rate) => (int) ($prod->tax_method ?? 1) === 2 && $rate > 0 ? round($amount * 100 / (100 + $rate), 4) : $amount;
+        $isOptical = $context !== null
+            && (bool) config('ai_business_knowledge.opticals_enabled', false)
+            && app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($context);
 
-        return $products->map(function ($product) use ($rank, $normalized, $gstRates, $exclusive) {
+        return $products->map(function ($product) use ($rank, $normalized, $gstRates, $exclusive, $isOptical) {
             $taxVal = 0;
             if (!empty($product->tax_category_id) && isset($gstRates[$product->tax_category_id])) {
                 $taxVal = (float) $gstRates[$product->tax_category_id]['rate'];
@@ -78,7 +82,7 @@ class ProductQueryService
 
             $unitText = (string) ($product->unit_name ?: $product->unit_code ?: '');
 
-            return [
+            $row = [
                 'id' => (int) $product->id,
                 'type' => (string) ($product->type ?? 'standard'),
                 'name' => (string) $product->name,
@@ -100,6 +104,17 @@ class ProductQueryService
                 'label' => (string) ($product->code . ' (' . $product->name . ')'),
                 'match_rank' => $matchRank,
             ];
+            if ($isOptical) {
+                $row += [
+                    'base' => $product->base,
+                    'addition' => $product->addition,
+                    'lr' => $product->lr,
+                    'dia' => $product->dia,
+                    'product_type_id' => $product->product_type_id ? (int) $product->product_type_id : null,
+                ];
+            }
+
+            return $row;
         })->sortBy(fn ($item) => sprintf('%d:%s:%010d', $item['match_rank'], $item['code'], $item['id']))
           ->take(50)->values()->toArray();
     }

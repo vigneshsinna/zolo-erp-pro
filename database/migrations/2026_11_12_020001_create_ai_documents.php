@@ -28,7 +28,7 @@ return new class extends Migration
             $table->longText('extraction_encrypted')->nullable();
             $table->timestamp('scanned_at')->nullable();
             $table->timestamp('revoked_at')->nullable();
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->index(['company_id', 'actor_id', 'created_at']);
         });
@@ -61,7 +61,7 @@ return new class extends Migration
             $table->char('approval_hash', 64)->nullable();
             $table->string('execution_key', 190)->nullable();
             $table->timestamp('approved_at')->nullable();
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->foreign('document_id')->references('id')->on('ai_documents');
             $table->index(['company_id', 'actor_id', 'created_at']);

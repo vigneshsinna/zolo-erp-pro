@@ -105,6 +105,9 @@ final class PreparePurchaseOrder implements Tool
                 ->description('Explicit destination warehouse ID if known'),
             'date' => $schema->string()
                 ->description('Optional order date in YYYY-MM-DD format. Defaults to today.'),
+            'payment_terms_type' => $schema->string()->enum(['cash', 'credit'])
+                ->description('Commercial terms only; cash does not post a payment.'),
+            'credit_days' => $schema->integer()->description('Credit days, 0–3650. Cash terms require zero.'),
             'note' => $schema->string()
                 ->description('Optional overall order note or reference'),
             'order_discount' => $schema->number()
@@ -120,6 +123,33 @@ final class PreparePurchaseOrder implements Tool
     {
         $args = $request->all();
 
+        if (config('ai_capabilities.shared_discovery_enabled', false)) {
+            try {
+                $result = app(\App\Ai\Capabilities\CapabilityDispatcher::class)->dispatch(
+                    principal: $this->principal,
+                    channel: 'sdk',
+                    capabilityKey: 'purchase_order.create.v1',
+                    operation: 'prepare',
+                    arguments: $args,
+                );
+
+                return json_encode($result, JSON_THROW_ON_ERROR);
+            } catch (ValidationException $e) {
+                return json_encode([
+                    'status' => 'needs_input',
+                    'missing_field' => 'validation',
+                    'message' => implode(' ', $e->validator->errors()->all()),
+                    'errors' => $e->errors(),
+                ], JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                return json_encode([
+                    'status' => 'error',
+                    'error_code' => 'AI_DOMAIN_EXECUTION_FAILURE',
+                    'message' => 'Could not generate purchase order proposal: ' . $e->getMessage(),
+                ], JSON_THROW_ON_ERROR);
+            }
+        }
+
         $context = new CompanyContext(
             $this->principal->companyId,
             $this->principal->branchId,
@@ -131,7 +161,7 @@ final class PreparePurchaseOrder implements Tool
             context: $context,
             mode: 'company',
             taskId: !empty($args['task_id']) ? (string) $args['task_id'] : null,
-            threadId: $this->principal->requestId ?? null,
+            threadId: $this->principal->threadId,
         );
 
         $actionKey = 'purchase_order.create.v1';
@@ -141,10 +171,9 @@ final class PreparePurchaseOrder implements Tool
         $taskId = !empty($args['task_id']) ? (string) $args['task_id'] : null;
         $task = null;
         if ($taskId) {
-            try {
-                $task = $this->taskState->getTask($this->principal, $taskId);
-            } catch (Throwable) {
-                $task = null;
+            $task = $this->taskState->getTask($this->principal, $taskId);
+            if ($task['action_key'] !== $actionKey || ($this->principal->threadId !== null && $task['thread_id'] !== $this->principal->threadId)) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('Workflow task does not belong to this operation and thread.');
             }
         }
 
@@ -189,7 +218,7 @@ final class PreparePurchaseOrder implements Tool
                 $this->principal,
                 $actionKey,
                 $validatedSlots,
-                $this->principal->requestId ?? null,
+                $this->principal->threadId,
             );
 
             // Link proposal to workflow task

@@ -1,0 +1,61 @@
+.ai-optical-panel {
+    margin: 0.5rem 0 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--neo-surface);
+    border: 1px solid var(--neo-border);
+    border-radius: 6px;
+}
+
+.ai-optical-panel-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.ai-optical-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--z-ink);
+    font-size: 0.875rem;
+}
+
+.ai-optical-controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+}
+
+.ai-optical-paste-box {
+    width: 100%;
+    min-height: 76px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8rem;
+    background: var(--neo-bg);
+    color: var(--z-ink);
+    border: 1px solid var(--neo-border);
+    border-radius: 4px;
+    padding: 0.45rem 0.6rem;
+}
+
+.ai-optical-preview-table {
+    margin-top: 0.5rem;
+}
+
+.ai-optical-sign-plus {
+    color: var(--z-primary);
+    font-weight: 600;
+}
+
+.ai-optical-sign-minus {
+    color: var(--z-ink);
+    font-weight: 600;
+}
+
+.ai-optical-actions-row {
+    gap: 0.4rem;
+}

@@ -38,6 +38,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for purchase order preview.');
         }
 
+        \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context, $slots);
+
         $supplierId = (int) ($slots['supplier_id'] ?? 0);
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         $orderDate = !empty($slots['date']) ? (string) $slots['date'] : now()->toDateString();
@@ -153,8 +155,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             $lineTaxAmount = (float) ($pricedLine['tax'] ?? 0);
             $lineTotal = (float) ($pricedLine['total'] ?? 0);
 
-            $qtyStr = sprintf('%.2f', $qty);
-            $costStr = sprintf('%.2f', $unitCost);
+            $qtyStr = CommercialDecimal::format($qty);
+            $costStr = CommercialDecimal::format($unitCost);
             $discountStr = sprintf('%.2f', $lineDiscount);
             $taxRateStr = sprintf('%.2f', $lineTaxRate);
             $taxAmountStr = sprintf('%.2f', $lineTaxAmount);
@@ -168,7 +170,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_rate' => $taxRateStr,
                 'purchase_unit_id' => (int) ($pricedLine['purchase_unit_id'] ?? $pricingItems[$index]['purchase_unit_id']),
                 'note' => isset($rawItems[$index]['note']) ? (string) $rawItems[$index]['note'] : null,
-            ];
+            ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
             if (isset($pricingItems[$index]['tax_rate_override'])) {
                 $normalizedLine['tax_rate_override'] = $pricingItems[$index]['tax_rate_override'];
             }
@@ -184,7 +186,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_rate' => $taxRateStr,
                 'tax_amount' => $taxAmountStr,
                 'line_total' => $lineTotalStr,
-            ];
+            ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
             if (!empty($pricedLine['_tax_snapshot'])) {
                 $previewLine['tax_breakdown'] = [
                     'cgst' => sprintf('%.2f', (float) ($pricedLine['_tax_snapshot']['cgst'] ?? 0)),
@@ -232,8 +234,8 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
 
             $lineTotals[] = [
                 'product_id' => (int) $pItem['product_id'],
-                'qty' => sprintf('%.2f', (float) $pItem['qty']),
-                'net_unit_cost' => sprintf('%.2f', (float) ($pItem['net_unit_cost'] ?? 0)),
+                'qty' => CommercialDecimal::format((float) $pItem['qty']),
+                'net_unit_cost' => CommercialDecimal::format((float) ($pItem['net_unit_cost'] ?? 0)),
                 'tax_amount' => sprintf('%.2f', (float) ($pItem['tax'] ?? 0)),
                 'line_total' => sprintf('%.2f', (float) ($pItem['total'] ?? 0)),
             ];
@@ -287,6 +289,12 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ],
         ];
 
+        if (isset($slots['payment_terms_type'])) {
+            $terms = \App\Services\Commercial\CommercialApplicationService::purchaseOrderTerms($slots, $orderDate);
+            $normalizedPayload = array_replace($normalizedPayload, $terms);
+            $previewData['payment_terms'] = $terms;
+        }
+
         $sourceStateHash = self::computeSourceStateHash(
             $context,
             $supplierId,
@@ -315,7 +323,7 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
         $supplier = DB::table('suppliers')
             ->where('company_id', $context->companyId)
             ->where('id', $supplierId)
-            ->select(['id', 'is_active', 'vat_number', 'state', 'updated_at'])
+            ->select(['id', 'is_active', 'vat_number', 'state', 'credit_days', 'purchase_defaults', 'updated_at'])
             ->first();
 
         $partyTaxProfile = DB::table('party_tax_profiles')
@@ -345,6 +353,11 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             ->get();
 
         $legacyTaxIds = $products->pluck('tax_id')->filter()->unique()->values()->all();
+        // ponytail: conservatively invalidate on any company unit change; narrow to a dependency graph if unit catalogs become large.
+        $units = DB::table('units')->where('company_id', $context->companyId)->orderBy('id')
+            ->get(['id', 'unit_code', 'unit_name', 'base_unit', 'operator', 'operation_value', 'is_active', 'updated_at']);
+        $conversions = DB::table('product_uom_conversions')->where('company_id', $context->companyId)
+            ->whereIn('product_id', $productIds)->orderBy('id')->get();
         $legacyTaxes = !empty($legacyTaxIds)
             ? DB::table('taxes')
                 ->whereIn('id', $legacyTaxIds)
@@ -386,10 +399,15 @@ final class PurchaseOrderPreviewAdapter implements ActionPreviewAdapterInterface
             'party_tax_profile' => $partyTaxProfile ? (array) $partyTaxProfile : null,
             'warehouse' => $warehouse ? (array) $warehouse : null,
             'products' => $products->map(fn($p) => (array) $p)->all(),
+            'units' => $units->map(fn ($unit) => (array) $unit)->all(),
+            'uom_conversions' => $conversions->map(fn ($conversion) => (array) $conversion)->all(),
             'legacy_taxes' => $legacyTaxes->map(fn($t) => (array) $t)->all(),
             'tax_categories' => $taxCategories->map(fn($c) => (array) $c)->all(),
             'tax_rates' => $taxRates->map(fn($r) => (array) $r)->all(),
             'tax_registrations' => $taxRegistrations->map(fn($r) => (array) $r)->all(),
+            'industry_setting' => \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
+                ? (array) DB::table('company_industry_settings')->where('company_id', $context->companyId)->first(['profile_key', 'subtype', 'updated_at'])
+                : null,
         ];
 
         return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));

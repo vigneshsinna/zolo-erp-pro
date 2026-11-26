@@ -19,8 +19,14 @@ final class ActionProposalService
 {
     public function __construct(private readonly ActionSecurity $security) {}
 
-    public function create(AiPrincipal $principal, string $key, array $slots, ?string $threadId = null): array
-    {
+    public function create(
+        AiPrincipal $principal,
+        string $key,
+        array $slots,
+        ?string $threadId = null,
+        string $sourceChannel = 'internal',
+        ?string $sourceClientBindingId = null,
+    ): array {
         $definition = $this->security->definition($key, $principal);
         $validated = $this->security->validate($definition, $slots);
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
@@ -36,7 +42,7 @@ final class ActionProposalService
         }
 
         $id = (string) Str::uuid();
-        DB::table('ai_action_proposals')->insert([
+        $row = [
             'id' => $id,
             'actor_id' => $principal->actorId,
             'company_id' => $principal->companyId,
@@ -56,7 +62,14 @@ final class ActionProposalService
             'expires_at' => $now->copy()->addMinutes((int) config('ai_actions.proposal_ttl_minutes', 30)),
             'created_at' => $now,
             'updated_at' => $now,
-        ]);
+        ];
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ai_action_proposals', 'source_channel')) {
+            $row['source_channel'] = $sourceChannel;
+            $row['source_client_binding_id'] = $sourceClientBindingId;
+        }
+
+        DB::table('ai_action_proposals')->insert($row);
 
         return $this->getOwned($principal, $id);
     }
@@ -70,6 +83,7 @@ final class ActionProposalService
         string $id,
         array $changes,
         int $expectedVersion,
+        bool $reuseUnchanged = false,
     ): array {
         $old = $this->getOwned($principal, $id);
         if ((int) $old['version'] !== $expectedVersion || !in_array($old['status'], ['pending', 'approved'], true)) {
@@ -78,8 +92,19 @@ final class ActionProposalService
 
         $definition = $this->security->definition($old['action_key'], $principal);
         $base = json_decode($old['payload_json'], true, flags: JSON_THROW_ON_ERROR);
-        $validated = $this->security->validate($definition, array_replace($base, $changes));
+        $input = array_replace($base, $changes);
+        if ($old['action_key'] === 'purchase_order.create.v1'
+            && array_intersect(array_keys($changes), ['payment_terms_type', 'credit_days', 'date']) !== []
+            && !array_key_exists('due_date', $changes)) {
+            unset($input['due_date']);
+        }
+        $validated = $this->security->validate($definition, $input);
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
+        if ($reuseUnchanged && $old['expires_at'] > now('UTC')->toDateTimeString()
+            && hash_equals($old['payload_hash'], CanonicalActionPayload::hash($preview->payload))
+            && hash_equals($old['source_state_hash'], $preview->sourceStateHash)) {
+            return $old;
+        }
         $updated = DB::table('ai_action_proposals')
             ->where('id', $id)
             ->where('actor_id', $principal->actorId)

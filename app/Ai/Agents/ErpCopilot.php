@@ -29,6 +29,7 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
         protected readonly ?Closure $budgetStep = null,
         protected readonly array $activeEntities = [],
         protected readonly array $normalizedMediaContext = [],
+        protected readonly bool $readToolsOnly = false,
     ) {
     }
 
@@ -207,7 +208,14 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
      */
     public function tools(): iterable
     {
+        if (config('ai_capabilities.shared_discovery_enabled', false)) {
+            return $this->toolsFromSharedCatalog();
+        }
+
         $tools = app(AiToolManifest::class)->sdkTools($this->principal);
+        if ($this->readToolsOnly) {
+            return $tools;
+        }
         if (
             config('ai_actions.foundation_enabled', false) && array_intersect(
                 $this->principal->permittedToolNames,
@@ -273,6 +281,58 @@ class ErpCopilot implements Agent, Conversational, HasMiddleware, HasTools
         if (config('ai_actions.foundation_enabled', false) && ($this->principal->hasTool('setup.opening_stock.create.v1')
             || $this->principal->hasTool('setup.opening_balance.create.v1'))) {
             $tools[] = new \App\Ai\Imports\PrepareOpeningImport($this->principal);
+        }
+
+        return $tools;
+    }
+
+    /**
+     * Derive SDK tools from the shared policy-filtered capability catalog while
+     * preserving compatibility aliases and bounded tool counts.
+     *
+     * @return list<\Laravel\Ai\Contracts\Tool>
+     */
+    private function toolsFromSharedCatalog(): array
+    {
+        $policy = app(\App\Ai\Capabilities\CapabilityExposurePolicy::class);
+        $limit = max(1, (int) config('ai_capabilities.max_sdk_tools', 25));
+        $eligible = $policy->discover($this->principal, 'sdk', limit: $limit);
+
+        $tools = [];
+        $hasPrepareTools = false;
+        $dispatcher = app(\App\Ai\Capabilities\CapabilityDispatcher::class);
+        $manifest = app(AiToolManifest::class);
+
+        foreach ($eligible as $descriptor) {
+            if ($descriptor->operation === 'read') {
+                $tools[] = $manifest->sdkTool($descriptor->capabilityKey, $this->principal);
+                continue;
+            }
+
+            if ($descriptor->operation === 'prepare') {
+                $hasPrepareTools = true;
+                $legacyClass = $descriptor->compatibilityLegacyTool;
+                if ($legacyClass !== null && class_exists($legacyClass)) {
+                    $tools[] = app($legacyClass, ['principal' => $this->principal]);
+                } else {
+                    $tools[] = new \App\Ai\Tools\GenericPrepareSdkTool($this->principal, $descriptor, $dispatcher);
+                }
+            }
+        }
+
+        if (!$this->readToolsOnly && $hasPrepareTools) {
+            $tools[] = new \App\Ai\Tools\PrepareAction($this->principal);
+        }
+
+        if (!$this->readToolsOnly && config('ai_actions.foundation_enabled', false)) {
+            if ($this->principal->hasTool('setup.products.import.v1')) {
+                $tools[] = app(\App\Ai\Tools\SimulateProductImport::class, ['principal' => $this->principal]);
+                $tools[] = app(\App\Ai\Tools\PrepareProductImport::class, ['principal' => $this->principal]);
+            }
+            if ($this->principal->hasTool('setup.opening_stock.create.v1')
+                || $this->principal->hasTool('setup.opening_balance.create.v1')) {
+                $tools[] = new \App\Ai\Imports\PrepareOpeningImport($this->principal);
+            }
         }
 
         return $tools;

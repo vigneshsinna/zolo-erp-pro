@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "definitions": [
+    {
+      "id": "policy.opticals.exact_power_identity.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-inventory",
+      "profiles": ["opticals"],
+      "summary": "Never substitute lens powers or signs (-2.00 vs +2.00 vs -2.25); require exact canonical spec match",
+      "source_refs": ["app/Models/Product.php"],
+      "enforcer_ref": "app/Services/Optical/OpticalSpecNormalizer.php"
+    },
+    {
+      "id": "policy.opticals.uom_conversion.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-inventory",
+      "profiles": ["opticals"],
+      "summary": "PCS, PRS, and BOX conversions require explicit per-product factors; fail closed if unconfigured",
+      "source_refs": ["app/Services/Inventory/UomConversionService.php"],
+      "enforcer_ref": "app/Services/Inventory/UomConversionService.php"
+    },
+    {
+      "id": "policy.opticals.wearer_privacy.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "security",
+      "profiles": ["opticals"],
+      "summary": "End-wearer personal details are optional on B2B invoices and redacted from default MCP/telemetry outputs",
+      "source_refs": ["app/Ai/Knowledge/ScopedBusinessFactReader.php"],
+      "enforcer_ref": "app/Ai/Knowledge/ScopedBusinessFactReader.php"
+    },
+    {
+      "id": "policy.opticals.cross_store_tax.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "finance-domain",
+      "profiles": ["opticals"],
+      "summary": "Inter-store transfers across distinct GST registrations cannot post as simple internal stock transfers",
+      "source_refs": ["app/Services/Tax/TaxDeterminationService.php"],
+      "enforcer_ref": "app/Services/Optical/OpticalTransferPolicyService.php"
+    },
+    {
+      "id": "policy.opticals.no_clinical_inference.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-lab",
+      "profiles": ["opticals"],
+      "summary": "AI must never recommend, transpose, or fabricate clinical prescriptions, axes, or lens powers",
+      "source_refs": ["app/Ai/Knowledge/IndustryContextResolver.php"],
+      "enforcer_ref": "app/Services/Optical/OpticalSpecNormalizer.php"
+    }
+  ]
+}

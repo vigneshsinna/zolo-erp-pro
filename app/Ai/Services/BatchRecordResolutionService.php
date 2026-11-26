@@ -146,10 +146,14 @@ final class BatchRecordResolutionService
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         if ($warehouseId > 0) {
             $warehouse = Warehouse::where('company_id', $context->companyId)
-                ->where('is_active', true)
                 ->find($warehouseId);
 
             if ($warehouse) {
+                if (!$warehouse->is_active) {
+                    $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse '{$warehouse->name}' is inactive.");
+                    return;
+                }
+
                 if ($context->branchId && $warehouse->branch_id && (int) $warehouse->branch_id !== (int) $context->branchId) {
                     $result->setNone('warehouse_id', (string) $warehouseId, "Selected warehouse '{$warehouse->name}' belongs to a different branch.");
                     return;
@@ -159,16 +163,9 @@ final class BatchRecordResolutionService
                 return;
             }
 
-            $inactiveOrMissing = Warehouse::where('company_id', $context->companyId)->find($warehouseId);
-            if ($inactiveOrMissing && !$inactiveOrMissing->is_active) {
-                $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse '{$inactiveOrMissing->name}' is inactive.");
-                return;
-            }
-
             $result->setNone('warehouse_id', (string) $warehouseId, "Warehouse ID {$warehouseId} not found under current company.");
             return;
         }
-
         $query = isset($slots['warehouse_query']) ? trim((string) $slots['warehouse_query']) : null;
         $res = $this->resolver->resolveWarehouse($context, $query);
 
@@ -201,10 +198,19 @@ final class BatchRecordResolutionService
         $rawItems = (array) ($slots['items'] ?? []);
         $isSale = isset($slots['customer_id']) || isset($slots['customer_query']);
         $mode = $isSale ? 'sale' : 'purchase';
+        $isOptical = config('ai_business_knowledge.opticals_enabled', false)
+            && app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($context);
+        $warehouseId = !empty($slots['warehouse_id']) ? (int) $slots['warehouse_id'] : null;
 
         foreach ($rawItems as $index => $line) {
             $clientLineId = (string) ($line['client_line_id'] ?? "line-{$index}");
             $fieldKey = "items[{$clientLineId}].product_id";
+            $opticalSpec = is_array($line['optical_spec'] ?? null) ? $line['optical_spec'] : [];
+            foreach (['sph', 'cyl', 'axis', 'addition', 'base', 'dia', 'lr'] as $optField) {
+                if (isset($line[$optField]) && $line[$optField] !== null && $line[$optField] !== '') {
+                    $opticalSpec[$optField] = $line[$optField];
+                }
+            }
 
             $productId = (int) ($line['product_id'] ?? 0);
             if ($productId > 0) {
@@ -213,6 +219,13 @@ final class BatchRecordResolutionService
                     ->find($productId);
 
                 if ($product) {
+                    if ($isOptical && $opticalSpec !== []) {
+                        $optCheck = $this->resolver->resolveOpticalProduct($context, (string) $product->code, $opticalSpec, $warehouseId);
+                        if ($optCheck['status'] === 'candidates') {
+                            $result->setCandidates($fieldKey, $optCheck['candidates'], (string) $product->code);
+                            continue;
+                        }
+                    }
                     $result->setResolved($fieldKey, (int) $product->id, $product);
                     $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
                     continue;
@@ -220,6 +233,41 @@ final class BatchRecordResolutionService
             }
 
             $productQuery = trim((string) ($line['product_query'] ?? ''));
+            if ($isOptical && $opticalSpec !== []) {
+                $res = $this->resolver->resolveOpticalProduct($context, $productQuery, $opticalSpec, $warehouseId);
+                if ($res['status'] === 'exact' && $res['product']) {
+                    $product = $res['product'];
+                    $result->setResolved($fieldKey, (int) $product->id, $product);
+                    $this->resolveLineUnit($product, $line, $clientLineId, $result, $mode);
+                    continue;
+                }
+                if ($res['status'] === 'candidates') {
+                    $candidates = array_map(static function (array $c): array {
+                        $spec = $c['optical_spec'] ?? [];
+                        $specLabel = implode(' ', array_filter([
+                            $spec['sph'] ?? null ? 'SPH ' . $spec['sph'] : null,
+                            $spec['cyl'] ?? null ? 'CYL ' . $spec['cyl'] : null,
+                            $spec['coating'] ?? null,
+                            $spec['dia'] ?? null ? 'DIA ' . $spec['dia'] : null,
+                        ]));
+                        return [
+                            'id' => (int) $c['product_id'],
+                            'label' => trim("{$c['name']} ({$c['code']}) {$specLabel}"),
+                            'name' => $c['name'],
+                            'code' => $c['code'],
+                            'optical_spec' => $c['optical_spec'] ?? null,
+                            'diff_fields' => $c['diff_fields'] ?? [],
+                        ];
+                    }, $res['candidates']);
+                    $result->setCandidates($fieldKey, $candidates, $productQuery);
+                    continue;
+                }
+                if ($res['status'] === 'ambiguous_legacy_catalog') {
+                    $result->setNone($fieldKey, $productQuery, $res['message'] ?? 'Legacy SKU lacks canonical optical identity.');
+                    continue;
+                }
+            }
+
             if ($productQuery !== '') {
                 $res = $this->resolver->resolveProduct($context, $productQuery);
 
@@ -250,15 +298,28 @@ final class BatchRecordResolutionService
 
         if ($mode === 'sale' || isset($line['sale_unit_id'])) {
             $uomKey = "items[{$clientLineId}].sale_unit_id";
-            $unitId = $this->resolver->resolveUnit($product, $uomQuery, 'sale');
+            $unitId = (int) ($line['sale_unit_id'] ?? $this->resolver->resolveUnit($product, $uomQuery, 'sale'));
         } else {
             $uomKey = "items[{$clientLineId}].purchase_unit_id";
-            $unitId = $this->resolver->resolveUnit($product, $uomQuery, 'purchase');
+            $unitId = (int) ($line['purchase_unit_id'] ?? $this->resolver->resolveUnit($product, $uomQuery, 'purchase'));
         }
 
         if ($unitId) {
-            $unit = Unit::find($unitId);
+            $unit = Unit::where('company_id', $product->company_id)->where('is_active', true)->find($unitId);
+            $normalize = static fn ($value) => \Illuminate\Support\Str::singular(mb_strtolower(trim((string) $value)));
+            if (!$unit || ($uomQuery && !in_array($normalize($uomQuery), [$normalize($unit->unit_code), $normalize($unit->unit_name)], true))) {
+                $result->setNone($uomKey, $uomQuery, 'Select an active unit that belongs to this product company.');
+                return;
+            }
+            try {
+                app(\App\Services\Inventory\UomConversionService::class)->toBase($product, 1, $unitId);
+            } catch (\InvalidArgumentException) {
+                $result->setNone($uomKey, $uomQuery, 'This unit has no valid ERP conversion for the product.');
+                return;
+            }
             $result->setResolved($uomKey, (int) $unitId, $unit);
+        } else {
+            $result->setNone($uomKey, $uomQuery, 'Select a valid product unit.');
         }
     }
 

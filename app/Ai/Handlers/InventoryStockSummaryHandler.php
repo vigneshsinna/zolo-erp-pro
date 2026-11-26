@@ -42,10 +42,19 @@ class InventoryStockSummaryHandler implements ErpToolHandlerInterface
                     'type' => 'string',
                     'description' => 'Optional product name or code to check stock availability for a specific item.',
                 ],
+                'product_lookup' => [
+                    'type' => 'string',
+                    'enum' => ['code', 'name_or_code'],
+                    'description' => 'Resolve one product by exact SKU or by SKU/name. Ambiguous names require selection.',
+                ],
                 'warehouse_id' => [
                     'type' => 'integer',
                     'minimum' => 1,
                     'description' => 'Optional warehouse ID to scope stock availability to a specific warehouse.',
+                ],
+                'below_reorder_only' => [
+                    'type' => 'boolean',
+                    'description' => 'Use the product alert_quantity threshold for branch-scoped low-stock alerts. No model estimates.',
                 ],
                 'limit' => [
                     'type' => 'integer',
@@ -75,7 +84,9 @@ class InventoryStockSummaryHandler implements ErpToolHandlerInterface
             principal: $principal,
             productQuery: $validatedInput['product_query'] ?? null,
             warehouseId: isset($validatedInput['warehouse_id']) ? (int) $validatedInput['warehouse_id'] : null,
-            limit: (int) ($validatedInput['limit'] ?? 10)
+            limit: (int) ($validatedInput['limit'] ?? 10),
+            belowReorderOnly: (bool) ($validatedInput['below_reorder_only'] ?? false),
+            productLookup: $validatedInput['product_lookup'] ?? null,
         );
     }
 }

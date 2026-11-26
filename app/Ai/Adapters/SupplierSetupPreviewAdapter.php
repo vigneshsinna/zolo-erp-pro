@@ -57,7 +57,10 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'company_name' => $companyName !== '' ? $companyName : null,
             'phone_number' => (string) ($slots['phone_number'] ?? ''),
             'vat_number' => $vatNumber !== '' ? $vatNumber : null,
-            'state' => (string) ($slots['state'] ?? 'Tamil Nadu'),
+            'state' => (string) ($slots['state'] ?? (
+                config('ai_business_knowledge.enabled', false)
+                && config('ai_business_knowledge.semantic_enabled', false) ? '' : 'Tamil Nadu'
+            )),
             'city' => (string) ($slots['city'] ?? ''),
             'address' => (string) ($slots['address'] ?? ''),
             'email' => !empty($slots['email']) ? (string) $slots['email'] : null,
@@ -69,6 +72,10 @@ final class SupplierSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'company_name' => $companyName,
             'vat_number' => $vatNumber,
             'state' => $payload['state'],
+            'city' => $payload['city'],
+            'address' => $payload['address'],
+            'phone_number' => $payload['phone_number'],
+            'email' => $payload['email'],
             'is_existing' => $existing !== null,
         ];
 

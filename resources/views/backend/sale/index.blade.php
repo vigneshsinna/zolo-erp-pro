@@ -2472,19 +2472,19 @@
             if (p.base !== undefined && p.base !== null && p.base !== '') {
                 tr.find('.row-base').val(p.base);
                 tr.find('.optical-base-text').text(p.base);
-                tr.find('.optical-base-badge').show();
+                tr.find('.optical-base-badge').removeClass('d-none');
             } else {
                 tr.find('.row-base').val('');
-                tr.find('.optical-base-badge').hide();
+                tr.find('.optical-base-badge').addClass('d-none');
             }
 
             if (p.dia !== undefined && p.dia !== null && p.dia !== '') {
                 tr.find('.row-dia').val(p.dia);
                 tr.find('.optical-dia-text').text(p.dia);
-                tr.find('.optical-dia-badge').show();
+                tr.find('.optical-dia-badge').removeClass('d-none');
             } else {
                 tr.find('.row-dia').val('');
-                tr.find('.optical-dia-badge').hide();
+                tr.find('.optical-dia-badge').addClass('d-none');
             }
 
             if (p.addition !== undefined && p.addition !== null && p.addition !== '') {
@@ -2498,9 +2498,9 @@
             var typeName = p.type_name || p.product_type_name || p.product_type || (p.product_type_id && window.productTypeMap && window.productTypeMap[p.product_type_id]);
             if (typeName) {
                 tr.find('.optical-type-text').text(typeName);
-                tr.find('.optical-type-badge').show();
+                tr.find('.optical-type-badge').removeClass('d-none');
             } else {
-                tr.find('.optical-type-badge').hide();
+                tr.find('.optical-type-badge').addClass('d-none');
             }
         }
 

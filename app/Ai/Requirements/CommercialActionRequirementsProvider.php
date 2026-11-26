@@ -44,6 +44,16 @@ final class CommercialActionRequirementsProvider implements ActionRequirementsPr
     {
         $rules = $this->key === 'payment_reminder.send.v1' ? (new SendPaymentReminderInputSchema())->rules()
             : (str_starts_with($this->key, 'payment_') ? (new CustomerCollectionInputSchema())->rules() : (new CommercialDocumentInputSchema())->rules());
-        return array_map(fn ($messages) => $messages[0], Validator::make($resolvedInputs, $rules)->errors()->toArray());
+        $errors = array_map(fn ($messages) => $messages[0], Validator::make($resolvedInputs, $rules)->errors()->toArray());
+        if ($context->context && !str_starts_with($this->key, 'payment_')) {
+            try {
+                \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context->context, $resolvedInputs);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                foreach ($e->errors() as $field => $messages) {
+                    $errors[$field] = $messages[0] ?? 'Optical fields are not allowed for this company profile.';
+                }
+            }
+        }
+        return $errors;
     }
 }

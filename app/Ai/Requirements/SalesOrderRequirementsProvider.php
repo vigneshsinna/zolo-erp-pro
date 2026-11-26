@@ -140,8 +140,10 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                         inputControl: 'text',
                         requiredWhen: fn(): bool => false,
                     ),
+                    ...\App\Ai\Schemas\OpticalSchemaFragment::lineRequirements(),
                 ],
             ),
+            ...\App\Ai\Schemas\OpticalSchemaFragment::salesHeaderRequirements(),
             new ActionFieldRequirement(
                 fieldPath: 'order_discount',
                 label: 'Order Discount',
@@ -217,6 +219,16 @@ final class SalesOrderRequirementsProvider implements ActionRequirementsProvider
                     } elseif (isset($product->is_active) && !$product->is_active) {
                         $errors["items.{$idx}.product_id"] = "Product '{$product->name}' is inactive.";
                     }
+                }
+            }
+        }
+
+        if ($context->context) {
+            try {
+                \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context->context, $resolvedInputs);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                foreach ($e->errors() as $field => $messages) {
+                    $errors[$field] = $messages[0] ?? 'Optical fields are not allowed for this company profile.';
                 }
             }
         }

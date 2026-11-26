@@ -33,7 +33,7 @@ return new class extends Migration
                 $table->string('idempotency_key', 120)->nullable();
                 $table->string('state', 32)->default('uploaded');
                 $table->string('last_error_code', 80)->nullable();
-                $table->timestamp('expires_at');
+                $table->timestamp('expires_at')->nullable();
                 $table->timestamp('deleted_at_policy')->nullable();
                 $table->timestamps();
 

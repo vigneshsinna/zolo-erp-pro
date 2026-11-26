@@ -12,7 +12,7 @@ class DeliveryChallanItem extends Model
     protected $guarded = ['id'];
     protected $fillable = ['company_id', 'delivery_challan_id', 'product_id', 'unit_id', 'variant_id',
         'qty', 'rate', 'amount', 'tax_rate', 'tax_amount', 'total', 'remarks', 'batch_no', 'qty_base',
-        'value', 'billed_qty_base', 'returned_qty_base'];
+        'value', 'billed_qty_base', 'returned_qty_base', 'optical_spec_json'];
 
     protected $casts = [
         'variant_id' => 'integer',

@@ -27,6 +27,12 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for product setup.');
         }
 
+        foreach (['base', 'addition', 'lr', 'dia', 'product_type_id'] as $optAttr) {
+            if (!empty($slots[$optAttr]) && !app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($context)) {
+                throw ValidationException::withMessages([$optAttr => 'Optical product attributes are only permitted for companies using the Opticals profile.']);
+            }
+        }
+
         $name = trim((string) ($slots['name'] ?? ''));
         if ($name === '') {
             throw ValidationException::withMessages(['name' => 'Product name is required.']);
@@ -111,6 +117,14 @@ final class ProductSetupPreviewAdapter implements ActionPreviewAdapterInterface
             'tax_category_id' => $taxCategoryId,
             'hsn_code' => $hsnCode,
         ];
+        foreach (['base', 'addition', 'lr', 'dia'] as $optAttr) {
+            if (!empty($slots[$optAttr])) {
+                $payload[$optAttr] = (string) $slots[$optAttr];
+            }
+        }
+        if (!empty($slots['product_type_id'])) {
+            $payload['product_type_id'] = (int) $slots['product_type_id'];
+        }
 
         $taxCategoryName = $taxCategoryId ? DB::table('tax_categories')->where('id', $taxCategoryId)->value('name') : null;
 

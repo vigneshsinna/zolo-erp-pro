@@ -38,7 +38,7 @@ final class CreateGoodsReceivedNoteInputSchema implements ActionInputSchemaInter
             'expected_totals.line_totals.*.qty' => ['nullable', 'numeric'],
             'expected_totals.line_totals.*.cost' => ['nullable', 'numeric'],
             'expected_totals.line_totals.*.line_total' => ['nullable', 'numeric'],
-        ];
+        ] + OpticalSchemaFragment::lineRules();
     }
 }
 

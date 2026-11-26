@@ -1,0 +1,85 @@
+name: AI Autonomy Foundation Safety
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-autonomy-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-autonomy:
+    name: MySQL / autonomy safety and evidence
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: fixture-root-only
+          MYSQL_DATABASE: zolo_test_ai_release
+          MYSQL_USER: zolo_test
+          MYSQL_PASSWORD: fixture-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pfixture-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:dGVzdC1vbmx5LWF1ZGl0LWZpeHR1cmUta2V5LTEyMzQ=
+      ERP_TEST_MYSQL: '1'
+      ERP_TEST_MYSQL_DATABASE: zolo_test_ai_release
+      ERP_TEST_MYSQL_USER: zolo_test
+      ERP_TEST_MYSQL_PASSWORD: fixture-only
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_DATABASE: zolo_test_ai_release
+      DB_USERNAME: zolo_test
+      DB_PASSWORD: fixture-only
+      CACHE_DRIVER: array
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      AI_AUTONOMY_POLICY_MANAGEMENT_ENABLED: 'false'
+      AI_INTERNAL_EVENT_INGESTION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, zip, gd, bcmath
+          coverage: none
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Syntax and design guard
+        run: |
+          php -l app/Ai/Evaluation/AutonomyReleaseGate.php
+          php -l app/Ai/Services/AiActionReversalRequestService.php
+          php -l app/Ai/Events/AiEventInboxService.php
+          php -l app/Ai/Scheduling/AiAutomationPerformanceService.php
+          php -l app/Ai/Scheduling/AiAutomationReviewService.php
+          php -l app/Http/Controllers/Ai/AiAutomationBuilderController.php
+          php -l app/Http/Controllers/Ai/AiAutomationPerformanceController.php
+          node --check public/js/ai-automation-builder.js
+          php vendor/bin/phpunit tests/Unit/DesignTokensTest.php
+      - name: Clean database migration
+        run: php artisan migrate --force
+      - name: Focused AI autonomy regression suites
+        run: |
+          php vendor/bin/phpunit -c phpunit.ai.xml --filter 'AiOperationsPageTest|AiAutonomyPolicyTest|AiEventInboxTest|AiActionReversalRequestTest|AiAutomationBuilderAndPerformanceTest|ScheduledRulesTest'
+          php vendor/bin/phpunit tests/Unit/AiExceptionClassifierTest.php
+          php vendor/bin/phpunit tests/Unit/AutonomyExecutionPreflightTest.php
+          php vendor/bin/phpunit tests/Unit/Ai/AutonomyReleaseGateTest.php
+      - name: Document blocked autonomous posting position
+        run: php scripts/verify_ai_autonomy_release.php --output=artifacts/ai-evaluation/autonomy-release.json
+      - name: Upload immutable evidence report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-autonomy-foundation-${{ github.sha }}
+          path: artifacts/ai-evaluation/autonomy-release.json
+          retention-days: 14

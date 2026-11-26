@@ -1,0 +1,853 @@
+{
+  "schema_version": 1,
+  "definitions": [
+    {
+      "id": "entity.supplier.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Company supplier of goods or services",
+      "source_refs": [
+        "app/Models/Supplier.php"
+      ],
+      "aliases": [
+        "vendor",
+        "seller"
+      ]
+    },
+    {
+      "id": "entity.customer.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "sales",
+      "summary": "Company customer purchasing goods or services",
+      "source_refs": [
+        "app/Models/Customer.php"
+      ],
+      "aliases": [
+        "buyer",
+        "client"
+      ]
+    },
+    {
+      "id": "entity.product.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "catalog",
+      "summary": "Company stock product or service item",
+      "source_refs": [
+        "app/Models/Product.php"
+      ],
+      "aliases": [
+        "item",
+        "stock",
+        "service"
+      ]
+    },
+    {
+      "id": "entity.warehouse.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "inventory",
+      "summary": "Company or branch stock location",
+      "source_refs": [
+        "app/Models/Warehouse.php"
+      ],
+      "aliases": [
+        "godown"
+      ]
+    },
+    {
+      "id": "entity.purchase_order.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Order commitment before fulfillment",
+      "source_refs": [
+        "app/Models/Purchase.php"
+      ],
+      "aliases": [
+        "PO"
+      ]
+    },
+    {
+      "id": "entity.grn.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Goods receipt evidence",
+      "source_refs": [
+        "app/Models/GoodsReceivedNote.php"
+      ],
+      "aliases": [
+        "GRN"
+      ]
+    },
+    {
+      "id": "entity.purchase_bill.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "accounting",
+      "summary": "Supplier goods or services invoice",
+      "source_refs": [
+        "app/Models/Purchase.php"
+      ],
+      "aliases": [
+        "supplier bill"
+      ]
+    },
+    {
+      "id": "entity.job_work_order.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Own-material subcontracting order",
+      "source_refs": [
+        "app/Models/Operations/JobWorkOrder.php"
+      ],
+      "aliases": [
+        "job order"
+      ]
+    },
+    {
+      "id": "entity.job_work_dispatch.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Own-material dispatch to job worker",
+      "source_refs": [
+        "app/Models/Operations/JobWorkDispatch.php"
+      ],
+      "aliases": [
+        "job challan"
+      ]
+    },
+    {
+      "id": "entity.job_work_receipt.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Processed-material receipt and reconciliation",
+      "source_refs": [
+        "app/Models/Operations/JobWorkReceipt.php"
+      ],
+      "aliases": [
+        "job receipt"
+      ]
+    },
+    {
+      "id": "entity.processing_service_bill.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Service bill linked to a processed job-work receipt",
+      "source_refs": [
+        "app/Services/JobWork/JobWorkService.php"
+      ],
+      "aliases": [
+        "dyeing charge"
+      ]
+    },
+    {
+      "id": "relationship.po_supplier.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "purchase_order relates to supplier",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.purchase_order.v1",
+      "to": "entity.supplier.v1"
+    },
+    {
+      "id": "relationship.po_product.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "purchase_order relates to product",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.purchase_order.v1",
+      "to": "entity.product.v1"
+    },
+    {
+      "id": "relationship.po_warehouse.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "purchase_order relates to warehouse",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.purchase_order.v1",
+      "to": "entity.warehouse.v1"
+    },
+    {
+      "id": "relationship.grn_order.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "grn relates to purchase_order",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.grn.v1",
+      "to": "entity.purchase_order.v1"
+    },
+    {
+      "id": "relationship.bill_supplier.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "purchase_bill relates to supplier",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.purchase_bill.v1",
+      "to": "entity.supplier.v1"
+    },
+    {
+      "id": "relationship.bill_order.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "purchase_bill relates to purchase_order",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.purchase_bill.v1",
+      "to": "entity.purchase_order.v1"
+    },
+    {
+      "id": "relationship.dispatch_order.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "job_work_dispatch relates to job_work_order",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.job_work_dispatch.v1",
+      "to": "entity.job_work_order.v1"
+    },
+    {
+      "id": "relationship.receipt_dispatch.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "job_work_receipt relates to job_work_dispatch",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.job_work_receipt.v1",
+      "to": "entity.job_work_dispatch.v1"
+    },
+    {
+      "id": "relationship.processing_bill_receipt.v1",
+      "kind": "relationship",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "erp-platform",
+      "summary": "processing_service_bill relates to job_work_receipt",
+      "source_refs": [
+        "app/Ai/Registries/ActionRequirementsRegistry.php"
+      ],
+      "from": "entity.processing_service_bill.v1",
+      "to": "entity.job_work_receipt.v1"
+    },
+    {
+      "id": "action.setup.supplier.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Registered AI capability setup.supplier.create.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Requirements/SupplierSetupRequirementsProvider.php"
+      ],
+      "action_key": "setup.supplier.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.setup.customer.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "sales",
+      "summary": "Registered AI capability setup.customer.create.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Registries/ActionCapabilityRegistry.php"
+      ],
+      "action_key": "setup.customer.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.purchase_order.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Registered AI capability purchase_order.create.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Requirements/PurchaseOrderRequirementsProvider.php"
+      ],
+      "action_key": "purchase_order.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.grn.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Registered AI capability grn.create.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Requirements/GoodsReceivedNoteRequirementsProvider.php"
+      ],
+      "action_key": "grn.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.purchase_bill.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "accounting",
+      "summary": "Registered AI capability purchase_bill.create.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Requirements/PurchaseBillRequirementsProvider.php"
+      ],
+      "action_key": "purchase_bill.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.job_work.outward.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Registered AI capability job_work.outward.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Registries/ExtendedActionCatalog.php"
+      ],
+      "action_key": "job_work.outward.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.job_work.inward.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Registered AI capability job_work.inward.v1; this descriptor is not execution permission",
+      "source_refs": [
+        "app/Ai/Registries/ExtendedActionCatalog.php"
+      ],
+      "action_key": "job_work.inward.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "id": "process.purchase_to_pay.v1",
+      "owner": "purchasing",
+      "source_refs": [
+        "app/Services/Commercial/OrderLifecycleService.php"
+      ],
+      "summary": "Purchase order, receipt and vendor bill; direct-purchase flows may differ",
+      "steps": [
+        {
+          "id": "identify_supplier",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "prepare_po",
+          "kind": "reviewed_action",
+          "action_key": "purchase_order.create.v1",
+          "depends_on": [
+            "identify_supplier"
+          ]
+        },
+        {
+          "id": "await_delivery",
+          "kind": "external_event",
+          "depends_on": [
+            "prepare_po"
+          ]
+        },
+        {
+          "id": "receipt",
+          "kind": "reviewed_action",
+          "action_key": "grn.create.v1",
+          "depends_on": [
+            "await_delivery"
+          ]
+        },
+        {
+          "id": "bill",
+          "kind": "reviewed_action",
+          "action_key": "purchase_bill.create.v1",
+          "depends_on": [
+            "receipt"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "id": "process.job_work_outward.v1",
+      "owner": "operations",
+      "source_refs": [
+        "app/Services/JobWork/JobWorkService.php"
+      ],
+      "summary": "Our-material processing: job order, dispatch, actual approved GRN, verified receipt evidence, supplier processing bill, reconciliation; unreviewed owner signoff required",
+      "steps": [
+        {
+          "id": "job_order",
+          "kind": "reviewed_action",
+          "depends_on": [],
+          "action_key": "job_work.order.create.v1"
+        },
+        {
+          "id": "dispatch",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "job_order"
+          ],
+          "action_key": "job_work.outward.v1"
+        },
+        {
+          "id": "receipt",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "dispatch"
+          ],
+          "action_key": "job_work.inward.v1"
+        },
+        {
+          "id": "physical_return",
+          "kind": "external_event",
+          "depends_on": [
+            "receipt"
+          ]
+        },
+        {
+          "id": "service_bill",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "physical_return"
+          ],
+          "action_key": "job_work.service_bill.create.v1"
+        },
+        {
+          "id": "reconcile",
+          "kind": "read_only_validation",
+          "depends_on": [
+            "service_bill"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "id": "process.job_work_inward.v1",
+      "owner": "operations",
+      "source_refs": [
+        "app/Services/JobWork/PrincipalJobService.php"
+      ],
+      "summary": "Customer-owned processing: principal order, physical receipt, return challan and service invoice",
+      "steps": [
+        {
+          "id": "principal_job_order",
+          "kind": "reviewed_action",
+          "depends_on": [],
+          "action_key": "principal_job.order.create.v1"
+        },
+        {
+          "id": "customer_material_received",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "principal_job_order"
+          ],
+          "action_key": "principal_job.receive.create.v1"
+        },
+        {
+          "id": "customer_material_return",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "customer_material_received"
+          ],
+          "action_key": "principal_job.return.create.v1"
+        },
+        {
+          "id": "service_invoice",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "customer_material_return"
+          ],
+          "action_key": "principal_job.service_invoice.create.v1"
+        }
+      ]
+    },
+    {
+      "id": "policy.supplier_active.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Informational policy mapping: supplier_active",
+      "source_refs": [
+        "app/Ai/Requirements/PurchaseOrderRequirementsProvider.php"
+      ],
+      "enforcer_ref": "app/Ai/Requirements/PurchaseOrderRequirementsProvider.php"
+    },
+    {
+      "id": "policy.tax_determination.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Informational policy mapping: tax_determination",
+      "source_refs": [
+        "app/Services/Tax/TaxDeterminationService.php"
+      ],
+      "enforcer_ref": "app/Services/Tax/TaxDeterminationService.php"
+    },
+    {
+      "id": "policy.job_work_costing.v1",
+      "kind": "policy",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Informational policy mapping: job_work_costing",
+      "source_refs": [
+        "app/Services/JobWork/JobWorkCosting.php"
+      ],
+      "enforcer_ref": "app/Services/JobWork/JobWorkCosting.php"
+    },
+    {
+      "id": "action.purchase_bill.service.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Distinct catalog-service payable using original tax and posting services; requires business signoff and feature flag",
+      "source_refs": [
+        "app/Ai/Adapters/ServicePurchaseBillAdapter.php"
+      ],
+      "action_key": "purchase_bill.service.create.v1",
+      "approval": "explicit_per_bill"
+    },
+    {
+      "id": "process.direct_goods_bill.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "purchasing",
+      "summary": "Direct goods bill with verified supplier and available stock catalog; no PO required",
+      "source_refs": [
+        "app/Ai/Adapters/PurchaseBillPreviewAdapter.php"
+      ],
+      "steps": [
+        {
+          "id": "supplier_and_goods",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "bill",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "supplier_and_goods"
+          ],
+          "action_key": "purchase_bill.create.v1"
+        }
+      ]
+    },
+    {
+      "id": "process.service_payable.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "No-stock service catalog purchase bill with branch accounting location; pending business signoff",
+      "source_refs": [
+        "app/Ai/Adapters/ServicePurchaseBillAdapter.php"
+      ],
+      "steps": [
+        {
+          "id": "supplier_service_location",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "bill",
+          "kind": "reviewed_action",
+          "depends_on": [
+            "supplier_service_location"
+          ],
+          "action_key": "purchase_bill.service.create.v1"
+        }
+      ]
+    },
+    {
+      "id": "process.expense_payable.v1",
+      "kind": "process",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "accounting",
+      "summary": "General ledger expense-only payable without service catalog remains unsupported by AI; no dummy product",
+      "source_refs": [
+        "app/Ai/Knowledge/PurchaseDocumentClassifier.php"
+      ],
+      "steps": [
+        {
+          "id": "identify_expense",
+          "kind": "read_or_clarify",
+          "depends_on": []
+        },
+        {
+          "id": "expense_posting",
+          "kind": "unsupported_action",
+          "depends_on": [
+            "identify_expense"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "action.job_work.order.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Opt-in explicit-approval job-work action job_work.order.create.v1; requires separate domain owner signoff",
+      "source_refs": [
+        "app/Ai/Adapters/JobWorkOrderActionAdapter.php"
+      ],
+      "action_key": "job_work.order.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.job_work.service_bill.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "finance-domain",
+      "summary": "Opt-in explicit-approval job-work action job_work.service_bill.create.v1; requires separate domain owner signoff",
+      "source_refs": [
+        "app/Ai/Adapters/JobWorkServiceBillActionAdapter.php"
+      ],
+      "action_key": "job_work.service_bill.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.order.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Customer-owned job-work order action principal_job.order.create.v1",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobOrderActionAdapter.php"
+      ],
+      "action_key": "principal_job.order.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.receive.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Customer-owned material receipt action principal_job.receive.create.v1",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobReceiveActionAdapter.php"
+      ],
+      "action_key": "principal_job.receive.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.return.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Customer-owned material return action principal_job.return.create.v1",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobReturnActionAdapter.php"
+      ],
+      "action_key": "principal_job.return.create.v1",
+      "approval": "explicit_per_action"
+    },
+    {
+      "id": "action.principal_job.service_invoice.create.v1",
+      "kind": "action",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-20",
+      "owner": "operations",
+      "summary": "Opt-in explicit-approval job-work action principal_job.service_invoice.create.v1; requires separate domain owner signoff",
+      "source_refs": [
+        "app/Ai/Adapters/PrincipalJobInvoiceActionAdapter.php"
+      ],
+      "action_key": "principal_job.service_invoice.create.v1",
+      "approval": "explicit_per_action"
+    }
+  ]
+}

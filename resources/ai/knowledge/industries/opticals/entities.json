@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "definitions": [
+    {
+      "id": "entity.opticals.lens_spec.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-commercial",
+      "profiles": ["opticals"],
+      "summary": "Optical lens prescription and technical parameters (SPH, CYL, AXIS, ADD, Base, Eye, DIA, coating, index)",
+      "source_refs": ["app/Models/Product_Sale.php", "app/Models/Product.php"],
+      "aliases": ["lens power", "rx spec"]
+    },
+    {
+      "id": "entity.opticals.lens_stock_identity.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-inventory",
+      "profiles": ["opticals"],
+      "summary": "Canonical power-specific stock SKU identity distinguishing sign, cylinder, coating, index, and diameter",
+      "source_refs": ["app/Models/Product.php", "app/Services/Inventory/InventoryAvailabilityService.php"],
+      "aliases": ["power sku", "lens identity"]
+    },
+    {
+      "id": "entity.opticals.rx_job.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-lab",
+      "profiles": ["opticals"],
+      "subtypes": ["lens_manufacturing"],
+      "summary": "Custom Rx optical lab processing job with explicit QC, packing, and remake lineage",
+      "source_refs": ["app/Services/Industry/IndustryCatalog.php"],
+      "aliases": ["rx job", "lab order"]
+    },
+    {
+      "id": "entity.opticals.dealer.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-commercial",
+      "profiles": ["opticals"],
+      "summary": "B2B optical shop, clinic, or lab customer billed independently from end wearer",
+      "source_refs": ["app/Models/Customer.php"],
+      "aliases": ["optical dealer", "optician"]
+    },
+    {
+      "id": "entity.opticals.store.v1",
+      "kind": "entity",
+      "version": 1,
+      "status": "draft",
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "effective_from": "2026-11-25",
+      "owner": "optical-inventory",
+      "profiles": ["opticals"],
+      "summary": "Authorized distribution branch or stockroom warehouse mapped to explicit company/branch/GST scope",
+      "source_refs": ["app/Models/Warehouse.php", "app/Ai/Knowledge/IndustryContextResolver.php"],
+      "aliases": ["optical branch", "distribution store"]
+    }
+  ]
+}

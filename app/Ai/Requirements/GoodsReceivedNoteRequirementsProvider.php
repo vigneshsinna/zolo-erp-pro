@@ -164,6 +164,7 @@ final class GoodsReceivedNoteRequirementsProvider implements ActionRequirementsP
                         inputControl: 'text',
                         requiredWhen: fn (): bool => false,
                     ),
+                    ...\App\Ai\Schemas\OpticalSchemaFragment::lineRequirements(),
                 ],
             ),
         ];
@@ -255,6 +256,16 @@ final class GoodsReceivedNoteRequirementsProvider implements ActionRequirementsP
                             $errors["items.{$idx}.qty"] = "Received quantity ({$qty}) exceeds the remaining open delivery quantity ({$openQuantities[$productId]}) on order {$po->reference_no}.";
                         }
                     }
+                }
+            }
+        }
+
+        if ($context->context) {
+            try {
+                \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context->context, $resolvedInputs);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                foreach ($e->errors() as $field => $messages) {
+                    $errors[$field] = $messages[0] ?? 'Optical fields are not allowed for this company profile.';
                 }
             }
         }

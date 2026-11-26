@@ -33,6 +33,8 @@ final class GoodsReceivedNotePreviewAdapter implements ActionPreviewAdapterInter
             throw new \InvalidArgumentException('Mode B company context required for GRN preview.');
         }
 
+        \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context, $slots);
+
         $supplierId = (int) ($slots['supplier_id'] ?? 0);
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         $grnDate = !empty($slots['grn_date']) ? (string) $slots['grn_date'] : now()->toDateString();
@@ -138,6 +140,7 @@ final class GoodsReceivedNotePreviewAdapter implements ActionPreviewAdapterInter
             $totalQty += $qty;
             $totalCost += $lineTotal;
 
+            $optLine = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($item);
             $normalizedLines[] = [
                 'product_id' => $productId,
                 'qty' => CommercialDecimal::format($qty, 6),
@@ -146,7 +149,7 @@ final class GoodsReceivedNotePreviewAdapter implements ActionPreviewAdapterInter
                 'order_item_id' => isset($item['order_item_id']) ? (int) $item['order_item_id'] : null,
                 'batch_no' => $item['batch_no'] ?? null,
                 'remarks' => $item['remarks'] ?? null,
-            ];
+            ] + $optLine;
 
             $detailedPreviewLines[] = [
                 'line_number' => $index + 1,
@@ -158,7 +161,7 @@ final class GoodsReceivedNotePreviewAdapter implements ActionPreviewAdapterInter
                 'line_total' => CommercialDecimal::format($lineTotal),
                 'unit_id' => $unitId,
                 'batch_no' => $item['batch_no'] ?? null,
-            ];
+            ] + $optLine;
 
             $lineTotals[] = [
                 'product_id' => $productId,

@@ -17,8 +17,9 @@
             </p>
         </div>
         <div>
+            <a href="{{ route('ai.operations') }}" class="btn btn-outline-secondary btn-sm mr-2">AI Operations</a>
             <a href="{{ route('ai.workspace') }}" class="btn btn-outline-primary btn-sm">
-                <i class="dripicons-message mr-1"></i>Open AI Workspace
+                <i class="dripicons-message mr-1"></i>Open Copilot
             </a>
         </div>
     </div>
@@ -120,6 +121,9 @@
                         </span>
                         <span class="badge badge-light border text-muted mr-2">v{{ $proposal->version }}</span>
                         <span class="badge badge-info mr-2">{{ $proposal->risk_tier }}</span>
+                        @if (($proposal->source_channel ?? 'internal') === 'mcp')
+                            <span class="badge badge-secondary mr-2">MCP Draft</span>
+                        @endif
                         <small class="text-muted">ID: {{ substr($proposal->id, 0, 8) }}...</small>
                     </div>
                     <div>

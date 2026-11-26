@@ -19,7 +19,7 @@ return new class extends Migration
             $table->unsignedBigInteger('financial_year_id');
             $table->json('allowed_tools');
             $table->boolean('is_active')->default(true);
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->index(['company_id', 'actor_id']);
         });

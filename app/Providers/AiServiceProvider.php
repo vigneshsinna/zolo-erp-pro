@@ -29,6 +29,7 @@ use App\Ai\Handlers\CopilotHelpHandler;
 use App\Ai\Handlers\CustomerInvoicesHandler;
 use App\Ai\Handlers\CustomerOutstandingHandler;
 use App\Ai\Handlers\DocumentPreviewHandler;
+use App\Ai\Handlers\DuplicatePurchaseInvoiceHandler;
 use App\Ai\Handlers\FinancialStatementsHandler;
 use App\Ai\Handlers\GstSummaryHandler;
 use App\Ai\Handlers\InventoryStockSummaryHandler;
@@ -36,6 +37,8 @@ use App\Ai\Handlers\InvoiceAllocationsHandler;
 use App\Ai\Handlers\JobWorkStatusHandler;
 use App\Ai\Handlers\ManufacturingBomsHandler;
 use App\Ai\Handlers\OpenOrdersHandler;
+use App\Ai\Handlers\OpticalLensCandidatesHandler;
+use App\Ai\Handlers\OpticalPowerMatrixHandler;
 use App\Ai\Handlers\PayablesSummaryHandler;
 use App\Ai\Handlers\SalesSummaryHandler;
 use App\Ai\Services\AiAuditRecorder;
@@ -75,8 +78,11 @@ class AiServiceProvider extends ServiceProvider
                 new AiToolRegistration($app->make(JobWorkStatusHandler::class), 'jobwork_status', ['job_work.read'], operationsCapability: 'operations.job_work'),
                 new AiToolRegistration($app->make(OpenOrdersHandler::class), 'orders_open', $orderPermissions),
                 new AiToolRegistration($app->make(DocumentPreviewHandler::class), 'document_preview', $orderPermissions),
+                new AiToolRegistration($app->make(DuplicatePurchaseInvoiceHandler::class), 'duplicate_purchase_invoice', ['purchases-index']),
                 new AiToolRegistration($app->make(CompanyKnowledgeHandler::class), 'company_knowledge', []),
                 new AiToolRegistration($app->make(CopilotHelpHandler::class), 'copilot_help', []),
+                new AiToolRegistration($app->make(OpticalLensCandidatesHandler::class), 'optical_lens_candidates', ['products-index', 'warehouse-stock-report', 'product-report']),
+                new AiToolRegistration($app->make(OpticalPowerMatrixHandler::class), 'optical_power_matrix', ['products-index', 'warehouse-stock-report', 'product-report']),
             ] as $registration) {
                 $manifest->register($registration);
             }
@@ -143,6 +149,25 @@ class AiServiceProvider extends ServiceProvider
         });
         $this->app->singleton(\App\Ai\Registries\SetupCapabilityRegistry::class);
         $this->app->singleton(\App\Ai\Services\ActionApprovalSignature::class);
+
+        // Unified Shared Capability Discovery & Governed Proposal Dispatch
+        $this->app->singleton(\App\Ai\Capabilities\CapabilitySchemaCompiler::class);
+        $this->app->singleton(\App\Ai\Capabilities\CapabilityIntegrityValidator::class);
+        $this->app->singleton(\App\Ai\Capabilities\CapabilityCatalog::class, function ($app) {
+            return new \App\Ai\Capabilities\CapabilityCatalog(
+                $app->make(AiToolManifest::class),
+                $app->make(\App\Ai\Registries\ActionCapabilityRegistry::class),
+                $app->make(\App\Ai\Registries\ActionRequirementsRegistry::class),
+                $app->make(\App\Ai\Capabilities\CapabilitySchemaCompiler::class),
+                $app->make(\App\Ai\Capabilities\CapabilityIntegrityValidator::class),
+                $app->make(\App\Ai\Knowledge\BusinessKnowledgeRegistry::class),
+            );
+        });
+        $this->app->scoped(\App\Ai\Capabilities\CapabilityExposurePolicy::class);
+        $this->app->scoped(\App\Ai\Capabilities\ProposalStatusReader::class);
+        $this->app->scoped(\App\Ai\Capabilities\CapabilityDispatcher::class);
+        $this->app->scoped(\App\Ai\Infrastructure\McpPreparationDeduplicator::class);
+        $this->app->singleton(\App\Ai\Infrastructure\McpClientBindingService::class);
 
         // Phase 2.3 Multimodal Perception Bindings
         $this->app->bind(PdfRasterizerInterface::class, DefaultPdfRasterizer::class);

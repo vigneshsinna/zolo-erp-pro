@@ -123,8 +123,27 @@ final class AiWorkflowTaskController extends Controller
         $batchResult = $this->batchResolver->resolveAll($taskContext, $slots);
         $evaluation = $this->evaluator->evaluate($provider, $taskContext, $slots, $batchResult);
 
+        $proposal = null;
+        if ($task['linked_proposal_id']) {
+            $owned = $this->proposalService->getOwned($principal, $task['linked_proposal_id']);
+            $proposal = array_intersect_key($owned, array_flip(['id', 'version', 'status', 'expires_at']));
+        }
+        $dependentMaster = null;
+        $masters = json_decode($task['dependent_masters_json'] ?? '{}', true);
+        $pendingMasters = array_filter($masters, fn ($master) => in_array($master['status'] ?? '', ['conversation_collecting', 'proposal_prepared'], true));
+        if (config('erp_ai.conversation_enabled', false) && count($pendingMasters) === 1) {
+            $field = array_key_first($pendingMasters);
+            $dependentMaster = ['field' => $field] + $pendingMasters[$field];
+            if (!empty($dependentMaster['proposal_id'])) {
+                $masterProposal = $this->proposalService->getOwned($principal, $dependentMaster['proposal_id']);
+                $dependentMaster['proposal'] = array_intersect_key($masterProposal, array_flip(['id', 'version', 'status']));
+                $dependentMaster['proposal']['preview'] = json_decode($masterProposal['preview_json'], true);
+            }
+        }
         return response()->json([
             'task' => $this->formatTaskResponse($task),
+            'proposal' => $proposal,
+            'dependent_master' => $dependentMaster,
             'evaluation' => [
                 'is_ready' => $evaluation->isReady(),
                 'confirmed_fields' => $evaluation->confirmedFields,
@@ -187,71 +206,51 @@ final class AiWorkflowTaskController extends Controller
         $this->assertFoundationEnabled();
         $principal = $this->resolvePrincipal($request);
 
-        $task = $this->taskState->getTask($principal, $id);
-        $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
+        return DB::transaction(function () use ($principal, $id): JsonResponse {
+            DB::table('ai_workflow_tasks')->where('company_id', $principal->companyId)->where('branch_id', $principal->branchId)
+                ->where('financial_year_id', $principal->financialYearId)->where('actor_id', $principal->actorId)->where('id', $id)->lockForUpdate()->first();
+            $task = $this->taskState->getTask($principal, $id);
+            $context = new CompanyContext($principal->companyId, $principal->branchId, $principal->financialYearId);
 
-        $taskContext = new WorkflowTaskContext(
-            principal: $principal,
-            context: $context,
-            mode: (string) $task['mode'],
-            taskId: $id,
-            threadId: $task['thread_id'],
-        );
+            $taskContext = new WorkflowTaskContext(
+                principal: $principal,
+                context: $context,
+                mode: (string) $task['mode'],
+                taskId: $id,
+                threadId: $task['thread_id'],
+            );
 
-        $actionKey = (string) $task['action_key'];
-        $provider = $this->requirementsRegistry->get($actionKey);
-        $slots = json_decode((string) $task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+            $actionKey = (string) $task['action_key'];
+            $provider = $this->requirementsRegistry->get($actionKey);
+            $slots = json_decode((string) $task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
 
-        $batchResult = $this->batchResolver->resolveAll($taskContext, $slots);
-        $evaluation = $this->evaluator->evaluate($provider, $taskContext, $slots, $batchResult);
+            $batchResult = $this->batchResolver->resolveAll($taskContext, $slots);
+            $evaluation = $this->evaluator->evaluate($provider, $taskContext, $slots, $batchResult);
 
-        if (!$evaluation->isReady()) {
-            return response()->json([
-                'status' => 'needs_input',
-                'message' => 'Cannot prepare proposal; task has unresolved blockers.',
-                'clarification' => $this->clarificationBuilder->build($task, $evaluation),
-            ], 422);
-        }
-
-        $proposalId = $task['linked_proposal_id'] ?? $task['proposal_id'] ?? null;
-        if (!empty($proposalId)) {
-            $existingProposal = DB::table('ai_action_proposals')
-                ->where('id', $proposalId)
-                ->where('company_id', $principal->companyId)
-                ->where('branch_id', $principal->branchId)
-                ->where('financial_year_id', $principal->financialYearId)
-                ->first();
-
-            if ($existingProposal && in_array($existingProposal->status, ['pending', 'approved'], true)) {
-                $proposal = $this->proposalService->applyChangeRequest(
-                    principal: $principal,
-                    id: (string) $proposalId,
-                    changes: $evaluation->validatedSlots,
-                    expectedVersion: (int) $existingProposal->version,
-                );
-
+            if (!$evaluation->isReady()) {
                 return response()->json([
-                    'status' => 'proposal_created',
-                    'proposal' => $proposal,
-                    'task_id' => $id,
-                ], 200);
+                    'status' => 'needs_input',
+                    'message' => 'Cannot prepare proposal; task has unresolved blockers.',
+                    'clarification' => $this->clarificationBuilder->build($task, $evaluation),
+                ], 422);
             }
-        }
 
-        $proposal = $this->proposalService->create(
-            principal: $principal,
-            key: $actionKey,
-            slots: $evaluation->validatedSlots,
-            threadId: $task['thread_id'],
-        );
+            $prepared = $this->correctionService->prepareProposal($principal, $task, $evaluation);
+            $proposal = $this->proposalService->getOwned($principal, $prepared['proposal_id']);
+            $preview = json_decode((string) ($proposal['preview_json'] ?? '{}'), true) ?? [];
 
-        $this->taskState->linkProposal($id, (string) $proposal['id']);
-
-        return response()->json([
-            'status' => 'proposal_created',
-            'proposal' => $proposal,
-            'task_id' => $id,
-        ], 201);
+            return response()->json([
+                'status' => 'proposal_created',
+                'proposal' => array_merge($proposal, [
+                    'proposal_id' => (string) $proposal['id'],
+                    'preview' => $preview,
+                ]),
+                'action_key' => $actionKey,
+                'task_id' => $id,
+                'task_revision' => (int) $task['revision'],
+                'task' => $this->formatTaskResponse($this->taskState->getTask($principal, $id)),
+            ], empty($task['linked_proposal_id']) ? 201 : 200);
+        }, 3);
     }
 
     /**
@@ -356,6 +355,27 @@ final class AiWorkflowTaskController extends Controller
             $validated['master_proposal_id'],
             (int) ($validated['expected_version'] ?? 1)
         );
+
+        if (config('erp_ai.conversation_enabled', false) && $result['status'] === 'resumed') {
+            try {
+                $result['workflow'] = DB::transaction(function () use ($principal, $id, $taskContext): array {
+                    DB::table('ai_workflow_tasks')->where('company_id', $principal->companyId)->where('branch_id', $principal->branchId)
+                        ->where('financial_year_id', $principal->financialYearId)->where('actor_id', $principal->actorId)
+                        ->where('id', $id)->lockForUpdate()->firstOrFail();
+                    $task = $this->taskState->getTask($principal, $id);
+                    $slots = json_decode($task['slots_json'], true, flags: JSON_THROW_ON_ERROR);
+                    $batch = $this->batchResolver->resolveAll($taskContext, $slots);
+                    $evaluation = $this->evaluator->evaluate($this->requirementsRegistry->get($task['action_key']), $taskContext, $slots, $batch);
+                    return $evaluation->isReady()
+                        ? $this->correctionService->prepareProposal($principal, $task, $evaluation)
+                        : $this->clarificationBuilder->build($task, $evaluation);
+                });
+            } catch (\Throwable $error) {
+                $result['status'] = 'master_created_parent_pending';
+                $result['error_code'] = 'PARENT_PREVIEW_REQUIRED';
+                $result['message'] = 'The master was created. Review the parent draft before preparing its order proposal.';
+            }
+        }
 
         return response()->json($result);
     }

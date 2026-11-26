@@ -31,6 +31,7 @@ final readonly class AiPrincipal
         public ?string $effectiveRole = null,
         public ?int $tenantBoundaryId = null,
         public bool $isActive = true,
+        public ?string $threadId = null,
     ) {}
 
     /**

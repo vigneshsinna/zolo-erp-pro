@@ -33,7 +33,9 @@ class ReadInventoryStockSummary
         AiPrincipal $principal,
         ?string $productQuery = null,
         ?int $warehouseId = null,
-        int $limit = 10
+        int $limit = 10,
+        bool $belowReorderOnly = false,
+        ?string $productLookup = null,
     ): ErpToolResult {
         $limit = max(1, min(50, $limit));
         $companyId = $principal->companyId;
@@ -79,10 +81,39 @@ class ReadInventoryStockSummary
 
         if ($productQuery !== null && trim($productQuery) !== '') {
             $term = trim($productQuery);
-            $productsQuery->where(function ($q) use ($term) {
-                $q->where('name', 'like', "%{$term}%")
-                  ->orWhere('code', 'like', "%{$term}%");
-            });
+            if ($productLookup === null) {
+                $productsQuery->where(function ($q) use ($term) {
+                    $q->where('name', 'like', "%{$term}%")
+                      ->orWhere('code', 'like', "%{$term}%");
+                });
+            } else {
+                $matches = (clone $productsQuery)->where('code', $term)->orderBy('id')->limit(6)->get(['id', 'name', 'code']);
+                if ($matches->isEmpty() && $productLookup === 'name_or_code') {
+                    $nameQuery = (clone $productsQuery)->orderBy('id')->limit(6);
+                    $matches = (clone $nameQuery)->where('name', $term)->get(['id', 'name', 'code']);
+                    if ($matches->isEmpty()) {
+                        foreach (preg_split('/\s+/u', $term) as $word) {
+                            $escaped = addcslashes($word, '\\%_');
+                            $nameQuery->where('name', 'like', "%{$escaped}%");
+                        }
+                        $matches = $nameQuery->get(['id', 'name', 'code']);
+                    }
+                }
+
+                if ($matches->count() !== 1) {
+                    return ErpToolResult::ok(
+                        toolKey: 'inventory.stock_summary.v1',
+                        scope: ['company_id' => $companyId, 'branch_id' => $principal->branchId, 'financial_year_id' => $principal->financialYearId],
+                        data: ['product_lookup_status' => $matches->isEmpty() ? 'not_found' : 'ambiguous'],
+                        warnings: [$matches->isEmpty()
+                            ? "No active inventory product matched “{$term}”. Check the product name or SKU."
+                            : 'Several inventory products match. Enter an exact SKU: '.$matches->take(5)
+                                ->map(fn (Product $product) => "{$product->name} ({$product->code})")->implode(', ').'.'],
+                        rowCount: 0,
+                    );
+                }
+                $productsQuery->whereKey($matches->first()->id);
+            }
         }
 
         $context = new CompanyContext($companyId, $principal->branchId, $principal->financialYearId);
@@ -94,9 +125,10 @@ class ReadInventoryStockSummary
         $currency = Currency::find($company->base_currency_id)?->code ?? 'INR';
 
         $totals = ['tracked' => 0, 'in_stock' => 0, 'value' => BigDecimal::zero(), 'unreconciled' => false];
-        $units = $top = [];
+        $units = $top = $reorderAlerts = [];
+        $reorderCount = 0;
         $productsQuery->with(['unit' => fn ($q) => $q->where('company_id', $companyId)])
-            ->chunkById(250, function ($products) use ($context, $warehouseIds, $canSeeCost, $valuation, $limit, &$totals, &$units, &$top): void {
+            ->chunkById(250, function ($products) use ($context, $warehouseIds, $canSeeCost, $valuation, $limit, $belowReorderOnly, &$reorderAlerts, &$reorderCount, &$totals, &$units, &$top): void {
                 $stock = $this->availabilityService->forCatalogBatch($context, $products, $warehouseIds);
                 foreach ($products as $product) {
                     $balance = $stock[$product->id] ?? [];
@@ -126,6 +158,30 @@ class ReadInventoryStockSummary
                             $unitCost = $onHand > 0 ? $value->dividedBy(LedgerAmount::decimal($onHand), 6, RoundingMode::HalfUp) : null;
                         }
                         $totals['value'] = $totals['value']->plus($value);
+                    }
+
+                    // alert_quantity is the existing product reorder threshold.
+                    // Compare branch-scoped available stock in the same base unit
+                    // (raw stock quantities are stored at scale 10,000).
+                    if ($belowReorderOnly) {
+                    $threshold = (string) ($product->alert_quantity ?? '0');
+                    $availableBase = BigDecimal::of((string) $available)->dividedBy('10000', 4, RoundingMode::HalfUp);
+                    $belowThreshold = is_numeric($threshold) && (float) $threshold > 0
+                        && $availableBase->isLessThan(BigDecimal::of($threshold));
+                    if ($belowThreshold) {
+                        $reorderCount++;
+                        if (count($reorderAlerts) < $limit) {
+                            $reorderAlerts[] = [
+                                'product_id' => $product->id,
+                                'code' => $product->code,
+                                'name' => $product->name,
+                                'unit' => $unitCode,
+                                'available' => (string) $availableBase,
+                                'reorder_level' => $threshold,
+                                'shortage' => (string) BigDecimal::of($threshold)->minus($availableBase),
+                            ];
+                        }
+                    }
                     }
 
                     $top[] = [
@@ -173,13 +229,16 @@ class ReadInventoryStockSummary
                     }
                     return $unit;
                 }, array_slice($units, 0, 50))),
-                'top_products' => $top,
+                'top_products' => $belowReorderOnly ? [] : $top,
+                'below_reorder_only' => $belowReorderOnly,
+                'below_reorder_count' => $belowReorderOnly ? $reorderCount : null,
+                'below_reorder_products' => $belowReorderOnly ? $reorderAlerts : [],
             ],
             sourceRefs: in_array('warehouse-stock-report', $allowed, true) ? [route('report.warehouseStock', absolute: false)] : [],
             warnings: $warnings,
             asOf: now($company->timezone)->toDateString(),
             reconciled: !$totals['unreconciled'],
-            rowCount: count($top),
+            rowCount: $belowReorderOnly ? count($reorderAlerts) : count($top),
         );
     }
 }

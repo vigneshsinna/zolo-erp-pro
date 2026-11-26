@@ -9,9 +9,7 @@ use App\Ai\Billing\Exceptions\AiCreditException;
 use App\Ai\Billing\Services\AiTopupService;
 use App\Ai\Billing\Services\CreditAccountResolver;
 use App\Ai\Billing\Services\MonthlyCreditGrantService;
-use Carbon\Carbon;
-use InvalidArgumentException;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 final class SubscriptionAndPaymentHardeningTest extends TestCase
 {
@@ -101,8 +99,8 @@ final class SubscriptionAndPaymentHardeningTest extends TestCase
 
     public function test_multimodal_configuration_defaults_to_false_for_direct_purchase_bill(): void
     {
-        $config = require __DIR__ . '/../../../../config/ai_multimodal.php';
-        $this->assertFalse($config['allow_direct_purchase_bill']);
+        $this->assertFalse($this->withoutEnvironment('AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL',
+            fn () => (require config_path('ai_multimodal.php'))['allow_direct_purchase_bill']));
     }
 
     public function test_credits_configuration_includes_plan_catalog_and_require_subscription_flag(): void
@@ -117,6 +115,29 @@ final class SubscriptionAndPaymentHardeningTest extends TestCase
         $this->assertSame(20000, $config['plans']['pro']['included_monthly_credits']);
         $this->assertSame(5000, $config['plans']['starter']['included_monthly_credits']);
         $this->assertSame(100000, $config['plans']['enterprise']['included_monthly_credits']);
-        $this->assertSame('', $config['webhook_secret'], 'Webhook secret must not have an insecure fallback default in config.');
+        $this->assertSame('', $this->withoutEnvironment('AI_CREDITS_WEBHOOK_SECRET',
+            fn () => (require config_path('ai_credits.php'))['webhook_secret']));
+    }
+
+    private function withoutEnvironment(string $name, callable $read): mixed
+    {
+        $process = getenv($name);
+        $env = $_ENV[$name] ?? null;
+        $server = $_SERVER[$name] ?? null;
+        putenv($name);
+        unset($_ENV[$name], $_SERVER[$name]);
+        try {
+            return $read();
+        } finally {
+            if ($process !== false) {
+                putenv($name.'='.$process);
+            }
+            if ($env !== null) {
+                $_ENV[$name] = $env;
+            }
+            if ($server !== null) {
+                $_SERVER[$name] = $server;
+            }
+        }
     }
 }

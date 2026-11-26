@@ -188,8 +188,9 @@
                             data: { type: entityType, q: typed, per_page: 5 },
                             dataType: 'json'
                         }).done(function (res) {
-                            if (res && Array.isArray(res.items) && res.items.length > 0) {
-                                const match = res.items[0];
+                            const items = Array.isArray(res?.items) ? res.items : [];
+                            const match = items.find(item => item.eligible !== false);
+                            if (match) {
                                 $dupAlert.html(
                                     '<div class="alert alert-info py-2 px-3 small d-flex justify-content-between align-items-center">' +
                                     '<div><i class="dripicons-information mr-1"></i>Similar record found: <strong>' + escapeHtml(match.name || match.display) + '</strong></div>' +

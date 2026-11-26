@@ -53,6 +53,10 @@ class CommercialApplicationService
                 throw ValidationException::withMessages(['party_id' => 'Select an active party.']);
             }
             $materials = app(MaterialDocumentService::class)->sources($kind, $data, $context, $actor, $date);
+            if ($kind === 'purchase' && (int) ($data['status'] ?? 1) === 4
+                && (isset($data['payment_terms_type']) || in_array($data['paying_method'] ?? null, ['Cash', 'Credit'], true))) {
+                $data = array_replace($data, self::purchaseOrderTerms($data, $date, (int) ($party->credit_days ?? 0)));
+            }
             $quotation = null;
             if (!empty($data['quotation_id'])) {
                 $quotation = \App\Models\Quotation::forCompany($context)->whereKey($data['quotation_id'])->lockForUpdate()->firstOrFail();
@@ -174,6 +178,7 @@ class CommercialApplicationService
                 $line['stock_details_json'] = ['base_factor' => round(app(\App\Services\Inventory\UomConversionService::class)->toBase(
                     $products[$line['product_id']], (float) $line['qty'], (int) $line[$kind === 'sale' ? 'sale_unit_id' : 'purchase_unit_id']) / (float) $line['qty'], 8)] + array_intersect_key($line, array_flip([
                     'serials', 'imei_number', 'batch', 'product_batch_id', 'variant_id', 'stock_identity_id', 'dimensions', 'attributes', 'material_sources', 'order_item_id', 'lot_no', 'date',
+                    'sph', 'cyl', 'axis', 'base', 'addition', 'lr', 'dia', 'optical_spec', 'prescription_json',
                 ]));
             }
             unset($line);
@@ -321,11 +326,28 @@ class CommercialApplicationService
         return $open;
     }
 
+    public static function purchaseOrderTerms(array $data, string $date, ?int $supplierDays = null): array
+    {
+        $type = $data['payment_terms_type'] ?? strtolower((string) ($data['paying_method'] ?? ''));
+        $days = $data['credit_days'] ?? ($type === 'cash' ? 0 : $supplierDays);
+        validator(['payment_terms_type' => $type, 'credit_days' => $days], [
+            'payment_terms_type' => 'required|in:cash,credit', 'credit_days' => 'required|integer|min:0|max:3650',
+        ])->validate();
+        if ($type === 'cash' && (int) $days !== 0) {
+            throw ValidationException::withMessages(['credit_days' => 'Cash terms require zero credit days.']);
+        }
+        $due = CarbonImmutable::parse($date)->addDays((int) $days)->toDateString();
+        if (!empty($data['due_date']) && $data['due_date'] !== $due) {
+            throw ValidationException::withMessages(['due_date' => 'Due date must match the approved commercial terms.']);
+        }
+        return ['payment_terms_type' => $type, 'credit_days' => (int) $days, 'due_date' => $due];
+    }
+
     private function attributes(array $data): array
     {
         $attributes = array_intersect_key($data, array_flip(['transport_name', 'lr_number', 'lr_date', 'vehicle_number', 'bale_count', 'bundle_count', 'landed_cost_method', 'capitalise_services', 'sales_order_id', 'purchase_order_id', 'goods_receipt_no',
             'bale_no', 'no_of_bales', 'lr_no', 'station_to', 'order_no', 'credit_days', 'agent_id', 'area_id', 'job_work_receipt_id',
-            'cash_discount_percent', 'cash_discount_days', 'job_work_charge_mode', 'job_work_remarks', 'supply_type', 'lut_number', 'is_non_gst', 'bill_type',
+            'cash_discount_percent', 'cash_discount_days', 'job_work_charge_mode', 'job_work_remarks', 'supply_type', 'lut_number', 'payment_terms_type', 'is_non_gst', 'bill_type',
             'end_user_name', 'end_user_phone', 'end_user_email', 'end_user_address', 'fitting_charge', 'tinting_cost', 'customer_order_no']));
         if (isset($attributes['job_work_receipt_id'])) validator($attributes, ['job_work_receipt_id' => 'integer|min:1'])->validate();
         if (($attributes['cash_discount_percent'] ?? '') === '') unset($attributes['cash_discount_percent'], $attributes['cash_discount_days']);

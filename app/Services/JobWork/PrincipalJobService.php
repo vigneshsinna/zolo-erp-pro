@@ -31,10 +31,25 @@ class PrincipalJobService
         return DB::transaction(function () use ($data, $context, $actor) {
             \App\Models\Company::whereKey($context->companyId)->lockForUpdate()->firstOrFail();
             $next = DB::table('principal_job_orders')->where('company_id', $context->companyId)->count() + 1;
-            return DB::table('principal_job_orders')->insertGetId(['company_id' => $context->companyId, 'branch_id' => $context->branchId,
-                'customer_id' => $data['customer_id'], 'reference_no' => 'PJO-'.str_pad((string) $next, 5, '0', STR_PAD_LEFT), 'business_date' => $data['business_date'],
-                'process' => $data['process'], 'service_product_id' => $data['service_product_id'], 'rate' => $data['rate'],
-                'max_loss_percent' => $data['max_loss_percent'] ?? 0, 'notes' => $data['notes'] ?? null, 'created_by' => $actor, 'created_at' => now(), 'updated_at' => now()]);
+            $row = [
+                'company_id' => $context->companyId,
+                'branch_id' => $context->branchId,
+                'customer_id' => $data['customer_id'],
+                'reference_no' => 'PJO-'.str_pad((string) $next, 5, '0', STR_PAD_LEFT),
+                'business_date' => $data['business_date'],
+                'process' => $data['process'],
+                'service_product_id' => $data['service_product_id'],
+                'rate' => $data['rate'],
+                'max_loss_percent' => $data['max_loss_percent'] ?? 0,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $actor,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('principal_job_orders', 'financial_year_id')) {
+                $row['financial_year_id'] = $context->financialYearId;
+            }
+            return DB::table('principal_job_orders')->insertGetId($row);
         });
     }
 
@@ -105,8 +120,14 @@ class PrincipalJobService
     public function register(CompanyContext $context, int $actor): array
     {
         $this->authorize($context, $actor);
-        return DB::table('principal_job_orders as o')->join('customers as c', 'c.id', '=', 'o.customer_id')->where('o.company_id', $context->companyId)
-            ->orderByDesc('o.id')->limit(200)->get(['o.*', 'c.name as customer'])->map(fn ($order) => (array) $order + $this->balance($order->id))->all();
+        $query = DB::table('principal_job_orders as o')->join('customers as c', 'c.id', '=', 'o.customer_id')->where('o.company_id', $context->companyId);
+        if ($context->branchId) {
+            $query->where(fn ($q) => $q->where('o.branch_id', $context->branchId)->orWhereNull('o.branch_id'));
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('principal_job_orders', 'financial_year_id') && $context->financialYearId) {
+            $query->where(fn ($q) => $q->where('o.financial_year_id', $context->financialYearId)->orWhereNull('o.financial_year_id'));
+        }
+        return $query->orderByDesc('o.id')->limit(200)->get(['o.*', 'c.name as customer'])->map(fn ($order) => (array) $order + $this->balance($order->id))->all();
     }
 
     public function movements(int $orderId, CompanyContext $context, int $actor): array
@@ -118,7 +139,14 @@ class PrincipalJobService
     public function find(int $orderId, CompanyContext $context, int $actor): object
     {
         $this->authorize($context, $actor);
-        return DB::table('principal_job_orders')->where('company_id', $context->companyId)->find($orderId) ?? abort(404);
+        $query = DB::table('principal_job_orders')->where('company_id', $context->companyId);
+        if ($context->branchId) {
+            $query->where(fn ($q) => $q->where('branch_id', $context->branchId)->orWhereNull('branch_id'));
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('principal_job_orders', 'financial_year_id') && $context->financialYearId) {
+            $query->where(fn ($q) => $q->where('financial_year_id', $context->financialYearId)->orWhereNull('financial_year_id'));
+        }
+        return $query->where('id', $orderId)->first() ?? abort(404);
     }
 
     private function record(object $order, string $direction, array $data, array $lines, int $actor): void

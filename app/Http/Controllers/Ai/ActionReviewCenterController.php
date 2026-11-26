@@ -130,11 +130,18 @@ final class ActionReviewCenterController extends Controller
                     'receipt' => $receipt,
                     'reference_no' => $receipt['details']['reference_no'] ?? null,
                     'purchase_id' => $receipt['details']['purchase_id'] ?? null,
+                    'source_channel' => $row->source_channel ?? 'internal',
+                    'source_client_binding_id' => $row->source_client_binding_id ?? null,
                     'expires_at' => $row->expires_at,
                     'created_at' => $row->created_at,
                     'updated_at' => $row->updated_at,
                 ];
             });
+        }
+
+        $highlightProposalId = $request->query('proposal_id');
+        if (!is_string($highlightProposalId) || !\Illuminate\Support\Str::isUuid($highlightProposalId)) {
+            $highlightProposalId = null;
         }
 
         return view('backend.ai.action_review_center', [
@@ -144,6 +151,7 @@ final class ActionReviewCenterController extends Controller
             'statusFilter' => $statusFilter,
             'counts' => $counts,
             'proposals' => $proposals,
+            'highlightProposalId' => $highlightProposalId,
             'currencySymbol' => $currencySymbol,
             'companyId' => $context->companyId,
             'branchId' => $context->branchId,

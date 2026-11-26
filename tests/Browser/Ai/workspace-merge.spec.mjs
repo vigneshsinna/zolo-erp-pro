@@ -11,6 +11,10 @@ const requests = [], errors = [];
 let mode = 'enabled', rejectChat = false;
 const threadId = '11111111-1111-4111-8111-111111111111';
 const mediaId = '22222222-2222-4222-8222-222222222222';
+const supplierProposalId = '44444444-4444-4444-8444-444444444444';
+const supplierTaskId = '55555555-5555-4555-8555-555555555555';
+const supplierPhotoId = '66666666-6666-4666-8666-666666666666';
+const supplierVoiceId = '77777777-7777-4777-8777-777777777777';
 const pdfUrl = '/ai/documents/purchase/42/pdf';
 const proposal = {
     proposal_id: 'proposal-fixture', version: 1, document_type: 'Purchase Order', supplier: {name: 'Optical Supplier'},
@@ -25,16 +29,41 @@ await context.route('**/*', async route => {
         return route.fulfill({contentType: 'text/html', body: html});
     }
     if (url.pathname.startsWith('/ai/')) {
-        requests.push({method: request.method(), path: url.pathname, body: request.postDataJSON()});
+        const mediaPrepare = url.pathname === '/ai/media/prepare';
+        const body = mediaPrepare ? request.postData() : request.postDataJSON();
+        requests.push({method: request.method(), path: url.pathname, body});
+        if (mediaPrepare) {
+            const audio = body.includes('filename="supplier.wav"');
+            const data = audio ? {transcript_text: 'Phone is 9876543210'} : {supplier_name: 'Same Chat Supplier'};
+            return route.fulfill({json: {status: audio ? 'voice_reply_ready' : 'supplier_photo_review_ready',
+                thread_id: threadId, task_id: supplierTaskId, task_revision: audio ? 4 : 3,
+                media: {id: audio ? supplierVoiceId : supplierPhotoId}, extraction: {revision: 1, extracted: data}}});
+        }
+        if (url.pathname.endsWith('/confirm')) return route.fulfill({json: {extraction: {revision: 2}}});
         if (url.pathname === '/ai/threads') return route.fulfill({json: {threads: []}});
         if (url.pathname === '/ai/chat' || url.pathname === '/ai/chat/stream') {
             if (rejectChat) return route.fulfill({status: 422, json: {message: 'Review attachment before sending.'}});
             const result = {thread_id: threadId, message: 'Verified fixture response.', facts: [], sources: []};
+            const message = request.postDataJSON().message;
+            const revisions = {'create a supplier': 2, 'Supplier name is Same Chat Supplier': 3,
+                'Use confirmed supplier details': 4, 'Phone is 9876543210': 5, 'preview supplier': 6};
+            if (revisions[message]) {
+                const task_revision = revisions[message];
+                result.message = message === 'create a supplier' ? 'What is the supplier’s name?' : 'Supplier draft ready for review.';
+                result.workflow = {task_id: supplierTaskId, task_revision, action_key: 'setup.supplier.create.v1',
+                    status: message === 'preview supplier' ? 'proposal_created' : 'needs_input'};
+                result.facts = message === 'preview supplier' ? [{tool: 'setup.supplier.create.v1', data: {
+                    name: 'Same Chat Supplier', proposal_id: supplierProposalId, task_id: supplierTaskId, task_revision, version: 1,
+                }}] : [];
+            }
             return route.fulfill(url.pathname.endsWith('/stream') ? {contentType: 'text/event-stream', body:
                 'event: delta\ndata: {"text":"Verified fixture response."}\n\nevent: complete\ndata: ' + JSON.stringify(result) + '\n\n'} : {json: result});
         }
         if (url.pathname === '/ai/credits/balance') return route.fulfill({json: {available_credits: 10000, total_credits: 10000, reserved_credits: 0, spent_credits: 0}});
         if (url.pathname === '/ai/credits/packs') return route.fulfill({json: {packs: []}});
+        if (url.pathname === '/ai/proposals/' + supplierProposalId + '/approve') return route.fulfill({json: {
+            status: 'completed', execution: {receipt: {resource_type: 'supplier', resource_id: 17}},
+        }});
         if (url.pathname.endsWith('/handoff')) return route.fulfill({json: {
             status: 'proposal_created', action_key: 'purchase_order.create.v1',
             proposal: {proposal_id: proposal.proposal_id, version: 1, preview: proposal},
@@ -89,6 +118,39 @@ try {
         assert.equal(await page.locator('#btn-send').isEnabled(), true);
         if (mode === 'disabled') continue;
 
+        await page.evaluate(() => { window.zoloAiMultimodalConfig.conversationEnabled = true; });
+        await page.addScriptTag({url: origin + '/js/ai-conversation-workflow.js'});
+        await page.locator('#chat-input').fill('create a supplier');
+        await page.locator('#btn-send').click();
+        await page.getByText('What is the supplier’s name?', {exact: true}).waitFor();
+        assert.equal(await page.getByRole('form', {name: 'Supplier details'}).count(), 0);
+        await page.locator('#chat-input').fill('Supplier name is Same Chat Supplier');
+        await page.locator('#btn-send').click();
+        await page.waitForFunction(() => window.zoloAiConversation.getActiveTask().task_revision === 3);
+        await page.evaluate(() => window.zoloAiMedia.stageFile(new File(['fixture'], 'supplier.png', {type: 'image/png'})));
+        await page.locator('#btn-send').click();
+        await page.getByRole('button', {name: 'Use these details'}).click();
+        await page.waitForFunction(() => window.zoloAiConversation.getActiveTask().task_revision === 4);
+        await page.evaluate(() => window.zoloAiMedia.stageFile(new File(['fixture'], 'supplier.wav', {type: 'audio/wav'})));
+        await page.locator('#btn-send').click();
+        await page.getByRole('button', {name: 'Confirm transcript and send'}).click();
+        await page.waitForFunction(() => window.zoloAiConversation.getActiveTask().task_revision === 5);
+        await page.locator('#chat-input').fill('preview supplier');
+        await page.locator('#btn-send').click();
+        const supplierCard = page.locator('.ai-proposal-review-card', {hasText: 'Same Chat Supplier'});
+        await supplierCard.waitFor();
+        const supplierReply = requests.find(r => r.body?.message === 'Supplier name is Same Chat Supplier').body;
+        assert.equal(supplierReply.thread_id, threadId);
+        assert.equal(supplierReply.active_task_id, supplierTaskId);
+        assert.equal(supplierReply.expected_task_revision, 2);
+        assert.equal(requests.find(r => r.body?.message === 'Use confirmed supplier details').body.supplier_photo_revision, 2);
+        assert.equal(requests.find(r => r.body?.message === 'Phone is 9876543210').body.voice_extraction_revision, 2);
+        assert.equal(requests.some(r => r.path === '/ai/proposals/' + supplierProposalId + '/approve'), false);
+        await supplierCard.getByRole('button', {name: 'Approve & Create'}).click();
+        await supplierCard.getByText('Supplier ready in ERP', {exact: true}).waitFor();
+        assert.equal(await page.evaluate(() => window.zoloAiConversation.getActiveTask()), null);
+        await page.evaluate(() => { delete window.zoloAiConversation; });
+
         await page.evaluate(({mediaId}) => window.zoloAiMedia.renderExtractionCard({
             id: mediaId, file_name: 'optical-invoice.png', source_kind: 'image', preview_url: '/fixture-preview.png',
         }, {revision: 1, confirmation_status: 'confirmed', extracted: {supplier_name: 'Optical Supplier', lines: []}}), {mediaId});
@@ -133,7 +195,7 @@ try {
         await page.screenshot({path: 'scratch/ai-workspace-merge-fixed.png', fullPage: true});
     }
     assert.deepEqual(errors, [], 'No uncaught browser errors');
-    console.log('PASS workspace merge: disabled/enabled, desktop/mobile, chat, attachment retry/clear, handoff, approval, receipt/PDF, clarification');
+    console.log('PASS workspace merge: desktop/mobile, chat, same-thread supplier setup, media, approval, receipt/PDF, and clarification');
 } catch (error) {
     await page.screenshot({path: 'scratch/ai-workspace-merge-failure.png', fullPage: true});
     console.error(JSON.stringify(await page.evaluate(() => ({

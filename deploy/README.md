@@ -1,9 +1,12 @@
 # Production deployment (VPS)
 
-Production releases require a manual **Deploy to VPS** workflow dispatch from
-`main`. The deploy operation requires the full SHA of a main commit with a successful
-ERP completion acceptance push run. Branch protection requires the aggregate
-acceptance gate, which waits for every acceptance and migration job.
+Production releases are automatically deployed to the VPS via GitHub Actions
+`workflow_run` as soon as the **ERP completion acceptance** CI suite (`company-foundation.yml`)
+passes with 100% green status on a push/merge to `main`.
+
+A manual **Deploy to VPS** workflow dispatch from `main` is also available for
+preflight checks, manual release overrides, or emergency rollbacks. The deploy
+operation targets an accepted main commit that has passed the CI acceptance gate.
 
 ## Before the PHP 8.5 cutover
 

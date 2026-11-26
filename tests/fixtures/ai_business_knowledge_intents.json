@@ -1,0 +1,486 @@
+{
+  "fixture_kind": "synthetic_curated_intent_utterances",
+  "note": "NOT real supplier bills or an accuracy benchmark on live Nemotron",
+  "cases": [
+    {
+      "utterance": "Create a purchase order for linen",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for linen",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for linen",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for linen",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for linen processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for linen service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for linen production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for linen use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for linen fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for linen",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for linen",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for linen",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for cotton",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for cotton",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for cotton",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for cotton",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for cotton processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for cotton service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for cotton production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for cotton use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for cotton fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for cotton",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for cotton",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for cotton",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for yarn",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for yarn",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for yarn",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for yarn",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for yarn processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for yarn service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for yarn production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for yarn use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for yarn fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for yarn",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for yarn",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for yarn",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for packaging rolls",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for packaging rolls",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for packaging rolls",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for packaging rolls",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for packaging rolls processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for packaging rolls service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for packaging rolls production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for packaging rolls use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for packaging rolls fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for packaging rolls",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for packaging rolls",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for packaging rolls",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for buttons",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for buttons",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for buttons",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for buttons",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for buttons processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for buttons service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for buttons production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for buttons use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for buttons fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for buttons",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for buttons",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for buttons",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for labels",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for labels",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for labels",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for labels",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for labels processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for labels service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for labels production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for labels use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for labels fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for labels",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for labels",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for labels",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for dyed cloth",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for dyed cloth",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for dyed cloth",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for dyed cloth",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for dyed cloth processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for dyed cloth service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for dyed cloth production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for dyed cloth use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for dyed cloth fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for dyed cloth",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for dyed cloth",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for dyed cloth",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for grey fabric",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for grey fabric",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for grey fabric",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for grey fabric",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for grey fabric processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for grey fabric service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for grey fabric production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for grey fabric use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for grey fabric fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for grey fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for grey fabric",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for grey fabric",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for fabric rolls",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for fabric rolls",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for fabric rolls",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for fabric rolls",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for fabric rolls processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for fabric rolls service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for fabric rolls production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for fabric rolls use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for fabric rolls fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for fabric rolls",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for fabric rolls",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for fabric rolls",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Create a purchase order for spares",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Raise PO for spares",
+      "classification": "purchase_order"
+    },
+    {
+      "utterance": "Received goods from ABC Traders for spares",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Goods bill for spares",
+      "classification": "goods_bill"
+    },
+    {
+      "utterance": "Create a service bill for spares processing",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Service invoice for spares service",
+      "classification": "service_bill"
+    },
+    {
+      "utterance": "Book electricity bill for spares production",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Office expense for spares use",
+      "classification": "expense_bill"
+    },
+    {
+      "utterance": "Book dyeing charges for spares fabric",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Job work bill for spares",
+      "classification": "job_work_processing_bill"
+    },
+    {
+      "utterance": "Create a bill for spares",
+      "classification": "ambiguous"
+    },
+    {
+      "utterance": "Please review invoice for spares",
+      "classification": "ambiguous"
+    }
+  ]
+}

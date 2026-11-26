@@ -163,6 +163,30 @@ final class SafeWarehouseResolutionTest extends TestCase
         $this->assertSame('exact_name', $result['reason'] ?? null);
     }
 
+    public function test_duplicate_exact_matches_require_selection(): void
+    {
+        $branchWarehouse = $this->createWarehouse([
+            'company_id' => $this->companyA->id,
+            'branch_id' => $this->branchA1->id,
+            'name' => 'Shared Depot',
+        ]);
+        $companyWarehouse = $this->createWarehouse([
+            'company_id' => $this->companyA->id,
+            'name' => 'Shared Depot',
+        ]);
+        $this->createWarehouse([
+            'company_id' => $this->companyA->id,
+            'branch_id' => $this->branchA2->id,
+            'name' => 'Shared Depot',
+        ]);
+
+        $result = $this->resolver->resolveWarehouse($this->contextBranchA1(), 'Shared Depot');
+
+        $this->assertSame('candidates', $result['status']);
+        $this->assertNull($result['warehouse']);
+        $this->assertSame([$branchWarehouse->id, $companyWarehouse->id], $result['candidates']->modelKeys());
+    }
+
     /**
      * Test 3: Unique partial match resolves when only one warehouse matches the query.
      */

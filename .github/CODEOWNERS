@@ -1,0 +1,18 @@
+# ZoloERP Business Knowledge & AI Operating Layer CODEOWNERS
+# Mandatory sign-off rules for changes to business knowledge, capabilities, and governance
+
+# Knowledge Catalog and Source Manifests
+/resources/ai/knowledge/          @vigneshsinna/purchasing-reviewers @vigneshsinna/finance-reviewers @vigneshsinna/inventory-reviewers @vigneshsinna/manufacturing-reviewers @vigneshsinna/security-reviewers
+
+# AI Registries & Tool Manifests
+/app/Ai/Registries/              @vigneshsinna/security-reviewers @vigneshsinna/core-architects
+
+# Input Schemas & Field Requirements
+/app/Ai/Requirements/            @vigneshsinna/purchasing-reviewers @vigneshsinna/finance-reviewers
+/app/Ai/Schemas/                 @vigneshsinna/purchasing-reviewers @vigneshsinna/finance-reviewers @vigneshsinna/security-reviewers
+
+# Action Command & Preview Adapters
+/app/Ai/Adapters/                @vigneshsinna/purchasing-reviewers @vigneshsinna/finance-reviewers @vigneshsinna/manufacturing-reviewers @vigneshsinna/security-reviewers
+
+# Business Knowledge & Workflow FSM Core
+/app/Ai/Knowledge/               @vigneshsinna/security-reviewers @vigneshsinna/core-architects

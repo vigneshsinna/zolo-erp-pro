@@ -40,6 +40,14 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             throw new \InvalidArgumentException('Mode B company context required for purchase bill preview.');
         }
 
+        \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context, $slots);
+
+        if (!empty($slots['is_expense_bill']) || !empty($slots['expense_account_id'])) {
+            throw ValidationException::withMessages([
+                'expense_bill' => 'General ledger expense-only payable without service catalog remains unsupported by AI. Create a service catalog item or use manual Accounting vouchers.',
+            ]);
+        }
+
         $supplierId = (int) ($slots['supplier_id'] ?? 0);
         $warehouseId = (int) ($slots['warehouse_id'] ?? 0);
         $billDate = !empty($slots['date']) ? (string) $slots['date'] : now()->toDateString();
@@ -50,6 +58,12 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
         }
         $poId = (int) ($slots['purchase_order_id'] ?? 0);
         $grnId = (int) ($slots['grn_id'] ?? 0);
+        if (($slots['receipt_status'] ?? null) === 'not_received' && $grnId === 0) {
+            throw ValidationException::withMessages([
+                'receipt_status' => 'Goods are not physically received. Invoice-before-receipt posting is unsupported; hold this bill as a draft or post a GRN once goods arrive.',
+            ]);
+        }
+        $isNonGst = !empty($slots['is_non_gst']) || !empty($slots['non_gst']) || ($slots['bill_type'] ?? '') === 'non_gst';
 
         // 1. Resolve Supplier
         $supplier = Supplier::where('company_id', $context->companyId)
@@ -93,6 +107,9 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             }
             if ((int) $po->supplier_id !== $supplierId) {
                 throw ValidationException::withMessages(['purchase_order_id' => 'Purchase Order supplier differs from bill supplier.']);
+            }
+            if ((int) $po->warehouse_id !== $warehouseId) {
+                throw ValidationException::withMessages(['purchase_order_id' => 'Purchase Order warehouse differs from bill receiving warehouse.']);
             }
 
             $openData = app(OrderLifecycleService::class)->remaining('purchase', $po->id, $context);
@@ -152,6 +169,9 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
                 throw ValidationException::withMessages(["items.{$index}.qty" => 'Quantity must be positive.']);
             }
 
+            if ($po && !isset($openQuantities[$productId])) {
+                throw ValidationException::withMessages(["items.{$index}.product_id" => "Product '{$product->name}' is not present on linked Purchase Order {$po->reference_no}."]);
+            }
             if ($po && isset($openQuantities[$productId]) && $qty > $openQuantities[$productId] + 0.0001) {
                 throw ValidationException::withMessages(["items.{$index}.qty" => "Billed quantity ({$qty}) exceeds remaining open billing quantity ({$openQuantities[$productId]}) on order {$po->reference_no}."]);
             }
@@ -187,6 +207,10 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             'supplier_id' => $supplierId,
             'items' => $pricingItems,
         ];
+        if ($isNonGst) {
+            $pricingInput['is_non_gst'] = true;
+            $pricingInput['bill_type'] = 'non_gst';
+        }
         if ($orderDiscount > 0) {
             $pricingInput['order_discount'] = $orderDiscount;
         }
@@ -195,7 +219,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
         }
 
         // Authoritative GST determination and pricing calculation
-        if (config('compliance.enabled') && !DB::table('party_tax_profiles')->where('company_id', $context->companyId)
+        if (!$isNonGst && config('compliance.enabled') && !DB::table('party_tax_profiles')->where('company_id', $context->companyId)
             ->where('party_type', 'supplier')->where('party_id', $supplierId)->exists()) {
             throw ValidationException::withMessages(['supplier_id' => 'Complete the supplier GST profile before preparing this bill.']);
         }
@@ -243,7 +267,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_rate' => CommercialDecimal::format($taxRate),
                 'order_item_id' => isset($calcLine['order_item_id']) ? (int) $calcLine['order_item_id'] : null,
                 'note' => $calcLine['note'] ?? null,
-            ];
+            ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
 
             if (isset($calcLine['tax_rate_override'])) {
                 $normalizedLine['tax_rate_override'] = CommercialDecimal::format((float) $calcLine['tax_rate_override']);
@@ -263,7 +287,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
                 'tax_amount' => CommercialDecimal::format($taxAmount),
                 'line_total' => CommercialDecimal::format($lineTotal),
                 'purchase_unit_id' => (int) $calcLine['purchase_unit_id'],
-            ];
+            ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($rawItems[$index] ?? []);
 
             $lineTotals[] = [
                 'product_id' => $productId,
@@ -281,6 +305,8 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             'supplier_id' => $supplierId,
             'warehouse_id' => $warehouseId,
             'date' => $billDate,
+            'is_non_gst' => $isNonGst,
+            'bill_type' => $isNonGst ? 'non_gst' : ($slots['bill_type'] ?? 'tax_invoice'),
             'supplier_invoice_no' => $slots['supplier_invoice_no'] ?? null,
             'purchase_order_id' => $poId > 0 ? $poId : null,
             'grn_id' => $grnId > 0 ? $grnId : null,
@@ -360,11 +386,17 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             ],
             'policy' => [
                 'status' => 'completed',
-                'ledger_impact' => "Dr Expense/Inventory ₹".CommercialDecimal::format($subtotal).", Dr Input Tax Credit ₹".CommercialDecimal::format($totalTax).", Cr Accounts Payable ₹".CommercialDecimal::format($grandTotal).".",
+                'is_non_gst' => $isNonGst,
+                'bill_type' => $isNonGst ? 'non_gst' : ($slots['bill_type'] ?? 'tax_invoice'),
+                'ledger_impact' => $isNonGst
+                    ? "Dr Expense/Inventory ₹".CommercialDecimal::format($subtotal).", Cr Accounts Payable ₹".CommercialDecimal::format($grandTotal)." (Non-GST / zero tax credit)."
+                    : "Dr Expense/Inventory ₹".CommercialDecimal::format($subtotal).", Dr Input Tax Credit ₹".CommercialDecimal::format($totalTax).", Cr Accounts Payable ₹".CommercialDecimal::format($grandTotal).".",
                 'inventory_impact' => $inventoryPolicy,
             ],
         ];
 
+        $previewData['match_audit'] = app(\App\Ai\Knowledge\PurchaseBillMatchAudit::class)
+            ->inspect($context, $normalizedPayload);
         $sourceStateHash = self::computeSourceStateHash(
             $context,
             $supplierId,
@@ -372,6 +404,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             array_values(array_unique($productIds)),
             $poId > 0 ? $poId : null,
             $grnId > 0 ? $grnId : null,
+            $isNonGst,
         );
 
         return new ActionPreviewResult(
@@ -398,6 +431,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
         array $productIds,
         ?int $poId = null,
         ?int $grnId = null,
+        bool $isNonGst = false,
     ): string {
         $supplier = DB::table('suppliers')
             ->where('company_id', $context->companyId)
@@ -475,6 +509,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             'company_id' => $context->companyId,
             'branch_id' => $context->branchId,
             'financial_year_id' => $context->financialYearId,
+            'is_non_gst' => $isNonGst,
             'supplier' => $supplier,
             'party_tax_profile' => $partyTaxProfile,
             'warehouse' => $warehouse,
@@ -494,6 +529,9 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
             'units' => DB::table('units')->where('company_id', $context->companyId)->orderBy('id')->get()->toArray(),
             'legacy_taxes' => DB::table('taxes')->where('company_id', $context->companyId)
                 ->whereIn('id', $products->pluck('tax_id')->filter()->unique())->orderBy('id')->get()->toArray(),
+            'industry_setting' => \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
+                ? (array) DB::table('company_industry_settings')->where('company_id', $context->companyId)->first(['profile_key', 'subtype', 'updated_at'])
+                : null,
         ];
 
         return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));

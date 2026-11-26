@@ -16,6 +16,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Tools\Request;
 use Tests\Support\UsesAiMysql;
 use Tests\TestCase;
@@ -196,6 +197,50 @@ class InventoryVerticalSliceTest extends TestCase
         $this->assertArrayHasKey('units_summary', $response['data']);
         $this->assertArrayHasKey('top_products', $response['data']);
         $this->assertNotEmpty($response['source_refs']);
+    }
+
+    public function test_chat_resolves_exact_sku_and_reordered_product_name_with_one_stock_result(): void
+    {
+        config(['erp_ai.conversation_enabled' => true]);
+        Http::fake();
+        $warehouse = Warehouse::create([
+            'company_id' => $this->company->id, 'branch_id' => $this->branchId,
+            'name' => 'Chat Stock Warehouse', 'address' => 'Test Address', 'is_active' => true,
+        ]);
+        $unit = Unit::forceCreate([
+            'company_id' => $this->company->id, 'unit_code' => 'PCS',
+            'unit_name' => 'Pieces', 'is_active' => true,
+        ]);
+        foreach (['SKU-COTTONSHIR' => 'Cotton Shirt Blue', 'SKU-COTTONSHIR-WHITE' => 'Cotton Shirt White'] as $code => $name) {
+            $product = Product::forceCreate([
+                'company_id' => $this->company->id, 'category_id' => $this->category->id,
+                'unit_id' => $unit->id, 'purchase_unit_id' => $unit->id, 'sale_unit_id' => $unit->id,
+                'code' => $code, 'name' => $name, 'type' => 'standard', 'barcode_symbology' => 'code128',
+                'cost' => 100, 'price' => 150, 'is_active' => true,
+            ]);
+            DB::table('product_warehouse')->insert([
+                'company_id' => $this->company->id, 'product_id' => $product->id,
+                'warehouse_id' => $warehouse->id, 'qty' => $code === 'SKU-COTTONSHIR' ? 20 : 10,
+            ]);
+        }
+
+        $thread = null;
+        foreach (['SKU-COTTONSHIR', 'how much stock for cotton blue shirt'] as $message) {
+            $response = $this->postJson(route('ai.chat'), ['message' => $message, 'thread_id' => $thread])
+                ->assertOk()->assertJsonPath('interaction_type', 'deterministic_erp')
+                ->assertJsonPath('usage.model_calls', 0)->assertJsonPath('usage.tool_count', 1)
+                ->assertJsonCount(1, 'facts')->assertJsonCount(1, 'facts.0.data.top_products')
+                ->assertJsonPath('facts.0.data.top_products.0.code', 'SKU-COTTONSHIR');
+            $this->assertSame(1, substr_count($response->json('message'), '### Warehouse Stock Summary'));
+            $thread = $response->json('thread_id');
+        }
+
+        $this->postJson(route('ai.chat'), ['message' => 'how much stock for cotton shirt', 'thread_id' => $thread])
+            ->assertOk()->assertJsonPath('answer_status', 'needs_input')->assertJsonCount(0, 'facts')
+            ->assertSee('Cotton Shirt White');
+        $this->postJson(route('ai.chat'), ['message' => 'SKU-COTTONSHI', 'thread_id' => $thread])
+            ->assertOk()->assertJsonPath('answer_status', 'no_data')->assertJsonCount(0, 'facts');
+        Http::assertNothingSent();
     }
 
     public function test_inventory_stock_summary_groups_by_unit_without_mixing(): void

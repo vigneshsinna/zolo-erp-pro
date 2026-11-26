@@ -42,12 +42,16 @@ class AiWorkspaceController extends Controller
         $isReadOnly = $this->featureGate->isReadOnly($context->companyId);
         $approvedModel = $isAiEnabled ? $this->modelGateway->resolveApprovedModel() : null;
         $isMultimodalEnabled = $isAiEnabled && $this->featureGate->isMultimodalEnabledForCompany($context->companyId);
+        $opticalContext = config('ai_business_knowledge.opticals_enabled', false)
+            ? app(\App\Ai\Knowledge\IndustryContextResolver::class)->resolve($context)
+            : ['is_optical' => false, 'has_lab_capability' => false];
 
         return view('backend.ai.workspace', [
             'company' => $company,
             'context' => $context,
             'isAiEnabled' => $isAiEnabled,
             'isMultimodalEnabled' => $isMultimodalEnabled,
+            'opticalContext' => $opticalContext,
             'multimodalLimits' => [
                 'max_image_bytes' => (int) config('ai_multimodal.max_input_bytes', 10_485_760),
                 'max_pdf_bytes' => (int) config('ai_multimodal.max_pdf_bytes', 20_971_520),
@@ -57,6 +61,7 @@ class AiWorkspaceController extends Controller
             ],
             'canUseCopilot' => $isAiEnabled && $principal->permittedToolNames !== [],
             'isReadOnly' => $isReadOnly,
+            'streamingEnabled' => (bool) config('erp_ai.streaming_enabled', false),
             'isAdmin' => in_array((int) ($user->role_id ?? 0), [1, 2], true),
             'model' => $approvedModel['model'] ?? null,
             'provider' => $approvedModel['provider'] ?? null,

@@ -89,7 +89,7 @@ class AiTopupService
         string $paymentProvider = 'razorpay',
         array $rawPayload = []
     ): stdClass {
-        $payloadHash = hash('sha256', json_encode($rawPayload));
+        $payloadHash = hash('sha256', json_encode($rawPayload, JSON_THROW_ON_ERROR));
 
         return DB::transaction(function () use (
             $orderId,
@@ -99,64 +99,66 @@ class AiTopupService
             $payloadHash,
             $rawPayload
         ): stdClass {
-            // Deduplicate incoming payment event
-            $existingEvent = DB::table('ai_credit_payment_events')
-                ->where('payment_provider', $paymentProvider)
-                ->where('event_id', $eventId)
-                ->first();
-
-            if ($existingEvent) {
-                // Event was already processed; return current order state
-                return DB::table('ai_credit_topup_orders')->where('id', $orderId)->first();
-            }
-
             $order = DB::table('ai_credit_topup_orders')
-                ->where('id', $orderId)
-                ->orWhere('provider_order_id', $orderId)
+                ->where('payment_provider', $paymentProvider)
+                ->where(fn ($query) => $query->where('id', $orderId)->orWhere('provider_order_id', $orderId))
                 ->lockForUpdate()
                 ->first();
 
             if (! $order) {
-                throw new InvalidArgumentException("Top-up order [{$orderId}] does not exist.");
+                throw new InvalidArgumentException('Top-up order does not exist for this provider.');
             }
 
-            if ($order->status === 'paid') {
+            $payment = $rawPayload['payload']['payment']['entity'] ?? $rawPayload;
+            if (! is_array($payment) || ($payment['status'] ?? null) !== 'captured') {
+                throw new InvalidArgumentException('Payment must be captured.');
+            }
+
+            $expectedTotal = (int) ($order->amount_minor_inr + $order->tax_minor_inr);
+            if (($payment['amount'] ?? null) !== $expectedTotal) {
+                throw new InvalidArgumentException('Payment amount must match the full order total.');
+            }
+            if (($payment['currency'] ?? null) !== 'INR') {
+                throw new InvalidArgumentException('Payment currency must be INR.');
+            }
+            if (! $order->provider_order_id || ($payment['order_id'] ?? null) !== $order->provider_order_id) {
+                throw new InvalidArgumentException('Payment order identity does not match.');
+            }
+            if ($providerPaymentId === '' || ($payment['id'] ?? $payment['payment_id'] ?? null) !== $providerPaymentId
+                || $eventId === '' || strlen($eventId) > 255 || strlen($providerPaymentId) > 255) {
+                throw new InvalidArgumentException('Payment or event identity is invalid.');
+            }
+
+            $existingEvent = DB::table('ai_credit_payment_events')
+                ->where('payment_provider', $paymentProvider)
+                ->where('event_id', $eventId)
+                ->first();
+            if ($existingEvent && (! hash_equals($existingEvent->payload_hash, $payloadHash)
+                || $order->provider_payment_id !== $providerPaymentId)) {
+                throw new InvalidArgumentException('Payment event identity was already used.');
+            }
+
+            if (in_array($order->status, ['paid', 'refunded'], true) && $order->provider_payment_id === $providerPaymentId) {
                 return $order;
             }
-
-            // Validate captured payment payload (supports nested Razorpay entity structure and flat maps)
-            $paymentEntity = $rawPayload['payload']['payment']['entity'] ?? $rawPayload;
-
-            if (isset($paymentEntity['status'])) {
-                $status = (string) $paymentEntity['status'];
-                if (! in_array($status, ['captured', 'authorized'], true)) {
-                    throw new InvalidArgumentException("Payment verification failed: status is [{$status}], expected 'captured'.");
-                }
+            if ($order->status !== 'pending') {
+                throw new InvalidArgumentException('Top-up order is not pending.');
             }
 
-            if (isset($paymentEntity['amount'])) {
-                $payloadAmount = (int) $paymentEntity['amount'];
-                $expectedTotal = (int) ($order->amount_minor_inr + $order->tax_minor_inr);
-                $expectedNet = (int) $order->amount_minor_inr;
-
-                if ($payloadAmount !== $expectedTotal && $payloadAmount !== $expectedNet) {
-                    throw new InvalidArgumentException("Payment amount mismatch: expected [{$expectedTotal}], received [{$payloadAmount}].");
-                }
-            }
-
-            if (isset($paymentEntity['currency'])) {
-                $payloadCurrency = strtoupper((string) $paymentEntity['currency']);
-                $expectedCurrency = strtoupper((string) ($order->currency ?? 'INR'));
-                if ($payloadCurrency !== $expectedCurrency) {
-                    throw new InvalidArgumentException("Payment currency mismatch: expected [{$expectedCurrency}], received [{$payloadCurrency}].");
-                }
-            }
-
-            if (isset($paymentEntity['order_id']) && ! empty($paymentEntity['order_id'])) {
-                $payloadOrderId = (string) $paymentEntity['order_id'];
-                if ($payloadOrderId !== $order->provider_order_id && $payloadOrderId !== $order->id) {
-                    throw new InvalidArgumentException("Payment order identity mismatch: expected [{$order->provider_order_id}], received [{$payloadOrderId}].");
-                }
+            // Record payment event
+            $inserted = DB::table('ai_credit_payment_events')->insertOrIgnore([
+                'id' => (string) Str::uuid(),
+                'account_id' => $order->account_id,
+                'payment_provider' => $paymentProvider,
+                'event_id' => $eventId,
+                'event_type' => 'payment.captured',
+                'payload_hash' => $payloadHash,
+                'status' => 'processed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            if ($inserted !== 1) {
+                throw new InvalidArgumentException('Payment event identity was already used.');
             }
 
             $period = $this->periodGrantService->resolveCurrentPeriod($order->account_id);
@@ -194,19 +196,6 @@ class AiTopupService
                     'credit_grant_ledger_id' => $ledgerId,
                     'updated_at' => now(),
                 ]);
-
-            // Record payment event
-            DB::table('ai_credit_payment_events')->insert([
-                'id' => (string) Str::uuid(),
-                'account_id' => $order->account_id,
-                'payment_provider' => $paymentProvider,
-                'event_id' => $eventId,
-                'event_type' => 'payment.captured',
-                'payload_hash' => $payloadHash,
-                'status' => 'processed',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
 
             return DB::table('ai_credit_topup_orders')->where('id', $order->id)->first();
         });

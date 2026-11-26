@@ -1,0 +1,8 @@
+{
+  "profile_key": "general_trading",
+  "subtype": "trading",
+  "display_name": "General Trading & Distribution",
+  "supports_optical_rx": false,
+  "supports_lab": false,
+  "default_uom": "PCS"
+}

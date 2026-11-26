@@ -161,7 +161,7 @@ final class DefaultAudioTranscoder implements AudioTranscoderInterface
      */
     private function transcodeViaFfmpeg(string $sourcePath, string $outputWavPath, int $maxDurationSeconds): array
     {
-        $ffmpeg = (string) config('ai_multimodal.audio_transcoder.ffmpeg_bin', 'ffmpeg');
+        $ffmpeg = $this->resolveFfmpegBinary();
         $probe = new Process([$ffmpeg, '-version']);
         $probe->setTimeout(5);
         try {
@@ -255,6 +255,52 @@ final class DefaultAudioTranscoder implements AudioTranscoderInterface
             . pack('v', 16)       // BitsPerSample
             . 'data'
             . pack('V', $dataSize);
+    }
+
+    private function resolveFfmpegBinary(): string
+    {
+        $configured = (string) config('ai_multimodal.audio_transcoder.ffmpeg_bin', 'ffmpeg');
+        if ($configured !== 'ffmpeg' && (is_executable($configured) || is_file($configured))) {
+            return $configured;
+        }
+
+        // Test configured command first
+        $probe = new Process([$configured, '-version']);
+        $probe->setTimeout(2);
+        try {
+            $probe->run();
+            if ($probe->isSuccessful()) {
+                return $configured;
+            }
+        } catch (Throwable) {
+            // Check fallback locations
+        }
+
+        $candidates = [
+            'C:\\ProgramData\\envkit\\bin\\ffmpeg.exe',
+            'C:\\ffmpeg\\bin\\ffmpeg.exe',
+            '/usr/bin/ffmpeg',
+            '/usr/local/bin/ffmpeg',
+        ];
+
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $localAppData = getenv('LOCALAPPDATA') ?: '';
+            if ($localAppData !== '') {
+                $wingetPattern = $localAppData . '\\Microsoft\\WinGet\\Packages\\*FFmpeg*\\*\\bin\\ffmpeg.exe';
+                $matches = glob($wingetPattern) ?: [];
+                if (! empty($matches)) {
+                    array_unshift($candidates, $matches[0]);
+                }
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $configured;
     }
 }
 

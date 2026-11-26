@@ -102,6 +102,14 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
                 requiredWhen: fn (): bool => false,
             ),
             new ActionFieldRequirement(
+                fieldPath: 'is_non_gst',
+                label: 'Non-GST Bill',
+                dataType: 'boolean',
+                inputControl: 'checkbox',
+                helpText: 'Whether this purchase bill is non-GST or exempt.',
+                requiredWhen: fn (): bool => false,
+            ),
+            new ActionFieldRequirement(
                 fieldPath: 'items',
                 label: 'Billed Line Items',
                 dataType: 'list',
@@ -169,7 +177,16 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
                         inputControl: 'text',
                         requiredWhen: fn (): bool => false,
                     ),
+                    ...\App\Ai\Schemas\OpticalSchemaFragment::lineRequirements(),
                 ],
+            ),
+            new ActionFieldRequirement(
+                fieldPath: 'receipt_status',
+                label: 'Physical Receipt Status',
+                dataType: 'string',
+                inputControl: 'select',
+                helpText: 'Whether the billed goods have been physically received (received, not_received, pending_grn).',
+                requiredWhen: fn (): bool => false,
             ),
             new ActionFieldRequirement(
                 fieldPath: 'order_discount',
@@ -249,6 +266,9 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
         }
 
         $grnId = (int) ($resolvedInputs['grn_id'] ?? 0);
+        if (($resolvedInputs['receipt_status'] ?? null) === 'not_received' && $grnId === 0) {
+            $errors['receipt_status'] = 'Goods are not physically received. Invoice-before-receipt posting is unsupported; hold this bill as a draft or post a GRN once goods arrive.';
+        }
         $grn = null;
         if ($grnId > 0) {
             $grn = GoodsReceivedNote::where('company_id', $companyId)->find($grnId);
@@ -289,6 +309,16 @@ final class PurchaseBillRequirementsProvider implements ActionRequirementsProvid
                             $errors["items.{$idx}.qty"] = "Billed quantity ({$qty}) exceeds the remaining open billing quantity ({$openQuantities[$productId]}) on order {$po->reference_no}.";
                         }
                     }
+                }
+            }
+        }
+
+        if ($context->context) {
+            try {
+                \App\Ai\Schemas\OpticalSchemaFragment::assertAllowedForProfile($context->context, $resolvedInputs);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                foreach ($e->errors() as $field => $messages) {
+                    $errors[$field] = $messages[0] ?? 'Optical fields are not allowed for this company profile.';
                 }
             }
         }
