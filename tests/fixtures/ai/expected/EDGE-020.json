@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-020",
+    "risk_group": "Mismatched GST split or invalid GSTIN",
+    "expected_error_code": "TAX_DETERMINATION_FAILED",
+    "expected_http_status": 422,
+    "input_text": "Process supplier bill from Gujarat (24) with 0% IGST and 18% CGST against inter-state shipment.",
+    "expected_no_erp_writes": true
+}

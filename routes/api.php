@@ -1,6 +1,6 @@
 <?php
 $operationsApi = true;
-require __DIR__.'/operations.php';
+require __DIR__ . '/operations.php';
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -48,6 +48,9 @@ Route::prefix('v1')->group(function () {
             'timestamp' => now()->toIso8601String(),
         ]);
     })->name('api.v1.ping');
+
+    // Public Billing Webhooks (Signature verified server-side)
+    Route::post('billing/webhooks/{provider}', [\App\Http\Controllers\Api\V1\AiCreditController::class, 'webhook'])->name('api.v1.billing.webhooks');
 
     // Public Authentication Endpoints
     Route::prefix('auth')->group(function () {
@@ -226,7 +229,81 @@ Route::prefix('v1')->group(function () {
             Route::get('stock', [ReportApiController::class, 'stock'])->name('api.v1.reports.stock');
             Route::get('customers/{id}/ledger', [ReportApiController::class, 'customerLedger'])->name('api.v1.reports.customer-ledger');
         });
+
+        // AI Guided Initial Setup (Mode A: Pre-Company Bootstrap)
+        Route::prefix('ai/setup/bootstrap')->middleware(\App\Http\Middleware\VerifyBootstrapAdminContext::class)->group(function () {
+            Route::post('tasks', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'initiateTask'])->name('api.v1.ai.setup.bootstrap.tasks');
+            Route::post('tasks/{id}/preview', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'preview'])->whereUuid('id')->name('api.v1.ai.setup.bootstrap.preview');
+            Route::post('tasks/{id}/change-request', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'changeRequest'])->whereUuid('id')->name('api.v1.ai.setup.bootstrap.change-request');
+            Route::post('tasks/{id}/approve', [\App\Http\Controllers\Api\V1\AiSetupBootstrapController::class, 'approve'])->whereUuid('id')->name('api.v1.ai.setup.bootstrap.approve');
+        });
+
+        // AI Operating Layer
+        Route::prefix('ai')->middleware('company.context')->group(function () {
+            require __DIR__ . '/ai-documents.php';
+            Route::get('settings', [\App\Http\Controllers\Api\V1\AiChatController::class, 'settings'])->name('api.v1.ai.settings');
+            Route::get('monitoring', [\App\Http\Controllers\Api\V1\AiChatController::class, 'monitoring'])->name('api.v1.ai.monitoring');
+            Route::get('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'threads'])->name('api.v1.ai.threads.index');
+            Route::post('threads', [\App\Http\Controllers\Api\V1\AiChatController::class, 'createThread'])->name('api.v1.ai.threads.store');
+            Route::get('threads/{id}', [\App\Http\Controllers\Api\V1\AiChatController::class, 'showThread'])->whereUuid('id')->name('api.v1.ai.threads.show');
+            Route::post('chat', [\App\Http\Controllers\Api\V1\AiChatController::class, 'chat'])->name('api.v1.ai.chat');
+            Route::match(['GET', 'POST'], 'chat/stream', [\App\Http\Controllers\Api\V1\AiChatController::class, 'stream'])->name('api.v1.ai.chat.stream');
+            Route::get('proposals', [\App\Http\Controllers\Api\V1\AiChatController::class, 'proposals'])->name('api.v1.ai.proposals.index');
+            Route::post('proposals', [\App\Http\Controllers\Api\V1\AiChatController::class, 'propose'])->name('api.v1.ai.proposals.store');
+            Route::post('proposals/{id}/change-request', [\App\Http\Controllers\Api\V1\AiChatController::class, 'changeRequest'])->whereUuid('id')->name('api.v1.ai.proposals.change-request');
+            Route::post('proposals/{id}/approve', [\App\Http\Controllers\Api\V1\AiChatController::class, 'approveProposal'])->whereUuid('id')->name('api.v1.ai.proposals.approve');
+            Route::post('proposals/{id}/reject', [\App\Http\Controllers\Api\V1\AiChatController::class, 'rejectProposal'])->whereUuid('id')->name('api.v1.ai.proposals.reject');
+            Route::get('documents/{type}/{id}/pdf', [\App\Http\Controllers\Api\V1\AiChatController::class, 'downloadDocumentPdf'])->name('api.v1.ai.documents.pdf');
+            Route::get('proposals/{id}/pdf', [\App\Http\Controllers\Api\V1\AiChatController::class, 'downloadProposalPdf'])->whereUuid('id')->name('api.v1.ai.proposals.pdf');
+
+            // Centralized AI Credit Metering & Top-Ups
+            Route::prefix('credits')->controller(\App\Http\Controllers\Api\V1\AiCreditController::class)->group(function () {
+                Route::get('balance', 'balance')->name('api.v1.ai.credits.balance');
+                Route::get('usage', 'usage')->name('api.v1.ai.credits.usage');
+                Route::get('packs', 'packs')->name('api.v1.ai.credits.packs');
+                Route::post('topup-orders', 'createTopupOrder')->name('api.v1.ai.credits.topup-orders');
+                Route::get('estimate', 'estimate')->name('api.v1.ai.credits.estimate');
+            });
+
+            // Task T03: Scoped ERP Entity Directory Lookup
+            Route::get('entity-lookup', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-lookup');
+            Route::get('entity-options', [\App\Http\Controllers\Api\V1\AiEntityLookupController::class, 'index'])->name('api.v1.ai.entity-options');
+
+            // Phase 2.1: Unified Multi-Slot Input Collection & Clarification Engine
+            Route::prefix('workflow-tasks')->controller(\App\Http\Controllers\Api\V1\AiWorkflowTaskController::class)->group(function () {
+                Route::post('/', 'store')->name('api.v1.ai.workflow-tasks.store');
+                Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.workflow-tasks.show');
+                Route::patch('{id}/inputs', 'updateInputs')->whereUuid('id')->name('api.v1.ai.workflow-tasks.update-inputs');
+                Route::post('{id}/prepare-proposal', 'prepareProposal')->whereUuid('id')->name('api.v1.ai.workflow-tasks.prepare-proposal');
+                Route::post('{id}/cancel', 'cancel')->whereUuid('id')->name('api.v1.ai.workflow-tasks.cancel');
+
+                // Phase 2.2: Dependent Master Data Creation & Workflow Resumption
+                Route::post('{id}/dependent-masters/spawn', 'spawnDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.spawn');
+                Route::post('{id}/dependent-masters/preview', 'previewDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.preview');
+                Route::post('{id}/dependent-masters/approve-and-execute', 'approveAndExecuteDependentMaster')->whereUuid('id')->name('api.v1.ai.workflow-tasks.dependent-masters.approve-and-execute');
+            });
+
+            // Phase 2.3: Private Multimodal Uploads, Perception & Revisioned Extractions
+            Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
+                Route::post('/', 'store')->name('api.v1.ai.media.store');
+                Route::post('prepare', 'prepare')->name('api.v1.ai.media.prepare');
+                Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.media.show');
+                Route::get('{id}/preview', 'preview')->whereUuid('id')->name('api.v1.ai.media.preview');
+                Route::post('{id}/extract', 'extract')->whereUuid('id')->name('api.v1.ai.media.extract');
+                Route::get('{id}/extraction', 'extraction')->whereUuid('id')->name('api.v1.ai.media.extraction');
+                Route::patch('{id}/extraction', 'updateExtraction')->whereUuid('id')->name('api.v1.ai.media.extraction.update');
+                Route::post('{id}/confirm', 'confirm')->whereUuid('id')->name('api.v1.ai.media.confirm');
+                Route::post('{id}/prepare', 'prepareExisting')->whereUuid('id')->name('api.v1.ai.media.prepare-existing');
+                Route::post('{id}/handoff', 'handoff')->whereUuid('id')->name('api.v1.ai.media.handoff');
+                Route::delete('{id}', 'destroy')->whereUuid('id')->name('api.v1.ai.media.destroy');
+            });
+        });
     });
 });
 
-require __DIR__.'/compliance_api.php';
+if (app()->environment('testing')) {
+    Route::post('/__test/ai/credit-reserve-settle', [\App\Http\Controllers\Api\V1\AiCreditController::class, 'testReserveSettle'])
+        ->name('api.test.ai.credit-reserve-settle');
+}
+
+require __DIR__ . '/compliance_api.php';

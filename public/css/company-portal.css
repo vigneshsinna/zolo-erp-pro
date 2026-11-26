@@ -1,0 +1,789 @@
+/**
+ * ZoloERP Pro — Modern Enterprise Company Onboarding Portal
+ * Global UI Engine compliant stylesheet using zolo-tokens.css variables.
+ * Zero hardcoded accents. Full dark mode support.
+ */
+
+:root {
+  --cp-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cp-font-display: 'Plus Jakarta Sans', var(--cp-font-sans);
+}
+
+.cp-portal-body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--cp-font-sans);
+  background: var(--neo-bg, #f8fafc);
+  color: var(--neo-text-primary, #0f172a);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body.dark-mode.cp-portal-body,
+body.dark-mode .cp-portal-body {
+  background: #090d16;
+  color: #f1f5f9;
+}
+
+/* --------------------------------------------------------------------------
+   Top Bar Navigation
+   -------------------------------------------------------------------------- */
+.cp-portal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 28px;
+  background: var(--neo-surface, #ffffff);
+  border-bottom: 1px solid var(--neo-border, #e2e8f0);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+body.dark-mode .cp-portal-top {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.cp-portal-brand-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cp-portal-brand {
+  font-family: var(--cp-font-display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  color: var(--neo-text-primary, #0f172a);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+body.dark-mode .cp-portal-brand {
+  color: #f8fafc;
+}
+
+.cp-portal-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 15px;
+  box-shadow: 0 2px 6px -1px rgb(var(--z-primary-rgb) / 0.4);
+}
+
+.cp-portal-tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgb(var(--z-primary-rgb) / 0.08);
+  color: var(--z-primary);
+  border: 1px solid rgb(var(--z-primary-rgb) / 0.2);
+}
+
+.cp-portal-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--neo-text-muted, #64748b);
+}
+
+.cp-portal-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cp-portal-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--neo-text-primary, #0f172a);
+  background: var(--neo-bg, #f1f5f9);
+  border: 1px solid var(--neo-border, #e2e8f0);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.cp-portal-nav-btn:hover {
+  background: var(--neo-surface, #ffffff);
+  border-color: var(--z-primary);
+  color: var(--z-primary);
+  text-decoration: none;
+}
+
+body.dark-mode .cp-portal-nav-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+/* --------------------------------------------------------------------------
+   Executive Hero Banner
+   -------------------------------------------------------------------------- */
+.cp-portal-hero {
+  position: relative;
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 48%, var(--z-ink, #022051) 100%);
+  border-radius: 18px;
+  padding: 24px 32px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 24px -4px rgb(var(--z-primary-rgb) / 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  color: #ffffff;
+}
+
+.cp-portal-hero-vector {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.cp-portal-hero-left {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 65%;
+}
+
+.cp-portal-hero-emblem {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 22px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.cp-portal-hero-emblem .star {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #0f172a;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.cp-portal-hero-text h1 {
+  margin: 0 0 6px 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.cp-portal-hero-text p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.cp-portal-hero-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.cp-portal-hero-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   Master Two-Column Layout
+   -------------------------------------------------------------------------- */
+.cp-portal-container {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cp-portal-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 28px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .cp-portal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Form Suite Cards
+   -------------------------------------------------------------------------- */
+.cp-portal-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cp-portal-card {
+  background: var(--neo-surface, #ffffff);
+  border: 1px solid var(--neo-border, #e2e8f0);
+  border-radius: 16px;
+  padding: 24px 26px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 6px 16px -4px rgba(0, 0, 0, 0.03);
+}
+
+body.dark-mode .cp-portal-card {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.cp-portal-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--neo-border, #e2e8f0);
+}
+
+body.dark-mode .cp-portal-card-head {
+  border-color: #1e293b;
+}
+
+.cp-portal-card-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgb(var(--z-primary-rgb) / 0.1);
+  color: var(--z-primary);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.cp-portal-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--neo-text-primary, #0f172a);
+}
+
+body.dark-mode .cp-portal-card-title {
+  color: #f1f5f9;
+}
+
+.cp-portal-card-desc {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: var(--neo-text-muted, #64748b);
+}
+
+/* Form Controls & Grids */
+.cp-field-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.cp-field-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .cp-field-row-2,
+  .cp-field-row-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cp-field-group {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cp-field-group:last-child {
+  margin-bottom: 0;
+}
+
+.cp-field-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--neo-text-primary, #0f172a);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+body.dark-mode .cp-field-label {
+  color: #e2e8f0;
+}
+
+.cp-field-req {
+  color: var(--z-danger, #ef4444);
+  font-weight: 800;
+  margin-left: 2px;
+}
+
+.cp-field-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--neo-text-muted, #64748b);
+}
+
+.cp-portal-input,
+.cp-portal-select,
+.cp-portal-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--neo-text-primary, #0f172a);
+  background: var(--neo-surface, #ffffff);
+  border: 1px solid var(--neo-border, #cbd5e1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  outline: none;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+body.dark-mode .cp-portal-input,
+body.dark-mode .cp-portal-select,
+body.dark-mode .cp-portal-textarea {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.cp-portal-input:focus,
+.cp-portal-select:focus,
+.cp-portal-textarea:focus {
+  border-color: var(--z-primary);
+  box-shadow: 0 0 0 3px rgb(var(--z-primary-rgb) / 0.15);
+}
+
+.cp-portal-input.u-uppercase {
+  text-transform: uppercase;
+  font-family: var(--neo-mono, monospace);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.cp-portal-textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+/* Industry Vertical Selection Grid */
+.cp-industry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cp-industry-option {
+  position: relative;
+  cursor: pointer;
+  margin: 0;
+}
+
+.cp-industry-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cp-industry-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14px 10px;
+  border: 1.5px solid var(--neo-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--neo-surface, #ffffff);
+  transition: all 0.15s ease;
+  gap: 8px;
+}
+
+body.dark-mode .cp-industry-box {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.cp-industry-box svg {
+  width: 26px;
+  height: 26px;
+  stroke: var(--neo-text-muted, #64748b);
+  fill: none;
+  stroke-width: 2;
+  transition: stroke 0.15s ease;
+}
+
+.cp-industry-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--neo-text-primary, #0f172a);
+}
+
+body.dark-mode .cp-industry-name {
+  color: #f1f5f9;
+}
+
+.cp-industry-option:hover .cp-industry-box {
+  border-color: var(--z-primary);
+  transform: translateY(-1px);
+}
+
+.cp-industry-option input[type="radio"]:checked + .cp-industry-box {
+  border-color: var(--z-primary);
+  background: rgb(var(--z-primary-rgb) / 0.06);
+  box-shadow: 0 0 0 2px var(--z-primary);
+}
+
+.cp-industry-option input[type="radio"]:checked + .cp-industry-box svg {
+  stroke: var(--z-primary);
+}
+
+.cp-industry-option input[type="radio"]:checked + .cp-industry-box .cp-industry-name {
+  color: var(--z-primary);
+}
+
+/* GST Type Radio Chips */
+.cp-gst-types {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cp-gst-type-chip {
+  cursor: pointer;
+  margin: 0;
+  position: relative;
+}
+
+.cp-gst-type-chip input {
+  position: absolute;
+  opacity: 0;
+}
+
+.cp-gst-chip-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--neo-border, #cbd5e1);
+  background: var(--neo-surface, #ffffff);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--neo-text-primary, #0f172a);
+  transition: all 0.15s ease;
+}
+
+body.dark-mode .cp-gst-chip-inner {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.cp-gst-type-chip input:checked + .cp-gst-chip-inner {
+  border-color: var(--z-primary);
+  background: var(--z-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgb(var(--z-primary-rgb) / 0.35);
+}
+
+/* Automated Provisioning Manifest */
+.cp-manifest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.cp-manifest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--neo-bg, #f8fafc);
+  border: 1px solid var(--neo-border, #e2e8f0);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--neo-text-primary, #0f172a);
+}
+
+body.dark-mode .cp-manifest-item {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.cp-manifest-check {
+  color: var(--z-success, #10b981);
+  font-size: 14px;
+}
+
+/* Bottom Action Bar */
+.cp-portal-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 20px 24px;
+  background: var(--neo-surface, #ffffff);
+  border: 1px solid var(--neo-border, #e2e8f0);
+  border-radius: 16px;
+  margin-top: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+}
+
+body.dark-mode .cp-portal-actions-bar {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.cp-portal-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 100%);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(var(--z-primary-rgb) / 0.4);
+  transition: all 0.15s ease;
+}
+
+.cp-portal-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgb(var(--z-primary-rgb) / 0.5);
+}
+
+/* --------------------------------------------------------------------------
+   Live Interactive Entity Passport Preview (Right Column)
+   -------------------------------------------------------------------------- */
+.cp-passport-sticky {
+  position: sticky;
+  top: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cp-passport-card {
+  background: var(--neo-surface, #ffffff);
+  border: 1px solid var(--neo-border, #e2e8f0);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+}
+
+body.dark-mode .cp-passport-card {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.cp-passport-header {
+  background: linear-gradient(135deg, var(--zp-800, #631f64) 0%, var(--z-primary, #7d287e) 100%);
+  padding: 22px 20px;
+  color: #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+
+.cp-passport-header-bg {
+  position: absolute;
+  right: -20px;
+  bottom: -20px;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.cp-passport-emblem-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.cp-passport-emblem {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  position: relative;
+}
+
+.cp-passport-emblem .star {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #0f172a;
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.cp-passport-badge-new {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #a7f3d0;
+}
+
+.cp-passport-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  word-break: break-word;
+}
+
+.cp-passport-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cp-passport-body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cp-passport-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.cp-passport-meta-label {
+  color: var(--neo-text-muted, #64748b);
+  font-weight: 600;
+}
+
+.cp-passport-meta-val {
+  font-weight: 700;
+  color: var(--neo-text-primary, #0f172a);
+}
+
+body.dark-mode .cp-passport-meta-val {
+  color: #f1f5f9;
+}
+
+.cp-passport-checklist {
+  border-top: 1px solid var(--neo-border, #e2e8f0);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body.dark-mode .cp-passport-checklist {
+  border-color: #1e293b;
+}
+
+.cp-check-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--neo-text-muted, #64748b);
+}
+
+.cp-check-step.is-done {
+  color: var(--z-success, #10b981);
+}
+
+.cp-check-step i {
+  font-size: 13px;
+}

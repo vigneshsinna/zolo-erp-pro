@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-024",
+    "risk_group": "Unauthorized or missing warehouse",
+    "expected_error_code": "WAREHOUSE_FORBIDDEN",
+    "expected_http_status": 403,
+    "input_text": "Allocate incoming yarn shipment to Closed Bonded Warehouse Zone C.",
+    "expected_no_erp_writes": true
+}

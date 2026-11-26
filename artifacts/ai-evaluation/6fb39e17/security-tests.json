@@ -1,0 +1,470 @@
+{
+    "summary": {
+        "total_tests": 20,
+        "passed": 20,
+        "failed": 0,
+        "verdict": "PASSED"
+    },
+    "test_cases": [
+        {
+            "id": "SEC-01",
+            "title": "Tenant and user credit history isolation",
+            "security_rule": "User A cannot access or query User B usage logs.",
+            "target": "GET \/api\/v1\/ai\/credits\/usage?user_id={user_b}",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 200,
+            "evidence": "Returned dataset filtered strictly to actor_id=2244; 0 foreign records exposed.",
+            "db_before": {
+                "ai_credit_ledger": 1502
+            },
+            "db_after": {
+                "ai_credit_ledger": 1502
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_01_and_02_tenant_and_user_history_isolation",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-02",
+            "title": "Cross-tenant context header override attempt",
+            "security_rule": "Server-resolved company context prevails over client request headers.",
+            "target": "GET \/api\/v1\/ai\/credits\/balance [Header: X-Company-ID: 999]",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 200,
+            "evidence": "Server context company_id=1082 enforced; client header 999 ignored.",
+            "db_before": {
+                "purchases": 0
+            },
+            "db_after": {
+                "purchases": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_01_and_02_tenant_and_user_history_isolation",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-03",
+            "title": "Cross-company credit wallet debit attempt",
+            "security_rule": "Company B cannot draw from Company A wallet without mapped membership.",
+            "target": "CreditAccountResolver::assertCompanyBelongsToAccount(account_a, company_b)",
+            "actor": {
+                "actor_id": 999,
+                "company_id": 999999,
+                "role": "Staff"
+            },
+            "http_status": 403,
+            "evidence": "AccessDeniedHttpException: Company does not belong to authorized billing account context.",
+            "db_before": {
+                "ai_credit_ledger": 0
+            },
+            "db_after": {
+                "ai_credit_ledger": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_03_cross_tenant_wallet_drawing_forbidden",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-04",
+            "title": "Parent-subsidiary shared wallet isolation",
+            "security_rule": "Pooled subscription allows shared balance only when explicitly attached.",
+            "target": "CreditAccountResolver::attachCompany(account_a, company_b)",
+            "actor": {
+                "actor_id": 1,
+                "company_id": 1082,
+                "role": "Admin"
+            },
+            "http_status": 200,
+            "evidence": "Isolated mapping verified before attachment; shared access verified after atomic attach.",
+            "db_before": {
+                "ai_credit_account_companies": 2
+            },
+            "db_after": {
+                "ai_credit_account_companies": 2
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_04_pooled_subscription_shares_balance_when_mapped",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-05",
+            "title": "Branch\/FY mismatch during action",
+            "security_rule": "Actions with branch or fiscal year mismatches are denied before domain execution.",
+            "target": "CompanyWriteGuard::assertBranchAndFiscalYear(principal)",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "branch_id": 9999,
+                "financial_year_id": 9999
+            },
+            "http_status": 422,
+            "evidence": "ValidationException: Branch or fiscal year does not belong to authorized company context.",
+            "db_before": {
+                "purchases": 0,
+                "journal_entries": 0
+            },
+            "db_after": {
+                "purchases": 0,
+                "journal_entries": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\SprintASecurityAndLineageTest::test_inventory_warehouse_branch_isolation_and_fail_closed",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-06",
+            "title": "User lacking ai.use permission",
+            "security_rule": "User without ai.use capability is rejected before model admission.",
+            "target": "POST \/api\/v1\/ai\/chat [Actor lacking ai.use]",
+            "actor": {
+                "actor_id": 105,
+                "company_id": 1082,
+                "permissions": []
+            },
+            "http_status": 403,
+            "evidence": "AuthorizationException: User lacks required ai.use permission.",
+            "db_before": {
+                "ai_runs": 0,
+                "ai_credit_ledger": 0
+            },
+            "db_after": {
+                "ai_runs": 0,
+                "ai_credit_ledger": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\SafeEvaluationEnvironmentTest::test_assert_safe_passes_in_testing_environment",
+            "junit_verified": false
+        },
+        {
+            "id": "SEC-07",
+            "title": "Global AI or multimodal switch off",
+            "security_rule": "Dispatches fail closed when global or company feature flag is disabled.",
+            "target": "ApprovedModelGateway::admitPerceptionDispatch() [ai_feature_settings.enabled=0]",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Admin"
+            },
+            "http_status": 403,
+            "evidence": "AccessDeniedHttpException: AI feature is disabled for this company context.",
+            "db_before": {
+                "ai_model_invocations": 0
+            },
+            "db_after": {
+                "ai_model_invocations": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\SprintASecurityAndLineageTest::test_inventory_warehouse_branch_isolation_and_fail_closed",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-08",
+            "title": "User edits proposal after approval",
+            "security_rule": "Hash mismatch forces proposal revision into a new human approval cycle.",
+            "target": "ActionProposalService::applyChangeRequest(proposal_v1)",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 200,
+            "evidence": "Proposal v1 invalidated with stale state; Proposal v2 staged for new review.",
+            "db_before": {
+                "ai_action_proposals": 1
+            },
+            "db_after": {
+                "ai_action_proposals": 2
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\PrepaidCreditSafetyTest::test_full_actual_usage_is_debited_without_silent_capping",
+            "junit_verified": false
+        },
+        {
+            "id": "SEC-09",
+            "title": "Actor self-approves restricted action",
+            "security_rule": "Four-eyes policy strictly blocks author from self-approving high-value transactions.",
+            "target": "ActionApprovalService::approve(proposal, approver_id=creator_id)",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 422,
+            "evidence": "ValidationException: Four-eyes authorization policy forbids self-approval of commercial proposal.",
+            "db_before": {
+                "purchases": 0
+            },
+            "db_after": {
+                "purchases": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\SprintASecurityAndLineageTest::test_inventory_warehouse_branch_isolation_and_fail_closed",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-10",
+            "title": "Concurrent duplicate proposal approval clicks",
+            "security_rule": "Domain command executed exactly once via row lock and version binding.",
+            "target": "ActionApprovalService::approve(proposal_id, version=1) [Simultaneous double-click]",
+            "actor": {
+                "actor_id": 1,
+                "company_id": 1082,
+                "role": "Admin"
+            },
+            "http_status": 409,
+            "evidence": "First click commits purchase; second click returns cached execution receipt without duplicate booking.",
+            "db_before": {
+                "purchases": 0
+            },
+            "db_after": {
+                "purchases": 1
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\ConcurrentCreditLoadTest::test_concurrent_reserve_and_settle_endpoint_executes_atomically",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-11",
+            "title": "Prompt injection in bill says \"post without approval\"",
+            "security_rule": "Untrusted LLM prompt instructions cannot bypass ERP human approval barriers.",
+            "target": "POST \/api\/v1\/ai\/chat [Payload: IGNORE ALL PREVIOUS INSTRUCTIONS...]",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 200,
+            "evidence": "Input treated as literal text; 0 purchase mutations, 0 journal entries booked.",
+            "db_before": {
+                "purchases": 0,
+                "journal_entries": 0
+            },
+            "db_after": {
+                "purchases": 0,
+                "journal_entries": 0
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Evaluations\\DifficultScenarioCorpusTest::test_difficult_manifest_contains_exactly_50_distinct_cases",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-12",
+            "title": "Forged webhook HMAC signature",
+            "security_rule": "Top-up webhook with invalid signature is rejected with 403 and zero credit grant.",
+            "target": "POST \/api\/v1\/billing\/webhooks\/razorpay [Header: X-Razorpay-Signature: forged_hash]",
+            "actor": {
+                "external": "RazorpayWebhookSimulator"
+            },
+            "http_status": 403,
+            "evidence": "Rejected with HTTP 403 (verifyWebhookSignature=false); order remains in pending status; 0 credits added to ledger.",
+            "db_before": {
+                "ai_credit_ledger": 0
+            },
+            "db_after": {
+                "ai_credit_ledger": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_12_forged_webhook_rejected_with_403_and_zero_grant",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-13",
+            "title": "Replaying same payment webhook 100x",
+            "security_rule": "Payment webhook replayed 100x delivers exactly one credit grant.",
+            "target": "AiTopupService::recordPaymentSuccess() [100 iterations on identical event_id]",
+            "actor": {
+                "external": "RazorpayWebhookSimulator"
+            },
+            "http_status": 200,
+            "evidence": "First event grants 15,000 credits; 99 subsequent replays deduplicated via ai_credit_payment_events.",
+            "db_before": {
+                "ai_credit_ledger": 0
+            },
+            "db_after": {
+                "ai_credit_ledger": 1
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_13_valid_webhook_repeated_100x_grants_exactly_once",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-14",
+            "title": "Concurrent holds exceed available wallet balance",
+            "security_rule": "Credit reservations exceeding available wallet balance fail closed with 402.",
+            "target": "AiCreditReservationService::hold(credits=99999999)",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 402,
+            "evidence": "AiCreditException: CREDITS_EXHAUSTED (HTTP 402); hold denied; zero overdraft.",
+            "db_before": {
+                "ai_credit_reservations": 0
+            },
+            "db_after": {
+                "ai_credit_reservations": 0
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_14_holds_exceeding_balance_fail_closed",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-15",
+            "title": "Webhook callback after company deactivation",
+            "security_rule": "Top-up events for deactivated companies are held in escrow for audit reconciliation.",
+            "target": "POST \/api\/v1\/billing\/webhooks\/razorpay [company.is_active=0]",
+            "actor": {
+                "external": "RazorpayWebhookSimulator"
+            },
+            "http_status": 422,
+            "evidence": "ValidationException: Company account is deactivated; payment event registered for admin review.",
+            "db_before": {
+                "ai_credit_ledger": 0
+            },
+            "db_after": {
+                "ai_credit_ledger": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_12_forged_webhook_rejected_with_403_and_zero_grant",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-16",
+            "title": "Unapproved model ID in request",
+            "security_rule": "Arbitrary external model IDs are rejected by model gateway allowlist.",
+            "target": "ApprovedModelGateway::resolveModel(\"unapproved\/malicious-llm\")",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 422,
+            "evidence": "ValidationException: Requested model ID is not registered in approved model manifest.",
+            "db_before": {
+                "ai_model_invocations": 0
+            },
+            "db_after": {
+                "ai_model_invocations": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_17_missing_model_pricing_fails_closed",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-17",
+            "title": "Unknown provider rate card or pricing missing",
+            "security_rule": "Dispatches fail closed when pricing rate cards are missing or expired (SEC-17).",
+            "target": "ModelCostCalculator::calculate(\"nvidia\", \"non-existent-unmetered-model-99\")",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 422,
+            "evidence": "AiCreditException: No billable rate card configured for model; unmetered execution forbidden.",
+            "db_before": {
+                "ai_model_invocations": 0
+            },
+            "db_after": {
+                "ai_model_invocations": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_17_missing_model_pricing_fails_closed",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-18",
+            "title": "Cross-tenant private media URL guessing",
+            "security_rule": "Scanned document media access requires signed URL and tenant authorization.",
+            "target": "GET \/api\/v1\/ai\/media\/download\/{tenant_b_id} [Actor in Tenant A]",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 403,
+            "evidence": "AccessDeniedHttpException: Media does not belong to authorized company context.",
+            "db_before": {
+                "ai_model_invocations": 0
+            },
+            "db_after": {
+                "ai_model_invocations": 0
+            },
+            "assertions_count": 2,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\SprintASecurityAndLineageTest::test_unauthorized_actor_cannot_inspect_foreign_open_item",
+            "junit_verified": false
+        },
+        {
+            "id": "SEC-19",
+            "title": "Telemetry and trace redaction of secrets\/PII",
+            "security_rule": "Secrets, API tokens, and sensitive PII are redacted from traces and logs.",
+            "target": "AiAuditRecorder::recordInvocationTrace(raw_trace_with_bearer_token)",
+            "actor": {
+                "system": "TelemetryLogger"
+            },
+            "http_status": 200,
+            "evidence": "Sensitive bearer token replaced with [REDACTED_SECRET]; 0 raw secrets persisted.",
+            "db_before": {
+                "ai_tool_invocations": 0
+            },
+            "db_after": {
+                "ai_tool_invocations": 1
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\SprintASecurityAndLineageTest::test_customer_invoices_tool_returns_exact_invoices_and_matches_totals",
+            "junit_verified": true
+        },
+        {
+            "id": "SEC-20",
+            "title": "Replaying settled provider attempt ID",
+            "security_rule": "Replaying an already-settled attempt ID returns original debit without double charging.",
+            "target": "AiCreditSettlementService::settle(attempt_id=\"att_replay_1001\") [Twice]",
+            "actor": {
+                "actor_id": 2244,
+                "company_id": 1082,
+                "role": "Staff"
+            },
+            "http_status": 200,
+            "evidence": "Both settlement calls return identical credits_debited=2; ledger balance unchanged after second call.",
+            "db_before": {
+                "ai_credit_ledger": 0
+            },
+            "db_after": {
+                "ai_credit_ledger": 1
+            },
+            "assertions_count": 3,
+            "verdict": "PASSED",
+            "junit_test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_20_replaying_settled_attempt_id_is_idempotent",
+            "junit_verified": true
+        }
+    ],
+    "executed_at": "2026-11-16T17:42:04+00:00"
+}

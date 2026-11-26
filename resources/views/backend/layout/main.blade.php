@@ -4,14 +4,14 @@ $activeCompany = $companyContext ? \App\Models\Company::with('group')->find($com
 $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_years')->where('id', $companyContext->financialYearId)->value('name') : null;
 @endphp
 <!DOCTYPE html>
-<html dir="@if( Config::get('app.locale') == 'ar' || $general_setting->is_rtl){{'rtl'}}@endif" @if(Route::currentRouteName() != 'sale.pos') class="app-shell" @endif>
+<html dir="@if( Config::get('app.locale') == 'ar' || ($general_setting->is_rtl ?? false)){{'rtl'}}@endif" @if(Route::currentRouteName() != 'sale.pos') class="app-shell" @endif>
 
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   @if(!config('database.connections.zoloerp_landlord'))
-  <link rel="icon" type="image/png" href="{{url('logo', $general_setting->favicon ?? $general_setting->site_logo)}}" />
-  <title>{{$general_setting->site_title}}</title>
+  <link rel="icon" type="image/png" href="{{url('logo', ($general_setting->favicon ?? ($general_setting->site_logo ?? 'logo.png')))}}" />
+  <title>{{$general_setting->site_title ?? 'zoloERP Pro'}}</title>
   <meta name="description" content="">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="all,follow">
@@ -267,18 +267,46 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
     </div>
     <header class="container-fluid">
       <nav class="navbar">
-        <a id="toggle-btn" href="#" class="menu-btn zolo-sidebar-toggle" title="Collapse to icons (1st tap)" data-state="expanded" aria-label="Toggle sidebar navigation" role="button">
-          <div class="toggle-icon-bars">
-            <span class="bar bar-1"></span>
-            <span class="bar bar-2"></span>
-            <span class="bar bar-3"></span>
+        <div class="navbar-left-group d-flex align-items-center">
+          <a id="toggle-btn" href="#" class="menu-btn zolo-sidebar-toggle" title="Collapse to icons (1st tap)" data-state="expanded" aria-label="Toggle sidebar navigation" role="button">
+            <div class="toggle-icon-bars">
+              <span class="bar bar-1"></span>
+              <span class="bar bar-2"></span>
+              <span class="bar bar-3"></span>
+            </div>
+            <div class="toggle-state-indicator">
+              <span class="dot dot-1"></span>
+              <span class="dot dot-2"></span>
+              <span class="dot dot-3"></span>
+            </div>
+          </a>
+
+          @if($activeCompany)
+          @php
+            $activeCompanyLogoUrl = null;
+            if ($activeCompany->logo) {
+                if (file_exists(public_path($activeCompany->logo))) {
+                    $activeCompanyLogoUrl = asset($activeCompany->logo);
+                } elseif (file_exists(public_path('images/company/' . $activeCompany->logo))) {
+                    $activeCompanyLogoUrl = asset('images/company/' . $activeCompany->logo);
+                } elseif (file_exists(public_path('logo/' . $activeCompany->logo))) {
+                    $activeCompanyLogoUrl = asset('logo/' . $activeCompany->logo);
+                }
+            }
+          @endphp
+          <div class="top-navbar-company d-none d-sm-flex align-items-center ml-2" title="{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}">
+            @if($activeCompanyLogoUrl)
+              <img src="{{ $activeCompanyLogoUrl }}" alt="{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}" class="top-navbar-company-logo">
+            @else
+              <span class="top-navbar-company-mark">{{ collect(preg_split('/\s+/', trim($activeCompany->trade_name ?: $activeCompany->legal_name)))->filter()->take(2)->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->implode('') }}</span>
+            @endif
+            <div class="top-navbar-company-info d-flex flex-column ml-2">
+              <span class="top-navbar-company-name">{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}</span>
+              @if($activeCompany->group)<span class="top-navbar-company-group">{{ $activeCompany->group->name }}</span>@endif
+            </div>
           </div>
-          <div class="toggle-state-indicator">
-            <span class="dot dot-1"></span>
-            <span class="dot dot-2"></span>
-            <span class="dot dot-3"></span>
-          </div>
-        </a>
+          @endif
+        </div>
 
         @hasSection('navbar-center')
           <div class="navbar-center-area flex-grow-1 mx-2 d-flex align-items-center justify-content-between overflow-hidden u-minw-0">
@@ -288,12 +316,102 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
 
         <ul class="nav-menu list-unstyled d-flex flex-md-row align-items-md-center">
           @if($activeCompany)
-          <li class="nav-item company-switch"><a class="company-switch-link" href="{{ route('company.select', request()->is('workspace*') ? ['manage' => 1, 'return' => 'workspace'] : ['manage' => 1]) }}" title="Switch company" aria-label="Switch company: {{ $activeCompany->trade_name ?: $activeCompany->legal_name }}">
-            <span class="company-switch-mark" aria-hidden="true">{{ collect(preg_split('/\s+/', trim($activeCompany->trade_name ?: $activeCompany->legal_name)))->filter()->take(2)->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->implode('') }}</span>
-            @if($activeCompany->group)<span class="company-switch-group">{{ $activeCompany->group->name }}</span>@endif
-            <span class="company-switch-name">{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}</span>
-            @if($activeYear)<span class="company-switch-year">{{ $activeYear }}</span>@endif
-            <span class="company-switch-caret" aria-hidden="true">&#8645;</span></a></li>
+          @php
+            $topDirectory = null;
+            try {
+                $topDirectory = auth()->check() ? app(\App\Services\Platform\CompanyDirectoryService::class)->directory(auth()->id()) : null;
+            } catch (\Throwable $e) {
+                $topDirectory = null;
+            }
+            $topCompanies = [];
+            if ($topDirectory && !empty($topDirectory['groups'])) {
+                foreach ($topDirectory['groups'] as $grp) {
+                    foreach ($grp['companies'] ?? [] as $comp) {
+                        $topCompanies[] = $comp + ['group_name' => $grp['name'] ?? null];
+                    }
+                }
+            }
+            if ($topDirectory && !empty($topDirectory['ungrouped'])) {
+                foreach ($topDirectory['ungrouped'] as $comp) {
+                    $topCompanies[] = $comp + ['group_name' => null];
+                }
+            }
+          @endphp
+          <li class="nav-item company-switch dropdown" id="topCompanySwitchItem">
+            <a class="company-switch-link dropdown-toggle" href="javascript:void(0)" id="topCompanySwitchDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Switch company" aria-label="Switch company">
+              @if($activeCompanyLogoUrl)
+                <span class="company-switch-logo-wrap" aria-hidden="true">
+                  <img src="{{ $activeCompanyLogoUrl }}" alt="{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}" class="company-switch-logo-img">
+                </span>
+              @else
+                <span class="company-switch-mark" aria-hidden="true">{{ collect(preg_split('/\s+/', trim($activeCompany->trade_name ?: $activeCompany->legal_name)))->filter()->take(2)->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->implode('') }}</span>
+              @endif
+              <span class="company-switch-name font-weight-bold">Switch Company</span>
+              <span class="company-switch-caret" aria-hidden="true"><i class="fa fa-angle-down"></i></span>
+            </a>
+            <div class="dropdown-menu dropdown-menu-right top-company-dropdown-menu" aria-labelledby="topCompanySwitchDropdown">
+              <div class="top-company-dropdown-header">
+                <div class="top-company-active-tag"><i class="fa fa-building-o mr-1" aria-hidden="true"></i> Active Workspace</div>
+                <div class="top-company-active-name">{{ $activeCompany->trade_name ?: $activeCompany->legal_name }}</div>
+                <div class="top-company-active-meta">
+                  <code>{{ $activeCompany->code }}</code>
+                  @if($activeCompany->group)<span>· {{ $activeCompany->group->name }}</span>@endif
+                  @if($activeYear)<span>· FY {{ $activeYear }}</span>@endif
+                </div>
+              </div>
+
+              @if(!empty($topCompanies) && count($topCompanies) > 1)
+                <div class="top-company-search-box">
+                  <i class="fa fa-search" aria-hidden="true"></i>
+                  <input type="search" class="top-company-search-input" placeholder="Search companies or code..." autocomplete="off">
+                </div>
+                <div class="top-company-list">
+                  @foreach($topCompanies as $tc)
+                    <form method="post" action="{{ route('company.choose') }}" class="top-company-item-form" data-search="{{ strtolower($tc['name'].' '.$tc['legal_name'].' '.$tc['code'].' '.($tc['group_name'] ?? '')) }}">
+                      @csrf
+                      <input type="hidden" name="company_id" value="{{ $tc['id'] }}">
+                      <input type="hidden" name="branch_id" value="{{ !empty($tc['branches']) ? $tc['branches'][0]['id'] : '' }}">
+                      <input type="hidden" name="return" value="{{ request()->is('workspace*') ? 'workspace' : 'dashboard' }}">
+                      <button type="submit" class="top-company-item-btn {{ $tc['id'] === $activeCompany->id ? 'is-active' : '' }}">
+                        <span class="top-company-item-mark">{{ collect(preg_split('/\s+/', trim($tc['name'])))->filter()->take(2)->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->implode('') }}</span>
+                        <div class="top-company-item-info">
+                          <div class="top-company-item-title-row">
+                            <span class="top-company-item-title">{{ $tc['name'] }}</span>
+                            <code>{{ $tc['code'] }}</code>
+                          </div>
+                          @if($tc['group_name'])<div class="top-company-item-sub">{{ $tc['group_name'] }}</div>@endif
+                        </div>
+                        @if($tc['id'] === $activeCompany->id)
+                          <span class="top-company-pill is-active"><i class="fa fa-check" aria-hidden="true"></i> Active</span>
+                        @else
+                          <span class="top-company-pill is-switch">Switch</span>
+                        @endif
+                      </button>
+                    </form>
+                  @endforeach
+                </div>
+              @endif
+
+              <div class="top-company-dropdown-footer">
+                <a href="{{ route('company.create') }}" class="top-company-portal-btn text-white" title="Open Dedicated Company Creation Portal">
+                  <i class="fa fa-plus-circle mr-1 text-white" aria-hidden="true"></i>
+                  <span class="text-white">Company Portal &rsaquo;</span>
+                </a>
+                <a href="{{ route('company.select', request()->is('workspace*') ? ['manage' => 1, 'return' => 'workspace'] : ['manage' => 1]) }}" class="top-company-manage-link" title="Manage all companies">
+                  <i class="fa fa-th-list mr-1" aria-hidden="true"></i> Manage All
+                </a>
+              </div>
+            </div>
+          </li>
+
+          @if($activeYear)
+          <li class="nav-item topbar-fiscal-item" id="topbarFiscalItem">
+            <div class="topbar-fiscal-pill" title="Active Fiscal Window">
+              <i class="dripicons-calendar" aria-hidden="true"></i>
+              <span>{{ str_starts_with($activeYear, 'FY') ? $activeYear : 'FY ' . $activeYear }}</span>
+            </div>
+          </li>
+          @endif
           @endif
           <?php
           $empty_database_permission_active = $role_has_permissions_list->where('name', 'empty_database')->first();
@@ -1369,6 +1487,16 @@ $activeYear = $companyContext ? \Illuminate\Support\Facades\DB::table('fiscal_ye
       menu.style.setProperty('--zolo-dropdown-left', left + 'px');
       menu.style.setProperty('--zolo-dropdown-top', Math.max(8, Math.min(top, window.innerHeight - height - 8)) + 'px');
     }
+
+    // Top company switcher search filter
+    $(document).on('input', '.top-company-search-input', function () {
+      var q = $(this).val().trim().toLowerCase();
+      var $items = $(this).closest('.top-company-dropdown-menu').find('.top-company-item-form');
+      $items.each(function () {
+        var text = ($(this).data('search') || '').toString().toLowerCase();
+        $(this).toggle(!q || text.indexOf(q) !== -1);
+      });
+    });
 
     var $ancestorContainers = function($el) {
       return $el.parents('.table-responsive, .card-body, .card, .dataTables_wrapper, .modal-body, .modal-content, section');

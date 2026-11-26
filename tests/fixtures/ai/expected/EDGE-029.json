@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-029",
+    "risk_group": "Insufficient stock or negative balance",
+    "expected_error_code": "INSUFFICIENT_STOCK",
+    "expected_http_status": 422,
+    "input_text": "Book stock delivery of 1,200 water cans with current warehouse balance 150 cans.",
+    "expected_no_erp_writes": true
+}

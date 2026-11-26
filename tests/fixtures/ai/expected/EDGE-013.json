@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-013",
+    "risk_group": "Incompatible UOM conversion",
+    "expected_error_code": "INVALID_UOM",
+    "expected_http_status": 422,
+    "input_text": "Record purchase of 120 Square Meters of Industrial Lubricant Oil.",
+    "expected_no_erp_writes": true
+}

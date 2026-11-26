@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-017",
+    "risk_group": "Mismatched GST split or invalid GSTIN",
+    "expected_error_code": "TAX_DETERMINATION_FAILED",
+    "expected_http_status": 422,
+    "input_text": "Create supplier profile for Tirupur Knits with GSTIN 99AAAAA0000A1Z5 (invalid state code 99 for domestic B2B trade).",
+    "expected_no_erp_writes": true
+}

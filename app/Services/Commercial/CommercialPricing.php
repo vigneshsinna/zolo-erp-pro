@@ -15,6 +15,8 @@ class CommercialPricing
         if (!is_array($data['items']) || !array_is_list($data['items'])) {
             $this->invalid('items', 'Lines must be a list.');
         }
+        $isNonGst = !empty($data['is_non_gst']) || !empty($data['non_gst']) || ($data['bill_type'] ?? '') === 'non_gst'
+            || (!empty($data['attributes']) && (!empty($data['attributes']['is_non_gst']) || ($data['attributes']['bill_type'] ?? '') === 'non_gst'));
         $products = [];
         foreach ($data['items'] as &$line) {
             if (!is_array($line) || count($data['items']) > 500) {
@@ -23,13 +25,16 @@ class CommercialPricing
             $product = app(\App\Services\ERP\CompanyWriteGuard::class)->product($line, $context, $purchase ? 'purchase_unit_id' : 'sale_unit_id');
             $product->assertAllowedOnBill($purchase ? 'purchase' : 'sale');
             $products[$product->id] = $product;
-            $line['tax_rate'] = $product->tax_category_id ? 0 : $this->legacyRate($product, $context);
+            $line['tax_rate'] = $isNonGst ? 0.0 : ($product->tax_category_id ? 0 : $this->legacyRate($product, $context));
             // A user-changed line rate (GST lines are checked in TaxDeterminationService).
-            if (!$product->tax_category_id && isset($line['tax_rate_override']) && $line['tax_rate_override'] !== '') {
+            if (!$isNonGst && !$product->tax_category_id && isset($line['tax_rate_override']) && $line['tax_rate_override'] !== '') {
                 $override = $this->number($line['tax_rate_override'], 'tax_rate_override');
                 if ($override > 100) $this->invalid('tax_rate_override', 'Use a tax rate between 0 and 100%.');
                 $line['product_tax_rate'] = $line['tax_rate'];
                 $line['tax_rate'] = $override;
+            } elseif ($isNonGst) {
+                $line['tax_rate'] = 0.0;
+                $line['tax_rate_override'] = 0.0;
             }
             unset($line['tax'], $line['total'], $line['_tax_snapshot'], $line['recoverable_tax']);
         }
@@ -39,6 +44,11 @@ class CommercialPricing
         if ($partyId) {
             $party = app(\App\Services\ERP\CompanyWriteGuard::class)->owned($purchase ? \App\Models\Supplier::class : \App\Models\Customer::class, $partyId, $context, 'party');
             $data = app(\App\Services\Tax\TaxDeterminationService::class)->prepare($data, $purchase ? 'purchase' : 'sale', $products, $party, $context,
+                app(\App\Services\ERP\CompanyWriteGuard::class)->businessDate($data));
+        }
+        elseif ($isNonGst) {
+            $dummyParty = (object) ['id' => 0, 'name' => 'Walk-in Party'];
+            $data = app(\App\Services\Tax\TaxDeterminationService::class)->prepare($data, $purchase ? 'purchase' : 'sale', $products, $dummyParty, $context,
                 app(\App\Services\ERP\CompanyWriteGuard::class)->businessDate($data));
         }
         elseif (config('compliance.enabled') && collect($products)->contains(fn ($p) => $p->tax_category_id)) {

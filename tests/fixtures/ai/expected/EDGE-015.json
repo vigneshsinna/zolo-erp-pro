@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-015",
+    "risk_group": "Incompatible UOM conversion",
+    "expected_error_code": "INVALID_UOM",
+    "expected_http_status": 422,
+    "input_text": "Issue 200 Grams of Heavy Duty Steel Pallet Racks from Main Warehouse.",
+    "expected_no_erp_writes": true
+}

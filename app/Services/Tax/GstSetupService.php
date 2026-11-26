@@ -101,7 +101,7 @@ class GstSetupService
         if ($unregistered && $raw !== '') throw ValidationException::withMessages(['gstin' => 'Leave GSTIN empty for an unregistered business, or choose Regular / Composition.']);
         if (!$unregistered && $raw === '') throw ValidationException::withMessages(['gstin' => 'Enter the GSTIN, or choose Unregistered as the type.']);
         $gstin = $unregistered ? null : Gstin::normalize($raw);
-        $state = $gstin ? substr($gstin, 0, 2) : (($data['state_code'] ?? null) ?: Company::whereKey($context->companyId)->value('state_code'));
+        $state = $gstin ? substr($gstin, 0, 2) : ($data['state_code'] ?? null);
         if (!$state || $state === '97' || !isset(Gstin::$states[$state])) throw ValidationException::withMessages(['state_code' => 'Choose the state of the business.']);
         DB::transaction(function () use ($data, $gstin, $state, $context) {
             Company::whereKey($context->companyId)->lockForUpdate()->firstOrFail();
@@ -394,21 +394,60 @@ class GstSetupService
     }
 
     /** Effective GST rate of a product for a date, or null when the product has no GST rate. */
-    public function rateFor(object $product, ?string $date = null): ?array
+    public function rateFor(object $product, ?string $date = null, ?float $unitValue = null): ?array
     {
         if (empty($product->tax_category_id) || !Schema::hasTable('tax_categories')) return null;
         $date ??= now()->toDateString();
-        $row = DB::table('tax_categories as c')->leftJoin('tax_rates as r', function ($join) use ($date) {
-            $join->on('r.tax_category_id', '=', 'c.id')->where('r.effective_from', '<=', $date)
-                ->where(fn ($q) => $q->whereNull('r.effective_to')->orWhere('r.effective_to', '>=', $date));
-        })->where('c.id', $product->tax_category_id)->first(['c.id', 'c.name', 'c.supply_type', 'r.rate', 'r.cess_rate']);
-        if (!$row) return null;
-        $rate = $row->supply_type === 'taxable' ? (float) $row->rate : 0.0;
-        return ['category_id' => $row->id, 'name' => $row->name, 'rate' => $rate, 'cess_rate' => (float) $row->cess_rate,
-            'supply_type' => $row->supply_type];
+        $unitValue ??= (isset($product->price) ? (float) $product->price : null);
+
+        $category = DB::table('tax_categories')->where('id', $product->tax_category_id)->first(['id', 'name', 'supply_type']);
+        if (!$category) return null;
+
+        $hasBandColumns = Schema::hasColumn('tax_rates', 'max_unit_value');
+        $ratesQuery = DB::table('tax_rates')->where('tax_category_id', $category->id)
+            ->where('effective_from', '<=', $date)
+            ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date));
+        
+        $selectCols = ['rate', 'cess_rate'];
+        if ($hasBandColumns) {
+            $selectCols[] = 'min_unit_value';
+            $selectCols[] = 'max_unit_value';
+        }
+        $allRates = $ratesQuery->get($selectCols);
+        if ($allRates->isEmpty()) return null;
+
+        $hasBands = $hasBandColumns && $allRates->contains(fn ($r) => isset($r->min_unit_value) || isset($r->max_unit_value));
+
+        $selectedRate = null;
+        if ($hasBands && $unitValue !== null) {
+            $matched = $allRates->filter(fn ($rate) => (!isset($rate->min_unit_value) || $rate->min_unit_value === null || $unitValue >= (float) $rate->min_unit_value - 0.00005)
+                && (!isset($rate->max_unit_value) || $rate->max_unit_value === null || $unitValue <= (float) $rate->max_unit_value + 0.00005));
+            $selectedRate = $matched->first();
+        }
+        $selectedRate ??= $allRates->first();
+
+        $rate = $category->supply_type === 'taxable' ? (float) $selectedRate->rate : 0.0;
+        $cess = $category->supply_type === 'taxable' ? (float) ($selectedRate->cess_rate ?? 0) : 0.0;
+
+        $bands = $allRates->map(fn ($r) => [
+            'rate' => $category->supply_type === 'taxable' ? (float) $r->rate : 0.0,
+            'cess_rate' => $category->supply_type === 'taxable' ? (float) ($r->cess_rate ?? 0) : 0.0,
+            'min_unit_value' => isset($r->min_unit_value) ? (float) $r->min_unit_value : null,
+            'max_unit_value' => isset($r->max_unit_value) ? (float) $r->max_unit_value : null,
+        ])->values()->all();
+
+        return [
+            'category_id' => $category->id,
+            'name' => $category->name,
+            'rate' => $rate,
+            'cess_rate' => $cess,
+            'supply_type' => $category->supply_type,
+            'has_bands' => $hasBands,
+            'bands' => $bands,
+        ];
     }
 
-    /** category id => [rate, name] effective on the date, for page product lists. */
+    /** category id => [rate, name, supply_type, has_bands, bands] effective on the date, for page product lists. */
     public function currentRates(?int $companyId = null, ?string $date = null): array
     {
         if (!app(\App\Support\Database\SchemaCache::class)->hasTable(DB::connection(), 'tax_categories')) return [];
@@ -419,13 +458,40 @@ class GstSetupService
             return [];
         }
         $date ??= now()->toDateString();
-        return DB::table('tax_categories as c')->leftJoin('tax_rates as r', function ($join) use ($date) {
+        $hasBandColumns = Schema::hasColumn('tax_rates', 'max_unit_value');
+        $selectCols = ['c.id', 'c.name', 'c.supply_type', 'r.rate', 'r.cess_rate'];
+        if ($hasBandColumns) {
+            $selectCols[] = 'r.min_unit_value';
+            $selectCols[] = 'r.max_unit_value';
+        }
+
+        $rates = DB::table('tax_categories as c')->leftJoin('tax_rates as r', function ($join) use ($date) {
             $join->on('r.tax_category_id', '=', 'c.id')->where('r.effective_from', '<=', $date)
                 ->where(fn ($q) => $q->whereNull('r.effective_to')->orWhere('r.effective_to', '>=', $date));
         })->where('c.company_id', $companyId)->orderBy('r.rate')->orderBy('c.name')
-            ->get(['c.id', 'c.name', 'c.supply_type', 'r.rate', 'r.cess_rate'])
-            ->mapWithKeys(fn ($row) => [$row->id => ['rate' => $row->supply_type === 'taxable' ? (float) $row->rate : 0.0,
-                'cess_rate' => (float) $row->cess_rate, 'name' => $row->name, 'supply_type' => $row->supply_type]])->all();
+            ->get($selectCols);
+
+        $result = [];
+        foreach ($rates->groupBy('id') as $catId => $catRates) {
+            $first = $catRates->first();
+            $hasBands = $hasBandColumns && $catRates->contains(fn ($r) => isset($r->min_unit_value) || isset($r->max_unit_value));
+            $bands = $catRates->map(fn ($r) => [
+                'rate' => $first->supply_type === 'taxable' ? (float) $r->rate : 0.0,
+                'cess_rate' => (float) ($r->cess_rate ?? 0),
+                'min_unit_value' => isset($r->min_unit_value) ? (float) $r->min_unit_value : null,
+                'max_unit_value' => isset($r->max_unit_value) ? (float) $r->max_unit_value : null,
+            ])->values()->all();
+
+            $result[$catId] = [
+                'rate' => $first->supply_type === 'taxable' ? (float) $first->rate : 0.0,
+                'cess_rate' => (float) ($first->cess_rate ?? 0),
+                'name' => $first->name,
+                'supply_type' => $first->supply_type,
+                'has_bands' => $hasBands,
+                'bands' => $bands,
+            ];
+        }
+        return $result;
     }
 
     /** Page config for the GST entry script; null when the company bills without GST. */
@@ -460,7 +526,7 @@ class GstSetupService
         if (is_string($raw) && trim($raw) !== '') {
             try { $gstin = Gstin::normalize($raw); } catch (ValidationException) { $gstin = null; }
         }
-        $state = $gstin ? substr($gstin, 0, 2) : ($this->stateCode($party->state ?? null) ?? $this->companyState((int) $party->company_id));
+        $state = $gstin ? substr($gstin, 0, 2) : $this->stateCode($party->state ?? null);
         return $state ? ['gstin' => $gstin, 'state_code' => $state, 'registration_type' => $gstin ? 'regular' : 'unregistered'] : null;
     }
 

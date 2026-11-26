@@ -1,0 +1,14 @@
+{
+    "scenario_id": "COP-026",
+    "workflow_family": "Sales Orders",
+    "action_key": "sales_order.create.v1",
+    "input_text": "Draft sales order for Customer Metro Corp 6 for 20 shirts at Rs 650 each.",
+    "expected_slots": {
+        "target_index": 6,
+        "is_draft": true
+    },
+    "expected_status": "proposal_created",
+    "no_financial_writes_before_approval": true,
+    "expected_provider_calls": 1,
+    "expected_credits_approx": 8
+}

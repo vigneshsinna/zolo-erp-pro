@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-016",
+    "risk_group": "Mismatched GST split or invalid GSTIN",
+    "expected_error_code": "TAX_DETERMINATION_FAILED",
+    "expected_http_status": 422,
+    "input_text": "Record purchase bill from supplier with GSTIN 33AABCT1234A1Z8 (invalid checksum character '8'; expected valid checksum is 7).",
+    "expected_no_erp_writes": true
+}

@@ -40,7 +40,11 @@ class CustomerSupplierReportsNavigationTest extends TestCase
                 ['company_id' => $company->id, 'user_id' => $admin->id, 'branch_id' => $branch->id]
             );
             $year = \App\Models\Accounting\FiscalYear::where('company_id', $company->id)->first() ?? \App\Models\Accounting\FiscalYear::create([
-                'company_id' => $company->id, 'name' => 'FY 2026', 'start_date' => '2026-04-01', 'end_date' => '2027-03-31', 'status' => 'open'
+                'company_id' => $company->id,
+                'name' => 'FY 2026',
+                'start_date' => '2026-04-01',
+                'end_date' => '2027-03-31',
+                'status' => 'open'
             ]);
             $this->withSession([
                 'company_id' => $company->id,
@@ -154,7 +158,11 @@ class CustomerSupplierReportsNavigationTest extends TestCase
         if ($targetCompany) {
             $branch = $targetCompany->branches()->first() ?? $targetCompany->branches()->create(['code' => 'MAIN', 'name' => 'Main Branch']);
             $year = \App\Models\Accounting\FiscalYear::where('company_id', $targetCompany->id)->first() ?? \App\Models\Accounting\FiscalYear::create([
-                'company_id' => $targetCompany->id, 'name' => 'FY 2026', 'start_date' => '2026-04-01', 'end_date' => '2027-03-31', 'status' => 'open'
+                'company_id' => $targetCompany->id,
+                'name' => 'FY 2026',
+                'start_date' => '2026-04-01',
+                'end_date' => '2027-03-31',
+                'status' => 'open'
             ]);
             $this->withSession([
                 'company_id' => $targetCompany->id,

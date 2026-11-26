@@ -1,0 +1,56 @@
+{
+    "benchmark_scope": {
+        "target_subsystem": "ERP Internal AI Credit Metering & Wallet Concurrency Engine",
+        "endpoints_tested": [
+            "GET \/api\/v1\/ai\/credits\/balance (Tenant credit balance & period resolution)",
+            "GET \/api\/v1\/ai\/credits\/packs (Available credit top-up pack catalog)",
+            "GET \/api\/v1\/ai\/credits\/estimate (Advisory token and byte cost calculation)",
+            "AiCreditReservationService::hold() (Atomic row-locked wallet balance hold)"
+        ],
+        "provider_decoupling_notice": "External model provider dispatches (e.g. NVIDIA NIM 35 RPM quota) are strictly rate-limited downstream by ApprovedModelGateway. This concurrency suite exercises the ERP internal MySQL credit reservation engine, row-locking contention (lockForUpdate), and connection pooling under multi-user enterprise load, demonstrating 1,200+ requests\/minute capacity without deadlocks, balance overdraw, or ledger discrepancy."
+    },
+    "profiles": {
+        "five_vus": {
+            "vus": 5,
+            "duration_seconds": 0.38,
+            "requests_completed": 50,
+            "requests_per_minute": 7895,
+            "p50_ms": 7.46,
+            "p95_ms": 9.34,
+            "p99_ms": 11.81,
+            "error_rate": 0,
+            "overspend_detected": false
+        },
+        "ten_vus": {
+            "vus": 10,
+            "duration_seconds": 1.99,
+            "requests_completed": 200,
+            "requests_per_minute": 6038,
+            "p50_ms": 9.42,
+            "p95_ms": 13.64,
+            "p99_ms": 16.77,
+            "error_rate": 0,
+            "overspend_detected": false
+        },
+        "twenty_vus": {
+            "vus": 20,
+            "duration_seconds": 5.24,
+            "requests_completed": 500,
+            "requests_per_minute": 5730,
+            "p50_ms": 10.07,
+            "p95_ms": 14.33,
+            "p99_ms": 17.17,
+            "error_rate": 0,
+            "overspend_detected": false
+        }
+    },
+    "overall": {
+        "total_requests": 750,
+        "failed_requests": 0,
+        "negative_balances": 0,
+        "double_reservations": 0,
+        "row_lock_timeouts": 0,
+        "verdict": "PASSED"
+    },
+    "executed_at": "2026-11-16T11:18:21+00:00"
+}

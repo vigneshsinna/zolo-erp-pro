@@ -10,6 +10,7 @@ use App\Models\Accounting\FiscalYear;
 use App\Models\Accounting\JournalEntry;
 use App\Models\Accounting\JournalItem;
 use App\Services\Platform\CompanyContext;
+use App\Services\Platform\CompanyContextResolver;
 use App\Services\ERP\CompanyWriteGuard;
 use App\Support\LedgerAmount;
 use Carbon\CarbonImmutable;
@@ -107,9 +108,18 @@ class FinancialReportService
     }
 
     /** Historical ageing reconstructs allocations as of the report date, including reversal dates. */
-    public function ageing(CompanyContext $context, string $partyType, ?string $asOf = null, array $filters = []): array
+    public function ageing(CompanyContext $context, string $partyType, ?string $asOf = null, array $filters = [], ?int $actorId = null): array
     {
-        $context = app(CompanyWriteGuard::class)->context($context, auth()->id());
+        if ($actorId !== null) {
+            $context = app(CompanyContextResolver::class)->resolve(
+                userId: $actorId,
+                companyId: $context->companyId,
+                branchId: $context->branchId,
+                financialYearId: $context->financialYearId
+            );
+        } else {
+            $context = app(CompanyWriteGuard::class)->context($context, auth()->id());
+        }
         if (!in_array($partyType, ['customer', 'supplier'], true)) {
             throw new \InvalidArgumentException('Ageing requires customers or suppliers.');
         }

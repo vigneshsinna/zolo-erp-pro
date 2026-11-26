@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-048",
+    "risk_group": "Duplicate idempotency key conflict",
+    "expected_error_code": "IDEMPOTENCY_CONFLICT",
+    "expected_http_status": 409,
+    "input_text": "Post topup payment confirmation with already-settled Razorpay payment ID 'pay_Klx902183'.",
+    "expected_no_erp_writes": true
+}

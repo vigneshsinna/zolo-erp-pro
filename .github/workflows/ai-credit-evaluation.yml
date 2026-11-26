@@ -1,0 +1,168 @@
+name: AI Credit Metering & Release Evaluation
+
+on:
+  push:
+    branches:
+      - main
+      - feature/ai-unified-input-clarification
+  pull_request:
+    branches:
+      - main
+      - feature/ai-unified-input-clarification
+  workflow_dispatch:
+    inputs:
+      run_live_benchmark:
+        description: 'Run opt-in paid live provider benchmark (separate gate)'
+        required: false
+        type: boolean
+        default: false
+      budget_cap_usd:
+        description: 'Hard budget cap in USD for live model execution'
+        required: false
+        type: string
+        default: '5.00'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-credit-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-and-schema:
+    name: Static Analysis & Syntax Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, zip, gd, bcmath
+          coverage: none
+
+      - name: Composer Validate
+        run: composer validate --strict --no-check-publish
+
+      - name: PHP Syntax Check (php -l)
+        run: |
+          find app tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  ai-credit-suite:
+    name: AI Credit Metering, Security & 250-Scenario Automated Corpus
+    needs: static-and-schema
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: fixture-root-only
+          MYSQL_DATABASE: zolo_test_ai_release
+          MYSQL_USER: zolo_test
+          MYSQL_PASSWORD: fixture-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pfixture-root-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s --health-timeout=5s --health-retries=5
+
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:dGVzdC1vbmx5LWF1ZGl0LWZpeHR1cmUta2V5LTEyMzQ=
+      AI_EVALUATION_ENABLED: 'true'
+      AI_EVALUATION_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      ERP_TEST_MYSQL: '1'
+      ERP_TEST_MYSQL_DATABASE: zolo_test_ai_release
+      ERP_TEST_MYSQL_USER: zolo_test
+      ERP_TEST_MYSQL_PASSWORD: fixture-only
+      ERP_TEST_MYSQL_HOST: 127.0.0.1
+      ERP_TEST_MYSQL_PORT: 3306
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: zolo_test_ai_release
+      DB_USERNAME: zolo_test
+      DB_PASSWORD: fixture-only
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      CACHE_DRIVER: array
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, zip, gd, bcmath, redis
+          coverage: none
+
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Run Database Migrations
+        run: php artisan migrate --database=mysql --force
+
+      - name: Create Artifacts Directory
+        run: |
+          mkdir -p artifacts/ai-evaluation
+          rm -f artifacts/scenario-events.jsonl artifacts/junit-ai.xml
+
+      - name: Execute Full AI PHPUnit Suite (Prepaid Safety, Metering, 250 Scenarios, Security)
+        id: phpunit
+        run: |
+          php vendor/bin/phpunit -c phpunit.ai.xml --list-tests-xml artifacts/ai-test-plan.xml
+          php vendor/bin/phpunit -c phpunit.ai.xml --log-junit artifacts/junit-ai.xml
+
+      - name: Export Verified Evaluation Evidence & Release Artifacts
+        if: ${{ !cancelled() && steps.phpunit.outcome != 'skipped' }}
+        run: |
+          php scripts/export_ai_evaluation_report.php \
+            --junit=artifacts/junit-ai.xml \
+            --test-plan=artifacts/ai-test-plan.xml \
+            --scenario-events=artifacts/scenario-events.jsonl \
+            --output-dir=artifacts/ai-evaluation/current
+
+      - name: Upload AI Evaluation Release Artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-evaluation-evidence-${{ github.sha }}
+          path: |
+            artifacts/ai-evaluation/current/
+            artifacts/junit-ai.xml
+            artifacts/ai-test-plan.xml
+            artifacts/scenario-events.jsonl
+          retention-days: 14
+
+  live-omni-benchmark:
+    name: Optional Live NVIDIA Nemotron Nano Omni Benchmark
+    needs: ai-credit-suite
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live_benchmark == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, zip, gd, bcmath, curl
+          coverage: none
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Execute Live Omni Benchmark with Atomic Budget Cap
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AI_STAGING_BENCHMARK_TOKEN: ${{ secrets.AI_STAGING_BENCHMARK_TOKEN }}
+        run: |
+          bash scripts/run_ai_benchmark.sh --provider=nvidia --budget-cap-usd=${{ inputs.budget_cap_usd }}

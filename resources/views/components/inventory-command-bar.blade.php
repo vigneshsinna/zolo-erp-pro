@@ -10,15 +10,24 @@
     } elseif ($active === 'transfers') {
         if ($inventoryAccess->allows('sidebar_transfer') && $inventoryAccess->allows('transfers-index')) $contextLinks[] = ['key' => 'register', 'label' => 'Transfer register', 'url' => route('transfers.index')];
         if ($inventoryAccess->allows('sidebar_transfer') && $inventoryAccess->allows('transfers-import')) $contextLinks[] = ['key' => 'import', 'label' => 'Import CSV', 'url' => url('/transfers/transfer_by_csv')];
-    } elseif ($active === 'stock' && config('operations.enabled') && $inventoryAccess->has('inventory.batch_expiry')) {
-        if ($inventoryAccess->has('inventory.lot_report')) $contextLinks[] = ['key' => 'balances', 'label' => 'Stock balances', 'url' => route('inventory-reports.stock-by-lot')];
+    } elseif (($active === 'stock' || $active === 'lifecycle') && config('operations.enabled') && $inventoryAccess->has('inventory.batch_expiry')) {
+        if ($inventoryAccess->has('inventory.lot_report')) {
+            $contextLinks[] = ['key' => 'simplified', 'label' => 'Simplified Stock', 'url' => route('inventory-reports.stock-by-lot', ['group_by' => 'simplified'])];
+            $contextLinks[] = ['key' => 'balances', 'label' => 'Stock balances (Detailed)', 'url' => route('inventory-reports.stock-by-lot')];
+            $contextLinks[] = ['key' => 'lifecycle', 'label' => 'Product Lifecycle', 'url' => route('inventory-reports.lifecycle')];
+            $contextLinks[] = ['key' => 'timeline', 'label' => 'Inventory Timeline', 'url' => route('inventory-reports.timeline')];
+        }
         $contextLinks[] = ['key' => 'tools', 'label' => 'Expiry & stock tools', 'url' => url('/operations/stock')];
     }
     $purpose = match ($active) {
         'corrections' => $view === 'count' ? 'Count what is physically present, compare with system stock, then adjust the differences.'
             : ($view === 'damage' ? 'Review damaged stock and its correction history.' : 'Record a stock increase or decrease with a reason. Use physical count for a warehouse stocktake.'),
         'transfers' => $view === 'import' ? 'Upload warehouse transfers from a CSV file.' : 'Move stock between warehouses. Total company quantity stays the same.',
-        default => $view === 'tools' ? 'Review expiry-controlled batches and stock tools.' : 'View stock by product and warehouse. Choose Individual lots for lot details.',
+        default => $view === 'tools' ? 'Review expiry-controlled batches and stock tools.'
+            : ($view === 'lifecycle' ? 'Interactive Product Lifecycle & Conversion Tree: Trace purchased raw materials through job work branches, finished conversions, process shrinkage, and ready stock.'
+            : ($view === 'timeline' ? 'Visual chronological journey: Purchases → Job Work DCs → Processor WIP → WGRN Returns → Final Stock.'
+            : ($view === 'simplified' ? 'Simplified Business Flow: Purchased, Sent to Job Work, Returned after Processing, and Current Godown Stock.'
+            : 'View stock by product and warehouse. Choose Individual lots for lot details.'))),
     };
 @endphp
 @once

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-002",
+    "risk_group": "Product missing or unknown SKU",
+    "expected_error_code": "PRODUCT_NOT_FOUND",
+    "expected_http_status": 422,
+    "input_text": "Order 50 rolls of 400GSM Thermal Fleece Charcoal Grey for Tirupur Dyeing Unit.",
+    "expected_no_erp_writes": true
+}

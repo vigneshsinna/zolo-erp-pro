@@ -1,0 +1,808 @@
+/* zoloERP Pro - Dedicated Product Lifecycle & Transformation Tree Page Stylesheet */
+/* Strict adherence to AGENTS.md Section 4.4 and DesignTokensTest */
+
+/* Defeat app-shell vertical flex-shrink and forced scrollbars so page is 100% visible at a glance */
+html.app-shell body:has(#product-lifecycle-page) #content,
+html.app-shell body:has(#product-lifecycle-page) #content > *,
+html.app-shell body:has(#product-lifecycle-page) #content > :has(> .desk-card-wrapper),
+body:has(#product-lifecycle-page) #content,
+body:has(#product-lifecycle-page) #content > *,
+body:has(#product-lifecycle-page) #content > :has(> .desk-card-wrapper),
+html.app-shell #product-lifecycle-page .desk-card-wrapper,
+#product-lifecycle-page .desk-card-wrapper,
+#product-lifecycle-page {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: none !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    overflow-x: visible !important;
+    width: 100%;
+}
+
+#product-lifecycle-page {
+    margin-bottom: 30px;
+}
+
+#product-lifecycle-page .desk-card-wrapper {
+    background: #ffffff;
+    border: 1px solid var(--neo-border, #e2e8f0);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    display: block !important;
+}
+
+body.dark-mode #product-lifecycle-page .desk-card-wrapper {
+    background: var(--neo-surface, #1e293b);
+    border-color: #334155;
+}
+
+/* --- Catalog Selector Bar --- */
+.lifecycle-catalog-bar {
+    background: #f8fafc;
+    border: 1px solid var(--neo-border, #e2e8f0);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+
+body.dark-mode .lifecycle-catalog-bar {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+.catalog-pills-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.catalog-filter-btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+}
+
+.catalog-filter-btn:hover {
+    border-color: var(--z-primary, #7c1274);
+    color: var(--z-primary, #7c1274);
+}
+
+.catalog-filter-btn.active {
+    background: var(--z-primary, #7c1274) !important;
+    color: #ffffff !important;
+    border-color: var(--z-primary, #7c1274) !important;
+}
+
+.catalog-filter-btn .badge {
+    background: rgba(0, 0, 0, 0.08);
+    color: inherit;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 4px;
+}
+
+.catalog-filter-btn.active .badge {
+    background: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+}
+
+.catalog-divider {
+    display: inline-block;
+    width: 1px;
+    height: 16px;
+    background: #cbd5e1;
+}
+
+body.dark-mode .catalog-divider {
+    background: #475569;
+}
+
+/* High-Contrast Badge System */
+.catalog-count-badge {
+    background-color: #f1f5f9 !important;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1 !important;
+    font-weight: 700 !important;
+    font-size: 11px !important;
+    padding: 3px 8px !important;
+    border-radius: 12px !important;
+    letter-spacing: 0.02em !important;
+}
+
+body.dark-mode .catalog-count-badge {
+    background-color: #334155 !important;
+    color: #f8fafc !important;
+    border-color: #475569 !important;
+}
+
+.tree-active-product-badge {
+    background-color: var(--z-primary, #7c1274) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--z-primary, #7c1274) !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    padding: 3px 10px !important;
+    border-radius: 12px !important;
+}
+
+body.dark-mode .tree-active-product-badge {
+    background-color: var(--zp-800, #4d0046) !important;
+    color: #ffffff !important;
+    border-color: var(--z-primary, #7c1274) !important;
+}
+
+/* Auto-Scrollable Horizontal Catalog Track (Slim Pill Design) */
+.lifecycle-catalog-track-wrap {
+    position: relative;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 6px 2px 10px 2px;
+    box-sizing: border-box !important;
+    scrollbar-width: none !important; /* Hide Firefox scrollbar */
+    -ms-overflow-style: none !important; /* Hide IE/Edge scrollbar */
+}
+
+.lifecycle-catalog-track-wrap::-webkit-scrollbar {
+    display: none !important; /* Hide Chrome/Safari scrollbar */
+    width: 0 !important;
+    height: 0 !important;
+}
+
+.lifecycle-product-cards-grid {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 12px !important;
+    padding: 4px 2px !important;
+    width: max-content !important;
+    min-width: 100% !important;
+    align-items: center !important;
+}
+
+.catalog-pill-card {
+    flex: 0 0 320px !important;
+    width: 320px !important;
+    min-width: 320px !important;
+    min-height: 50px !important;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 28px !important;
+    padding: 6px 14px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    text-decoration: none !important;
+    color: #0f172a !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    box-sizing: border-box !important;
+    cursor: pointer;
+}
+
+body.dark-mode .catalog-pill-card {
+    background: #1e293b;
+    border-color: #475569;
+    color: #f8fafc !important;
+}
+
+.catalog-pill-card:hover {
+    border-color: var(--z-primary, #7c1274);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(124, 18, 116, 0.12);
+}
+
+.catalog-pill-card.active-product {
+    border-color: var(--z-primary, #7c1274) !important;
+    background: #ffffff !important;
+    box-shadow: 0 0 0 2.5px var(--z-primary, #7c1274), 0 6px 18px rgba(124, 18, 116, 0.18) !important;
+}
+
+body.dark-mode .catalog-pill-card.active-product {
+    background: #1e293b !important;
+    border-color: #c084fc !important;
+    box-shadow: 0 0 0 2.5px #c084fc, 0 6px 18px rgba(192, 132, 252, 0.25) !important;
+}
+
+.catalog-pill-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(124, 18, 116, 0.1);
+    color: var(--z-primary, #7c1274);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.catalog-pill-card.active-product .catalog-pill-icon {
+    background: var(--z-primary, #7c1274);
+    color: #ffffff;
+}
+
+body.dark-mode .catalog-pill-icon {
+    background: rgba(192, 132, 252, 0.15);
+    color: #c084fc;
+}
+
+body.dark-mode .catalog-pill-card.active-product .catalog-pill-icon {
+    background: #c084fc;
+    color: #0f172a;
+}
+
+.catalog-pill-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.catalog-pill-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.1;
+    margin-bottom: 2px;
+}
+
+.catalog-pill-tag {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--z-primary, #7c1274);
+}
+
+body.dark-mode .catalog-pill-tag {
+    color: #c084fc;
+}
+
+.catalog-pill-code {
+    font-size: 9.5px;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalog-pill-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #0f172a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.25;
+}
+
+body.dark-mode .catalog-pill-title {
+    color: #f8fafc;
+}
+
+.catalog-pill-subtext {
+    font-size: 9.5px;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.2;
+    margin-top: 1px;
+}
+
+body.dark-mode .catalog-pill-subtext {
+    color: #94a3b8;
+}
+
+.catalog-pill-qty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+}
+
+.catalog-pill-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+body.dark-mode .catalog-pill-badge {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: #334155;
+}
+
+.catalog-pill-card.active-product .catalog-pill-badge {
+    background: rgba(124, 18, 116, 0.1);
+    color: var(--z-primary, #7c1274);
+    border-color: rgba(124, 18, 116, 0.25);
+}
+
+body.dark-mode .catalog-pill-card.active-product .catalog-pill-badge {
+    background: rgba(192, 132, 252, 0.2);
+    color: #f8fafc;
+    border-color: #c084fc;
+}
+
+.catalog-pill-status {
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #10b981;
+    margin-top: 2px;
+}
+
+.catalog-pill-status.status-wip {
+    color: #f59e0b;
+}
+
+.catalog-pill-status.status-ready {
+    color: #0284c7;
+}
+
+/* --- Canonical KPI Strip Reuse (AGENTS.md 4.4) --- */
+#product-lifecycle-page .kpi-summary-strip {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+}
+
+@media (max-width: 1200px) {
+    #product-lifecycle-page .kpi-summary-strip {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+    }
+}
+
+#product-lifecycle-page .kpi-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03) !important;
+    min-height: 56px !important;
+}
+
+body.dark-mode #product-lifecycle-page .kpi-card {
+    background: #141c2e !important;
+    border-color: #334155 !important;
+}
+
+#product-lifecycle-page .kpi-card .kpi-label {
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    font-weight: 700 !important;
+    color: #64748b !important;
+    margin-bottom: 2px !important;
+}
+
+#product-lifecycle-page .kpi-card .kpi-number {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    line-height: 1.2 !important;
+}
+
+body.dark-mode #product-lifecycle-page .kpi-card .kpi-number {
+    color: #f8fafc !important;
+}
+
+#product-lifecycle-page .kpi-subtext {
+    font-size: 10px !important;
+    color: #94a3b8 !important;
+    margin-top: 2px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* --- The Full Picture Tree Canvas (Clean, Natural Fitting, No Scroll Traps) --- */
+.lifecycle-canvas-wrapper {
+    position: relative;
+    background: #0f172a; /* Deep Slate Canvas */
+    background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1.2px, transparent 1.2px);
+    background-size: 20px 20px;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 24px 20px;
+    margin-bottom: 16px;
+    min-height: 140px;
+    height: auto !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+@media (max-width: 992px) {
+    .lifecycle-canvas-wrapper {
+        overflow-x: auto !important;
+    }
+}
+
+.lifecycle-svg-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.tree-svg-line {
+    fill: none;
+    stroke-width: 2.5px;
+    stroke-linecap: round;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.tree-svg-line.line-primary {
+    stroke: #38bdf8; /* Cyan blue rail */
+}
+
+.tree-svg-line.line-success {
+    stroke: #34d399; /* Emerald green rail */
+}
+
+.tree-svg-line.line-warning {
+    stroke: #fbbf24; /* Amber rail */
+}
+
+.tree-svg-line.line-godown {
+    stroke: #c084fc; /* Violet purple rail */
+}
+
+.tree-columns-container {
+    position: relative;
+    z-index: 2;
+    display: flex !important;
+    justify-content: space-between !important;
+    gap: 28px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    align-items: center !important;
+    padding: 6px 4px;
+}
+
+@media (max-width: 992px) {
+    .tree-columns-container {
+        min-width: 860px !important;
+    }
+}
+
+.tree-column {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    justify-content: center;
+}
+
+.tree-col-root {
+    flex: 1 1 28% !important;
+    max-width: 30% !important;
+    min-width: 250px !important;
+}
+
+.tree-col-branches {
+    flex: 1 1 35% !important;
+    max-width: 36% !important;
+    min-width: 280px !important;
+}
+
+.tree-col-subbranches {
+    flex: 1 1 35% !important;
+    max-width: 36% !important;
+    min-width: 280px !important;
+}
+
+/* --- Slim Pill Capsule Styles (Matching User's Screenshot media_1795151752345_5368026e.png) --- */
+.node-capsule {
+    position: relative;
+    background: rgba(30, 41, 59, 0.95);
+    border: 1.5px solid #475569;
+    border-radius: 28px;
+    padding: 6px 14px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    backdrop-filter: blur(6px);
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.node-capsule:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.node-capsule.active-node {
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Level Themes */
+.node-capsule.node-raw {
+    border-color: #38bdf8;
+}
+
+.node-capsule.node-raw.active-node {
+    border-color: #38bdf8;
+    background: rgba(14, 116, 144, 0.35);
+}
+
+.node-capsule.node-dispatch {
+    border-color: #fbbf24;
+}
+
+.node-capsule.node-dispatch.active-node {
+    border-color: #fbbf24;
+    background: rgba(180, 83, 9, 0.35);
+}
+
+.node-capsule.node-converted {
+    border-color: #34d399;
+}
+
+.node-capsule.node-converted.active-node {
+    border-color: #34d399;
+    background: rgba(6, 95, 70, 0.35);
+}
+
+.node-capsule.node-godown {
+    border-color: #c084fc;
+}
+
+.node-capsule.node-godown.active-node {
+    border-color: #c084fc;
+    background: rgba(107, 33, 168, 0.35);
+}
+
+.node-capsule.node-shrinkage {
+    border-color: #f87171;
+}
+
+.node-capsule.node-shrinkage.active-node {
+    border-color: #f87171;
+    background: rgba(153, 27, 27, 0.35);
+}
+
+.node-capsule.node-wip {
+    border-color: #94a3b8;
+    border-style: dashed;
+}
+
+/* Ports */
+.node-port {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #0f172a;
+    border: 2.5px solid #38bdf8;
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+.node-port.port-in {
+    left: -7px;
+}
+
+.node-port.port-out {
+    right: -7px;
+}
+
+.node-raw .node-port {
+    border-color: #38bdf8;
+}
+
+.node-dispatch .node-port {
+    border-color: #fbbf24;
+}
+
+.node-converted .node-port {
+    border-color: #34d399;
+}
+
+.node-godown .node-port {
+    border-color: #c084fc;
+}
+
+.node-shrinkage .node-port {
+    border-color: #f87171;
+}
+
+/* Node Contents */
+.node-icon-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.node-raw .node-icon-circle {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.15);
+}
+
+.node-dispatch .node-icon-circle {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
+}
+
+.node-converted .node-icon-circle {
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.15);
+}
+
+.node-godown .node-icon-circle {
+    color: #c084fc;
+    background: rgba(192, 132, 252, 0.15);
+}
+
+.node-shrinkage .node-icon-circle {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.15);
+}
+
+.node-wip .node-icon-circle {
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.15);
+}
+
+.node-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.node-stage-tag {
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    line-height: 1.2;
+}
+
+.node-raw .node-stage-tag {
+    color: #38bdf8;
+}
+
+.node-dispatch .node-stage-tag {
+    color: #fbbf24;
+}
+
+.node-converted .node-stage-tag {
+    color: #34d399;
+}
+
+.node-godown .node-stage-tag {
+    color: #c084fc;
+}
+
+.node-shrinkage .node-stage-tag {
+    color: #f87171;
+}
+
+.node-wip .node-stage-tag {
+    color: #94a3b8;
+}
+
+.node-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f8fafc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+    line-height: 1.3;
+}
+
+.node-subtext {
+    font-size: 9.5px;
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+}
+
+.node-qty-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* --- Inspection Spotlight Drawer --- */
+.lifecycle-spotlight-drawer {
+    background: #ffffff;
+    border: 1px solid var(--neo-border, #e2e8f0);
+    border-radius: 8px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+body.dark-mode .lifecycle-spotlight-drawer {
+    background: var(--neo-surface, #1e293b);
+    border-color: #334155;
+}
+
+.spotlight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.spotlight-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+body.dark-mode .spotlight-box {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+.spotlight-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.spotlight-value {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.spotlight-sub {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 2px;
+}

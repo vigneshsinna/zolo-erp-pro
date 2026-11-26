@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-027",
+    "risk_group": "Insufficient stock or negative balance",
+    "expected_error_code": "INSUFFICIENT_STOCK",
+    "expected_http_status": 422,
+    "input_text": "Issue sales invoice for 800 meters of Jacquard Silk when free unreserved stock is 0.",
+    "expected_no_erp_writes": true
+}

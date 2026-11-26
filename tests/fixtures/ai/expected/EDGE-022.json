@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-022",
+    "risk_group": "Unauthorized or missing warehouse",
+    "expected_error_code": "WAREHOUSE_FORBIDDEN",
+    "expected_http_status": 403,
+    "input_text": "Transfer 200 cartons of fabric to Decommissioned Old Depot (WH-ARCHIVED).",
+    "expected_no_erp_writes": true
+}

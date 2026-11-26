@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-043",
+    "risk_group": "Provider timeout / 429 rate limit",
+    "expected_error_code": "PROVIDER_RATE_LIMIT",
+    "expected_http_status": 429,
+    "input_text": "Perception dispatch timeout: Upstream model gateway fails to respond within 30000ms.",
+    "expected_no_erp_writes": true
+}

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-047",
+    "risk_group": "Duplicate idempotency key conflict",
+    "expected_error_code": "IDEMPOTENCY_CONFLICT",
+    "expected_http_status": 409,
+    "input_text": "Replay identical webhook event 'evt_pay_998877' with altered amount under same event ID.",
+    "expected_no_erp_writes": true
+}

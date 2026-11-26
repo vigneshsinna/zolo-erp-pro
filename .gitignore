@@ -40,3 +40,4 @@ yarn-error.log
 # Playwright temp run outputs
 /test-results/
 /tests-e2e/playwright-report/
+/output/playwright/

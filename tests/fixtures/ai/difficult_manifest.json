@@ -1,0 +1,352 @@
+[
+    {
+        "scenario_id": "EDGE-001",
+        "risk_group": "Product missing or unknown SKU",
+        "expected_error_code": "PRODUCT_NOT_FOUND",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-001.json"
+    },
+    {
+        "scenario_id": "EDGE-002",
+        "risk_group": "Product missing or unknown SKU",
+        "expected_error_code": "PRODUCT_NOT_FOUND",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-002.json"
+    },
+    {
+        "scenario_id": "EDGE-003",
+        "risk_group": "Product missing or unknown SKU",
+        "expected_error_code": "PRODUCT_NOT_FOUND",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-003.json"
+    },
+    {
+        "scenario_id": "EDGE-004",
+        "risk_group": "Product missing or unknown SKU",
+        "expected_error_code": "PRODUCT_NOT_FOUND",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-004.json"
+    },
+    {
+        "scenario_id": "EDGE-005",
+        "risk_group": "Product missing or unknown SKU",
+        "expected_error_code": "PRODUCT_NOT_FOUND",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-005.json"
+    },
+    {
+        "scenario_id": "EDGE-006",
+        "risk_group": "Ambiguous duplicate supplier candidates",
+        "expected_error_code": "AMBIGUOUS_ENTITY",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-006.json"
+    },
+    {
+        "scenario_id": "EDGE-007",
+        "risk_group": "Ambiguous duplicate supplier candidates",
+        "expected_error_code": "AMBIGUOUS_ENTITY",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-007.json"
+    },
+    {
+        "scenario_id": "EDGE-008",
+        "risk_group": "Ambiguous duplicate supplier candidates",
+        "expected_error_code": "AMBIGUOUS_ENTITY",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-008.json"
+    },
+    {
+        "scenario_id": "EDGE-009",
+        "risk_group": "Ambiguous duplicate supplier candidates",
+        "expected_error_code": "AMBIGUOUS_ENTITY",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-009.json"
+    },
+    {
+        "scenario_id": "EDGE-010",
+        "risk_group": "Ambiguous duplicate supplier candidates",
+        "expected_error_code": "AMBIGUOUS_ENTITY",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-010.json"
+    },
+    {
+        "scenario_id": "EDGE-011",
+        "risk_group": "Incompatible UOM conversion",
+        "expected_error_code": "INVALID_UOM",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-011.json"
+    },
+    {
+        "scenario_id": "EDGE-012",
+        "risk_group": "Incompatible UOM conversion",
+        "expected_error_code": "INVALID_UOM",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-012.json"
+    },
+    {
+        "scenario_id": "EDGE-013",
+        "risk_group": "Incompatible UOM conversion",
+        "expected_error_code": "INVALID_UOM",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-013.json"
+    },
+    {
+        "scenario_id": "EDGE-014",
+        "risk_group": "Incompatible UOM conversion",
+        "expected_error_code": "INVALID_UOM",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-014.json"
+    },
+    {
+        "scenario_id": "EDGE-015",
+        "risk_group": "Incompatible UOM conversion",
+        "expected_error_code": "INVALID_UOM",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-015.json"
+    },
+    {
+        "scenario_id": "EDGE-016",
+        "risk_group": "Mismatched GST split or invalid GSTIN",
+        "expected_error_code": "TAX_DETERMINATION_FAILED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-016.json"
+    },
+    {
+        "scenario_id": "EDGE-017",
+        "risk_group": "Mismatched GST split or invalid GSTIN",
+        "expected_error_code": "TAX_DETERMINATION_FAILED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-017.json"
+    },
+    {
+        "scenario_id": "EDGE-018",
+        "risk_group": "Mismatched GST split or invalid GSTIN",
+        "expected_error_code": "TAX_DETERMINATION_FAILED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-018.json"
+    },
+    {
+        "scenario_id": "EDGE-019",
+        "risk_group": "Mismatched GST split or invalid GSTIN",
+        "expected_error_code": "TAX_DETERMINATION_FAILED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-019.json"
+    },
+    {
+        "scenario_id": "EDGE-020",
+        "risk_group": "Mismatched GST split or invalid GSTIN",
+        "expected_error_code": "TAX_DETERMINATION_FAILED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-020.json"
+    },
+    {
+        "scenario_id": "EDGE-021",
+        "risk_group": "Unauthorized or missing warehouse",
+        "expected_error_code": "WAREHOUSE_FORBIDDEN",
+        "expected_http_status": 403,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-021.json"
+    },
+    {
+        "scenario_id": "EDGE-022",
+        "risk_group": "Unauthorized or missing warehouse",
+        "expected_error_code": "WAREHOUSE_FORBIDDEN",
+        "expected_http_status": 403,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-022.json"
+    },
+    {
+        "scenario_id": "EDGE-023",
+        "risk_group": "Unauthorized or missing warehouse",
+        "expected_error_code": "WAREHOUSE_FORBIDDEN",
+        "expected_http_status": 403,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-023.json"
+    },
+    {
+        "scenario_id": "EDGE-024",
+        "risk_group": "Unauthorized or missing warehouse",
+        "expected_error_code": "WAREHOUSE_FORBIDDEN",
+        "expected_http_status": 403,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-024.json"
+    },
+    {
+        "scenario_id": "EDGE-025",
+        "risk_group": "Unauthorized or missing warehouse",
+        "expected_error_code": "WAREHOUSE_FORBIDDEN",
+        "expected_http_status": 403,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-025.json"
+    },
+    {
+        "scenario_id": "EDGE-026",
+        "risk_group": "Insufficient stock or negative balance",
+        "expected_error_code": "INSUFFICIENT_STOCK",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-026.json"
+    },
+    {
+        "scenario_id": "EDGE-027",
+        "risk_group": "Insufficient stock or negative balance",
+        "expected_error_code": "INSUFFICIENT_STOCK",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-027.json"
+    },
+    {
+        "scenario_id": "EDGE-028",
+        "risk_group": "Insufficient stock or negative balance",
+        "expected_error_code": "INSUFFICIENT_STOCK",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-028.json"
+    },
+    {
+        "scenario_id": "EDGE-029",
+        "risk_group": "Insufficient stock or negative balance",
+        "expected_error_code": "INSUFFICIENT_STOCK",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-029.json"
+    },
+    {
+        "scenario_id": "EDGE-030",
+        "risk_group": "Insufficient stock or negative balance",
+        "expected_error_code": "INSUFFICIENT_STOCK",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-030.json"
+    },
+    {
+        "scenario_id": "EDGE-031",
+        "risk_group": "Closed financial year or expired period",
+        "expected_error_code": "PERIOD_CLOSED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-031.json"
+    },
+    {
+        "scenario_id": "EDGE-032",
+        "risk_group": "Closed financial year or expired period",
+        "expected_error_code": "PERIOD_CLOSED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-032.json"
+    },
+    {
+        "scenario_id": "EDGE-033",
+        "risk_group": "Closed financial year or expired period",
+        "expected_error_code": "PERIOD_CLOSED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-033.json"
+    },
+    {
+        "scenario_id": "EDGE-034",
+        "risk_group": "Closed financial year or expired period",
+        "expected_error_code": "PERIOD_CLOSED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-034.json"
+    },
+    {
+        "scenario_id": "EDGE-035",
+        "risk_group": "Closed financial year or expired period",
+        "expected_error_code": "PERIOD_CLOSED",
+        "expected_http_status": 422,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-035.json"
+    },
+    {
+        "scenario_id": "EDGE-036",
+        "risk_group": "Prompt injection in bill or instructions",
+        "expected_error_code": "PROMPT_INJECTION_DEFENSE",
+        "expected_http_status": 200,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-036.json"
+    },
+    {
+        "scenario_id": "EDGE-037",
+        "risk_group": "Prompt injection in bill or instructions",
+        "expected_error_code": "PROMPT_INJECTION_DEFENSE",
+        "expected_http_status": 200,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-037.json"
+    },
+    {
+        "scenario_id": "EDGE-038",
+        "risk_group": "Prompt injection in bill or instructions",
+        "expected_error_code": "PROMPT_INJECTION_DEFENSE",
+        "expected_http_status": 200,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-038.json"
+    },
+    {
+        "scenario_id": "EDGE-039",
+        "risk_group": "Prompt injection in bill or instructions",
+        "expected_error_code": "PROMPT_INJECTION_DEFENSE",
+        "expected_http_status": 200,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-039.json"
+    },
+    {
+        "scenario_id": "EDGE-040",
+        "risk_group": "Prompt injection in bill or instructions",
+        "expected_error_code": "PROMPT_INJECTION_DEFENSE",
+        "expected_http_status": 200,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-040.json"
+    },
+    {
+        "scenario_id": "EDGE-041",
+        "risk_group": "Provider timeout / 429 rate limit",
+        "expected_error_code": "PROVIDER_RATE_LIMIT",
+        "expected_http_status": 429,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-041.json"
+    },
+    {
+        "scenario_id": "EDGE-042",
+        "risk_group": "Provider timeout / 429 rate limit",
+        "expected_error_code": "PROVIDER_RATE_LIMIT",
+        "expected_http_status": 429,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-042.json"
+    },
+    {
+        "scenario_id": "EDGE-043",
+        "risk_group": "Provider timeout / 429 rate limit",
+        "expected_error_code": "PROVIDER_RATE_LIMIT",
+        "expected_http_status": 429,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-043.json"
+    },
+    {
+        "scenario_id": "EDGE-044",
+        "risk_group": "Provider timeout / 429 rate limit",
+        "expected_error_code": "PROVIDER_RATE_LIMIT",
+        "expected_http_status": 429,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-044.json"
+    },
+    {
+        "scenario_id": "EDGE-045",
+        "risk_group": "Provider timeout / 429 rate limit",
+        "expected_error_code": "PROVIDER_RATE_LIMIT",
+        "expected_http_status": 429,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-045.json"
+    },
+    {
+        "scenario_id": "EDGE-046",
+        "risk_group": "Duplicate idempotency key conflict",
+        "expected_error_code": "IDEMPOTENCY_CONFLICT",
+        "expected_http_status": 409,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-046.json"
+    },
+    {
+        "scenario_id": "EDGE-047",
+        "risk_group": "Duplicate idempotency key conflict",
+        "expected_error_code": "IDEMPOTENCY_CONFLICT",
+        "expected_http_status": 409,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-047.json"
+    },
+    {
+        "scenario_id": "EDGE-048",
+        "risk_group": "Duplicate idempotency key conflict",
+        "expected_error_code": "IDEMPOTENCY_CONFLICT",
+        "expected_http_status": 409,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-048.json"
+    },
+    {
+        "scenario_id": "EDGE-049",
+        "risk_group": "Duplicate idempotency key conflict",
+        "expected_error_code": "IDEMPOTENCY_CONFLICT",
+        "expected_http_status": 409,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-049.json"
+    },
+    {
+        "scenario_id": "EDGE-050",
+        "risk_group": "Duplicate idempotency key conflict",
+        "expected_error_code": "IDEMPOTENCY_CONFLICT",
+        "expected_http_status": 409,
+        "expected_path": "tests/fixtures/ai/expected/EDGE-050.json"
+    }
+]

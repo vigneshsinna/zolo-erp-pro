@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-018",
+    "risk_group": "Mismatched GST split or invalid GSTIN",
+    "expected_error_code": "TAX_DETERMINATION_FAILED",
+    "expected_http_status": 422,
+    "input_text": "Process invoice INV-8890 with Karnataka GSTIN 29AABCS1234F1Z claiming intrastate CGST+SGST while buyer is in Tamil Nadu (33).",
+    "expected_no_erp_writes": true
+}

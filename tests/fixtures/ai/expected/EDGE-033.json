@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-033",
+    "risk_group": "Closed financial year or expired period",
+    "expected_error_code": "PERIOD_CLOSED",
+    "expected_http_status": 422,
+    "input_text": "Create purchase bill for previous fiscal year 2023-24 without reopening period authorization.",
+    "expected_no_erp_writes": true
+}

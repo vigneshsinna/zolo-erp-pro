@@ -158,6 +158,12 @@
                 @if (isset($show->show_customer_name) && $show->show_customer_name == 1)
                     {{ __('db.customer') }}: {{ $lims_customer_data->name }}
                 @endif
+                @if (!empty($lims_sale_data->end_user_name))
+                    <br><strong>Patient:</strong> {{ $lims_sale_data->end_user_name }}
+                @endif
+                @if (!empty($lims_sale_data->customer_order_no))
+                    <br><strong>Order:</strong> {{ $lims_sale_data->customer_order_no }}
+                @endif
 
                 {{-- biller info --}}
                 @if (isset($show->show_biller_info) && $show->show_biller_info == 1)
@@ -262,6 +268,19 @@
                                         [{{ __('db.Tax') }} ({{ $product_sale_data->tax_rate }}%):
                                         {{ $product_sale_data->tax }}]
                                     @endif
+                                    @php
+                                        $hasRx = (!empty($product_sale_data->sph) || !empty($product_sale_data->cyl) || !empty($product_sale_data->axis) || !empty($product_sale_data->addition) || !empty($product_sale_data->dia) || !empty($product_sale_data->lr));
+                                    @endphp
+                                    @if($hasRx)
+                                        <br><small style="color: #0284c7; font-weight: bold;">
+                                            @if(!empty($product_sale_data->lr))Eye: {{ $product_sale_data->lr }} @endif
+                                            @if($product_sale_data->sph !== null && $product_sale_data->sph !== '')SPH: {{ $product_sale_data->sph }} @endif
+                                            @if($product_sale_data->cyl !== null && $product_sale_data->cyl !== '')CYL: {{ $product_sale_data->cyl }} @endif
+                                            @if($product_sale_data->axis !== null && $product_sale_data->axis !== '')AXIS: {{ $product_sale_data->axis }}&deg; @endif
+                                            @if($product_sale_data->addition !== null && $product_sale_data->addition !== '')ADD: {{ $product_sale_data->addition }} @endif
+                                            @if(!empty($product_sale_data->dia))DIA: {{ $product_sale_data->dia }}mm @endif
+                                        </small>
+                                    @endif
                                 </td>
                                 <td style="vertical-align:bottom;width:40%">
                                     <x-amount-currency-symbol :amount="$subtotal" :currency_symbol="$lims_sale_data->currency->symbol" />
@@ -328,6 +347,22 @@
                             <th colspan="2" style="text-align:left;width:60%">{{ __('db.Shipping Cost') }}</th>
                             <th style="width:40%">
                                 <x-amount-currency-symbol :amount="$lims_sale_data->shipping_cost" :currency_symbol="$lims_sale_data->currency->symbol" />
+                            </th>
+                        </tr>
+                    @endif
+                    @if (!empty($lims_sale_data->fitting_charge) && $lims_sale_data->fitting_charge > 0)
+                        <tr>
+                            <th colspan="2" style="text-align:left;width:60%">Fitting Charge</th>
+                            <th style="width:40%">
+                                <x-amount-currency-symbol :amount="$lims_sale_data->fitting_charge" :currency_symbol="$lims_sale_data->currency->symbol" />
+                            </th>
+                        </tr>
+                    @endif
+                    @if (!empty($lims_sale_data->tinting_cost) && $lims_sale_data->tinting_cost > 0)
+                        <tr>
+                            <th colspan="2" style="text-align:left;width:60%">Tinting Cost</th>
+                            <th style="width:40%">
+                                <x-amount-currency-symbol :amount="$lims_sale_data->tinting_cost" :currency_symbol="$lims_sale_data->currency->symbol" />
                             </th>
                         </tr>
                     @endif

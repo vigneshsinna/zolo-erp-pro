@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-034",
+    "risk_group": "Closed financial year or expired period",
+    "expected_error_code": "PERIOD_CLOSED",
+    "expected_http_status": 422,
+    "input_text": "Post depreciation adjustment voucher for historical fiscal period ended March 2024.",
+    "expected_no_erp_writes": true
+}

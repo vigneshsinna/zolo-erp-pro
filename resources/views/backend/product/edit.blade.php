@@ -14,7 +14,8 @@
 
 <x-product-command-bar active="products"></x-product-command-bar>
 @php
-    $modules = explode(',', $general_setting->modules);
+    $generalSettingRow = $general_setting ?? \Illuminate\Support\Facades\DB::table('general_settings')->first();
+    $modules = explode(',', $generalSettingRow->modules ?? '');
     $ecommerce = in_array('ecommerce', $modules);
     $restaurant = in_array('restaurant', $modules);
     try {
@@ -25,9 +26,13 @@
     }
     $companyId = $companyId ?: session('company_id');
     $profileRow = $companyId ? \Illuminate\Support\Facades\DB::table('company_industry_settings')->where('company_id', $companyId)->first() : null;
-    $isOpticalProfile = ($profileRow && $profileRow->profile_key === 'opticals');
-    $hasExistingOpticalData = !empty($lims_product_data->base) || !empty($lims_product_data->addition) || !empty($lims_product_data->lr) || !empty($lims_product_data->dia);
-    $isOpticalActive = $hasExistingOpticalData || $isOpticalProfile;
+    $isOpticalProfile = !empty($isOpticalProfile) || ($profileRow && $profileRow->profile_key === 'opticals') || \App\Services\Industry\IndustryProfileService::isOptical();
+    $hasExistingOpticalData = !empty($lims_product_data->base) || !empty($lims_product_data->addition) || !empty($lims_product_data->lr) || !empty($lims_product_data->dia) || !empty($lims_product_data->product_type_id);
+    $isOpticalAllowed = $isOpticalProfile || $hasExistingOpticalData;
+    $isOpticalActive = $isOpticalAllowed && (bool) (old('is_optical') !== null ? old('is_optical') : $hasExistingOpticalData);
+
+    $hasInitialStock = \App\Models\Product_Warehouse::where('product_id', $lims_product_data->id)->where('qty', '>', 0)->exists();
+    $isInitialStockActive = (bool) (old('is_initial_stock') !== null ? old('is_initial_stock') : $hasInitialStock);
 @endphp
 <section class="forms">
     <div class="container-fluid">
@@ -56,51 +61,34 @@
                                 <x-ui.section-box variant="blue" title="{{__('db.Product Details')}}" icon="box">
                                     <div class="row">
                                         @include('backend.product.partials.usage-options', ['productUsage' => $lims_product_data->product_usage ?? 'composite'])
-                                        @if($isOpticalProfile)
-                                            <input type="hidden" name="type" id="type" value="standard">
-                                            <input type="hidden" name="type_hidden" value="{{$lims_product_data->type}}">
-                                            <div class="col-12">
-                                                <div class="form-group">
-                                                    <label>{{__('db.Barcode Symbology')}} *</label>
-                                                    <input type="hidden" name="barcode_symbology_hidden" value="{{$lims_product_data->barcode_symbology}}">
-                                                    <select name="barcode_symbology" required class="form-control selectpicker">
-                                                        <option value="C128">Code 128</option>
-                                                        <option value="C39">Code 39</option>
-                                                        <option value="UPCA">UPC-A</option>
-                                                        <option value="UPCE">UPC-E</option>
-                                                        <option value="EAN8">EAN-8</option>
-                                                        <option value="EAN13">EAN-13</option>
-                                                    </select>
-                                                </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Product Type')}} *</label>
+                                                <select name="type" required class="form-control selectpicker" id="type">
+                                                    <option value="standard" @selected(old('type', $lims_product_data->type) === 'standard')>Standard</option>
+                                                    <option value="combo" @selected(old('type', $lims_product_data->type) === 'combo')>Combo</option>
+                                                    <option value="digital" @selected(old('type', $lims_product_data->type) === 'digital')>Digital</option>
+                                                    <option value="service" @selected(old('type', $lims_product_data->type) === 'service')>Service</option>
+                                                </select>
+                                                <input type="hidden" name="type_hidden" value="{{$lims_product_data->type}}">
+                                                <span class="validation-msg text-danger small" id="type-error"></span>
                                             </div>
-                                        @else
-                                            <div class="col-6">
-                                                <div class="form-group">
-                                                    <label>{{__('db.Product Type')}} *</label>
-                                                    <select name="type" required class="form-control selectpicker" id="type">
-                                                        <option value="standard">Standard</option>
-                                                        <option value="combo">Combo</option>
-                                                        <option value="digital">Digital</option>
-                                                        <option value="service">Service</option>
-                                                    </select>
-                                                    <input type="hidden" name="type_hidden" value="{{$lims_product_data->type}}">
-                                                </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="form-group">
+                                                <label>{{__('db.Barcode Symbology')}} *</label>
+                                                <input type="hidden" name="barcode_symbology_hidden" value="{{$lims_product_data->barcode_symbology}}">
+                                                <select name="barcode_symbology" required class="form-control selectpicker">
+                                                    <option value="C128" @selected(old('barcode_symbology', $lims_product_data->barcode_symbology) === 'C128')>Code 128</option>
+                                                    <option value="C39" @selected(old('barcode_symbology', $lims_product_data->barcode_symbology) === 'C39')>Code 39</option>
+                                                    <option value="UPCA" @selected(old('barcode_symbology', $lims_product_data->barcode_symbology) === 'UPCA')>UPC-A</option>
+                                                    <option value="UPCE" @selected(old('barcode_symbology', $lims_product_data->barcode_symbology) === 'UPCE')>UPC-E</option>
+                                                    <option value="EAN8" @selected(old('barcode_symbology', $lims_product_data->barcode_symbology) === 'EAN8')>EAN-8</option>
+                                                    <option value="EAN13" @selected(old('barcode_symbology', $lims_product_data->barcode_symbology) === 'EAN13')>EAN-13</option>
+                                                </select>
+                                                <span class="validation-msg text-danger small" id="barcode_symbology-error"></span>
                                             </div>
-                                            <div class="col-6">
-                                                <div class="form-group">
-                                                    <label>{{__('db.Barcode Symbology')}} *</label>
-                                                    <input type="hidden" name="barcode_symbology_hidden" value="{{$lims_product_data->barcode_symbology}}">
-                                                    <select name="barcode_symbology" required class="form-control selectpicker">
-                                                        <option value="C128">Code 128</option>
-                                                        <option value="C39">Code 39</option>
-                                                        <option value="UPCA">UPC-A</option>
-                                                        <option value="UPCE">UPC-E</option>
-                                                        <option value="EAN8">EAN-8</option>
-                                                        <option value="EAN13">EAN-13</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        @endif
+                                        </div>
                                         <div class="col-md-6 col-12">
                                             <div class="form-group">
                                                 <label>{{__('db.Product Name')}} *</label>
@@ -133,13 +121,14 @@
                                                 <div class="input-group">
                                                     <select name="brand_id" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Brand...') }}">
                                                         @foreach($lims_brand_list as $brand)
-                                                            <option value="{{$brand->id}}">{{$brand->title}}</option>
+                                                            <option value="{{$brand->id}}" @selected((int) old('brand_id', $lims_product_data->brand_id) === (int) $brand->id)>{{$brand->title}}</option>
                                                         @endforeach
                                                     </select>
                                                     <div class="input-group-append">
                                                         <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#addBrand" title="{{ __('db.Add Brand') }}"><i class="dripicons-plus"></i></button>
                                                     </div>
                                                 </div>
+                                                <span class="validation-msg text-danger small" id="brand_id-error"></span>
                                             </div>
                                         </div>
                                         <div class="{{ $isOpticalActive ? 'col-md-4 col-12' : 'col-6' }}" id="category-col">
@@ -149,33 +138,35 @@
                                                 <div class="input-group">
                                                     <select name="category_id" required class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Category...') }}">
                                                         @foreach($lims_category_list as $category)
-                                                            <option value="{{$category->id}}">{{$category->name}}</option>
+                                                            <option value="{{$category->id}}" @selected((int) old('category_id', $lims_product_data->category_id) === (int) $category->id)>{{$category->name}}</option>
                                                         @endforeach
                                                     </select>
                                                     <div class="input-group-append">
                                                         <button type="button" class="btn btn-default btn-sm category-model" data-toggle="modal" data-target="#category-modal" title="{{ __('db.Add Category') }}"><i class="dripicons-plus"></i></button>
                                                     </div>
                                                 </div>
-                                                <span class="validation-msg text-danger small"></span>
+                                                <span class="validation-msg text-danger small" id="category_id-error"></span>
                                             </div>
                                         </div>
+                                        @if($isOpticalAllowed)
                                         <div class="col-md-4 col-12" id="product-type-col" style="{{ $isOpticalActive ? '' : 'display:none;' }}">
                                             <div class="form-group">
-                                                <label>Type *</label>
+                                                <label>Lens Type</label>
                                                 <input type="hidden" name="product_type" value="{{$lims_product_data->product_type_id}}">
                                                 <div class="input-group">
                                                     <select name="product_type_id" id="product_type_id" class="selectpicker form-control" data-live-search="true" data-live-search-style="begins" title="Select Type...">
                                                         @foreach($lims_product_type_list ?? [] as $ptype)
-                                                            <option value="{{$ptype->id}}" {{ (old('product_type_id', $lims_product_data->product_type_id) == $ptype->id) ? 'selected' : '' }}>{{$ptype->name}}</option>
+                                                            <option value="{{$ptype->id}}" @selected((int) old('product_type_id', $lims_product_data->product_type_id) === (int) $ptype->id)>{{$ptype->name}}</option>
                                                         @endforeach
                                                     </select>
                                                     <div class="input-group-append">
                                                         <button type="button" class="btn btn-default btn-sm product-type-modal-btn" data-toggle="modal" data-target="#product-type-modal" title="Add Type"><i class="dripicons-plus"></i></button>
                                                     </div>
                                                 </div>
-                                                <span class="validation-msg text-danger small"></span>
+                                                <span class="validation-msg text-danger small" id="product_type_id-error"></span>
                                             </div>
                                         </div>
+                                        @endif
 
 
                                         <div id="unit" class="col-12">
@@ -186,7 +177,7 @@
                                                         <select required class="form-control selectpicker" data-live-search="true" data-live-search-style="begins" title="{{ __('db.Select Product Unit...') }}" name="unit_id">
                                                             @foreach($lims_unit_list as $unit)
                                                                 @if($unit->base_unit==null)
-                                                                    <option value="{{$unit->id}}">{{$unit->unit_name}}</option>
+                                                                    <option value="{{$unit->id}}" @selected((int) old('unit_id', $lims_product_data->unit_id) === (int) $unit->id)>{{$unit->unit_name}}</option>
                                                                 @endif
                                                             @endforeach
                                                         </select>
@@ -195,7 +186,7 @@
                                                         </div>
                                                     </div>
                                                     <input type="hidden" name="unit" value="{{ $lims_product_data->unit_id}}">
-                                                    <span class="validation-msg text-danger small"></span>
+                                                    <span class="validation-msg text-danger small" id="unit_id-error"></span>
                                                 </div>
                                                 <div data-usage-side="sale" class="col-6 form-group">
                                                     <label>{{__('db.Sale Unit')}}</label>
@@ -509,19 +500,17 @@
                                 <div class="zolo-inventory-stripe-divider"></div>
 
                                 <div class="zolo-inventory-stripe-toggles">
-                                    <label id="stock-section" class="zolo-toggle-pill @if($lims_product_data->is_initial_stock ?? false) is-active @endif" data-role="amber" for="chk_initial_stock" title="{{ __('db.Initial Stock') }}">
-                                        <input type="checkbox" name="is_initial_stock" id="chk_initial_stock" value="1">
+                                    <label id="stock-section" class="zolo-toggle-pill @if($isInitialStockActive) is-active @endif" data-role="amber" for="chk_initial_stock" title="{{ __('db.Initial Stock') }}">
+                                        <input type="checkbox" name="is_initial_stock" id="chk_initial_stock" value="1" @checked($isInitialStockActive)>
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.Initial Stock')}}</span>
                                     </label>
 
-                                    @if(!$isOpticalProfile)
                                     <label id="variant-option" class="zolo-toggle-pill @if($lims_product_data->is_variant) is-active @endif" data-role="purple" for="is-variant" title="{{ __('db.This product has variant') }}">
                                         <input name="is_variant" type="checkbox" id="is-variant" value="1" @checked($lims_product_data->is_variant)>
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.This product has variant')}}</span>
                                     </label>
-                                    @endif
 
                                     <label data-usage-side="sale" id="diffPrice-option" class="zolo-toggle-pill @if($lims_product_data->is_diffPrice) is-active @endif" data-role="emerald" for="is-diffPrice" title="{{ __('db.Different price by warehouse') }}">
                                         <input name="is_diffPrice" type="checkbox" id="is-diffPrice" value="1" @checked($lims_product_data->is_diffPrice)>
@@ -529,7 +518,6 @@
                                         <span>{{__('db.Different price by warehouse')}}</span>
                                     </label>
 
-                                    @if(!$isOpticalProfile)
                                     <label id="batch-option" class="zolo-toggle-pill @if($lims_product_data->is_batch) is-active @endif" data-role="amber" for="is-batch" title="{{ __('db.Batch & expiry date') }}">
                                         <input name="is_batch" type="checkbox" id="is-batch" value="1" @checked($lims_product_data->is_batch)>
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
@@ -548,7 +536,6 @@
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.Promotional Price')}}</span>
                                     </label>
-                                    @endif
 
                                     <label data-usage-side="sale" id="featured" class="zolo-toggle-pill @if($lims_product_data->featured) is-active @endif" data-role="purple" for="chk_featured" title="{{ __('db.Featured product will be displayed in POS') }}">
                                         <input type="checkbox" name="featured" id="chk_featured" value="1" @checked($lims_product_data->featured)>
@@ -556,19 +543,19 @@
                                         <span>{{__('db.Featured')}}</span>
                                     </label>
 
-                                    @if(!$isOpticalProfile)
                                     <label class="zolo-toggle-pill @if($lims_product_data->is_embeded) is-active @endif" data-role="emerald" for="chk_embeded" title="{{ __('db.Check this if this product will be used in weight scale machine') }}">
                                         <input type="checkbox" name="is_embeded" id="chk_embeded" value="1" @checked($lims_product_data->is_embeded)>
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>{{__('db.Embedded Barcode')}}</span>
                                     </label>
-                                    @endif
 
+                                    @if($isOpticalAllowed)
                                     <label id="optical-option" class="zolo-toggle-pill @if($isOpticalActive) is-active @endif" data-role="purple" for="is-optical" title="Optical Lens Specifications">
                                         <input name="is_optical" type="checkbox" id="is-optical" value="1" @checked($isOpticalActive)>
                                         <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                         <span>Optical / Lens Rx</span>
                                     </label>
+                                    @endif
 
                                     @if($ecommerce || $restaurant)
                                     <label class="zolo-toggle-pill @if($lims_product_data->is_online == 1) is-active @endif" data-role="purple" for="is_online" title="{{ __('db.Sell Online') }}">
@@ -604,6 +591,7 @@
                                 </div>
                             </div>
 
+                            @if($isOpticalAllowed)
                             <!-- Optical Lens Specifications (matches exact 3-column top grid width of Box 1) -->
                             <div class="zolo-product-grid mt-2" id="optical-container" style="{{ $isOpticalActive ? '' : 'display:none;' }}">
                                 <div id="optical-section">
@@ -646,11 +634,12 @@
                                     </x-ui.section-box>
                                 </div>
                             </div>
+                            @endif
 
                             <!-- Extended Conditional Details Container (4-column grid mirroring top primary boxes) -->
                             <div class="product-extended-details-container mt-2">
                                 <!-- Warehouse Initial Stock Section -->
-                                <div id="initial-stock-section" style="display:none;">
+                                <div id="initial-stock-section" style="display: {{ $isInitialStockActive ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="amber" title="{{__('db.Warehouse Initial Stock')}}" icon="inventory">
                                         <div class="table-responsive">
                                             <table class="table table-hover table-sm">
@@ -678,7 +667,7 @@
                                 </div>
 
                                 <!-- Warehouse Differential Price Section -->
-                                <div data-usage-side="sale" id="diffPrice-section">
+                                <div data-usage-side="sale" id="diffPrice-section" style="display: {{ (!empty($lims_product_data->is_diffPrice) || old('is_diffPrice')) ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="emerald" title="{{__('db.Different Warehouse Price')}}" icon="pricing">
                                         <div class="table-responsive">
                                             <table id="diffPrice-table" class="table table-hover table-sm">
@@ -706,7 +695,7 @@
                                 </div>
 
                                 <!-- Product Variants Section -->
-                                <div id="variant-section">
+                                <div id="variant-section" style="display: {{ (!empty($lims_product_data->is_variant) || old('is_variant')) ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="purple" title="{{__('db.Product Variants')}}" icon="tag">
                                         <div id="variant-input-section">
                                             @forelse($lims_product_data->variant_option ?: [] as $key => $variant_option)
@@ -771,7 +760,7 @@
                                 </div>
 
                                 <!-- Promotional Price Section -->
-                                <div data-usage-side="sale" id="promo-container">
+                                <div data-usage-side="sale" id="promo-container" style="display: {{ (!empty($lims_product_data->promotion) || old('promotion')) ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="blue" title="{{__('db.Promotional Price')}}" icon="pricing">
                                         <div class="zolo-promo-vertical-form">
                                             <div class="form-group mb-2" id="promotion_price">
@@ -801,7 +790,7 @@
                                 </div>
 
                                 <!-- Combo Products Section -->
-                                <div id="combo">
+                                <div id="combo" style="display: {{ ($lims_product_data->type === 'combo' || old('type') === 'combo') ? 'block' : 'none' }};">
                                     <x-ui.section-box variant="blue" title="{{__('db.Combo Products')}}" icon="box">
                                         <div class="search-box input-group mb-2">
                                             <div class="input-group-prepend">
@@ -1014,7 +1003,8 @@
         }
     })
 
-    if($("#is_addon").prop('checked') == false || {{$lims_product_data->is_addon}} == 0){
+    var isAddon = {{ (int) ($lims_product_data->is_addon ?? 0) }};
+    if($("#is_addon").prop('checked') == false || isAddon == 0){
         $('.extra-section,.related-section').css('display','block');
     }else{
         $('.extra-section,.related-section').css('display','none');
@@ -1138,10 +1128,10 @@
     });
 
     $("#digital").hide();
-    $("#combo").hide();
+    $("#combo").toggle($("input[name='type_hidden']").val() === 'combo');
     $("select[name='type']").val($("input[name='type_hidden']").val());
-    variantShowHide();
-    diffPriceShowHide();
+    variantShowHide(false);
+    diffPriceShowHide(false);
     if(is_batch)
         $("#variant-option").hide();
     if(is_variant) {
@@ -1172,7 +1162,11 @@
     }
 
     $("#promo-container").toggle($("#promotion").is(':checked'));
+    @if($isOpticalAllowed)
     $("#optical-container").toggle($("input[name='is_optical']").is(':checked'));
+    @else
+    $("#optical-container").hide();
+    @endif
     applyDynamicGridSpans();
 
     $('#genbutton').on("click", function(){
@@ -2051,26 +2045,28 @@
         diffPriceShowHide();
     });
 
-    function variantShowHide() {
+    function variantShowHide(animate = true) {
          if ($("#is-variant").is(':checked')) {
-            $("#variant-section").show(300);
-            $("#batch-option").hide(300);
+            if (animate) { $("#variant-section").show(200); $("#batch-option").hide(200); }
+            else { $("#variant-section").show(); $("#batch-option").hide(); }
             $(".variant-field").prop("required", true);
         }
         else {
-            $("#variant-section").hide(300);
-            $("#batch-option").show(300);
+            if (animate) { $("#variant-section").hide(200); $("#batch-option").show(200); }
+            else { $("#variant-section").hide(); $("#batch-option").show(); }
             $(".variant-field").prop("required", false);
         }
         applyDynamicGridSpans();
     };
 
-    function diffPriceShowHide() {
+    function diffPriceShowHide(animate = true) {
          if ($("#is-diffPrice").is(':checked')) {
-            $("#diffPrice-section").show(300);
+            if (animate) $("#diffPrice-section").show(200);
+            else $("#diffPrice-section").show();
         }
         else {
-            $("#diffPrice-section").hide(300);
+            if (animate) $("#diffPrice-section").hide(200);
+            else $("#diffPrice-section").hide();
         }
         applyDynamicGridSpans();
     };
@@ -2080,6 +2076,7 @@
         applyDynamicGridSpans();
     });
 
+    @if($isOpticalAllowed)
     $("input[name='is_optical']").on("change", function () {
         var isOpt = $(this).is(':checked');
         $("#optical-container").toggle(isOpt);
@@ -2099,6 +2096,7 @@
         var txt = $(this).find('option:selected').text();
         $('#optical-type-label').text(txt && $(this).val() ? txt : 'None selected');
     });
+    @endif
 
     $('.zolo-toggle-pill input[type="checkbox"]').on("change", function () {
         $(this).closest('.zolo-toggle-pill').toggleClass('is-active', $(this).is(':checked'));
@@ -2163,7 +2161,12 @@
         errorPlacement: function (error, element) {
             if(error.html() == 'Select Category...')
                 error.html('This field is required.');
-            $(element).closest('div.form-group').find('.validation-msg').html(error.html());
+            var $msg = $(element).closest('div.form-group').find('.validation-msg');
+            if ($msg.length) {
+                $msg.html(error.html());
+            } else {
+                $(element).closest('div.form-group').append($('<span class="validation-msg text-danger small"></span>').html(error.html()));
+            }
         },
         highlight: function (element) {
             $(element).closest('div.form-group').removeClass('has-success').addClass('has-error');
@@ -2261,46 +2264,74 @@
             $('#submit-btn').on("click", function (e) {
                 e.preventDefault();
                 if ( $("#product-form").valid() && validate() ) {
-                    tinyMCE.triggerSave();
-                    submitLabel = $(this).html();
-                    $(this).attr('disabled','true').html('<span class="spinner-border text-light" role="status"></span> {{__("db.Saving")}}...');
-                    if(myDropzone.getAcceptedFiles().length) {
-                        myDropzone.processQueue();
-                    }
-                    else {
-                        var formData = new FormData();
-                        //$("#product-form").serialize();
-                        var data = $("#product-form").serializeArray();
-                        $.each(data, function (key, el) {
-                            formData.append(el.name, el.value);
-                        });
-                        var file = $('#file')[0].files;
-                        if(file.length > 0)
-                            formData.append('file',file[0]);
-                        $.ajax({
-                            type:'POST',
-                            url:'../update',
-                            data: formData,
-                            contentType: false,
-                            processData: false,
-                            success:function(response) {
-                                window.location.reload(true);
-                            },
-                            error:function(response) {
-                              var json = response.responseJSON || {};
-                              var errors = json.errors || {};
-                              if(errors.name) {
-                                  $("#name-error").text(errors.name);
-                              }
-                              else if(errors.code) {
-                                  $("#code-error").text(errors.code);
-                              }
-                              else {
-                                  alert(json.message || 'Product could not be saved.');
-                              }
-                              restoreSubmit();
-                            },
-                        });
+                    try {
+                        if (typeof tinyMCE !== 'undefined') {
+                            tinyMCE.triggerSave();
+                        }
+                        submitLabel = $(this).html();
+                        $(this).attr('disabled','true').html('<span class="spinner-border text-light" role="status"></span> {{__("db.Saving")}}...');
+                        if(myDropzone.getAcceptedFiles().length) {
+                            myDropzone.processQueue();
+                        }
+                        else {
+                            var formData = new FormData();
+                            //$("#product-form").serialize();
+                            var data = $("#product-form").serializeArray();
+                            $.each(data, function (key, el) {
+                                formData.append(el.name, el.value);
+                            });
+                            var fileEl = document.getElementById('file');
+                            if (fileEl && fileEl.files && fileEl.files.length > 0) {
+                                formData.append('file', fileEl.files[0]);
+                            }
+                            $.ajax({
+                                type:'POST',
+                                url:'../update',
+                                data: formData,
+                                contentType: false,
+                                processData: false,
+                                success:function(response) {
+                                    if (response && response.success) {
+                                        window.location.href = response.redirect_url || '{{ route("products.index") }}';
+                                    } else if (response && response.message) {
+                                        alert(response.message);
+                                        restoreSubmit();
+                                    } else {
+                                        window.location.reload(true);
+                                    }
+                                },
+                                error:function(response) {
+                                  var json = response.responseJSON || {};
+                                  var errors = json.errors || {};
+                                  var errorList = [];
+                                  $('.validation-msg').text('');
+                                  $('.form-group').removeClass('has-error');
+
+                                  if (Object.keys(errors).length > 0) {
+                                      $.each(errors, function (field, msgs) {
+                                          var text = Array.isArray(msgs) ? msgs[0] : msgs;
+                                          errorList.push(text);
+                                          var $fld = $('[name="' + field + '"]');
+                                          var $grp = $fld.closest('.form-group');
+                                          $grp.addClass('has-error');
+                                          var $span = $grp.find('.validation-msg');
+                                          if ($span.length) {
+                                              $span.text(text);
+                                          } else {
+                                              $grp.append($('<span class="validation-msg text-danger small"></span>').text(text));
+                                          }
+                                      });
+                                      alert('Product save failed. Please check the following:\n• ' + errorList.join('\n• '));
+                                  } else {
+                                      alert(json.message || 'Product could not be saved.');
+                                  }
+                                  restoreSubmit();
+                                },
+                            });
+                        }
+                    } catch (err) {
+                        restoreSubmit();
+                        throw err;
                     }
                 }
             });
@@ -2311,51 +2342,30 @@
                 $.each(data, function (key, el) {
                     formData.append(el.name, el.value);
                 });
-                var file = $('#file')[0].files;
-                if(file.length > 0)
-                    formData.append('file',file[0]);
+                var fileEl = document.getElementById('file');
+                if (fileEl && fileEl.files && fileEl.files.length > 0) {
+                    formData.append('file', fileEl.files[0]);
+                }
             });
         },
         error: function (file, response) {
             restoreSubmit();
-            alert((response && response.message) || (typeof response === 'string' ? response : 'Product could not be saved.'));
+            var message = (response && response.message) || (typeof response === 'string' ? response : 'Product could not be saved.');
+            if (response && response.errors) {
+                var errs = [];
+                $.each(response.errors, function(k, v) { errs.push(Array.isArray(v) ? v[0] : v); });
+                message += '\n• ' + errs.join('\n• ');
+            }
+            alert(message);
             this.removeAllFiles(true);
-            /*if(response.errors.name) {
-              $("#name-error").text(response.errors.name);
-              this.removeAllFiles(true);
-            }
-            else if(response.errors.code) {
-              $("#code-error").text(response.errors.code);
-              this.removeAllFiles(true);
-            }
-            else {
-              try {
-                  var res = JSON.parse(response);
-                  if (typeof res.message !== 'undefined' && !$modal.hasClass('in')) {
-                      $("#success-icon").attr("class", "fas fa-thumbs-down");
-                      $("#success-text").html(res.message);
-                      $modal.modal("show");
-                  } else {
-                      if ($.type(response) === "string")
-                          var message = response; //dropzone sends it's own error messages in string
-                      else
-                          var message = response.message;
-                      file.previewElement.classList.add("dz-error");
-                      _ref = file.previewElement.querySelectorAll("[data-dz-errormessage]");
-                      _results = [];
-                      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-                          node = _ref[_i];
-                          _results.push(node.textContent = message);
-                      }
-                      return _results;
-                  }
-              } catch (error) {
-                  console.log(error);
-              }
-            }*/
         },
         successmultiple: function (file, response) {
+            if (response && response.success) {
+                window.location.href = response.redirect_url || '{{ route("products.index") }}';
+            } else {
                 window.location.reload();
+            }
+        },
             // location.href = redirectUrl;
             //console.log('sss: '+ response);
         },

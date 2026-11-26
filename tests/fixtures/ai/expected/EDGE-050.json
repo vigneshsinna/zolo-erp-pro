@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-050",
+    "risk_group": "Duplicate idempotency key conflict",
+    "expected_error_code": "IDEMPOTENCY_CONFLICT",
+    "expected_http_status": 409,
+    "input_text": "Submit simultaneous double-click approval requests on Purchase Proposal 1045.",
+    "expected_no_erp_writes": true
+}

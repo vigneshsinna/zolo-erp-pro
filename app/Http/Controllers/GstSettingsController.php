@@ -65,7 +65,7 @@ class GstSettingsController extends Controller
     {
         $context = $this->context($request); $actor = $request->user()->id;
         $message = match ($action) {
-            'registration' => tap('GST registration saved.', fn () => $gst->registerCompany($request->only(['gstin', 'legal_name', 'trade_name', 'address', 'registration_type', 'effective_from']), $context, $actor)),
+            'registration' => tap('GST registration saved.', fn () => $gst->registerCompany($request->only(['gstin', 'legal_name', 'trade_name', 'address', 'registration_type', 'state_code', 'effective_from']), $context, $actor)),
             'install' => (function () use ($gst, $context, $actor) {
                 $result = $gst->installDefaults($context, $actor);
                 return "Standard GST set up: {$result['categories']} new rates, {$result['products']} products mapped, {$result['parties']} parties synced.";

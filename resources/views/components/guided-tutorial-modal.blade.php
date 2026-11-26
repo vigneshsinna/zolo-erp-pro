@@ -363,12 +363,18 @@
             $('#zolo-guided-tour-modal').modal('show');
         });
 
-        // Auto-show on first visit if not dismissed
+        // Auto-show on first visits (stops automatically after 2 times)
         var dismissed = localStorage.getItem('zolo_guided_tour_dismissed');
-        if (!dismissed) {
+        var viewCount = parseInt(localStorage.getItem('zolo_guided_tour_view_count') || '0', 10);
+        if (!dismissed && viewCount < 2) {
             setTimeout(function() {
                 // Only show if user is on dashboard or workspace
                 if (window.location.pathname.indexOf('/dashboard') !== -1 || window.location.pathname.indexOf('/workspace') !== -1 || window.location.pathname === '/') {
+                    viewCount++;
+                    localStorage.setItem('zolo_guided_tour_view_count', viewCount.toString());
+                    if (viewCount >= 2) {
+                        localStorage.setItem('zolo_guided_tour_dismissed', '1');
+                    }
                     showStep(1);
                     $('#zolo-guided-tour-modal').modal('show');
                 }

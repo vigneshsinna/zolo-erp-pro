@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>zoloERP Pro — SaaS Pricing & Comprehensive Plan Comparison</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              200: '#ddd6fe',
+              300: '#c4b5fd',
+              400: '#a78bfa',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+              950: '#2e1065',
+            },
+            accent: {
+              500: '#06b6d4',
+              600: '#0891b2',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+    }
+
+    .gradient-glow {
+      background: radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.18) 0%, rgba(6, 182, 212, 0.05) 45%, transparent 70%);
+    }
+
+    .card-glass {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .card-glass-hover:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      box-shadow: 0 20px 40px -15px rgba(124, 58, 237, 0.25);
+    }
+
+    .badge-gradient {
+      background: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+
+<body class="antialiased selection:bg-brand-600 selection:text-white min-h-screen relative overflow-x-hidden">
+
+  <!-- Ambient Background Glow -->
+  <div class="absolute inset-0 pointer-events-none gradient-glow z-0"></div>
+
+  <!-- Top Announcement Bar -->
+  <aside aria-label="Announcement"
+    class="relative z-20 bg-gradient-to-r from-brand-900/60 via-purple-900/50 to-brand-950/80 border-b border-brand-500/20 py-2.5 px-4 text-center text-xs md:text-sm text-purple-200">
+    <div class="max-w-7xl mx-auto flex items-center justify-center gap-2 flex-wrap">
+      <span
+        class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-500/20 text-brand-300 border border-brand-500/30">
+        🚀 Founding Partner Program
+      </span>
+      <span>First 50 onboarding companies receive <strong>40% off Growth Tier (₹2,999/mo)</strong> with lifetime price
+        lock!</span>
+      <a href="#founding-offer" class="underline font-semibold text-brand-300 hover:text-white transition-colors">Claim
+        Spot &rarr;</a>
+    </div>
+  </aside>
+
+  <!-- Navigation Header -->
+  <header class="relative z-20 border-b border-white/5 bg-slate-950/70 backdrop-blur-md sticky top-0">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div
+          class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-indigo-700 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-brand-500/30">
+          Z
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-xl tracking-tight text-white">zolo<span
+                class="text-brand-400">ERP</span></span>
+            <span
+              class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300 border border-brand-500/30">Pro</span>
+          </div>
+          <span class="text-[11px] text-slate-400 hidden sm:block">Governed AI Operating Layer for Multi-Tenant
+            ERP</span>
+        </div>
+      </div>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+        <a href="#plans" class="hover:text-white transition-colors">Plans & Pricing</a>
+        <a href="#feature-matrix" class="hover:text-white transition-colors">Feature Matrix</a>
+        <a href="#competitors" class="hover:text-white transition-colors">vs. Competitors</a>
+        <a href="#calculator" class="hover:text-white transition-colors">Add-On Calculator</a>
+        <a href="#unit-economics" class="hover:text-white transition-colors">Unit Economics</a>
+        <a href="#faq" class="hover:text-white transition-colors">FAQ</a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <a href="http://zolo-erp-pro.test/login"
+          class="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors">Sign In</a>
+        <a href="#plans"
+          class="px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-lg shadow-brand-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]">
+          Get Started
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="relative z-10 pt-16 pb-12 px-4 sm:px-6 lg:px-8 text-center max-w-5xl mx-auto">
+    <div
+      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-brand-300 mb-6 backdrop-blur-sm">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      Deterministic Accounting Integrity + Untrusted AI Governance
+    </div>
+
+    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
+      Predictable, Transparent ERP Pricing <br>
+      <span class="bg-gradient-to-r from-brand-400 via-indigo-300 to-cyan-300 bg-clip-text text-transparent">
+        Engineered for Modern Industry
+      </span>
+    </h1>
+
+    <p class="text-lg sm:text-xl text-slate-400 max-w-3xl mx-auto mb-10 leading-relaxed">
+      From fast-paced retail shops to multi-plant textile mills and Rx optical labs. Get full Indian GST compliance,
+      precision manufacturing, and native multimodal AI automation without unpredictable user-penalty fees.
+    </p>
+
+    <!-- Global Toggles Bar (Currency & Billing Cycle) -->
+    <div
+      class="inline-flex flex-col sm:flex-row items-center gap-4 sm:gap-6 p-2 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl backdrop-blur-lg">
+
+      <!-- Currency Switcher -->
+      <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <button id="curr-inr-btn" onclick="setCurrency('INR')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-brand-600 text-white shadow-sm">
+          🇮🇳 INR (₹)
+        </button>
+        <button id="curr-usd-btn" onclick="setCurrency('USD')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
+          🌐 USD ($)
+        </button>
+      </div>
+
+      <div class="h-6 w-[1px] bg-slate-800 hidden sm:block"></div>
+
+      <!-- Billing Cycle Toggle -->
+      <div class="flex items-center gap-3 px-2">
+        <span id="cycle-monthly-label" class="text-sm font-medium text-slate-400 cursor-pointer"
+          onclick="setBillingCycle('monthly')">Monthly Billing</span>
+        <button id="cycle-toggle-btn" onclick="toggleBillingCycle()" aria-label="Toggle billing cycle"
+          class="w-14 h-7 bg-brand-600 rounded-full relative p-1 transition-colors focus:outline-none">
+          <div id="cycle-toggle-dot" class="w-5 h-5 bg-white rounded-full transition-transform translate-x-7 shadow-md">
+          </div>
+        </button>
+        <div class="flex items-center gap-2 cursor-pointer" onclick="setBillingCycle('annual')">
+          <span id="cycle-annual-label" class="text-sm font-bold text-white">Annual Billing</span>
+          <span
+            class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-bounce">
+            Save 20% (2 Months Free)
+          </span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Pricing Cards Section -->
+  <section id="plans" class="relative z-10 py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+
+      <!-- Plan 1: Starter -->
+      <div
+        class="card-glass rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 card-glass-hover relative group">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <span
+              class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-slate-800 text-slate-300 border border-slate-700">
+              Starter
+            </span>
+            <span class="text-xs text-slate-400">Retail & Trading</span>
+          </div>
+
+          <h3 class="text-2xl font-bold text-white mb-2">Trading & POS</h3>
+          <p class="text-sm text-slate-400 mb-6 min-h-[40px]">
+            Affordable modern cloud replacement for single-user desktop software with complete statutory GST compliance.
+          </p>
+
+          <div class="mb-6 pb-6 border-b border-white/5">
+            <div class="flex items-baseline gap-2">
+              <span class="text-4xl sm:text-5xl font-extrabold text-white price-display"
+                data-plan="starter">₹1,599</span>
+              <span class="text-sm text-slate-400 font-medium">/ month</span>
+            </div>
+            <p class="text-xs text-emerald-400 mt-2 font-medium billing-note" data-plan="starter">
+              Billed annually at ₹19,188/yr (Save ₹4,800)
+            </p>
+          </div>
+
+          <div class="space-y-4 mb-8">
+            <div class="text-xs font-bold tracking-wider uppercase text-slate-400">What's Included:</div>
+
+            <ul class="space-y-3 text-sm text-slate-300">
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>1 Legal Company</strong> & <strong>2 Branches / Godowns</strong></span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>3 User Seats</strong> included (+₹299/extra seat)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>General Trading & Retail POS Profiles</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Full GST Invoicing, e-Way Bills & e-Invoices</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Double-Entry General Ledger, P&L & Balance Sheet</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Thermal Receipts & Barcode Label Printing</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span><strong>Read-Only AI Copilot:</strong> 50 queries/day (text)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                <span class="text-slate-500 line-through">Manufacturing BOM & Job Work</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div>
+          <a href="http://zolo-erp-pro.test/register?plan=starter"
+            class="block w-full text-center py-3.5 px-4 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-all border border-slate-700">
+            Start with Starter
+          </a>
+          <p class="text-[11px] text-center text-slate-500 mt-3">Upgrade anytime as your team or branches expand</p>
+        </div>
+      </div>
+
+      <!-- Plan 2: Growth (Highlighted / Recommended) -->
+      <div
+        class="card-glass rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 relative border-2 border-brand-500/70 shadow-2xl shadow-brand-500/20 bg-gradient-to-b from-brand-950/40 via-slate-900/90 to-slate-950/90">
+
+        <!-- Popular Badge -->
+        <div
+          class="absolute -top-4 left-1/2 -translate-x-1/2 badge-gradient text-white text-xs font-extrabold uppercase tracking-wider py-1 px-4 rounded-full shadow-lg">
+          ⭐ Most Popular • Best Value
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-4 mt-2">
+            <span
+              class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-brand-500/20 text-brand-300 border border-brand-500/30">
+              Growth
+            </span>
+            <span class="text-xs text-brand-300 font-semibold">Manufacturing & Industry</span>
+          </div>
+
+          <h3 class="text-2xl font-bold text-white mb-2">Industry & BOM</h3>
+          <p class="text-sm text-slate-300 mb-6 min-h-[40px]">
+            Deep domain vertical workflows that replace expensive legacy setups (Textile, Opticals Rx Labs, FMCG,
+            Timber, Solar).
+          </p>
+
+          <div class="mb-6 pb-6 border-b border-brand-500/20">
+            <div class="flex items-baseline gap-2">
+              <span class="text-4xl sm:text-5xl font-extrabold text-white price-display"
+                data-plan="growth">₹3,999</span>
+              <span class="text-sm text-slate-400 font-medium">/ month</span>
+            </div>
+            <p class="text-xs text-emerald-400 mt-2 font-medium billing-note" data-plan="growth">
+              Billed annually at ₹47,988/yr (Save ₹12,000)
+            </p>
+          </div>
+
+          <div class="space-y-4 mb-8">
+            <div class="text-xs font-bold tracking-wider uppercase text-brand-300">Everything in Starter, plus:</div>
+
+            <ul class="space-y-3 text-sm text-slate-200">
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>2 Legal Companies</strong> & <strong>5 Branches / Warehouses</strong></span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>10 User Seats</strong> included (+₹249/extra seat)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>1 Specialized Vertical Profile</strong> (Opticals Rx Lab, Textile Looms, FMCG FEFO,
+                  Timber, or Solar EPC)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Multi-level BOM, Production Orders & Scrap Tracking</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Subcontracting Job Work (Material DC + Job Work GRN)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>FEFO Expiry Picking, Multi-UOM, Lot & Serial Numbers</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span><strong>Governed Action AI:</strong> Natural language PO/SO drafts, 3-way disambiguation, in-chat
+                  A4 PDF delivery (100k tokens/day)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span><strong>Multimodal Perception:</strong> 50 invoice/receipt OCR extractions/month included</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-brand-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>WhatsApp Document Dispatch & 4h Priority Chat Support</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div>
+          <a href="http://zolo-erp-pro.test/register?plan=growth"
+            class="block w-full text-center py-3.5 px-4 rounded-xl text-sm font-bold bg-brand-600 hover:bg-brand-500 text-white transition-all shadow-lg shadow-brand-600/40 hover:scale-[1.02] active:scale-[0.98]">
+            Start 14-Day Free Trial
+          </a>
+          <p class="text-[11px] text-center text-slate-400 mt-3">No credit card required • Instant demo data available
+          </p>
+        </div>
+      </div>
+
+      <!-- Plan 3: Enterprise Pro -->
+      <div
+        class="card-glass rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 card-glass-hover relative group">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <span
+              class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-slate-800 text-slate-300 border border-slate-700">
+              Enterprise Pro
+            </span>
+            <span class="text-xs text-slate-400">Multi-Company Group</span>
+          </div>
+
+          <h3 class="text-2xl font-bold text-white mb-2">Autonomous AI</h3>
+          <p class="text-sm text-slate-400 mb-6 min-h-[40px]">
+            Corporate group consolidation with high-volume document perception, custom logistics, and open API
+            connectivity.
+          </p>
+
+          <div class="mb-6 pb-6 border-b border-white/5">
+            <div class="flex items-baseline gap-2">
+              <span class="text-4xl sm:text-5xl font-extrabold text-white price-display"
+                data-plan="enterprise">₹9,599</span>
+              <span class="text-sm text-slate-400 font-medium">/ month</span>
+            </div>
+            <p class="text-xs text-emerald-400 mt-2 font-medium billing-note" data-plan="enterprise">
+              Billed annually at ₹115,188/yr (Save ₹28,800)
+            </p>
+          </div>
+
+          <div class="space-y-4 mb-8">
+            <div class="text-xs font-bold tracking-wider uppercase text-slate-400">Everything in Growth, plus:</div>
+
+            <ul class="space-y-3 text-sm text-slate-300">
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>5 Legal Companies</strong> (Holding + Subsidiaries)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Unlimited Branches & Warehouses</strong></span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>25 User Seats</strong> included (+₹199/extra seat)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>All 6 Industry Profiles Active Simultaneously</strong></span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Water & Fleet Logistics (Tankers, Drivers, Spot Audits)</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span><strong>High-Volume Multimodal AI:</strong> 500k tokens/day + 300 OCR invoice/bill
+                  extractions/month</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Full REST API, Mobile SDK & Custom Webhooks</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Dedicated Account Manager & 1-Hour SLA</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div>
+          <a href="http://zolo-erp-pro.test/contact-sales"
+            class="block w-full text-center py-3.5 px-4 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-all border border-slate-700">
+            Talk to Enterprise Sales
+          </a>
+          <p class="text-[11px] text-center text-slate-500 mt-3">White-glove data migration & custom stationery setup
+            available</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Interactive Add-On & Expansion Calculator -->
+  <section id="calculator" class="relative z-10 py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <div class="card-glass rounded-3xl p-8 sm:p-12 border border-slate-800 shadow-2xl">
+      <div class="text-center max-w-2xl mx-auto mb-10">
+        <span
+          class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-brand-500/10 text-brand-400 border border-brand-500/20">
+          Tailored Scalability
+        </span>
+        <h2 class="text-3xl font-bold text-white mt-3 mb-2">Estimate Your Total Investment</h2>
+        <p class="text-sm text-slate-400">
+          Need more user seats, additional company entities, or high-volume AI document extractions? Calculate your
+          exact monthly total instantly.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+        <!-- Sliders -->
+        <div class="space-y-6">
+
+          <!-- Base Plan Selector -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">Select Base Plan</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button onclick="calcSelectPlan('starter')" id="calc-plan-starter"
+                class="py-2.5 px-2 rounded-xl text-xs font-bold border transition-all text-slate-300 border-slate-700 hover:bg-slate-800">
+                Starter
+              </button>
+              <button onclick="calcSelectPlan('growth')" id="calc-plan-growth"
+                class="py-2.5 px-2 rounded-xl text-xs font-bold border transition-all bg-brand-600 text-white border-brand-500 shadow-md">
+                Growth
+              </button>
+              <button onclick="calcSelectPlan('enterprise')" id="calc-plan-enterprise"
+                class="py-2.5 px-2 rounded-xl text-xs font-bold border transition-all text-slate-300 border-slate-700 hover:bg-slate-800">
+                Enterprise
+              </button>
+            </div>
+          </div>
+
+          <!-- Extra User Seats Slider -->
+          <div>
+            <div class="flex justify-between text-xs font-bold mb-2">
+              <span class="text-slate-300">Extra User Seats (Beyond included)</span>
+              <span id="calc-seats-val" class="text-brand-400 font-mono text-sm">+0 seats</span>
+            </div>
+            <input type="range" id="calc-seats-slider" min="0" max="50" value="0" step="1" oninput="updateCalculator()"
+              class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500">
+            <div class="flex justify-between text-[11px] text-slate-500 mt-1">
+              <span>0 extra</span>
+              <span id="calc-seat-rate-label">₹249 / seat / mo</span>
+              <span>+50 seats</span>
+            </div>
+          </div>
+
+          <!-- Extra Legal Companies Slider -->
+          <div>
+            <div class="flex justify-between text-xs font-bold mb-2">
+              <span class="text-slate-300">Extra Legal Companies (Beyond included)</span>
+              <span id="calc-companies-val" class="text-brand-400 font-mono text-sm">+0 companies</span>
+            </div>
+            <input type="range" id="calc-companies-slider" min="0" max="10" value="0" step="1"
+              oninput="updateCalculator()"
+              class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500">
+            <div class="flex justify-between text-[11px] text-slate-500 mt-1">
+              <span>0 extra</span>
+              <span id="calc-comp-rate-label">₹1,499 / co / mo</span>
+              <span>+10 companies</span>
+            </div>
+          </div>
+
+          <!-- AI Multimodal Booster Packs Slider -->
+          <div>
+            <div class="flex justify-between text-xs font-bold mb-2">
+              <span class="text-slate-300">AI OCR & Token Packs (500k tokens + 250 scans)</span>
+              <span id="calc-ai-val" class="text-cyan-400 font-mono text-sm">0 packs</span>
+            </div>
+            <input type="range" id="calc-ai-slider" min="0" max="10" value="0" step="1" oninput="updateCalculator()"
+              class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+            <div class="flex justify-between text-[11px] text-slate-500 mt-1">
+              <span>0 packs</span>
+              <span id="calc-ai-rate-label">₹799 / pack / mo</span>
+              <span>10 packs (2,500 scans)</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Calculated Summary Box -->
+        <div class="bg-slate-950/80 rounded-2xl p-8 border border-slate-800/80 flex flex-col justify-between">
+          <div>
+            <div class="text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-1">Estimated Investment</div>
+            <div class="flex items-baseline gap-2 mb-4">
+              <span id="calc-total-amount" class="text-4xl sm:text-5xl font-black text-white font-mono">₹3,999</span>
+              <span class="text-sm text-slate-400 font-medium">/ month</span>
+            </div>
+
+            <div class="space-y-3 py-4 border-t border-b border-slate-800 text-xs text-slate-300">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Base Plan:</span>
+                <span id="calc-breakdown-base" class="font-semibold text-white">Growth (10 seats, 2 co)</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Add-on Seats:</span>
+                <span id="calc-breakdown-seats" class="font-semibold text-white">₹0</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Add-on Companies:</span>
+                <span id="calc-breakdown-comp" class="font-semibold text-white">₹0</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">AI Multimodal Packs:</span>
+                <span id="calc-breakdown-ai" class="font-semibold text-white">₹0</span>
+              </div>
+            </div>
+
+            <div class="mt-4 flex items-center justify-between text-xs">
+              <span class="text-emerald-400 font-semibold" id="calc-annual-savings">Annual plan saves ₹12,000/yr</span>
+              <span class="text-slate-400">Taxes extra (18% GST)</span>
+            </div>
+          </div>
+
+          <div class="mt-6">
+            <a href="http://zolo-erp-pro.test/register"
+              class="block w-full text-center py-3 px-4 rounded-xl text-sm font-bold bg-brand-600 hover:bg-brand-500 text-white transition-all shadow-lg shadow-brand-600/30">
+              Lock In This Configuration
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Comprehensive Feature Matrix Comparison -->
+  <section id="feature-matrix" class="relative z-10 py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div class="text-center max-w-3xl mx-auto mb-12">
+      <span
+        class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-white/5 text-slate-300 border border-white/10">
+        Exhaustive Audit
+      </span>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mt-3 mb-3">Feature-by-Feature Plan Matrix</h2>
+      <p class="text-slate-400 text-sm">
+        Every capability strictly mapped to the underlying codebase architecture (<code
+          class="text-brand-300 font-mono text-xs">CapabilityCatalog.php</code> and <code
+          class="text-brand-300 font-mono text-xs">IndustryCatalog.php</code>).
+      </p>
+    </div>
+
+    <!-- Matrix Table Container -->
+    <div class="card-glass rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-300">
+          <thead class="bg-slate-900/90 text-xs uppercase font-extrabold tracking-wider border-b border-slate-800">
+            <tr>
+              <th scope="col" class="py-5 px-6 text-white min-w-[280px]">Feature & Architecture Module</th>
+              <th scope="col" class="py-5 px-6 text-center text-slate-300 min-w-[160px]">Starter</th>
+              <th scope="col"
+                class="py-5 px-6 text-center text-brand-300 bg-brand-950/40 border-x border-brand-500/30 min-w-[180px]">
+                Growth (Popular)
+              </th>
+              <th scope="col" class="py-5 px-6 text-center text-slate-300 min-w-[180px]">Enterprise Pro</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60">
+
+            <!-- Category: Tenancy & Boundaries -->
+            <tr class="bg-slate-950/60 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <td colspan="4" class="py-3 px-6">1. Tenancy, Organization & Multi-Company</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Legal Companies Supported</td>
+              <td class="py-4 px-6 text-center font-mono">1 Company</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                2 Companies</td>
+              <td class="py-4 px-6 text-center font-mono">5 Companies (Holding + Subs)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Branches, Godowns & Warehouses</td>
+              <td class="py-4 px-6 text-center font-mono">2 Branches</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                5 Warehouses</td>
+              <td class="py-4 px-6 text-center font-mono text-emerald-400 font-bold">Unlimited</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Included User Seats</td>
+              <td class="py-4 px-6 text-center font-mono">3 Seats</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                10 Seats</td>
+              <td class="py-4 px-6 text-center font-mono">25 Seats</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Granular Role & Spatie Permissions</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+
+            <!-- Category: Accounting & GST -->
+            <tr class="bg-slate-950/60 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <td colspan="4" class="py-3 px-6">2. Statutory Accounting, Tax & Invoicing</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Double-Entry General Ledger</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Indian GST, Intra/Inter-State Split (CGST/SGST/IGST)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">e-Way Bill & e-Invoicing (NIC Integration)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Strict Decimal Precision (Brick Math HalfUp)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">TDS, TCS & Advance Tax Deductions</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+
+            <!-- Category: Inventory & Manufacturing -->
+            <tr class="bg-slate-950/60 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <td colspan="4" class="py-3 px-6">3. Inventory, Manufacturing & Subcontracting</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Multi-Unit Conversions (UOM)</td>
+              <td class="py-4 px-6 text-center text-slate-500">Single UOM</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ (Multi-UOM)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓ (Multi-UOM)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">FEFO Batch & Expiry Management</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ (Strict Lock)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓ (Strict Lock)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Multi-Level Bill of Materials (BOM)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Production Orders & Scrap Costing</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Subcontracting / Job Work (DC + Job Work GRN)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Dot-Matrix 80/132-Column Industrial Print (Epson LQ)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+
+            <!-- Category: Specialized Vertical Engines -->
+            <tr class="bg-slate-950/60 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <td colspan="4" class="py-3 px-6">4. Specialized Domain Vertical Engines</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Textile & Fabric (Grey-to-Dyed, Bales, Godowns)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                Choose 1 Vertical</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">All 6 Active</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Opticals Rx Lab (Surfacing, Tinting, Coating, PAL)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                Choose 1 Vertical</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">All 6 Active</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">FMCG Route Sales & Van Distribution</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                Choose 1 Vertical</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">All 6 Active</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Timber & Sawmills (CFT / CBM Cubic Volume)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                Choose 1 Vertical</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">All 6 Active</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Solar EPC & Inverter Serial Tracking</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                Choose 1 Vertical</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">All 6 Active</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Water & Fleet Logistics (Tankers, Drivers, Spot Audits)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-slate-500 bg-brand-950/20 border-x border-brand-500/20">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓ Included</td>
+            </tr>
+
+            <!-- Category: AI Operating Layer -->
+            <tr class="bg-slate-950/60 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <td colspan="4" class="py-3 px-6">5. Native Governed AI Operating Layer</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">ErpCopilot Natural-Language Querying</td>
+              <td class="py-4 px-6 text-center font-mono">50 req / day (Read-only)</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                Unlimited Queries</td>
+              <td class="py-4 px-6 text-center font-mono text-emerald-400 font-bold">Unlimited Priority</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Governed Action Proposals (Voice/Text PO & SO Drafts)</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ (Human Approval)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓ (Human Approval)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">In-Chat A4 PDF Document Delivery</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Multimodal Invoice & Bill OCR Extractions</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                50 scans / mo</td>
+              <td class="py-4 px-6 text-center font-mono text-cyan-300 font-bold">300 scans / mo</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Daily Company AI Token Quota</td>
+              <td class="py-4 px-6 text-center font-mono">10,000 tokens/day</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                100,000 tokens/day</td>
+              <td class="py-4 px-6 text-center font-mono text-emerald-400 font-bold">500,000 tokens/day</td>
+            </tr>
+
+            <!-- Category: Support & SLAs -->
+            <tr class="bg-slate-950/60 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <td colspan="4" class="py-3 px-6">6. Support, APIs & Infrastructure</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">REST API, Mobile SDK & Custom Webhooks</td>
+              <td class="py-4 px-6 text-center text-slate-500">—</td>
+              <td class="py-4 px-6 text-center text-slate-500 bg-brand-950/20 border-x border-brand-500/20">—</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold">✓ Full Access</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-white">Support Channels & Response SLA</td>
+              <td class="py-4 px-6 text-center font-mono">Email (24h SLA)</td>
+              <td
+                class="py-4 px-6 text-center font-mono font-bold text-brand-300 bg-brand-950/20 border-x border-brand-500/20">
+                WhatsApp + Chat (4h)</td>
+              <td class="py-4 px-6 text-center font-mono text-emerald-400 font-bold">Dedicated Rep (1h SLA)</td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Competitor Comparison Section -->
+  <section id="competitors"
+    class="relative z-10 py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-slate-800/80">
+    <div class="text-center max-w-3xl mx-auto mb-12">
+      <span
+        class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+        Competitive Landscape
+      </span>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mt-3 mb-3">Head-to-Head Competitor Comparison</h2>
+      <p class="text-slate-400 text-sm">
+        See how zoloERP Pro Growth compares against legacy desktop accounting, generic SME cloud, and bloated enterprise
+        frameworks.
+      </p>
+    </div>
+
+    <div class="card-glass rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-300">
+          <thead class="bg-slate-900/90 text-xs uppercase font-extrabold tracking-wider border-b border-slate-800">
+            <tr>
+              <th scope="col" class="py-5 px-6 text-white min-w-[220px]">Benchmark Criteria</th>
+              <th scope="col"
+                class="py-5 px-6 text-center text-brand-300 bg-brand-950/60 border-x border-brand-500/40 min-w-[190px]">
+                🚀 zoloERP Pro (Growth)
+              </th>
+              <th scope="col" class="py-5 px-6 text-center text-slate-300 min-w-[160px]">TallyPrime Gold (Cloud)</th>
+              <th scope="col" class="py-5 px-6 text-center text-slate-300 min-w-[160px]">Zoho Books (Elite)</th>
+              <th scope="col" class="py-5 px-6 text-center text-slate-300 min-w-[160px]">Marg ERP 9+ Gold</th>
+              <th scope="col" class="py-5 px-6 text-center text-slate-300 min-w-[160px]">Odoo Custom (10 users)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-xs sm:text-sm">
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Monthly Cost (10 Users)</td>
+              <td
+                class="py-4 px-6 text-center font-bold font-mono text-emerald-400 bg-brand-950/20 border-x border-brand-500/20">
+                ₹3,999 / mo
+              </td>
+              <td class="py-4 px-6 text-center font-mono">₹5,500 – ₹7,500 / mo</td>
+              <td class="py-4 px-6 text-center font-mono">₹4,999 / mo</td>
+              <td class="py-4 px-6 text-center font-mono">₹8,000+ / mo (Cloud)</td>
+              <td class="py-4 px-6 text-center font-mono text-rose-400">₹10,800 / mo</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Deployment Architecture</td>
+              <td class="py-4 px-6 text-center font-bold text-white bg-brand-950/20 border-x border-brand-500/20">
+                Modern Web + Mobile SaaS
+              </td>
+              <td class="py-4 px-6 text-center text-slate-400">Windows RDP / Local LAN</td>
+              <td class="py-4 px-6 text-center text-slate-300">Web + Mobile SaaS</td>
+              <td class="py-4 px-6 text-center text-slate-400">Windows Desktop .EXE</td>
+              <td class="py-4 px-6 text-center text-slate-300">Web / Odoo.sh Cloud</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Manufacturing (BOM + Job Work)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ Native Out-of-the-Box
+              </td>
+              <td class="py-4 px-6 text-center text-slate-400">Basic / Needs Paid TDL</td>
+              <td class="py-4 px-6 text-center text-slate-400">Requires Zoho Creator</td>
+              <td class="py-4 px-6 text-center text-slate-400">Basic Process Only</td>
+              <td class="py-4 px-6 text-center text-emerald-400">✓ Complex Setup</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Opticals Rx Lab & Lens Surfacing</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ Native (LenzBreeze)
+              </td>
+              <td class="py-4 px-6 text-center text-slate-500">❌ Not Supported</td>
+              <td class="py-4 px-6 text-center text-slate-500">❌ Not Supported</td>
+              <td class="py-4 px-6 text-center text-slate-500">❌ Not Supported</td>
+              <td class="py-4 px-6 text-center text-slate-400">Needs Custom Module</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Textile Grey-to-Dyed Job Work</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ Native (MTR/Bales/Loom)
+              </td>
+              <td class="py-4 px-6 text-center text-slate-400">Needs 3rd-Party TDL</td>
+              <td class="py-4 px-6 text-center text-slate-500">❌ Not Supported</td>
+              <td class="py-4 px-6 text-center text-slate-400">Basic Cloth Billing</td>
+              <td class="py-4 px-6 text-center text-slate-400">Needs Custom Module</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Native AI Agent (Voice/OCR PO Drafts)</td>
+              <td class="py-4 px-6 text-center text-emerald-400 font-bold bg-brand-950/20 border-x border-brand-500/20">
+                ✓ Governed Action Layer
+              </td>
+              <td class="py-4 px-6 text-center text-slate-500">❌ None</td>
+              <td class="py-4 px-6 text-center text-slate-400">Light Anomaly Checks (Zia)</td>
+              <td class="py-4 px-6 text-center text-slate-500">❌ None</td>
+              <td class="py-4 px-6 text-center text-slate-400">Basic Text Suggestions</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Implementation Overhead</td>
+              <td class="py-4 px-6 text-center font-bold text-emerald-400 bg-brand-950/20 border-x border-brand-500/20">
+                1-Day Self-Serve / Import
+              </td>
+              <td class="py-4 px-6 text-center text-slate-300">Local IT Tech Needed</td>
+              <td class="py-4 px-6 text-center text-slate-300">2-4 Weeks Setup</td>
+              <td class="py-4 px-6 text-center text-slate-300">Local Dealer Installation</td>
+              <td class="py-4 px-6 text-center text-rose-400">₹1,00,000+ Partner Fees</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Unit Economics & Margin Breakdown -->
+  <section id="unit-economics" class="relative z-10 py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <div class="card-glass rounded-3xl p-8 sm:p-12 border border-slate-800 shadow-2xl">
+      <div class="text-center max-w-2xl mx-auto mb-10">
+        <span
+          class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          Executive Transparency
+        </span>
+        <h2 class="text-3xl font-bold text-white mt-3 mb-2">Unit Economics & Gross Margin Structure</h2>
+        <p class="text-sm text-slate-400">
+          Mathematically sound architecture delivering >80% gross software margins while delivering heavy multimodal AI
+          inferencing.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+
+        <div class="bg-slate-950/80 rounded-2xl p-6 border border-slate-800/80">
+          <div class="text-xs uppercase font-extrabold text-slate-400 mb-1">Starter Tier</div>
+          <div class="text-2xl font-bold text-white mb-2">₹1,599 <span class="text-xs text-slate-400">/ mo</span></div>
+          <div class="space-y-1.5 text-xs text-slate-300 py-3 border-y border-slate-800">
+            <div class="flex justify-between"><span>Compute & DB:</span><span class="font-mono">₹100</span></div>
+            <div class="flex justify-between"><span>S3 Storage & Backup:</span><span class="font-mono">₹30</span></div>
+            <div class="flex justify-between"><span>Read-only AI:</span><span class="font-mono">₹15</span></div>
+            <div class="flex justify-between"><span>Support Allocation:</span><span class="font-mono">₹150</span></div>
+            <div class="flex justify-between font-bold text-white pt-1"><span>Total COGS:</span><span
+                class="font-mono text-rose-300">₹295</span></div>
+          </div>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="text-xs text-slate-400">Gross Margin:</span>
+            <span class="text-sm font-extrabold text-emerald-400 font-mono">81.5%</span>
+          </div>
+        </div>
+
+        <div class="bg-brand-950/40 rounded-2xl p-6 border border-brand-500/30">
+          <div class="text-xs uppercase font-extrabold text-brand-300 mb-1">Growth Tier (Target)</div>
+          <div class="text-2xl font-bold text-white mb-2">₹3,999 <span class="text-xs text-slate-400">/ mo</span></div>
+          <div class="space-y-1.5 text-xs text-slate-200 py-3 border-y border-brand-500/20">
+            <div class="flex justify-between"><span>Compute & DB:</span><span class="font-mono">₹120</span></div>
+            <div class="flex justify-between"><span>S3 Storage & Backup:</span><span class="font-mono">₹50</span></div>
+            <div class="flex justify-between"><span>AI Tokens & 50 OCRs:</span><span class="font-mono">₹50</span></div>
+            <div class="flex justify-between"><span>Priority Support:</span><span class="font-mono">₹350</span></div>
+            <div class="flex justify-between font-bold text-white pt-1"><span>Total COGS:</span><span
+                class="font-mono text-rose-300">₹570</span></div>
+          </div>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="text-xs text-slate-300">Gross Margin:</span>
+            <span class="text-sm font-extrabold text-emerald-400 font-mono">85.7%</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/80 rounded-2xl p-6 border border-slate-800/80">
+          <div class="text-xs uppercase font-extrabold text-slate-400 mb-1">Enterprise Pro</div>
+          <div class="text-2xl font-bold text-white mb-2">₹9,599 <span class="text-xs text-slate-400">/ mo</span></div>
+          <div class="space-y-1.5 text-xs text-slate-300 py-3 border-y border-slate-800">
+            <div class="flex justify-between"><span>Compute & Isolated Queue:</span><span class="font-mono">₹250</span>
+            </div>
+            <div class="flex justify-between"><span>S3 Storage & Backup:</span><span class="font-mono">₹120</span></div>
+            <div class="flex justify-between"><span>AI Tokens & 300 OCRs:</span><span class="font-mono">₹150</span>
+            </div>
+            <div class="flex justify-between"><span>Dedicated Manager:</span><span class="font-mono">₹750</span></div>
+            <div class="flex justify-between font-bold text-white pt-1"><span>Total COGS:</span><span
+                class="font-mono text-rose-300">₹1,270</span></div>
+          </div>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="text-xs text-slate-400">Gross Margin:</span>
+            <span class="text-sm font-extrabold text-emerald-400 font-mono">86.8%</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div
+        class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <span class="font-bold text-white">Target Blended ARPU:</span>
+          <span class="font-mono text-emerald-400 font-bold ml-1">₹4,119 / month (~$50 / mo)</span>
+          <span class="text-slate-400 ml-2">(Assumes 30% Starter / 55% Growth / 15% Enterprise distribution)</span>
+        </div>
+        <div class="shrink-0 text-slate-400">
+          Break-even: <strong class="text-white">44 Growth customers</strong> covers ₹1.5L/mo fixed overhead.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Founding Partner Offer Callout Banner -->
+  <section id="founding-offer" class="relative z-10 py-12 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <div
+      class="rounded-3xl p-8 sm:p-12 relative overflow-hidden bg-gradient-to-r from-brand-900 via-indigo-950 to-slate-950 border border-brand-500/40 shadow-2xl">
+      <div class="relative z-10 max-w-3xl">
+        <span
+          class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-brand-500/20 text-brand-300 border border-brand-500/30">
+          Limited Founder's Cohort (50 Spots)
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-extrabold text-white mt-4 mb-3">
+          Get Growth Tier at ₹2,999/mo with Lifetime Price Lock
+        </h2>
+        <p class="text-slate-300 text-sm mb-6 leading-relaxed">
+          Switching from Tally or Marg? Join our first 50 founding companies. We will migrate your chart of accounts,
+          party records, and product masters with zero migration fees—and lock in your discounted subscription rate
+          permanently.
+        </p>
+        <div class="flex flex-wrap items-center gap-4">
+          <a href="http://zolo-erp-pro.test/register?cohort=founding-50"
+            class="px-6 py-3.5 rounded-xl text-sm font-bold bg-white text-slate-950 hover:bg-slate-100 transition-all shadow-xl hover:scale-[1.02]">
+            Claim Founding Partner Spot
+          </a>
+          <a href="mailto:contact@zoloerp.com?subject=Migration%20Consultation"
+            class="px-6 py-3.5 rounded-xl text-sm font-semibold text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 transition-all">
+            Schedule Migration Audit
+          </a>
+        </div>
+      </div>
+      <!-- Background pattern -->
+      <div class="absolute -right-10 -bottom-10 w-72 h-72 bg-brand-500/10 rounded-full blur-3xl pointer-events-none">
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Accordion Section -->
+  <section id="faq" class="relative z-10 py-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+    <div class="text-center max-w-2xl mx-auto mb-12">
+      <span
+        class="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-white/5 text-slate-300 border border-white/10">
+        Got Questions?
+      </span>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white mt-3 mb-2">Frequently Asked Questions</h2>
+      <p class="text-slate-400 text-sm">Everything you need to know about our billing, tenancy, and AI safeguards.</p>
+    </div>
+
+    <div class="space-y-4">
+
+      <!-- FAQ 1 -->
+      <div class="card-glass rounded-2xl border border-slate-800 overflow-hidden">
+        <button onclick="toggleFaq('faq-1')"
+          class="w-full text-left py-5 px-6 font-semibold text-white flex justify-between items-center hover:text-brand-300 transition-colors">
+          <span>Can an AI agent accidentally create wrong vouchers or change our financial ledgers?</span>
+          <svg id="faq-1-icon" class="w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div id="faq-1"
+          class="hidden px-6 pb-5 text-sm text-slate-400 border-t border-slate-800/50 pt-4 leading-relaxed">
+          <strong>Never.</strong> zoloERP Pro enforces a strict <em>Untrusted Model, Authoritative Server</em>
+          architecture. Language models only prepare structured, typed draft action proposals. No general ledger entry,
+          purchase order, or stock movement is ever written to the database without explicit human review and one-click
+          authorization by a permitted user.
+        </div>
+      </div>
+
+      <!-- FAQ 2 -->
+      <div class="card-glass rounded-2xl border border-slate-800 overflow-hidden">
+        <button onclick="toggleFaq('faq-2')"
+          class="w-full text-left py-5 px-6 font-semibold text-white flex justify-between items-center hover:text-brand-300 transition-colors">
+          <span>How does multi-company accounting work under a single subscription?</span>
+          <svg id="faq-2-icon" class="w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div id="faq-2"
+          class="hidden px-6 pb-5 text-sm text-slate-400 border-t border-slate-800/50 pt-4 leading-relaxed">
+          Each legal entity operates with its own distinct Chart of Accounts, GSTIN, fiscal year, and voucher sequences.
+          Users switch between companies from a top navigation dropdown. Group admins can view consolidated cash flows
+          and cross-company audit trails without logging out.
+        </div>
+      </div>
+
+      <!-- FAQ 3 -->
+      <div class="card-glass rounded-2xl border border-slate-800 overflow-hidden">
+        <button onclick="toggleFaq('faq-3')"
+          class="w-full text-left py-5 px-6 font-semibold text-white flex justify-between items-center hover:text-brand-300 transition-colors">
+          <span>Can we print on our existing dot-matrix (Epson LQ) and thermal POS printers?</span>
+          <svg id="faq-3-icon" class="w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div id="faq-3"
+          class="hidden px-6 pb-5 text-sm text-slate-400 border-t border-slate-800/50 pt-4 leading-relaxed">
+          Yes. zoloERP Pro includes dedicated drivers for 80-column and 132-column dot-matrix printers (Epson, TVS)
+          commonly used in textile mills and wholesale distribution, as well as 58mm/80mm thermal receipt printers and
+          1D/2D Code128 barcode label rolls.
+        </div>
+      </div>
+
+      <!-- FAQ 4 -->
+      <div class="card-glass rounded-2xl border border-slate-800 overflow-hidden">
+        <button onclick="toggleFaq('faq-4')"
+          class="w-full text-left py-5 px-6 font-semibold text-white flex justify-between items-center hover:text-brand-300 transition-colors">
+          <span>What happens if our company exceeds its included daily AI token or OCR limits?</span>
+          <svg id="faq-4-icon" class="w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div id="faq-4"
+          class="hidden px-6 pb-5 text-sm text-slate-400 border-t border-slate-800/50 pt-4 leading-relaxed">
+          Your core ERP features (invoicing, ledger posting, inventory tracking) will never be blocked or interrupted.
+          Only AI actions and document OCR will pause until the daily counter resets at 00:00 UTC, or you can purchase
+          an instant AI Booster Pack (₹799 for 500k tokens + 250 invoice extractions) from your settings dashboard.
+        </div>
+      </div>
+
+      <!-- FAQ 5 -->
+      <div class="card-glass rounded-2xl border border-slate-800 overflow-hidden">
+        <button onclick="toggleFaq('faq-5')"
+          class="w-full text-left py-5 px-6 font-semibold text-white flex justify-between items-center hover:text-brand-300 transition-colors">
+          <span>How difficult is it to migrate our existing data from Tally or Excel?</span>
+          <svg id="faq-5-icon" class="w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div id="faq-5"
+          class="hidden px-6 pb-5 text-sm text-slate-400 border-t border-slate-800/50 pt-4 leading-relaxed">
+          We provide clean CSV/Excel batch upload wizards with instant dry-run simulations. You can preview all items,
+          tax rates, and party ledger balances before applying them. On the Growth and Enterprise plans, our solutions
+          engineering team assists with your initial migration at no extra cost.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Global Footer -->
+  <footer class="relative z-10 border-t border-slate-800/80 bg-slate-950/90 py-12 px-4 sm:px-6 lg:px-8 mt-20">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-slate-500">
+      <div class="flex items-center gap-3">
+        <div class="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-sm">Z
+        </div>
+        <span class="text-slate-300 font-semibold text-sm">zoloERP Pro</span>
+        <span>• Enterprise-grade multi-company ERP with AI governance</span>
+      </div>
+
+      <div class="flex items-center gap-6">
+        <span class="inline-flex items-center gap-1.5 text-slate-400">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 99.9% Uptime Guarantee
+        </span>
+        <span class="inline-flex items-center gap-1.5 text-slate-400">
+          🔒 256-Bit SSL Encrypted
+        </span>
+        <span class="inline-flex items-center gap-1.5 text-slate-400">
+          🇮🇳 Indian GST Compliant
+        </span>
+      </div>
+
+      <div>
+        &copy; 2026 Animazon / zoloERP Pro. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Interactive JavaScript Engine -->
+  <script>
+    // State management
+    const state = {
+      currency: 'INR', // 'INR' or 'USD'
+      cycle: 'annual', // 'monthly' or 'annual'
+      selectedPlan: 'growth',
+      extraSeats: 0,
+      extraCompanies: 0,
+      aiPacks: 0,
+    };
+
+    // Pricing definitions
+    const pricingData = {
+      INR: {
+        symbol: '₹',
+        starter: { monthly: 1999, annual: 1599, annualTotal: 19188, savings: 4800, includedSeats: 3, includedCo: 1 },
+        growth: { monthly: 4999, annual: 3999, annualTotal: 47988, savings: 12000, includedSeats: 10, includedCo: 2 },
+        enterprise: { monthly: 11999, annual: 9599, annualTotal: 115188, savings: 28800, includedSeats: 25, includedCo: 5 },
+        rates: {
+          starterSeat: 299,
+          growthSeat: 249,
+          enterpriseSeat: 199,
+          company: 1499,
+          aiPack: 799
+        }
+      },
+      USD: {
+        symbol: '$',
+        starter: { monthly: 29, annual: 24, annualTotal: 288, savings: 60, includedSeats: 3, includedCo: 1 },
+        growth: { monthly: 75, annual: 59, annualTotal: 708, savings: 192, includedSeats: 10, includedCo: 2 },
+        enterprise: { monthly: 169, annual: 135, annualTotal: 1620, savings: 408, includedSeats: 25, includedCo: 5 },
+        rates: {
+          starterSeat: 5,
+          growthSeat: 4,
+          enterpriseSeat: 3,
+          company: 20,
+          aiPack: 12
+        }
+      }
+    };
+
+    function setCurrency(curr) {
+      state.currency = curr;
+      const inrBtn = document.getElementById('curr-inr-btn');
+      const usdBtn = document.getElementById('curr-usd-btn');
+
+      if (curr === 'INR') {
+        inrBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-brand-600 text-white shadow-sm';
+        usdBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white';
+      } else {
+        usdBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-brand-600 text-white shadow-sm';
+        inrBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white';
+      }
+      renderCards();
+      updateCalculator();
+    }
+
+    function toggleBillingCycle() {
+      setBillingCycle(state.cycle === 'annual' ? 'monthly' : 'annual');
+    }
+
+    function setBillingCycle(cycle) {
+      state.cycle = cycle;
+      const dot = document.getElementById('cycle-toggle-dot');
+      const mLabel = document.getElementById('cycle-monthly-label');
+      const aLabel = document.getElementById('cycle-annual-label');
+
+      if (cycle === 'annual') {
+        dot.style.transform = 'translateX(28px)';
+        aLabel.className = 'text-sm font-bold text-white';
+        mLabel.className = 'text-sm font-medium text-slate-400 cursor-pointer';
+      } else {
+        dot.style.transform = 'translateX(0px)';
+        mLabel.className = 'text-sm font-bold text-white';
+        aLabel.className = 'text-sm font-medium text-slate-400 cursor-pointer';
+      }
+      renderCards();
+      updateCalculator();
+    }
+
+    function renderCards() {
+      const data = pricingData[state.currency];
+      const isAnnual = state.cycle === 'annual';
+
+      ['starter', 'growth', 'enterprise'].forEach(plan => {
+        const planData = data[plan];
+        const price = isAnnual ? planData.annual : planData.monthly;
+        const displays = document.querySelectorAll(`.price-display[data-plan="${plan}"]`);
+        displays.forEach(el => {
+          el.textContent = `${data.symbol}${price.toLocaleString()}`;
+        });
+
+        const notes = document.querySelectorAll(`.billing-note[data-plan="${plan}"]`);
+        notes.forEach(el => {
+          if (isAnnual) {
+            el.textContent = `Billed annually at ${data.symbol}${planData.annualTotal.toLocaleString()}/yr (Save ${data.symbol}${planData.savings.toLocaleString()})`;
+            el.className = 'text-xs text-emerald-400 mt-2 font-medium billing-note';
+          } else {
+            el.textContent = `Billed monthly. Switch to annual to save 20%`;
+            el.className = 'text-xs text-slate-400 mt-2 font-medium billing-note';
+          }
+        });
+      });
+    }
+
+    // Calculator logic
+    function calcSelectPlan(plan) {
+      state.selectedPlan = plan;
+      ['starter', 'growth', 'enterprise'].forEach(p => {
+        const btn = document.getElementById(`calc-plan-${p}`);
+        if (p === plan) {
+          btn.className = 'py-2.5 px-2 rounded-xl text-xs font-bold border transition-all bg-brand-600 text-white border-brand-500 shadow-md';
+        } else {
+          btn.className = 'py-2.5 px-2 rounded-xl text-xs font-bold border transition-all text-slate-300 border-slate-700 hover:bg-slate-800';
+        }
+      });
+      updateCalculator();
+    }
+
+    function updateCalculator() {
+      const data = pricingData[state.currency];
+      const plan = state.selectedPlan;
+      const isAnnual = state.cycle === 'annual';
+
+      const seatsSlider = document.getElementById('calc-seats-slider');
+      const compSlider = document.getElementById('calc-companies-slider');
+      const aiSlider = document.getElementById('calc-ai-slider');
+
+      state.extraSeats = parseInt(seatsSlider.value, 10);
+      state.extraCompanies = parseInt(compSlider.value, 10);
+      state.aiPacks = parseInt(aiSlider.value, 10);
+
+      document.getElementById('calc-seats-val').textContent = `+${state.extraSeats} seats`;
+      document.getElementById('calc-companies-val').textContent = `+${state.extraCompanies} companies`;
+      document.getElementById('calc-ai-val').textContent = `${state.aiPacks} packs`;
+
+      // Determine per seat rate
+      let seatRate = data.rates.growthSeat;
+      if (plan === 'starter') seatRate = data.rates.starterSeat;
+      if (plan === 'enterprise') seatRate = data.rates.enterpriseSeat;
+
+      document.getElementById('calc-seat-rate-label').textContent = `${data.symbol}${seatRate} / seat / mo`;
+      document.getElementById('calc-comp-rate-label').textContent = `${data.symbol}${data.rates.company} / co / mo`;
+      document.getElementById('calc-ai-rate-label').textContent = `${data.symbol}${data.rates.aiPack} / pack / mo`;
+
+      const basePrice = isAnnual ? data[plan].annual : data[plan].monthly;
+      const seatsCost = state.extraSeats * seatRate;
+      const compCost = state.extraCompanies * data.rates.company;
+      const aiCost = state.aiPacks * data.rates.aiPack;
+
+      const totalMonthly = basePrice + seatsCost + compCost + aiCost;
+
+      document.getElementById('calc-total-amount').textContent = `${data.symbol}${totalMonthly.toLocaleString()}`;
+
+      const planNames = { starter: 'Starter (3 seats, 1 co)', growth: 'Growth (10 seats, 2 co)', enterprise: 'Enterprise (25 seats, 5 co)' };
+      document.getElementById('calc-breakdown-base').textContent = `${planNames[plan]} — ${data.symbol}${basePrice}`;
+      document.getElementById('calc-breakdown-seats').textContent = `${data.symbol}${seatsCost.toLocaleString()}`;
+      document.getElementById('calc-breakdown-comp').textContent = `${data.symbol}${compCost.toLocaleString()}`;
+      document.getElementById('calc-breakdown-ai').textContent = `${data.symbol}${aiCost.toLocaleString()}`;
+
+      const savingsEl = document.getElementById('calc-annual-savings');
+      if (isAnnual) {
+        savingsEl.textContent = `Annual plan saves ${data.symbol}${data[plan].savings.toLocaleString()}/yr`;
+      } else {
+        savingsEl.textContent = `Switch to annual to save ${data.symbol}${data[plan].savings.toLocaleString()}/yr`;
+      }
+    }
+
+    // FAQ Accordion
+    function toggleFaq(id) {
+      const el = document.getElementById(id);
+      const icon = document.getElementById(`${id}-icon`);
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        icon.classList.add('rotate-180');
+      } else {
+        el.classList.add('hidden');
+        icon.classList.remove('rotate-180');
+      }
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      setCurrency('INR');
+      setBillingCycle('annual');
+      calcSelectPlan('growth');
+    });
+  </script>
+</body>
+
+</html>

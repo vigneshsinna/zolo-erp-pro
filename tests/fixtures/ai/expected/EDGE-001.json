@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-001",
+    "risk_group": "Product missing or unknown SKU",
+    "expected_error_code": "PRODUCT_NOT_FOUND",
+    "expected_http_status": 422,
+    "input_text": "Create a purchase order for 200 boxes of Ultra-Fine Egyptian Cotton 120s thread from Vardhman Mills.",
+    "expected_no_erp_writes": true
+}

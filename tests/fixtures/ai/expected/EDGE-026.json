@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-026",
+    "risk_group": "Insufficient stock or negative balance",
+    "expected_error_code": "INSUFFICIENT_STOCK",
+    "expected_http_status": 422,
+    "input_text": "Dispatch 5,000 units of Grey Melange Yarn when current warehouse stock is only 120 units.",
+    "expected_no_erp_writes": true
+}

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-049",
+    "risk_group": "Duplicate idempotency key conflict",
+    "expected_error_code": "IDEMPOTENCY_CONFLICT",
+    "expected_http_status": 409,
+    "input_text": "Re-submit stock deduction voucher with same transaction uuid 'tx_deduct_9901' and different batch items.",
+    "expected_no_erp_writes": true
+}

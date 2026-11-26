@@ -14,9 +14,10 @@
     <server name="BCRYPT_ROUNDS" value="4"/>
     <server name="CACHE_DRIVER" value="array"/>
     <server name="DB_CONNECTION" value="mysql"/>
+    <server name="DB_PORT" value="3307"/>
     <server name="MAIL_DRIVER" value="array"/>
     <server name="QUEUE_CONNECTION" value="sync"/>
-    <env name="ERP_SHARED_COMMERCIAL_ENABLED" value="false" force="true"/><env name="ERP_COMPLIANCE_ENABLED" value="false" force="true"/><env name="ERP_OPERATIONS_ENABLED" value="false" force="true"/><env name="ERP_BACKUP_ENABLED" value="false" force="true"/><env name="ERP_OPTIONAL_ACTIVATION_READY" value="false" force="true"/>
+    <env name="ERP_SHARED_COMMERCIAL_ENABLED" value="false" force="true"/><env name="ERP_COMPLIANCE_ENABLED" value="false" force="true"/><env name="ERP_OPERATIONS_ENABLED" value="false" force="true"/><env name="ERP_BACKUP_ENABLED" value="false" force="true"/><env name="ERP_OPTIONAL_ACTIVATION_READY" value="false" force="true"/><env name="AI_CREDITS_REQUIRE_SUBSCRIPTION" value="false" force="true"/>
     <server name="SESSION_DRIVER" value="array"/>
   </php>
   <source>

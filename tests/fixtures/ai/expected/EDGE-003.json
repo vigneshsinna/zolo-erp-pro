@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-003",
+    "risk_group": "Product missing or unknown SKU",
+    "expected_error_code": "PRODUCT_NOT_FOUND",
+    "expected_http_status": 422,
+    "input_text": "Issue PO to Arvind Mills for 500 meters of NonExistent-Denim-Indigo-14oz.",
+    "expected_no_erp_writes": true
+}

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-008",
+    "risk_group": "Ambiguous duplicate supplier candidates",
+    "expected_error_code": "AMBIGUOUS_ENTITY",
+    "expected_http_status": 422,
+    "input_text": "Bill from Gupta & Sons for Rs 45,000 electrical repair and maintenance supplies.",
+    "expected_no_erp_writes": true
+}

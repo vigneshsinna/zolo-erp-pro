@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-023",
+    "risk_group": "Unauthorized or missing warehouse",
+    "expected_error_code": "WAREHOUSE_FORBIDDEN",
+    "expected_http_status": 403,
+    "input_text": "Draft delivery challan dispatching finished goods from Unregistered Third-Party Job Worker Godown.",
+    "expected_no_erp_writes": true
+}

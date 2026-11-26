@@ -1,0 +1,14 @@
+{
+    "scenario_id": "COP-020",
+    "workflow_family": "Purchase Orders",
+    "action_key": "purchase_order.create.v1",
+    "input_text": "Create purchase order for Supplier Apex 20 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+    "expected_slots": {
+        "target_index": 20,
+        "is_draft": true
+    },
+    "expected_status": "proposal_created",
+    "no_financial_writes_before_approval": true,
+    "expected_provider_calls": 1,
+    "expected_credits_approx": 8
+}

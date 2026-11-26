@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;family=Public+Sans:wght@500;600&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={"darkMode":"class","theme":{"extend":{"colors":{"secondary":"#006c4a","on-secondary-container":"#00714e","on-error-container":"#93000a","surface-dim":"#d2d9f4","on-tertiary-fixed-variant":"#6e3900","on-primary":"#ffffff","surface-container":"#eaedff","on-tertiary-container":"#ffd2b1","on-surface-variant":"#464555","inverse-on-surface":"#eef0ff","on-primary-fixed-variant":"#3323cc","primary-container":"#4f46e5","tertiary-container":"#934e00","inverse-primary":"#c3c0ff","surface-container-lowest":"#ffffff","primary-fixed-dim":"#c3c0ff","surface":"#faf8ff","secondary-fixed":"#85f8c4","on-secondary":"#ffffff","on-primary-fixed":"#0f0069","surface-container-highest":"#dae2fd","on-secondary-fixed-variant":"#005137","surface-bright":"#faf8ff","on-primary-container":"#dad7ff","surface-tint":"#4d44e3","surface-container-low":"#f2f3ff","surface-container-high":"#e2e7ff","inverse-surface":"#283044","on-surface":"#131b2e","error":"#ba1a1a","tertiary":"#703a00","secondary-fixed-dim":"#68dba9","background":"#faf8ff","primary-fixed":"#e2dfff","error-container":"#ffdad6","on-error":"#ffffff","primary":"#3525cd","tertiary-fixed":"#ffdcc3","on-tertiary-fixed":"#2f1500","outline-variant":"#c7c4d8","surface-variant":"#dae2fd","on-tertiary":"#ffffff","on-background":"#131b2e","tertiary-fixed-dim":"#ffb77d","secondary-container":"#82f5c1","on-secondary-fixed":"#002114","outline":"#777587"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{},"fontFamily":{"headline":["Plus Jakarta Sans"],"display":["Plus Jakarta Sans"],"body":["Inter"],"label":["Public Sans"]},"fontSize":{}}}}</script></head><body class="bg-surface font-body text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-72 bg-surface-container-low shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between"><div class="flex flex-col h-full"><div class="h-16 flex items-center gap-3 px-5 border-b border-outline-variant/30"><img alt="ZoloERP Pro Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/ALJJyrCSivw5_O8Ky35zp4F9KdlCEuBU4Z5xJK1CLmv03guWIkZltj7pihzhTDiwI8LsntObQ6NaQEWWTc4zmev0va1tSEYmW93hGpISXIigiL8MDQpVqfWkmWf1wTdCMC2wZeY93LlRVBn93QSkO4ZIpKFSE49-AvfNZRTsCO_jjniGr294R2xBQT98myX-qw5a4iiy3CzMWbl5qAkndwI_pq6_0xmkhbQPJ1Iv4Ch62a-CsOA5hnAYy930ttyc"/><div class="flex items-center gap-2"><span class="font-headline font-bold text-lg tracking-tight text-on-surface">ZoloERP Pro</span><span class="text-[10px] font-label font-bold px-1.5 py-0.5 rounded bg-primary text-on-primary tracking-wide">ENTERPRISE</span></div></div><div class="px-4 py-3"><div class="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/30 text-xs font-label"><div class="flex items-center gap-2 text-on-surface-variant"><span class="material-symbols-outlined text-base text-primary">domain</span><span class="font-semibold text-on-surface truncate max-w-[140px]">Main Branch - Chennai</span></div><span class="material-symbols-outlined text-sm text-on-surface-variant">unfold_more</span></div></div><nav class="flex-1 px-3 space-y-1 overflow-y-auto" data-active-classes="bg-primary-container text-on-primary font-semibold shadow-sm"><a class="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="executive-dashboard" href="#"><span class="material-symbols-outlined text-xl">dashboard</span><span>Executive Dashboard</span></a><a class="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="sales-crm" href="#"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-xl">point_of_sale</span><span>Sales &amp; CRM</span></div><span class="material-symbols-outlined text-base">chevron_right</span></a><a class="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="purchases-scm" href="#"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-xl">shopping_cart</span><span>Purchases &amp; SCM</span></div><span class="material-symbols-outlined text-base">chevron_right</span></a><a class="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="inventory-warehouses" href="#"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-xl">inventory_2</span><span>Inventory &amp; Warehouses</span></div><span class="material-symbols-outlined text-base">chevron_right</span></a><a class="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="manufacturing-assembly" href="#"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-xl">precision_manufacturing</span><span>Manufacturing &amp; Assembly</span></div><span class="material-symbols-outlined text-base">chevron_right</span></a><a class="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="financial-accounting" href="#"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-xl">account_balance</span><span>Financial Accounting</span></div><span class="material-symbols-outlined text-base">chevron_right</span></a><a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="reports-analytics" href="#"><span class="material-symbols-outlined text-xl">analytics</span><span>Reports &amp; Analytics</span></a><a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="system-admin-settings" href="#"><span class="material-symbols-outlined text-xl">settings</span><span>System Admin &amp; Settings</span></a></nav><div class="p-3 border-t border-outline-variant/30 space-y-2"><div class="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant/30"><div class="flex items-center gap-2"><span class="material-symbols-outlined text-base text-secondary">warehouse</span><div class="flex flex-col"><span class="text-[11px] font-semibold text-on-surface leading-tight">Central Hub WH-1</span><span class="text-[10px] text-on-surface-variant leading-tight">Active Warehouse</span></div></div><button aria-label="Switch Warehouse" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-sm">swap_horiz</span></button></div><button class="w-full flex items-center justify-between px-3 py-2 text-xs font-label text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-container-high transition-colors"><span>Collapse sidebar</span><span class="material-symbols-outlined text-sm">keyboard_double_arrow_left</span></button></div></div></aside><div class="pl-72"><header class="fixed top-0 left-72 right-0 h-16 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 border-b border-outline-variant/30"><div class="h-full px-6 flex items-center justify-between gap-4"><div class="flex-1 max-w-xl"><div class="relative flex items-center w-full"><span class="material-symbols-outlined absolute left-3 text-on-surface-variant text-xl">search</span><input class="w-full pl-10 pr-14 py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary" placeholder="Search transactions, accounts, stock or customers..." type="text"/><div class="absolute right-2.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface-container text-[11px] font-label font-semibold text-on-surface-variant border border-outline-variant/30"><kbd>⌘K</kbd></div></div></div><div class="flex items-center gap-4 shrink-0"><div class="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded bg-secondary-container/50 text-on-secondary-container text-xs font-semibold"><span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span><span>Operational</span></div><div class="hidden lg:flex items-center gap-1 px-2.5 py-1 rounded bg-surface-container border border-outline-variant/30 text-xs font-label text-on-surface-variant"><span class="material-symbols-outlined text-sm text-primary">calendar_today</span><span class="font-semibold text-on-surface">FY 2026-27</span></div><div class="h-6 w-px bg-outline-variant/40"></div><div class="flex items-center gap-1.5"><button aria-label="Notifications" class="relative p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-xl">notifications</span><span class="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-error text-on-error text-[10px] font-bold flex items-center justify-center">3</span></button><button aria-label="Help Docs" class="p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-xl">help_outline</span></button><button aria-label="Quick Settings" class="p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-xl">tune</span></button></div><div class="h-6 w-px bg-outline-variant/40"></div><div class="flex items-center gap-3 pl-1"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-2 ring-primary/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDUtXt3_bUqNdQU4ysYsSq4DzEQ-EuTdofU-7vCm8gf2beVTA18FfWjLCgcs3mFWQWKyt-2snD5jU1jgBzBNiraXoRG8nVPoyxDbEzG-xpoZuSRFMvZd6FpF8Tlz_NpAjEw55OXPlDsvOMBPGaNBLC89zy8aY4KPSwAEMixDaDmiB3__AJ0I36EyPLEd_Nr-RLxeSXpC5RH3iR79zMTsHI8b3JtEpkB6RhQfBcmrT9Oc4stQ0fyu5m08mbpJXVxt1pguZbV-UH3G7LT"/><div class="flex flex-col text-left"><span class="text-xs font-semibold text-on-surface leading-tight">Vignesh R.</span><span class="text-[11px] font-label text-on-surface-variant leading-tight">Executive Director</span></div><span class="material-symbols-outlined text-sm text-on-surface-variant">expand_more</span></div></div></div></header><main class="w-full pt-16 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<div class="max-w-[1440px] mx-auto w-full px-6 py-6 space-y-6">
+<!-- 1. Theme-Colored Executive Headquarters Hero Banner -->
+<div class="rounded-2xl p-6 shadow-xl border border-white/20 flex flex-wrap items-center justify-between gap-5 min-h-[104px] relative overflow-hidden text-white" style="background: linear-gradient(135deg, #4a174b 0%, #7d287e 48%, #022051 100%);">
+  <!-- Isometric Vector ERP Artwork in Background -->
+  <div class="absolute right-0 top-0 bottom-0 w-2/5 pointer-events-none opacity-60 overflow-hidden" aria-hidden="true">
+    <svg class="w-full h-full object-cover" viewBox="0 0 500 130" fill="none">
+      <defs>
+        <linearGradient id="prevThemeHeroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25" />
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(100, -10)">
+        <polygon points="200,25 245,45 245,95 200,75" fill="url(#prevThemeHeroGrad)" stroke="rgba(255,255,255,0.3)" stroke-width="1.2" />
+        <polygon points="200,25 245,45 200,65 155,45" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.35)" stroke-width="1.2" />
+        <polygon points="155,45 200,65 200,115 155,95" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.25)" stroke-width="1.2" />
+        <polygon points="270,50 305,68 305,110 270,92" fill="url(#prevThemeHeroGrad)" stroke="rgba(255,255,255,0.25)" stroke-width="1" />
+        <polygon points="270,50 305,68 270,86 235,68" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.3)" stroke-width="1" />
+        <path d="M 200,25 L 270,50 M 245,95 L 270,92 M 155,95 L 90,65" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-dasharray="4,4" />
+        <circle cx="200" cy="25" r="3.5" fill="#ffffff" />
+        <circle cx="270" cy="50" r="3" fill="#a7f3d0" />
+        <circle cx="245" cy="95" r="3" fill="#ffffff" />
+        <circle cx="305" cy="68" r="2.5" fill="#fde047" />
+      </g>
+      <path d="M0,80 C120,115 240,25 360,70 C430,95 480,55 500,65 L500,130 L0,130 Z" fill="rgba(255,255,255,0.06)" />
+    </svg>
+  </div>
+  <!-- Left: Enterprise Identity Zone -->
+  <div class="flex items-center gap-4 relative z-10">
+    <div class="w-13 h-13 rounded-2xl bg-white/20 backdrop-blur-md border border-white/35 flex items-center justify-center text-white font-headline font-bold text-lg shadow-lg shrink-0 relative" style="width: 52px; height: 52px;">
+      <span>ZT</span>
+      <span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center text-[9px] shadow-sm font-bold">★</span>
+    </div>
+    <div class="flex flex-col gap-1 text-left">
+      <div class="flex items-center gap-1.5 text-xs font-label text-white/80">
+        <span class="material-symbols-outlined text-xs text-yellow-300">corporate_fare</span>
+        <span class="font-medium text-white/90">MJ Group Holdings</span>
+        <span class="material-symbols-outlined text-[10px]">chevron_right</span>
+      </div>
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <h1 class="text-2xl font-headline font-extrabold text-white tracking-tight flex items-center gap-2 drop-shadow-sm">
+          Zolo Textiles Pvt. Ltd.
+        </h1>
+        <code class="text-xs font-mono bg-white/20 border border-white/30 px-2 py-0.5 rounded text-white font-bold">TEXT-01</code>
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/15 border border-white/25 text-white flex items-center gap-1">
+          <span class="material-symbols-outlined text-xs">business_center</span>
+          Textiles &amp; Apparel
+        </span>
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/25 border border-emerald-400/40 text-emerald-200 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Active Workspace
+        </span>
+      </div>
+      <div class="flex items-center gap-2 text-[11px] text-white/75 mt-0.5">
+        <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[13px] text-emerald-300">verified_user</span> Primary Operational Node</span>
+        <span class="text-white/40">·</span>
+        <span>Ledger Consensus: <strong class="text-white font-semibold">Synchronized</strong></span>
+        <span class="text-white/40">·</span>
+        <span>4 Operating Facilities</span>
+      </div>
+    </div>
+  </div>
+  <!-- Right: Cockpit Controls -->
+  <div class="flex items-center gap-2.5 flex-wrap relative z-10">
+    <!-- Facility Selector -->
+    <div class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 backdrop-blur-md border border-white/25 text-xs text-white">
+      <span class="material-symbols-outlined text-sm text-yellow-300">domain</span>
+      <span class="text-[10px] uppercase font-bold text-white/70">Facility:</span>
+      <span class="font-semibold text-white">Spinning Mills · Chennai</span>
+    </div>
+    <!-- Fiscal Period -->
+    <div class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 backdrop-blur-md border border-white/25 text-xs text-white">
+      <span class="material-symbols-outlined text-sm text-cyan-300">calendar_today</span>
+      <span class="text-[10px] uppercase font-bold text-white/70">Fiscal:</span>
+      <span class="font-semibold text-white">FY 2026-27</span>
+    </div>
+    <!-- Node Status -->
+    <div class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/35 text-[11px] text-emerald-200">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+      <span class="font-medium">Operational</span>
+    </div>
+    <!-- Switch Company Expanding Dock -->
+    <div class="relative inline-block" id="previewSwitchWrapper">
+      <button id="previewSwitchBtn" class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-[#631f64] text-xs font-bold hover:bg-slate-50 transition-all shadow-md">
+        <span class="material-symbols-outlined text-sm">swap_horiz</span>
+        <span>Switch Company</span>
+        <span class="material-symbols-outlined text-xs">expand_more</span>
+      </button>
+
+      <!-- Animated Popover -->
+      <div id="previewSwitchPopover" class="absolute top-[calc(100%+10px)] right-0 w-[420px] max-w-[92vw] bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 p-0 z-50 transition-all duration-200 origin-top-right transform scale-90 opacity-0 pointer-events-none" style="box-shadow: 0 20px 48px -4px rgba(0,0,0,0.28);">
+        <div class="p-4 bg-slate-50 border-b border-slate-200 rounded-t-2xl">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-sm text-slate-900 flex items-center gap-2"><span class="material-symbols-outlined text-base text-[#7d287e]">domain</span> Switch Active Workspace</span>
+            <button id="previewSwitchClose" class="text-slate-400 hover:text-slate-700 text-lg leading-none">&times;</button>
+          </div>
+          <p class="text-xs text-slate-500 mb-2.5">Select an enterprise entity to switch your ledger and operational context instantly.</p>
+          <div class="relative flex items-center">
+            <span class="material-symbols-outlined absolute left-2.5 text-slate-400 text-base">search</span>
+            <input type="text" placeholder="Filter company, code or group..." class="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:border-[#7d287e]">
+          </div>
+        </div>
+        <div class="p-2 max-h-64 overflow-y-auto space-y-1.5">
+          <div class="flex items-center justify-between p-2.5 rounded-xl bg-purple-50/60 border border-purple-200/80">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-[#7d287e] text-white font-bold flex items-center justify-center text-xs">ZT</div>
+              <div>
+                <div class="text-xs font-bold text-slate-900">Zolo Textiles Pvt. Ltd. <code class="text-[10px] bg-white px-1 py-0.5 rounded border border-purple-200 text-purple-900">TEXT-01</code></div>
+                <div class="text-[10px] text-slate-500">MJ Group Holdings · Textiles</div>
+              </div>
+            </div>
+            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">✓ Current</span>
+          </div>
+
+          <div class="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all cursor-pointer">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold flex items-center justify-center text-xs">MF</div>
+              <div>
+                <div class="text-xs font-bold text-slate-900">Motumo Foods Private Limited <code class="text-[10px] bg-slate-100 px-1 py-0.5 rounded text-slate-600">MOTUMO</code></div>
+                <div class="text-[10px] text-slate-500">MJ Group Holdings · FMCG</div>
+              </div>
+            </div>
+            <button class="text-xs font-bold text-[#7d287e] hover:bg-[#7d287e] hover:text-white px-3 py-1 rounded-lg border border-[#7d287e]/30 transition-all">Switch &rarr;</button>
+          </div>
+
+          <div class="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all cursor-pointer">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-700 text-white font-bold flex items-center justify-center text-xs">ZE</div>
+              <div>
+                <div class="text-xs font-bold text-slate-900">Zolo Energy Solar Corp <code class="text-[10px] bg-slate-100 px-1 py-0.5 rounded text-slate-600">SOLAR-01</code></div>
+                <div class="text-[10px] text-slate-500">Independent · Solar Energy</div>
+              </div>
+            </div>
+            <button class="text-xs font-bold text-[#7d287e] hover:bg-[#7d287e] hover:text-white px-3 py-1 rounded-lg border border-[#7d287e]/30 transition-all">Switch &rarr;</button>
+          </div>
+        </div>
+        <div class="p-3 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex items-center justify-between">
+          <a href="#" class="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-[#7d287e] px-3.5 py-1.5 rounded-lg shadow-sm hover:opacity-95">
+            <span class="material-symbols-outlined text-sm">add_circle</span>
+            <span>Company Portal ›</span>
+          </a>
+          <a href="#" class="text-xs font-semibold text-slate-500 hover:text-[#7d287e]">Manage All Companies &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- 3. Master Group Consolidated Intelligence Suite (MJ Group Holdings) -->
+<div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm space-y-5">
+<!-- Group Suite Top Header -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+<div class="flex items-center gap-3">
+<div class="w-9 h-9 rounded-lg bg-primary-container/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-xl">corporate_fare</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h2 class="text-base font-headline font-bold text-on-surface">MJ Group Holdings · Consolidated Command Suite</h2>
+<span class="px-2 py-0.5 text-[11px] font-label font-bold bg-secondary-container text-on-secondary-container rounded-full">All 4 Entities Active</span>
+</div>
+<p class="text-xs text-on-surface-variant">Consolidated accounting matrix for FY 2026-27 (Values reported in INR ₹ Lakhs / Crores)</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-xs text-on-surface-variant font-label">Consolidation Cadence:</span>
+<span class="text-xs font-semibold px-2 py-1 rounded bg-surface-container text-on-surface">Real-Time Continuous Ledger</span>
+</div>
+</div>
+<!-- 5 High-Density Executive KPI Metric Pills with Embedded Graphic Visuals -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+  <!-- 1. Revenue Sparkline -->
+  <div class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/20 flex flex-col justify-between gap-2.5">
+    <div class="flex items-center justify-between">
+      <span class="text-[10.5px] font-label uppercase font-bold text-on-surface-variant tracking-wider">Gross Revenue</span>
+      <span class="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary">P&amp;L Topline</span>
+    </div>
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <div class="text-lg font-headline font-bold text-on-surface tracking-tight">₹14.82 Cr</div>
+        <div class="text-[11px] text-secondary font-semibold flex items-center gap-0.5">
+          <span class="material-symbols-outlined text-[13px]">trending_up</span> +16.8% YoY
+        </div>
+      </div>
+      <svg class="w-20 h-7 shrink-0" viewBox="0 0 80 28">
+        <defs>
+          <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3525cd" stop-opacity="0.3"></stop>
+            <stop offset="100%" stop-color="#3525cd" stop-opacity="0.0"></stop>
+          </linearGradient>
+        </defs>
+        <path d="M0,20 C15,18 30,12 45,15 C60,18 70,5 80,4 L80,28 L0,28 Z" fill="url(#revGrad)"></path>
+        <path d="M0,20 C15,18 30,12 45,15 C60,18 70,5 80,4" fill="none" stroke="#3525cd" stroke-width="2"></path>
+        <circle cx="80" cy="4" r="2.5" fill="#3525cd"></circle>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 2. Profit Radial Gauge -->
+  <div class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/20 flex flex-col justify-between gap-2.5">
+    <div class="flex items-center justify-between">
+      <span class="text-[10.5px] font-label uppercase font-bold text-on-surface-variant tracking-wider">Net Margin</span>
+      <span class="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-container">Surplus</span>
+    </div>
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <div class="text-lg font-headline font-bold text-secondary tracking-tight">₹3.63 Cr</div>
+        <div class="text-[11px] text-on-surface-variant font-semibold">24.5% Operating Margin</div>
+      </div>
+      <svg class="w-9 h-9 shrink-0" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="14" fill="none" stroke="#e2e8f0" stroke-width="3"></circle>
+        <circle cx="18" cy="18" r="14" fill="none" stroke="#006c4a" stroke-width="3" stroke-dasharray="88" stroke-dashoffset="22" stroke-linecap="round" transform="rotate(-90 18 18)"></circle>
+        <text x="18" y="19" text-anchor="middle" font-size="9" font-weight="bold" fill="#131b2e">25%</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 3. Purchases Histogram -->
+  <div class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/20 flex flex-col justify-between gap-2.5">
+    <div class="flex items-center justify-between">
+      <span class="text-[10.5px] font-label uppercase font-bold text-on-surface-variant tracking-wider">Procurement</span>
+      <span class="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">SCM / COGS</span>
+    </div>
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <div class="text-lg font-headline font-bold text-on-surface tracking-tight">₹9.07 Cr</div>
+        <div class="text-[11px] text-on-surface-variant font-medium">61.2% Ratio to Rev</div>
+      </div>
+      <div class="flex items-end gap-1 h-6 w-16 shrink-0">
+        <div class="flex-1 bg-amber-400 rounded-t h-[40%]"></div>
+        <div class="flex-1 bg-amber-400 rounded-t h-[65%]"></div>
+        <div class="flex-1 bg-amber-400 rounded-t h-[50%]"></div>
+        <div class="flex-1 bg-amber-400 rounded-t h-[80%]"></div>
+        <div class="flex-1 bg-amber-400 rounded-t h-[60%]"></div>
+        <div class="flex-1 bg-amber-500 rounded-t h-[95%]"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Receivables Ratio Meter -->
+  <div class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/20 flex flex-col justify-between gap-2.5">
+    <div class="flex items-center justify-between">
+      <span class="text-[10.5px] font-label uppercase font-bold text-on-surface-variant tracking-wider">Receivables</span>
+      <span class="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary">60% Dues</span>
+    </div>
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <div class="text-lg font-headline font-bold text-primary tracking-tight">₹1.43 Cr</div>
+        <div class="text-[11px] text-on-surface-variant font-medium">Avg DSO: 28 Days</div>
+      </div>
+      <div class="w-16 flex flex-col gap-1 shrink-0">
+        <span class="text-[9px] font-bold text-on-surface-variant text-right">60% Coll.</span>
+        <div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
+          <div class="bg-primary h-full rounded-full" style="width: 60%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Supplier Payables Meter -->
+  <div class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/20 flex flex-col justify-between gap-2.5 col-span-2 md:col-span-1">
+    <div class="flex items-center justify-between">
+      <span class="text-[10.5px] font-label uppercase font-bold text-on-surface-variant tracking-wider">Payables</span>
+      <span class="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">40% Share</span>
+    </div>
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <div class="text-lg font-headline font-bold text-amber-700 tracking-tight">₹94.20 L</div>
+        <div class="text-[11px] text-secondary font-semibold">98.4% Early Disc.</div>
+      </div>
+      <div class="w-16 flex flex-col gap-1 shrink-0">
+        <span class="text-[9px] font-bold text-on-surface-variant text-right">98% Settled</span>
+        <div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
+          <div class="bg-amber-500 h-full rounded-full" style="width: 98%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Working Capital & Exposure Balance Meter -->
+<div class="p-4 rounded-lg bg-surface-container-low">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+<div class="flex items-center gap-2">
+<span class="text-xs font-headline font-bold text-on-surface">Working Capital &amp; Liquidity Coverage Ratio</span>
+<span class="text-[10px] font-label font-bold px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container">+₹16,30,000 Net Working Surplus</span>
+</div>
+<span class="text-xs font-label text-on-surface-variant">Working Capital Cycle: <strong class="text-on-surface">32 Days</strong></span>
+</div>
+<!-- Segmented Multi-Bar -->
+<div class="w-full h-3 rounded-full bg-surface-container flex overflow-hidden">
+<div class="bg-primary h-full transition-all duration-300" style="width: 65%;" title="Receivables ₹34,50,000"></div>
+<div class="bg-tertiary-container h-full transition-all duration-300" style="width: 35%;" title="Payables ₹18,20,000"></div>
+</div>
+<div class="flex items-center justify-between mt-2 text-[11px] font-label">
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="w-2.5 h-2.5 rounded-full bg-primary inline-block"></span>
+<span>Customer Receivables: <strong>₹34,50,000</strong> (Current Active Subsidiary)</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="w-2.5 h-2.5 rounded-full bg-tertiary-container inline-block"></span>
+<span>Vendor Payables: <strong>₹18,20,000</strong></span>
+</div>
+</div>
+</div>
+<!-- Side-by-side Visual Analytics (Charts) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
+<!-- Chart A: 6-Month Group Sales vs Purchases vs Margin (7 cols) -->
+<div class="lg:col-span-7 p-4 rounded-lg bg-surface-container-low/70 flex flex-col justify-between">
+<div class="flex items-center justify-between mb-4">
+<div>
+<h3 class="text-xs font-headline font-bold text-on-surface">6-Month Group Cash Flow &amp; Procurement Velocity</h3>
+<p class="text-[11px] text-on-surface-variant">Monthly comparison across all 4 companies (in ₹ Lakhs)</p>
+</div>
+<div class="flex items-center gap-3 text-[10px] font-label font-semibold">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-primary"></span> Revenue</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-primary-fixed-dim"></span> Purchases</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-secondary"></span> Margin</span>
+</div>
+</div>
+<!-- SVG Group Bar Chart -->
+<div class="w-full">
+<svg class="w-full h-44 text-on-surface" viewbox="0 0 540 160">
+<!-- Grid lines -->
+<line stroke="currentColor" stroke-dasharray="3 3" stroke-opacity="0.08" x1="30" x2="520" y1="20" y2="20"></line>
+<line stroke="currentColor" stroke-dasharray="3 3" stroke-opacity="0.08" x1="30" x2="520" y1="60" y2="60"></line>
+<line stroke="currentColor" stroke-dasharray="3 3" stroke-opacity="0.08" x1="30" x2="520" y1="100" y2="100"></line>
+<line stroke="currentColor" stroke-opacity="0.15" x1="30" x2="520" y1="140" y2="140"></line>
+<!-- Labels Y -->
+<text fill="currentColor" fill-opacity="0.5" font-size="9" x="5" y="24">₹300L</text>
+<text fill="currentColor" fill-opacity="0.5" font-size="9" x="5" y="64">₹200L</text>
+<text fill="currentColor" fill-opacity="0.5" font-size="9" x="5" y="104">₹100L</text>
+<text fill="currentColor" fill-opacity="0.5" font-size="9" x="18" y="144">₹0</text>
+<!-- Month 1: Oct -->
+<g transform="translate(50, 0)">
+<rect class="fill-primary" height="95" rx="2" width="14" x="0" y="45"></rect>
+<rect class="fill-primary-fixed-dim" height="65" rx="2" width="14" x="16" y="75"></rect>
+<rect class="fill-secondary" height="25" rx="2" width="14" x="32" y="115"></rect>
+<text fill="currentColor" fill-opacity="0.7" font-size="10" text-anchor="middle" x="23" y="154">OCT</text>
+</g>
+<!-- Month 2: Nov -->
+<g transform="translate(130, 0)">
+<rect class="fill-primary" height="102" rx="2" width="14" x="0" y="38"></rect>
+<rect class="fill-primary-fixed-dim" height="70" rx="2" width="14" x="16" y="70"></rect>
+<rect class="fill-secondary" height="30" rx="2" width="14" x="32" y="110"></rect>
+<text fill="currentColor" fill-opacity="0.7" font-size="10" text-anchor="middle" x="23" y="154">NOV</text>
+</g>
+<!-- Month 3: Dec -->
+<g transform="translate(210, 0)">
+<rect class="fill-primary" height="112" rx="2" width="14" x="0" y="28"></rect>
+<rect class="fill-primary-fixed-dim" height="75" rx="2" width="14" x="16" y="65"></rect>
+<rect class="fill-secondary" height="35" rx="2" width="14" x="32" y="105"></rect>
+<text fill="currentColor" fill-opacity="0.7" font-size="10" text-anchor="middle" x="23" y="154">DEC</text>
+</g>
+<!-- Month 4: Jan -->
+<g transform="translate(290, 0)">
+<rect class="fill-primary" height="105" rx="2" width="14" x="0" y="35"></rect>
+<rect class="fill-primary-fixed-dim" height="72" rx="2" width="14" x="16" y="68"></rect>
+<rect class="fill-secondary" height="32" rx="2" width="14" x="32" y="108"></rect>
+<text fill="currentColor" fill-opacity="0.7" font-size="10" text-anchor="middle" x="23" y="154">JAN</text>
+</g>
+<!-- Month 5: Feb -->
+<g transform="translate(370, 0)">
+<rect class="fill-primary" height="116" rx="2" width="14" x="0" y="24"></rect>
+<rect class="fill-primary-fixed-dim" height="82" rx="2" width="14" x="16" y="58"></rect>
+<rect class="fill-secondary" height="38" rx="2" width="14" x="32" y="102"></rect>
+<text fill="currentColor" fill-opacity="0.7" font-size="10" text-anchor="middle" x="23" y="154">FEB</text>
+</g>
+<!-- Month 6: Mar (Projected/Current) -->
+<g transform="translate(450, 0)">
+<rect class="fill-primary" height="124" rx="2" width="14" x="0" y="16"></rect>
+<rect class="fill-primary-fixed-dim" height="90" rx="2" width="14" x="16" y="50"></rect>
+<rect class="fill-secondary" height="44" rx="2" width="14" x="32" y="96"></rect>
+<text fill="currentColor" fill-opacity="0.7" font-size="10" font-weight="600" text-anchor="middle" x="23" y="154">MAR</text>
+</g>
+</svg>
+</div>
+</div>
+<!-- Chart B & C: Dual Donut Breakdown (5 cols) -->
+<div class="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+<!-- Donut 1: Revenue Contribution by Subsidiary -->
+<div class="p-3.5 rounded-lg bg-surface-container-low/70 flex flex-col items-center justify-between">
+<span class="text-xs font-headline font-bold text-on-surface self-start">Subsidiary Share</span>
+<div class="relative w-28 h-28 my-2 flex items-center justify-center">
+<svg class="w-full h-full -rotate-90" viewbox="0 0 36 36">
+<!-- Background track -->
+<circle cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-opacity="0.1" stroke-width="4"></circle>
+<!-- Zolo Textiles: 44% (dasharray ~38.7, 49.3) -->
+<circle class="text-primary" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="38.7 88" stroke-dashoffset="0" stroke-width="4"></circle>
+<!-- Zolo Retail: 28% (dasharray ~24.6, 63.4) -->
+<circle class="text-secondary" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="24.6 88" stroke-dashoffset="-38.7" stroke-width="4"></circle>
+<!-- Zolo Logistics: 16% (dasharray ~14, 74) -->
+<circle class="text-tertiary" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="14.1 88" stroke-dashoffset="-63.3" stroke-width="4"></circle>
+<!-- Zolo Global: 12% (dasharray ~10.6, 77.4) -->
+<circle class="text-primary-container" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="10.6 88" stroke-dashoffset="-77.4" stroke-width="4"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+<span class="text-xs font-headline font-bold text-on-surface">4 Units</span>
+<span class="text-[9px] font-label text-on-surface-variant">100%</span>
+</div>
+</div>
+<div class="w-full space-y-1 text-[11px] font-label">
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-primary"></span>Textiles</span>
+<span class="font-bold">44%</span>
+</div>
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-secondary"></span>Retail</span>
+<span class="font-bold">28%</span>
+</div>
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-tertiary"></span>Logistics</span>
+<span class="font-bold">16%</span>
+</div>
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-primary-container"></span>Exports</span>
+<span class="font-bold">12%</span>
+</div>
+</div>
+</div>
+<!-- Donut 2: Cost & Margin Absorption -->
+<div class="p-3.5 rounded-lg bg-surface-container-low/70 flex flex-col items-center justify-between">
+<span class="text-xs font-headline font-bold text-on-surface self-start">P&amp;L Absorption</span>
+<div class="relative w-28 h-28 my-2 flex items-center justify-center">
+<svg class="w-full h-full -rotate-90" viewbox="0 0 36 36">
+<!-- Background track -->
+<circle cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-opacity="0.1" stroke-width="4"></circle>
+<!-- Net Margin: 24.5% -->
+<circle class="text-secondary" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="21.5 88" stroke-dashoffset="0" stroke-width="4"></circle>
+<!-- COGS: 61.2% -->
+<circle class="text-primary" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="53.8 88" stroke-dashoffset="-21.5" stroke-width="4"></circle>
+<!-- OPEX: 14.3% -->
+<circle class="text-tertiary" cx="18" cy="18" fill="none" r="14" stroke="currentColor" stroke-dasharray="12.7 88" stroke-dashoffset="-75.3" stroke-width="4"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+<span class="text-xs font-headline font-bold text-secondary">24.5%</span>
+<span class="text-[9px] font-label text-on-surface-variant">Net Margin</span>
+</div>
+</div>
+<div class="w-full space-y-1 text-[11px] font-label">
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-primary"></span>COGS / RM</span>
+<span class="font-bold">61.2%</span>
+</div>
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-secondary"></span>Net Profit</span>
+<span class="font-bold text-secondary">24.5%</span>
+</div>
+<div class="flex items-center justify-between text-on-surface">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-tertiary"></span>OPEX / Admin</span>
+<span class="font-bold">14.3%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- 4. Expanded Multi-Company Directory & Switcher Grid -->
+<div>
+<div class="flex items-center justify-between mb-3">
+<div>
+<h2 class="text-base font-headline font-bold text-on-surface">Multi-Company Workspace Switcher</h2>
+<p class="text-xs text-on-surface-variant">Select a subsidiary instance to switch full ERP context, GL accounts, inventories, and role entitlements.</p>
+</div>
+<span class="text-xs font-label text-on-surface-variant">All entities reconciled via Group Intercompany Engine</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+<!-- Company 1: Zolo Textiles Pvt. Ltd. (ACTIVE) -->
+<div class="bg-surface-container-lowest rounded-xl p-4 shadow-md relative flex flex-col justify-between">
+<div class="absolute -top-2.5 left-4 px-2 py-0.5 rounded-full bg-primary text-on-primary text-[10px] font-label font-bold flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[12px]">check_circle</span>
+<span>CURRENT WORKSPACE</span>
+</div>
+<div>
+<div class="flex items-start justify-between mt-1">
+<div>
+<span class="text-[10px] font-label font-bold text-primary tracking-wide">TEXT-01</span>
+<h3 class="text-sm font-headline font-bold text-on-surface">Zolo Textiles Pvt. Ltd.</h3>
+<p class="text-[11px] text-on-surface-variant">Spinning Unit · Tiruppur</p>
+</div>
+<div class="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-base">style</span>
+</div>
+</div>
+<!-- Mini Sparkline SVG -->
+<div class="my-3 py-1">
+<div class="flex items-center justify-between text-[10px] font-label text-on-surface-variant mb-1">
+<span>Revenue Momentum</span>
+<span class="font-bold text-secondary">↗ +14.2%</span>
+</div>
+<svg class="w-full h-8 text-primary" preserveaspectratio="none" viewbox="0 0 100 25">
+<path d="M0,20 Q20,18 40,12 T80,8 L100,3" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M0,20 Q20,18 40,12 T80,8 L100,3 L100,25 L0,25 Z" fill="currentColor" fill-opacity="0.1"></path>
+</svg>
+</div>
+<!-- P&L Banner -->
+<div class="px-2.5 py-1.5 rounded-md bg-secondary-container/40 text-on-secondary-container text-xs font-semibold flex items-center justify-between">
+<span>Net Profit</span>
+<span>+₹18.42L (21.4%)</span>
+</div>
+<!-- 4 Micro Metric Blocks -->
+<div class="grid grid-cols-2 gap-2 mt-3 text-xs">
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Revenue</span>
+<span class="font-bold text-on-surface">₹1.84 Cr</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Purchases</span>
+<span class="font-bold text-on-surface">₹98.4 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Cust. Dues</span>
+<span class="font-bold text-primary">₹34.5 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Payables</span>
+<span class="font-bold text-on-surface">₹18.2 L</span>
+</div>
+</div>
+</div>
+<!-- Bottom Button -->
+<div class="mt-4 pt-2">
+<button class="w-full py-2 rounded-lg bg-primary text-on-primary text-xs font-semibold flex items-center justify-center gap-1.5 cursor-default shadow-sm">
+<span class="material-symbols-outlined text-sm">lock_open</span>
+<span>Workspace Active</span>
+</button>
+</div>
+</div>
+<!-- Company 2: Zolo Retail Outlets Ltd. -->
+<div class="bg-surface-container-lowest rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between">
+<div>
+<span class="text-[10px] font-label font-bold text-on-surface-variant tracking-wide">RET-02</span>
+<h3 class="text-sm font-headline font-bold text-on-surface">Zolo Retail Outlets Ltd.</h3>
+<p class="text-[11px] text-on-surface-variant">Flagship Hub · 14 Stores</p>
+</div>
+<div class="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-base">storefront</span>
+</div>
+</div>
+<!-- Mini Sparkline SVG -->
+<div class="my-3 py-1">
+<div class="flex items-center justify-between text-[10px] font-label text-on-surface-variant mb-1">
+<span>Revenue Momentum</span>
+<span class="font-bold text-secondary">↗ +18.9%</span>
+</div>
+<svg class="w-full h-8 text-secondary" preserveaspectratio="none" viewbox="0 0 100 25">
+<path d="M0,22 Q25,20 50,10 T85,5 L100,2" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M0,22 Q25,20 50,10 T85,5 L100,2 L100,25 L0,25 Z" fill="currentColor" fill-opacity="0.1"></path>
+</svg>
+</div>
+<!-- P&L Banner -->
+<div class="px-2.5 py-1.5 rounded-md bg-secondary-container/40 text-on-secondary-container text-xs font-semibold flex items-center justify-between">
+<span>Net Profit</span>
+<span>+₹14.10L (19.8%)</span>
+</div>
+<!-- 4 Micro Metric Blocks -->
+<div class="grid grid-cols-2 gap-2 mt-3 text-xs">
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Revenue</span>
+<span class="font-bold text-on-surface">₹1.42 Cr</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Purchases</span>
+<span class="font-bold text-on-surface">₹82.1 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Cust. Dues</span>
+<span class="font-bold text-primary">₹12.4 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Payables</span>
+<span class="font-bold text-on-surface">₹24.8 L</span>
+</div>
+</div>
+</div>
+<!-- Bottom Button -->
+<div class="mt-4 pt-2">
+<button class="w-full py-2 rounded-lg bg-surface-container-high hover:bg-primary hover:text-on-primary text-on-surface text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+<span>Switch Workspace</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Company 3: Zolo Logistics & Freight SCM -->
+<div class="bg-surface-container-lowest rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between">
+<div>
+<span class="text-[10px] font-label font-bold text-on-surface-variant tracking-wide">LOG-03</span>
+<h3 class="text-sm font-headline font-bold text-on-surface">Zolo Logistics &amp; Freight</h3>
+<p class="text-[11px] text-on-surface-variant">Central Fleet Depot · Chennai</p>
+</div>
+<div class="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-base">local_shipping</span>
+</div>
+</div>
+<!-- Mini Sparkline SVG -->
+<div class="my-3 py-1">
+<div class="flex items-center justify-between text-[10px] font-label text-on-surface-variant mb-1">
+<span>Fleet Utilization</span>
+<span class="font-bold text-primary">↗ +8.4%</span>
+</div>
+<svg class="w-full h-8 text-primary" preserveaspectratio="none" viewbox="0 0 100 25">
+<path d="M0,18 Q30,16 55,14 T80,10 L100,6" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M0,18 Q30,16 55,14 T80,10 L100,6 L100,25 L0,25 Z" fill="currentColor" fill-opacity="0.1"></path>
+</svg>
+</div>
+<!-- P&L Banner -->
+<div class="px-2.5 py-1.5 rounded-md bg-secondary-container/40 text-on-secondary-container text-xs font-semibold flex items-center justify-between">
+<span>Net Profit</span>
+<span>+₹6.80L (16.2%)</span>
+</div>
+<!-- 4 Micro Metric Blocks -->
+<div class="grid grid-cols-2 gap-2 mt-3 text-xs">
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Revenue</span>
+<span class="font-bold text-on-surface">₹78.5 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Fleet Op</span>
+<span class="font-bold text-on-surface">₹49.2 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Cust. Dues</span>
+<span class="font-bold text-primary">₹18.9 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Payables</span>
+<span class="font-bold text-on-surface">₹11.2 L</span>
+</div>
+</div>
+</div>
+<!-- Bottom Button -->
+<div class="mt-4 pt-2">
+<button class="w-full py-2 rounded-lg bg-surface-container-high hover:bg-primary hover:text-on-primary text-on-surface text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+<span>Switch Workspace</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Company 4: Zolo Global Exports FZE -->
+<div class="bg-surface-container-lowest rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between">
+<div>
+<span class="text-[10px] font-label font-bold text-on-surface-variant tracking-wide">EXP-04</span>
+<h3 class="text-sm font-headline font-bold text-on-surface">Zolo Global Exports FZE</h3>
+<p class="text-[11px] text-on-surface-variant">SEZ Export Division · Port Terminal</p>
+</div>
+<div class="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-base">public</span>
+</div>
+</div>
+<!-- Mini Sparkline SVG -->
+<div class="my-3 py-1">
+<div class="flex items-center justify-between text-[10px] font-label text-on-surface-variant mb-1">
+<span>USD Realization</span>
+<span class="font-bold text-secondary">↗ +24.1%</span>
+</div>
+<svg class="w-full h-8 text-secondary" preserveaspectratio="none" viewbox="0 0 100 25">
+<path d="M0,24 Q30,18 60,12 T85,6 L100,1" fill="none" stroke="currentColor" stroke-width="2"></path>
+<path d="M0,24 Q30,18 60,12 T85,6 L100,1 L100,25 L0,25 Z" fill="currentColor" fill-opacity="0.1"></path>
+</svg>
+</div>
+<!-- P&L Banner -->
+<div class="px-2.5 py-1.5 rounded-md bg-secondary-container/40 text-on-secondary-container text-xs font-semibold flex items-center justify-between">
+<span>Net Profit</span>
+<span>+₹22.50L (26.1%)</span>
+</div>
+<!-- 4 Micro Metric Blocks -->
+<div class="grid grid-cols-2 gap-2 mt-3 text-xs">
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Revenue</span>
+<span class="font-bold text-on-surface">₹2.10 Cr</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Purchases</span>
+<span class="font-bold text-on-surface">₹1.14 Cr</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Cust. Dues</span>
+<span class="font-bold text-primary">₹41.2 L</span>
+</div>
+<div class="p-2 rounded bg-surface-container-low">
+<span class="text-[10px] text-on-surface-variant block font-label">Payables</span>
+<span class="font-bold text-on-surface">₹22.1 L</span>
+</div>
+</div>
+</div>
+<!-- Bottom Button -->
+<div class="mt-4 pt-2">
+<button class="w-full py-2 rounded-lg bg-surface-container-high hover:bg-primary hover:text-on-primary text-on-surface text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+<span>Switch Workspace</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div></main></div>
+<script>
+(function() {
+  var btn = document.getElementById('previewSwitchBtn');
+  var popover = document.getElementById('previewSwitchPopover');
+  var close = document.getElementById('previewSwitchClose');
+  if (btn && popover) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var isOpen = popover.classList.contains('opacity-100');
+      if (isOpen) {
+        popover.classList.remove('opacity-100', 'scale-100', 'pointer-events-auto');
+        popover.classList.add('opacity-0', 'scale-90', 'pointer-events-none');
+      } else {
+        popover.classList.remove('opacity-0', 'scale-90', 'pointer-events-none');
+        popover.classList.add('opacity-100', 'scale-100', 'pointer-events-auto');
+      }
+    });
+    if (close) {
+      close.addEventListener('click', function(e) {
+        e.stopPropagation();
+        popover.classList.remove('opacity-100', 'scale-100', 'pointer-events-auto');
+        popover.classList.add('opacity-0', 'scale-90', 'pointer-events-none');
+      });
+    }
+    document.addEventListener('click', function(e) {
+      if (!popover.contains(e.target) && !btn.contains(e.target)) {
+        popover.classList.remove('opacity-100', 'scale-100', 'pointer-events-auto');
+        popover.classList.add('opacity-0', 'scale-90', 'pointer-events-none');
+      }
+    });
+  }
+})();
+</script>
+</body></html>

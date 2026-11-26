@@ -1,0 +1,31 @@
+{
+    "policy_version": "cost_v1",
+    "period": {
+        "period_id": "prd_202611_active",
+        "included_granted": 20000,
+        "topups_granted": 15000,
+        "total_granted": 35000,
+        "spent_credits": 2544,
+        "reserved_credits": 0,
+        "available_credits": 32456
+    },
+    "ledger": {
+        "total_grants": 35000,
+        "total_debits": 2544,
+        "net_ledger_balance": 32456
+    },
+    "audit_result": {
+        "is_reconciled": true,
+        "model_csv_total_credits": 2544,
+        "ledger_debits_total_credits": 2544,
+        "invoice_extraction_credits": 2260,
+        "copilot_reasoning_credits": 284,
+        "discrepancy_credits": 0,
+        "negative_balance_count": 0,
+        "orphan_reservations_cleared": 0,
+        "status": "AUDIT_PASSED"
+    },
+    "rate_card_version": "nvidia-2026-v1",
+    "fx_rate_version": "rbi-2026-11-16",
+    "audited_at": "2026-11-16T17:35:11+00:00"
+}

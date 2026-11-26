@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-035",
+    "risk_group": "Closed financial year or expired period",
+    "expected_error_code": "PERIOD_CLOSED",
+    "expected_http_status": 422,
+    "input_text": "Submit purchase return for invoice dated 2019-11-20 in frozen tax year.",
+    "expected_no_erp_writes": true
+}

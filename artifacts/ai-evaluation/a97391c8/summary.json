@@ -1,0 +1,90 @@
+{
+    "git_sha": "a97391c829f8d60ed24b322dd934eded630fc4f0",
+    "short_sha": "a97391c8",
+    "branch": "feature\/ai-unified-input-clarification",
+    "policy_version": "cost_v1",
+    "dataset_version": "2026.11-v1",
+    "evaluation_tier": "Automated Invariant & Security Verification (CI Default: Synthetic Media & Fixture-Mocked Responses)",
+    "live_benchmark_available": true,
+    "live_benchmark_command": "bash scripts\/run_ai_benchmark.sh --provider=nvidia --budget-cap-usd=5.00",
+    "models": {
+        "perception": {
+            "model": "nvidia\/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "role": "Document OCR & Visual Perception Extraction",
+            "rate_card": {
+                "input_token_usd": 3.0e-7,
+                "output_token_usd": 9.0e-7,
+                "image_usd": 0.0015
+            }
+        },
+        "reasoning": {
+            "model": "nvidia\/nemotron-3.5-lightning-30b-a3b",
+            "role": "ERP Copilot Tool Orchestration & Input Clarification",
+            "rate_card": {
+                "input_token_usd": 2.0e-7,
+                "output_token_usd": 6.0e-7
+            }
+        }
+    },
+    "total_scenarios": 250,
+    "passed_scenarios": 250,
+    "failed_scenarios": 0,
+    "pass_rate_percentage": 100,
+    "credit_reconciliation": {
+        "total_granted": 35000,
+        "total_debited_in_evaluation": 2544,
+        "available_balance": 32456,
+        "csv_sum_matches_ledger": true,
+        "discrepancy_credits": 0
+    },
+    "suites": {
+        "Suite A (Indian Invoices)": {
+            "total": 100,
+            "passed": 100,
+            "failed": 0,
+            "credits_debited": 2260
+        },
+        "Suite B (ERP Copilot)": {
+            "total": 100,
+            "passed": 100,
+            "failed": 0,
+            "credits_debited": 284,
+            "categories": {
+                "Purchase Orders": 20,
+                "Sales Orders": 20,
+                "Product Master Creation": 20,
+                "Supplier Master Creation": 20,
+                "Proposal Revisions": 20
+            }
+        },
+        "Suite C (Difficult Scenarios)": {
+            "total": 50,
+            "passed": 50,
+            "failed": 0,
+            "credits_debited": 0
+        },
+        "Suite D (Concurrency Load)": {
+            "profiles": "5, 10, 20 VUs",
+            "status": "passed",
+            "overspend": 0
+        },
+        "Suite E (Security SEC-01..20)": {
+            "total": 20,
+            "passed": 20,
+            "failed": 0
+        },
+        "Suite F (Ledger Rules CR-01..25)": {
+            "status": "passed",
+            "discrepancy": 0
+        }
+    },
+    "release_gate": {
+        "zero_cross_tenant_leaks": true,
+        "zero_unapproved_writes": true,
+        "zero_negative_balances": true,
+        "zero_duplicate_debits": true,
+        "all_tests_green": true,
+        "status": "PASSED_READY_FOR_DEPLOYMENT"
+    },
+    "generated_at": "2026-11-16T16:23:57+00:00"
+}

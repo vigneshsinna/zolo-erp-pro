@@ -50,7 +50,9 @@ class DocumentRenderingService
                 'tax_rate' => $snapshot['rate'] ?? (float) $line->tax_rate, 'cess_rate' => $snapshot['cess_rate'] ?? 0,
                 'tax' => (float) $line->tax, 'total' => (float) $line->total, 'hsn_sac' => $snapshot['hsn_sac'] ?? $product->hsn_code,
                 'cgst' => $snapshot['cgst'] ?? 0, 'sgst' => $snapshot['sgst'] ?? 0, 'igst' => $snapshot['igst'] ?? 0, 'cess' => $snapshot['cess'] ?? 0,
-                'lot_no' => $lotNo, 'date' => $lineDate ? \Carbon\Carbon::parse($lineDate)->format('d-m-Y') : null];
+                'lot_no' => $lotNo, 'date' => $lineDate ? \Carbon\Carbon::parse($lineDate)->format('d-m-Y') : null,
+                'sph' => $line->sph ?? null, 'cyl' => $line->cyl ?? null, 'axis' => $line->axis ?? null,
+                'addition' => $line->addition ?? null, 'dia' => $line->dia ?? null, 'lr' => $line->lr ?? null];
         }
         $currency = DB::table('currencies')->where('id', $company->base_currency_id)->first();
         $partyGstin = $tax[$sale ? 'buyer_gstin' : 'seller_gstin'] ?? '';
@@ -84,6 +86,11 @@ class DocumentRenderingService
             'grand_total' => (float) $source->grand_total, 'source_number' => $note ? $source->attributes_json['source_no'] : null,
             'quantity_scale' => \Illuminate\Support\Facades\Schema::hasTable('company_industry_settings')
                 ? app(\App\Services\Industry\IndustryProfileService::class)->settings($context)['settings']['quantity_scale'] : 4,
+            'fitting_charge' => (float) ($source->fitting_charge ?? 0),
+            'tinting_cost' => (float) ($source->tinting_cost ?? 0),
+            'end_user_name' => $source->end_user_name ?? null,
+            'end_user_phone' => $source->end_user_phone ?? null,
+            'customer_order_no' => $source->customer_order_no ?? null,
             'transport' => array_intersect_key($source->attributes_json ?? [], array_flip(['transport_name', 'lr_number', 'lr_date', 'vehicle_number', 'bale_count', 'bundle_count', 'bale_no', 'no_of_bales', 'dispatched_from', 'supply_type', 'lut_number'])),
         ];
     }

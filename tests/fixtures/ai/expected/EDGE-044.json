@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-044",
+    "risk_group": "Provider timeout / 429 rate limit",
+    "expected_error_code": "PROVIDER_RATE_LIMIT",
+    "expected_http_status": 429,
+    "input_text": "Model provider returns HTTP 503 Service Unavailable on multimodal vision endpoint.",
+    "expected_no_erp_writes": true
+}

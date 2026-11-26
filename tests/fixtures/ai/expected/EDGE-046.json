@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-046",
+    "risk_group": "Duplicate idempotency key conflict",
+    "expected_error_code": "IDEMPOTENCY_CONFLICT",
+    "expected_http_status": 409,
+    "input_text": "Submit approval for proposal 'prop_20261116_001' with idempotency key 'idem_key_alpha_1' while previous request is executing.",
+    "expected_no_erp_writes": true
+}

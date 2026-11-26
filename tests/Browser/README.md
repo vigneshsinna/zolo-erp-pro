@@ -15,6 +15,16 @@ Run `node tests/Browser/sale-dialogs.spec.mjs` against the same seeded disposabl
 
 For the isolated bill/payment browser check, set `ERP_EXPORT_BILL_PAYMENT_BROWSER=1` and run `BillStockPaymentWorkflowTest` and `DocumentEntryWebTest` first. Then run `node tests/Browser/bill-stock-payment.spec.mjs` with `PLAYWRIGHT_CORE` configured. Fixture HTML and screenshots stay under `scratch/`.
 
+For AI workspace merge regression checks, run `AiChatApiAndWorkspaceTest::test_workspace_view_renders_for_authenticated_actor`
+with `ERP_EXPORT_AI_WORKSPACE_BROWSER=1`, `ERP_TEST_MYSQL=1`, and an explicitly configured disposable `zolo_test_*` database.
+Then run `node tests/Browser/Ai/workspace-merge.spec.mjs` with `PLAYWRIGHT_CORE` configured.
+The spec checks enabled/disabled media controls, desktop/mobile layout, chat, attachment retry and clearing,
+proposal handoff, approval receipts, in-chat PDF viewing, and clarification selection. All HTTP requests are intercepted.
+
+Run `node tests/Browser/product-lookup-blur.spec.mjs` with the same Playwright settings to check the actual sales/purchase
+change handlers with the real product lookup module. It covers local products, party aliases, unknown products,
+HTTP failures, and input/party changes during lookup. It requires no database or server and performs no ERP writes.
+
 ## Running them
 
 1. **Disposable database with the real schema.** Clone the seeded development database into a throw-away MySQL (never point the specs at data you care about):

@@ -1,0 +1,702 @@
+[
+    {
+        "scenario_id": "COP-001",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 1 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-001.json"
+    },
+    {
+        "scenario_id": "COP-002",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 2 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-002.json"
+    },
+    {
+        "scenario_id": "COP-003",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 3 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-003.json"
+    },
+    {
+        "scenario_id": "COP-004",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 4 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-004.json"
+    },
+    {
+        "scenario_id": "COP-005",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 5 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-005.json"
+    },
+    {
+        "scenario_id": "COP-006",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 6 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-006.json"
+    },
+    {
+        "scenario_id": "COP-007",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 7 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-007.json"
+    },
+    {
+        "scenario_id": "COP-008",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 8 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-008.json"
+    },
+    {
+        "scenario_id": "COP-009",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 9 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-009.json"
+    },
+    {
+        "scenario_id": "COP-010",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 10 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-010.json"
+    },
+    {
+        "scenario_id": "COP-011",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 11 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-011.json"
+    },
+    {
+        "scenario_id": "COP-012",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 12 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-012.json"
+    },
+    {
+        "scenario_id": "COP-013",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 13 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-013.json"
+    },
+    {
+        "scenario_id": "COP-014",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 14 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-014.json"
+    },
+    {
+        "scenario_id": "COP-015",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 15 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-015.json"
+    },
+    {
+        "scenario_id": "COP-016",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 16 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-016.json"
+    },
+    {
+        "scenario_id": "COP-017",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 17 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-017.json"
+    },
+    {
+        "scenario_id": "COP-018",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 18 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-018.json"
+    },
+    {
+        "scenario_id": "COP-019",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 19 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-019.json"
+    },
+    {
+        "scenario_id": "COP-020",
+        "family": "Purchase Orders",
+        "action_key": "purchase_order.create.v1",
+        "input_text": "Create purchase order for Supplier Apex 20 with 50 units of Cotton Fabric at Rs 250 each to Main Warehouse.",
+        "expected_path": "tests/fixtures/ai/expected/COP-020.json"
+    },
+    {
+        "scenario_id": "COP-021",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 1 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-021.json"
+    },
+    {
+        "scenario_id": "COP-022",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 2 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-022.json"
+    },
+    {
+        "scenario_id": "COP-023",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 3 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-023.json"
+    },
+    {
+        "scenario_id": "COP-024",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 4 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-024.json"
+    },
+    {
+        "scenario_id": "COP-025",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 5 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-025.json"
+    },
+    {
+        "scenario_id": "COP-026",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 6 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-026.json"
+    },
+    {
+        "scenario_id": "COP-027",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 7 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-027.json"
+    },
+    {
+        "scenario_id": "COP-028",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 8 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-028.json"
+    },
+    {
+        "scenario_id": "COP-029",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 9 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-029.json"
+    },
+    {
+        "scenario_id": "COP-030",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 10 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-030.json"
+    },
+    {
+        "scenario_id": "COP-031",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 11 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-031.json"
+    },
+    {
+        "scenario_id": "COP-032",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 12 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-032.json"
+    },
+    {
+        "scenario_id": "COP-033",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 13 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-033.json"
+    },
+    {
+        "scenario_id": "COP-034",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 14 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-034.json"
+    },
+    {
+        "scenario_id": "COP-035",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 15 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-035.json"
+    },
+    {
+        "scenario_id": "COP-036",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 16 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-036.json"
+    },
+    {
+        "scenario_id": "COP-037",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 17 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-037.json"
+    },
+    {
+        "scenario_id": "COP-038",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 18 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-038.json"
+    },
+    {
+        "scenario_id": "COP-039",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 19 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-039.json"
+    },
+    {
+        "scenario_id": "COP-040",
+        "family": "Sales Orders",
+        "action_key": "sales_order.create.v1",
+        "input_text": "Draft sales order for Customer Metro Corp 20 for 20 shirts at Rs 650 each.",
+        "expected_path": "tests/fixtures/ai/expected/COP-040.json"
+    },
+    {
+        "scenario_id": "COP-041",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 1 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-041.json"
+    },
+    {
+        "scenario_id": "COP-042",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 2 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-042.json"
+    },
+    {
+        "scenario_id": "COP-043",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 3 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-043.json"
+    },
+    {
+        "scenario_id": "COP-044",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 4 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-044.json"
+    },
+    {
+        "scenario_id": "COP-045",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 5 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-045.json"
+    },
+    {
+        "scenario_id": "COP-046",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 6 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-046.json"
+    },
+    {
+        "scenario_id": "COP-047",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 7 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-047.json"
+    },
+    {
+        "scenario_id": "COP-048",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 8 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-048.json"
+    },
+    {
+        "scenario_id": "COP-049",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 9 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-049.json"
+    },
+    {
+        "scenario_id": "COP-050",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 10 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-050.json"
+    },
+    {
+        "scenario_id": "COP-051",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 11 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-051.json"
+    },
+    {
+        "scenario_id": "COP-052",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 12 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-052.json"
+    },
+    {
+        "scenario_id": "COP-053",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 13 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-053.json"
+    },
+    {
+        "scenario_id": "COP-054",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 14 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-054.json"
+    },
+    {
+        "scenario_id": "COP-055",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 15 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-055.json"
+    },
+    {
+        "scenario_id": "COP-056",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 16 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-056.json"
+    },
+    {
+        "scenario_id": "COP-057",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 17 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-057.json"
+    },
+    {
+        "scenario_id": "COP-058",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 18 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-058.json"
+    },
+    {
+        "scenario_id": "COP-059",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 19 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-059.json"
+    },
+    {
+        "scenario_id": "COP-060",
+        "family": "Product Master Creation",
+        "action_key": "product.create.v1",
+        "input_text": "Create new product Cotton Twill Blue 20 under Textile category with HSN 5208 and 5% GST.",
+        "expected_path": "tests/fixtures/ai/expected/COP-060.json"
+    },
+    {
+        "scenario_id": "COP-061",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 1 with GSTIN 33AABCS2001F1Z7 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-061.json"
+    },
+    {
+        "scenario_id": "COP-062",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 2 with GSTIN 33AABCS2002F1Z6 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-062.json"
+    },
+    {
+        "scenario_id": "COP-063",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 3 with GSTIN 33AABCS2003F1Z5 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-063.json"
+    },
+    {
+        "scenario_id": "COP-064",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 4 with GSTIN 33AABCS2004F1Z4 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-064.json"
+    },
+    {
+        "scenario_id": "COP-065",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 5 with GSTIN 33AABCS2005F1Z3 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-065.json"
+    },
+    {
+        "scenario_id": "COP-066",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 6 with GSTIN 33AABCS2006F1Z2 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-066.json"
+    },
+    {
+        "scenario_id": "COP-067",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 7 with GSTIN 33AABCS2007F1Z1 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-067.json"
+    },
+    {
+        "scenario_id": "COP-068",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 8 with GSTIN 33AABCS2008F1Z0 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-068.json"
+    },
+    {
+        "scenario_id": "COP-069",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 9 with GSTIN 33AABCS2009F1ZZ in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-069.json"
+    },
+    {
+        "scenario_id": "COP-070",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 10 with GSTIN 33AABCS2010F1Z6 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-070.json"
+    },
+    {
+        "scenario_id": "COP-071",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 11 with GSTIN 33AABCS2011F1Z5 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-071.json"
+    },
+    {
+        "scenario_id": "COP-072",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 12 with GSTIN 33AABCS2012F1Z4 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-072.json"
+    },
+    {
+        "scenario_id": "COP-073",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 13 with GSTIN 33AABCS2013F1Z3 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-073.json"
+    },
+    {
+        "scenario_id": "COP-074",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 14 with GSTIN 33AABCS2014F1Z2 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-074.json"
+    },
+    {
+        "scenario_id": "COP-075",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 15 with GSTIN 33AABCS2015F1Z1 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-075.json"
+    },
+    {
+        "scenario_id": "COP-076",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 16 with GSTIN 33AABCS2016F1Z0 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-076.json"
+    },
+    {
+        "scenario_id": "COP-077",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 17 with GSTIN 33AABCS2017F1ZZ in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-077.json"
+    },
+    {
+        "scenario_id": "COP-078",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 18 with GSTIN 33AABCS2018F1ZY in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-078.json"
+    },
+    {
+        "scenario_id": "COP-079",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 19 with GSTIN 33AABCS2019F1ZX in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-079.json"
+    },
+    {
+        "scenario_id": "COP-080",
+        "family": "Supplier Master Creation",
+        "action_key": "supplier.create.v1",
+        "input_text": "Add new registered supplier Sri Krishna Traders 20 with GSTIN 33AABCS2020F1Z4 in Tamil Nadu.",
+        "expected_path": "tests/fixtures/ai/expected/COP-080.json"
+    },
+    {
+        "scenario_id": "COP-081",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-1, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-081.json"
+    },
+    {
+        "scenario_id": "COP-082",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-2, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-082.json"
+    },
+    {
+        "scenario_id": "COP-083",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-3, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-083.json"
+    },
+    {
+        "scenario_id": "COP-084",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-4, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-084.json"
+    },
+    {
+        "scenario_id": "COP-085",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-5, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-085.json"
+    },
+    {
+        "scenario_id": "COP-086",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-6, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-086.json"
+    },
+    {
+        "scenario_id": "COP-087",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-7, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-087.json"
+    },
+    {
+        "scenario_id": "COP-088",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-8, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-088.json"
+    },
+    {
+        "scenario_id": "COP-089",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-9, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-089.json"
+    },
+    {
+        "scenario_id": "COP-090",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-10, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-090.json"
+    },
+    {
+        "scenario_id": "COP-091",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-11, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-091.json"
+    },
+    {
+        "scenario_id": "COP-092",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-12, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-092.json"
+    },
+    {
+        "scenario_id": "COP-093",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-13, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-093.json"
+    },
+    {
+        "scenario_id": "COP-094",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-14, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-094.json"
+    },
+    {
+        "scenario_id": "COP-095",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-15, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-095.json"
+    },
+    {
+        "scenario_id": "COP-096",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-16, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-096.json"
+    },
+    {
+        "scenario_id": "COP-097",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-17, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-097.json"
+    },
+    {
+        "scenario_id": "COP-098",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-18, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-098.json"
+    },
+    {
+        "scenario_id": "COP-099",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-19, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-099.json"
+    },
+    {
+        "scenario_id": "COP-100",
+        "family": "Corrections & Proposal Revisions",
+        "action_key": "proposal.change_request.v1",
+        "input_text": "In draft proposal PO-20, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+        "expected_path": "tests/fixtures/ai/expected/COP-100.json"
+    }
+]

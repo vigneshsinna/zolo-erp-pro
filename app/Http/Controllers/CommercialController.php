@@ -115,6 +115,22 @@ class CommercialController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function convertToGst(Request $request, string $kind, int $id)
+    {
+        $context = $this->context($request);
+        $document = app(CommercialApplicationService::class)->convertToGst($kind, $id, $context, $request->user()->id);
+
+        $msg = 'Document converted to GST successfully. Tax total: ₹'.number_format((float)$document->total_tax, 2).', Grand total: ₹'.number_format((float)$document->grand_total, 2);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'data' => $document,
+                'message' => $msg,
+            ]);
+        }
+        return redirect($kind === 'sale' ? '/sales' : '/purchases')->with('message', $msg);
+    }
+
     public function replace(Request $request, string $kind, int $id)
     {
         $request->validate(['business_date' => 'required|date_format:Y-m-d', 'reason' => 'required|string|min:3|max:500']);
@@ -236,14 +252,14 @@ class CommercialController extends Controller
         return response()->json(['data' => $result['draft'], 'warnings' => $result['warnings']]);
     }
 
-    /** Tab strip metadata only; the payload is fetched one draft at a time. */
+    /** Tab strip metadata and preloaded payload for instant client-side switching. */
     public function drafts(Request $request, string $kind)
     {
         $context = $this->context($request);
         app(CommercialPermission::class)->assert(CommercialDraftService::permission($kind), $context, $request->user()->id);
         $drafts = app(CommercialDraftService::class);
         $drafts->prune($kind, $context, $request->user()->id);
-        return response()->json(['data' => $drafts->meta($drafts->query($kind, $context, $request->user()->id)),
+        return response()->json(['data' => $drafts->metaWithPayload($drafts->query($kind, $context, $request->user()->id)),
             'limit' => CommercialDraftService::MAX_OPEN, 'open' => $drafts->owned($kind, $context, $request->user()->id)->count()]);
     }
 
@@ -539,6 +555,20 @@ class CommercialController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages(['tax_category_id' => 'Select a GST rate of this company.']);
         }
 
+        if (!empty($validated['product_type_id'])) {
+            $validType = DB::table('product_types')
+                ->where('id', $validated['product_type_id'])
+                ->where(function ($query) use ($context) {
+                    $query->where('company_id', $context->companyId)
+                        ->orWhereNull('company_id');
+                })
+                ->where('is_active', true)
+                ->exists();
+            if (!$validType) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['product_type_id' => 'Select a valid product type of this company.']);
+            }
+        }
+
         return $validated;
     }
 
@@ -741,6 +771,12 @@ class CommercialController extends Controller
             'unit_id' => $product->unit_id,
             'unit' => $unit ? ($unit->unit_code ?? $unit->unit_name) : 'Unit',
             'unit_name' => $unit ? $unit->unit_name : 'Unit',
+            'product_type_id' => $product->product_type_id,
+            'base' => $product->base,
+            'addition' => $product->addition,
+            'lr' => $product->lr,
+            'dia' => $product->dia,
+            'is_optical' => (bool) ($product->product_type_id || $product->base || $product->addition || $product->lr || $product->dia),
             'value' => $product->code . '|' . $decodedName,
             'label' => $product->code . ' - ' . $decodedName,
         ];
@@ -840,6 +876,12 @@ class CommercialController extends Controller
                 'imeis' => $imeis,
                 'variant_option' => is_array($variantOption) ? $variantOption : [],
                 'variant_value' => is_array($variantValue) ? $variantValue : [],
+                'product_type_id' => $product->product_type_id,
+                'base' => $product->base,
+                'addition' => $product->addition,
+                'lr' => $product->lr,
+                'dia' => $product->dia,
+                'is_optical' => (bool) ($product->product_type_id || $product->base || $product->addition || $product->lr || $product->dia),
                 'unit' => $unit ? ($unit->unit_code ?? $unit->unit_name) : 'Unit',
             ],
         ]);

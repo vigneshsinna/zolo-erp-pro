@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-031",
+    "risk_group": "Closed financial year or expired period",
+    "expected_error_code": "PERIOD_CLOSED",
+    "expected_http_status": 422,
+    "input_text": "Post backdated supplier invoice dated 2021-03-15 into Fiscal Year 2020-21 (Audited & Locked).",
+    "expected_no_erp_writes": true
+}

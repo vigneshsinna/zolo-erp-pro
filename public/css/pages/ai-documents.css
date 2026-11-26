@@ -1,0 +1,5 @@
+#ai-documents .d-none { display: none !important; }
+#ai-documents { overflow-wrap: anywhere; }
+#ai-documents .opening-mapping-type { min-width: 130px; }
+#ai-documents .opening-mapping-key { min-width: 120px; }
+#ai-documents .opening-mapping-id { min-width: 100px; }

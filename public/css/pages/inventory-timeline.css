@@ -1,0 +1,993 @@
+/* Page styles for: backend/reports/inventory-timeline.blade.php */
+
+/* ==========================================================================
+   0. NATURAL FULL-PAGE SCROLLING (ELIMINATE SMALL WINDOW INNER SCROLL TRAPS)
+   ========================================================================== */
+html.app-shell:has(#inventory-timeline-page),
+body:has(#inventory-timeline-page),
+body:has(#inventory-timeline-page) .page,
+body:has(#inventory-timeline-page) .page-content,
+body:has(#inventory-timeline-page) #content,
+body:has(#inventory-timeline-page) #inventory-timeline-page,
+#inventory-timeline-page.product-workspace-view,
+#inventory-timeline-page .desk-card-wrapper,
+#inventory-timeline-page .table-responsive,
+#inventory-timeline-page .tab-content,
+#inventory-timeline-page .tab-pane {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow-y: visible !important;
+    flex: none !important;
+    display: block !important;
+}
+
+#inventory-timeline-page .table-responsive {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+}
+
+/* ==========================================================================
+   1. SLEEK & SLIM FILTER TOOLBAR
+   ========================================================================== */
+#inventory-timeline-page .desk-filter-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+body.dark-mode #inventory-timeline-page .desk-filter-card {
+    background: #141c2e;
+    border-color: #334155;
+}
+
+#inventory-timeline-page .timeline-filters {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px 12px;
+    flex-wrap: wrap;
+    margin: 0;
+}
+
+#inventory-timeline-page .timeline-filters .filter-field {
+    flex: 0 1 auto;
+    min-width: 135px;
+}
+
+#inventory-timeline-page .timeline-filters .filter-field-product {
+    min-width: 260px;
+    flex: 1 1 260px;
+}
+
+#inventory-timeline-page .timeline-filters label {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #64748b;
+    margin: 0 0 3px;
+}
+
+#inventory-timeline-page .timeline-filters .form-control {
+    height: 32px;
+    font-size: 12.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+}
+
+body.dark-mode #inventory-timeline-page .timeline-filters .form-control {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+#inventory-timeline-page .timeline-filters .f-date { width: 130px; }
+#inventory-timeline-page .timeline-filters .f-pick { width: 170px; }
+#inventory-timeline-page .timeline-filters .f-lot { width: 160px; }
+
+#inventory-timeline-page .timeline-filters .filter-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+#inventory-timeline-page .timeline-filters .btn {
+    height: 32px;
+    font-size: 12px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   2. CANONICAL 5-CARD KPI STRIP (zoloERP Design System Standard)
+   ========================================================================== */
+#inventory-timeline-page .kpi-summary-strip {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+}
+
+#inventory-timeline-page .kpi-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03) !important;
+}
+
+body.dark-mode #inventory-timeline-page .kpi-card {
+    background: #141c2e !important;
+    border-color: #334155 !important;
+}
+
+#inventory-timeline-page .kpi-card .kpi-label {
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    font-weight: 700 !important;
+    color: #64748b !important;
+    margin-bottom: 2px !important;
+}
+
+#inventory-timeline-page .kpi-card .kpi-number {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+}
+
+body.dark-mode #inventory-timeline-page .kpi-card .kpi-number {
+    color: #f8fafc !important;
+}
+
+#inventory-timeline-page .kpi-subtext {
+    font-size: 11px !important;
+    color: #64748b !important;
+    margin-top: 2px !important;
+}
+
+/* ==========================================================================
+   3. COMBINED SLEEK PROCESS LIFECYCLE & MILESTONE GRID (Zero Horizontal Scroll)
+   ========================================================================== */
+/* High-specificity container overflow overrides to prevent app-shell scrollbar trapping */
+html.app-shell #inventory-timeline-page .desk-card-wrapper,
+html.app-shell #inventory-timeline-page .combined-lifecycle-card,
+html.app-shell .combined-lifecycle-card,
+#inventory-timeline-page .combined-lifecycle-card,
+#inventory-timeline-page .desk-card-wrapper:not(:has(.dataTables_wrapper)),
+#inventory-timeline-page .interactive-timeline-axis-wrap,
+#inventory-timeline-page .interactive-axis-rail,
+#inventory-timeline-page .axis-nodes-container {
+    overflow: visible !important;
+    overflow-y: visible !important;
+    overflow-x: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    flex: none !important;
+}
+
+#inventory-timeline-page .combined-lifecycle-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 16px 18px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+    margin-bottom: 14px;
+    overflow: visible !important;
+}
+
+body.dark-mode #inventory-timeline-page .combined-lifecycle-card {
+    background: #141c2e;
+    border-color: #334155;
+}
+
+#inventory-timeline-page .sleek-lifecycle-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    overflow: hidden !important;
+    margin-top: 8px;
+}
+
+#inventory-timeline-page .sleek-stage-card {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 9px 12px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+#inventory-timeline-page .sleek-stage-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+body.dark-mode #inventory-timeline-page .sleek-stage-card {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+/* Distinct Stage Color Codes (Canonical ERP Tones) */
+#inventory-timeline-page .sleek-stage-card.stage-tone-purchased {
+    background: #f0f9ff;
+    border-color: #bae6fd;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-purchased .ssc-pill {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-purchased:hover,
+#inventory-timeline-page .sleek-stage-card.stage-tone-purchased.is-stage-active {
+    border-color: #0284c7;
+    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25);
+}
+
+#inventory-timeline-page .sleek-stage-card.stage-tone-dispatched {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-dispatched .ssc-pill {
+    background: #fef3c7;
+    color: #92400e;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-dispatched:hover,
+#inventory-timeline-page .sleek-stage-card.stage-tone-dispatched.is-stage-active {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+
+#inventory-timeline-page .sleek-stage-card.stage-tone-wip {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-wip .ssc-pill {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-wip:hover,
+#inventory-timeline-page .sleek-stage-card.stage-tone-wip.is-stage-active {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+#inventory-timeline-page .sleek-stage-card.stage-tone-returned {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-returned .ssc-pill {
+    background: #dcfce7;
+    color: #166534;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-returned:hover,
+#inventory-timeline-page .sleek-stage-card.stage-tone-returned.is-stage-active {
+    border-color: #16a34a;
+    box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.25);
+}
+
+#inventory-timeline-page .sleek-stage-card.stage-tone-stock {
+    background: #fdf4fc;
+    border-color: #f3d4ef;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-stock .ssc-pill {
+    background: #faf5f9;
+    color: #7c1274;
+}
+#inventory-timeline-page .sleek-stage-card.stage-tone-stock:hover,
+#inventory-timeline-page .sleek-stage-card.stage-tone-stock.is-stage-active {
+    border-color: #7c1274;
+    box-shadow: 0 0 0 2px rgba(124, 18, 116, 0.25);
+}
+
+/* Dark Mode Color Codes */
+body.dark-mode #inventory-timeline-page .sleek-stage-card.stage-tone-purchased { background: #082f49; border-color: #0369a1; }
+body.dark-mode #inventory-timeline-page .sleek-stage-card.stage-tone-dispatched { background: #451a03; border-color: #854d0e; }
+body.dark-mode #inventory-timeline-page .sleek-stage-card.stage-tone-wip { background: #1e1b4b; border-color: #3730a3; }
+body.dark-mode #inventory-timeline-page .sleek-stage-card.stage-tone-returned { background: #052e16; border-color: #166534; }
+body.dark-mode #inventory-timeline-page .sleek-stage-card.stage-tone-stock { background: #2b1129; border-color: #5c1856; }
+
+#inventory-timeline-page .ssc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+#inventory-timeline-page .ssc-pill {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 12px;
+}
+
+#inventory-timeline-page .ssc-status-icon {
+    font-size: 12px;
+}
+
+#inventory-timeline-page .ssc-qty {
+    font-size: 15px;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+    margin: 2px 0;
+}
+
+body.dark-mode #inventory-timeline-page .ssc-qty {
+    color: #f8fafc;
+}
+
+#inventory-timeline-page .ssc-milestone {
+    font-size: 10.5px;
+    color: #334155;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 2px 5px;
+    margin: 2px 0;
+}
+
+body.dark-mode #inventory-timeline-page .ssc-milestone {
+    background: #1e293b;
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+#inventory-timeline-page .ssc-date {
+    color: #64748b;
+    font-size: 10px;
+}
+
+#inventory-timeline-page .ssc-ref {
+    color: #0f172a;
+}
+
+body.dark-mode #inventory-timeline-page .ssc-ref {
+    color: #f8fafc;
+}
+
+#inventory-timeline-page .ssc-party {
+    font-size: 10px;
+    color: #64748b;
+    line-height: 1.3;
+}
+
+#inventory-timeline-page .ssc-subtext {
+    font-size: 9.5px;
+    color: #94a3b8;
+    line-height: 1.2;
+}
+
+/* ==========================================================================
+   3.1 INTERACTIVE MILESTONE AXIS RAIL & SPOTLIGHT INSPECTOR
+   ========================================================================== */
+#inventory-timeline-page .interactive-timeline-axis-wrap {
+    border-top: 1px dashed #e2e8f0;
+}
+
+body.dark-mode #inventory-timeline-page .interactive-timeline-axis-wrap {
+    border-top-color: #334155;
+}
+
+#inventory-timeline-page .interactive-axis-rail {
+    position: relative;
+    padding: 16px 8px 200px;
+    min-height: 310px;
+    width: 100%;
+    overflow: visible !important;
+}
+
+#inventory-timeline-page .axis-line-bar {
+    position: absolute;
+    top: 27px;
+    transform: translateY(-50%);
+    left: 24px;
+    right: 24px;
+    height: 4px;
+    background: linear-gradient(90deg, #0284c7 0%, #f59e0b 35%, #16a34a 70%, #7c1274 100%);
+    border-radius: 4px;
+    z-index: 1;
+}
+
+#inventory-timeline-page .axis-nodes-container {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    overflow: visible !important;
+    padding: 0 4px;
+    margin: 0;
+}
+
+#inventory-timeline-page .axis-milestone-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 4px;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+#inventory-timeline-page .axis-node-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 3px solid #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    position: relative;
+    z-index: 3;
+}
+
+body.dark-mode #inventory-timeline-page .axis-node-dot {
+    background: #0f172a;
+}
+
+#inventory-timeline-page .axis-milestone-node.node-stage-purchase .axis-node-dot {
+    border-color: #0284c7;
+}
+
+#inventory-timeline-page .axis-milestone-node.node-stage-dispatch .axis-node-dot {
+    border-color: #f59e0b;
+}
+
+#inventory-timeline-page .axis-milestone-node.node-stage-return .axis-node-dot,
+#inventory-timeline-page .axis-milestone-node.node-stage-conversion_in .axis-node-dot {
+    border-color: #16a34a;
+}
+
+#inventory-timeline-page .axis-milestone-node.node-stage-closing .axis-node-dot {
+    border-color: #7c1274;
+}
+
+#inventory-timeline-page .axis-node-dot .dot-inner {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: transparent;
+    transition: all 0.2s ease;
+}
+
+#inventory-timeline-page .axis-milestone-node:hover .axis-node-dot,
+#inventory-timeline-page .axis-milestone-node.is-active .axis-node-dot {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 4px rgba(124, 18, 116, 0.18);
+}
+
+#inventory-timeline-page .axis-milestone-node.is-active .axis-node-dot .dot-inner {
+    background: #7c1274;
+}
+
+#inventory-timeline-page .axis-node-content {
+    text-align: center;
+    width: 100%;
+}
+
+#inventory-timeline-page .axis-node-date {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #475569;
+    white-space: nowrap;
+}
+
+body.dark-mode #inventory-timeline-page .axis-node-date {
+    color: #94a3b8;
+}
+
+#inventory-timeline-page .axis-node-badge {
+    font-size: 10px;
+    font-weight: 600;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin: 2px 0;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.dark-mode #inventory-timeline-page .axis-node-badge {
+    background: #1e293b;
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+#inventory-timeline-page .axis-node-qty {
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* In-Place Milestone Callout Popover (Opens directly at the clicked dot) */
+#inventory-timeline-page .axis-inplace-callout {
+    position: absolute;
+    top: calc(100% + 6px);
+    width: 380px;
+    max-width: 88vw;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 12px;
+    box-shadow: 0 10px 25px -3px rgba(15, 23, 42, 0.18), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
+    z-index: 100;
+    display: none;
+    text-align: left;
+    pointer-events: auto;
+    cursor: default;
+    animation: calloutFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes calloutFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#inventory-timeline-page .axis-milestone-node.is-active .axis-inplace-callout {
+    display: block !important;
+}
+
+/* Pointer Triangle Arrow pointing directly UP to the dot */
+#inventory-timeline-page .axis-inplace-callout .callout-arrow {
+    position: absolute;
+    top: -6px;
+    width: 12px;
+    height: 12px;
+    background: #ffffff;
+    border-left: 1px solid #cbd5e1;
+    border-top: 1px solid #cbd5e1;
+    transform: rotate(45deg);
+    z-index: 3;
+}
+
+/* Positioning per node location */
+#inventory-timeline-page .axis-milestone-node:first-child .axis-inplace-callout {
+    left: 0;
+    transform: none;
+}
+#inventory-timeline-page .axis-milestone-node:first-child .callout-arrow {
+    left: 20px;
+}
+
+#inventory-timeline-page .axis-milestone-node:last-child .axis-inplace-callout {
+    right: 0;
+    left: auto;
+    transform: none;
+}
+#inventory-timeline-page .axis-milestone-node:last-child .callout-arrow {
+    right: 20px;
+    left: auto;
+}
+
+#inventory-timeline-page .axis-milestone-node:not(:first-child):not(:last-child) .axis-inplace-callout {
+    left: 50%;
+    transform: translateX(-50%);
+}
+#inventory-timeline-page .axis-milestone-node:not(:first-child):not(:last-child) .callout-arrow {
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+}
+
+/* Callout Content Layout */
+#inventory-timeline-page .callout-inner {
+    position: relative;
+    z-index: 4;
+}
+
+#inventory-timeline-page .callout-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    max-width: 250px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#inventory-timeline-page .callout-date {
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+#inventory-timeline-page .callout-statement {
+    font-size: 12px;
+    color: #0f172a;
+    line-height: 1.35;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 5px;
+    margin-bottom: 5px !important;
+}
+
+#inventory-timeline-page .callout-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px 8px;
+    font-size: 11.5px;
+}
+
+#inventory-timeline-page .cm-item {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+#inventory-timeline-page .cm-lbl {
+    color: #64748b;
+    margin-right: 4px;
+}
+
+#inventory-timeline-page .cm-val {
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+/* Dark Mode Callout Support */
+body.dark-mode #inventory-timeline-page .axis-inplace-callout {
+    background: #1e293b;
+    border-color: #475569;
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.5);
+}
+body.dark-mode #inventory-timeline-page .axis-inplace-callout .callout-arrow {
+    background: #1e293b;
+    border-color: #475569;
+}
+body.dark-mode #inventory-timeline-page .callout-statement {
+    color: #f8fafc;
+    border-bottom-color: #334155;
+}
+body.dark-mode #inventory-timeline-page .cm-val {
+    color: #f1f5f9;
+}
+
+/* Row highlight in ledger */
+
+#inventory-timeline-page .table-row-selected td {
+    background: #fdf4fc !important;
+    border-top: 1.5px solid #7c1274 !important;
+    border-bottom: 1.5px solid #7c1274 !important;
+}
+
+body.dark-mode #inventory-timeline-page .table-row-selected td {
+    background: #2b1129 !important;
+}
+
+/* ==========================================================================
+   4. INTERACTIVE CHART & PRODUCT SIDEBAR CARD
+   ========================================================================== */
+#inventory-timeline-page .chart-panel-card,
+#inventory-timeline-page .product-sidebar-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+body.dark-mode #inventory-timeline-page .chart-panel-card,
+body.dark-mode #inventory-timeline-page .product-sidebar-card {
+    background: #141c2e;
+    border-color: #334155;
+}
+
+#inventory-timeline-page .chart-canvas-container {
+    position: relative;
+    height: 260px;
+    width: 100%;
+}
+
+#inventory-timeline-page .chart-mode-toggle .btn {
+    height: 30px;
+    line-height: 28px;
+    padding: 0 10px;
+    font-size: 11.5px;
+}
+
+#inventory-timeline-page .chart-mode-toggle .btn.active {
+    background: #7c1274;
+    border-color: #7c1274;
+    color: #ffffff;
+}
+
+#inventory-timeline-page .product-avatar-tile {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: #faf5f9;
+    color: #7c1274;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #f3e8f2;
+}
+
+#inventory-timeline-page .psm-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px dashed #f1f5f9;
+    font-size: 12.5px;
+}
+
+#inventory-timeline-page .psm-lbl {
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#inventory-timeline-page .closing-highlight-box {
+    background: #fdf4fc;
+    border: 1.5px solid #f3d4ef;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+body.dark-mode #inventory-timeline-page .closing-highlight-box {
+    background: #2b1129;
+    border-color: #5c1856;
+}
+
+#inventory-timeline-page .chb-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #7c1274;
+    letter-spacing: 0.05em;
+}
+
+body.dark-mode #inventory-timeline-page .chb-label {
+    color: #e9a3e2;
+}
+
+#inventory-timeline-page .chb-number {
+    font-size: 20px;
+    font-weight: 800;
+    color: #7c1274;
+}
+
+body.dark-mode #inventory-timeline-page .chb-number {
+    color: #f5d0f1;
+}
+
+#inventory-timeline-page .chb-subtext {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+/* ==========================================================================
+   5. TABBED TRANSACTION LEDGER TABLE (Purple Header Standard)
+   ========================================================================== */
+#inventory-timeline-page .ledger-table-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+body.dark-mode #inventory-timeline-page .ledger-table-card {
+    background: #141c2e;
+    border-color: #334155;
+}
+
+#inventory-timeline-page .ledger-nav-pills .nav-link {
+    color: #64748b;
+    font-weight: 600;
+    font-size: 12.5px;
+    border-radius: 6px;
+    padding: 6px 14px;
+    margin-right: 6px;
+    border: 1px solid transparent;
+}
+
+#inventory-timeline-page .ledger-nav-pills .nav-link:hover {
+    background: #f1f5f9;
+}
+
+#inventory-timeline-page .ledger-nav-pills .nav-link.active {
+    background: #7c1274 !important;
+    color: #ffffff !important;
+}
+
+#inventory-timeline-page .timeline-purple-table {
+    margin-bottom: 0;
+}
+
+#inventory-timeline-page .timeline-purple-table thead {
+    background: #7c1274 !important;
+}
+
+#inventory-timeline-page .timeline-purple-table thead th {
+    color: #ffffff !important;
+    font-size: 11.5px;
+    font-weight: 700;
+    border: none !important;
+    padding: 9px 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#inventory-timeline-page .timeline-purple-table tbody tr {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+body.dark-mode #inventory-timeline-page .timeline-purple-table tbody tr {
+    border-bottom-color: #334155;
+}
+
+#inventory-timeline-page .timeline-purple-table tbody td {
+    padding: 8px 12px;
+    vertical-align: middle;
+    font-size: 12.5px;
+}
+
+#inventory-timeline-page .tr-opening-row {
+    background: #faf5f9;
+}
+
+body.dark-mode #inventory-timeline-page .tr-opening-row {
+    background: #1e1322;
+}
+
+/* ==========================================================================
+   7. VERTICAL FEED DETAIL NODES
+   ========================================================================== */
+#inventory-timeline-page .timeline-track {
+    position: relative;
+    padding-left: 44px;
+}
+
+#inventory-timeline-page .timeline-track::before {
+    content: '';
+    position: absolute;
+    top: 15px;
+    bottom: 30px;
+    left: 17px;
+    width: 2px;
+    background: #e2e8f0;
+}
+
+#inventory-timeline-page .timeline-node {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+#inventory-timeline-page .node-marker {
+    position: absolute;
+    left: -44px;
+    top: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+#inventory-timeline-page .node-content {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+
+body.dark-mode #inventory-timeline-page .node-content {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+#inventory-timeline-page .node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+#inventory-timeline-page .node-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 4px;
+}
+
+#inventory-timeline-page .node-desc {
+    font-size: 12.5px;
+    color: #475569;
+    margin: 0 0 8px;
+}
+
+#inventory-timeline-page .node-footer-details {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    padding-top: 8px;
+    border-top: 1px dashed #f1f5f9;
+}
+
+#inventory-timeline-page .nfd-lbl {
+    color: #64748b;
+    margin-right: 4px;
+}
+
+/* Badge classes */
+.badge-purchase { background: #dcfce7; color: #166534; }
+.badge-dispatch { background: #fef3c7; color: #92400e; }
+.badge-returned { background: #ccfbf1; color: #115e59; }
+.badge-produced { background: #ede9fe; color: #5b21b6; }
+.badge-sale { background: #fee2e2; color: #991b1b; }
+.badge-adjustment-pos { background: #dbeafe; color: #1e40af; }
+.badge-adjustment-neg { background: #f1f5f9; color: #475569; }
+
+/* ==========================================================================
+   PERMANENT ZERO-INSIDE-SCROLLING OVERRIDES (FULL NATURAL PAGE SCROLL)
+   ========================================================================== */
+html.app-shell #inventory-timeline-page,
+html.app-shell #inventory-timeline-page .desk-card-wrapper,
+html.app-shell #inventory-timeline-page .table-responsive,
+html.app-shell #inventory-timeline-page .shell-fit-scroll,
+html.app-shell #inventory-timeline-page table,
+html.app-shell #inventory-timeline-page .tab-content,
+html.app-shell #inventory-timeline-page .tab-pane,
+#inventory-timeline-page,
+#inventory-timeline-page .desk-card-wrapper,
+#inventory-timeline-page .table-responsive,
+#inventory-timeline-page .shell-fit-scroll,
+#inventory-timeline-page table,
+#inventory-timeline-page .tab-content,
+#inventory-timeline-page .tab-pane {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow-y: visible !important;
+    flex: none !important;
+}
+
+html.app-shell #inventory-timeline-page .table-responsive,
+#inventory-timeline-page .table-responsive {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    display: block !important;
+}
+
+html.app-shell #content:has(#inventory-timeline-page) {
+    overflow-y: auto !important;
+    height: auto !important;
+}
+

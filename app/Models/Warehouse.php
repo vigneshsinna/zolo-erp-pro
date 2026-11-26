@@ -10,8 +10,7 @@ class Warehouse extends Model
     use ScopesCompanyQueries;
 
     protected $fillable =[
-
-        "name", "phone", "email", "address", "is_active"
+        "company_id", "branch_id", "name", "phone", "email", "address", "is_active"
     ];
 
     public function product()
@@ -23,6 +22,11 @@ class Warehouse extends Model
     public function products()
     {
         return $this->belongsToMany(Product::class)->withPivot('qty');
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(CompanyBranch::class, 'branch_id');
     }
 
     public function printers()

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-007",
+    "risk_group": "Ambiguous duplicate supplier candidates",
+    "expected_error_code": "AMBIGUOUS_ENTITY",
+    "expected_http_status": 422,
+    "input_text": "Draft purchase requisition for Sri Krishna Traders for 100 kg combed cotton yarn.",
+    "expected_no_erp_writes": true
+}

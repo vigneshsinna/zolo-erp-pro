@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd" bootstrap="vendor/autoload.php" failOnRisky="true" failOnSkipped="true" colors="true" cacheDirectory=".phpunit.cache">
+  <testsuites>
+    <testsuite name="AI release checks">
+      <directory suffix="Test.php">tests/Unit/Ai</directory>
+      <directory suffix="Test.php">tests/Feature/Ai</directory>
+    </testsuite>
+  </testsuites>
+  <php>
+    <env name="APP_ENV" value="testing" force="true"/>
+    <env name="CACHE_DRIVER" value="array" force="true"/>
+    <env name="CACHE_STORE" value="array" force="true"/>
+    <env name="AI_ENABLED" value="false" force="true"/>
+    <env name="ERP_COMPLIANCE_ENABLED" value="false" force="true"/>
+    <env name="SESSION_DRIVER" value="array" force="true"/>
+    <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+    <env name="ERP_TEST_MYSQL" value="1" force="true"/>
+    <env name="ERP_TEST_MYSQL_DATABASE" value="zolo_test_ai_release" force="true"/>
+    <env name="DB_DATABASE" value="zolo_test_ai_release" force="true"/>
+    <env name="DB_PORT" value="3307" force="false"/>
+    <env name="DB_USERNAME" value="zolo_erp" force="false"/>
+    <env name="DB_PASSWORD" value="zolo_password_123" force="false"/>
+    <env name="ERP_TEST_MYSQL_PORT" value="3307" force="false"/>
+    <env name="ERP_TEST_MYSQL_USER" value="zolo_erp" force="false"/>
+    <env name="ERP_TEST_MYSQL_PASSWORD" value="zolo_password_123" force="false"/>
+    <env name="AI_CREDITS_REQUIRE_SUBSCRIPTION" value="false" force="true"/>
+  </php>
+</phpunit>

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-041",
+    "risk_group": "Provider timeout / 429 rate limit",
+    "expected_error_code": "PROVIDER_RATE_LIMIT",
+    "expected_http_status": 429,
+    "input_text": "Process batch perception for 50 scanned supplier bills simultaneously during NVIDIA NIM 429 quota exhaustion.",
+    "expected_no_erp_writes": true
+}

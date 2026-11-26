@@ -1,0 +1,14 @@
+{
+    "scenario_id": "COP-080",
+    "workflow_family": "Supplier Master Creation",
+    "action_key": "supplier.create.v1",
+    "input_text": "Add new registered supplier Sri Krishna Traders 20 with GSTIN 33AABCS2020F1Z4 in Tamil Nadu.",
+    "expected_slots": {
+        "target_index": 20,
+        "is_draft": true
+    },
+    "expected_status": "proposal_created",
+    "no_financial_writes_before_approval": true,
+    "expected_provider_calls": 1,
+    "expected_credits_approx": 8
+}

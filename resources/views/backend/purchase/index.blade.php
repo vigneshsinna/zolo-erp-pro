@@ -71,6 +71,9 @@
         $usesGst = \App\Services\Tax\GstSetupService::usesGst();
         $gstinInvalid = fn ($value) => $usesGst && trim((string) $value) !== ''
             && !\App\Services\Tax\Gstin::parse($value)['is_valid'];
+        $reqContext = request()->attributes->get(\App\Services\Platform\CompanyContext::class);
+        $isOpticalProfile = $isOpticalProfile ?? \App\Services\Industry\IndustryProfileService::isOptical($reqContext);
+        $isTextileProfile = $isTextileProfile ?? \App\Services\Industry\IndustryProfileService::isTextile($reqContext);
     @endphp
     <div class="comm-split-grid{{ $returnsTab && request('returns') == 1 ? ' is-returns' : '' }}" id="comm-split-grid">
         <!-- Main: Purchase Entry Workspace (Matching Screenshot 3) -->
@@ -92,6 +95,15 @@
                 <input type="hidden" name="payment_status" id="hidden-payment-status" value="1">
                 <input type="hidden" name="paid_amount" id="hidden-paid-amount" value="0">
                 @if(config('commercial.enabled'))<input type="hidden" name="idempotency_key" value="{{ (string) Illuminate\Support\Str::uuid() }}">@endif
+                @if(!empty($isOpticalProfile))
+                <input type="hidden" name="end_user_name" id="hidden-end-user-name">
+                <input type="hidden" name="end_user_phone" id="hidden-end-user-phone">
+                <input type="hidden" name="end_user_email" id="hidden-end-user-email">
+                <input type="hidden" name="end_user_address" id="hidden-end-user-address">
+                <input type="hidden" name="fitting_charge" id="hidden-fitting-charge" step="any">
+                <input type="hidden" name="tinting_cost" id="hidden-tinting-cost" step="any">
+                <input type="hidden" name="customer_order_no" id="hidden-customer-order-no">
+                @endif
 
                 <!-- 2. Primary Document Fields (Ultra-Compact 2-Row Layout, ~52px height, >60% reduced) -->
                 <div class="desk-card doc-primary-fields compact-fields mb-1">
@@ -168,6 +180,15 @@
                                 <button type="button" class="segment-btn" data-nature="mixed">Mixed</button>
                             </div>
                         </div>
+                        <div class="field-compact-item doc-seg-item">
+                            <label data-help="GST Bill = full GST tax invoice with HSN and CGST/SGST/IGST. Non-GST Bill = zero tax, completely bypasses GST checks, and can be converted to GST any time.|GST Bill for tax invoice, Non-GST for cash slip or non-tax purchase">Bill Mode</label>
+                            <div class="pill-segmented-compact doc-segment" id="seg-bill-mode" role="group" aria-label="Bill Mode">
+                                <button type="button" class="segment-btn active" id="pill-bill-gst" data-bill-mode="gst">GST Bill</button>
+                                <button type="button" class="segment-btn" id="pill-bill-non-gst" data-bill-mode="non_gst">Non-GST</button>
+                            </div>
+                            <input type="hidden" name="is_non_gst" id="hidden-is-non-gst" value="0">
+                            <input type="hidden" name="bill_type" id="hidden-bill-type" value="gst">
+                        </div>
                         <div class="field-compact-item u-w-230px u-shrink-0">
                             <label for="purchase_type_id">Tax Classification *</label>
                             <select id="purchase_type_id" name="purchase_type_id" class="form-control">
@@ -207,6 +228,11 @@
                             <a href="javascript:void(0)" id="btn-quick-logistics" class="u-c-primary u-fw-600 u-ml-auto u-tdec-none u-ws-nowrap">
                                 + Transport &amp; Remarks &rarr;
                             </a>
+                            @if(!empty($isOpticalProfile))
+                            <a href="javascript:void(0)" id="btn-quick-optical" class="text-info font-weight-bold ml-2 text-decoration-none text-nowrap">
+                                + Optical &amp; Warranty &rarr;
+                            </a>
+                            @endif
                         </div>
                         </div>
                     </div>
@@ -511,9 +537,15 @@
                                 </a>
                                 @endif
                                 @if($canReverseBills && $bill->branch_id)
-                                <a href="javascript:void(0)" class="side-action-btn reverse btn-side-delete-options" data-id="{{ $bill->id }}" data-ref="{{ $bill->reference_no ?? ('#'.$bill->id) }}" data-status="{{ $bill->status }}" data-reversed="{{ $bill->reversed_at ? 1 : 0 }}" title="Delete / Reverse Options">
-                                    <i class="dripicons-trash"></i>
-                                </a>
+                                    @if($bill->reversed_at)
+                                    <a href="javascript:void(0)" class="side-action-btn reverse btn-side-delete-options text-secondary" data-id="{{ $bill->id }}" data-ref="{{ $bill->reference_no ?? ('#'.$bill->id) }}" data-status="{{ $bill->status }}" data-reversed="1" data-reversed-at="{{ $bill->reversed_at }}" data-reversal-reason="{{ $bill->reversal_reason ?? '' }}" title="View Reversal History">
+                                        <i class="dripicons-history text-secondary"></i>
+                                    </a>
+                                    @else
+                                    <a href="javascript:void(0)" class="side-action-btn reverse btn-side-delete-options text-danger" data-id="{{ $bill->id }}" data-ref="{{ $bill->reference_no ?? ('#'.$bill->id) }}" data-status="{{ $bill->status }}" data-reversed="0" data-doc-date="{{ substr($bill->created_at ?? '', 0, 10) }}" data-paid="{{ (float)($bill->paid_amount ?? 0) }}" data-total="{{ (float)($bill->grand_total ?? 0) }}" title="Reverse Purchase Bill">
+                                        <i class="dripicons-return text-danger"></i>
+                                    </a>
+                                    @endif
                                 @endif
                                 @if(!$bill->reversed_at && $bill->posted_at && $bill->grand_total > $bill->paid_amount)
                                 @can('purchase-payment-add')
@@ -722,70 +754,111 @@
     </div>
 </section>
 
-<!-- DOCUMENT DELETE & REVERSAL OPTIONS MODAL -->
-<div class="modal fade text-left" id="document-delete-modal" tabindex="-1" role="dialog" aria-labelledby="document-delete-title" aria-hidden="true">
+<!-- UNIVERSAL POSTED DOCUMENT REVERSAL MODAL -->
+<div class="modal fade text-left" id="document-delete-modal" tabindex="-1" role="dialog" aria-labelledby="document-reversal-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" role="document">
-        <div class="modal-content">
-            <div class="modal-header border-bottom-0 pb-0">
-                <h5 class="modal-title font-weight-bold" id="document-delete-title">
-                    <i class="dripicons-warning text-warning mr-1"></i> Manage Document: <span id="del-modal-ref" class="text-primary"></span>
+        <div class="modal-content border-0 shadow-lg reversal-modal-content">
+            <div class="modal-header border-bottom py-3 px-4 d-flex align-items-center justify-content-between bg-white">
+                <h5 class="modal-title font-weight-bold text-dark mb-0 d-flex align-items-center" id="document-reversal-title">
+                    <span id="reversal-modal-title"><i class="dripicons-return text-danger mr-2"></i> Reverse Purchase Bill</span>
                 </h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="close p-0 m-0 reversal-close-btn" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <div class="modal-body pt-2">
-                <p class="text-muted small mb-3">
-                    Choose how you want to handle this record. Select one of the options below:
-                </p>
-                <div class="list-group delete-options-list">
-                    <!-- Option 1: Soft Delete (Move to Trash) -->
-                    <a href="javascript:void(0)" class="list-group-item list-group-item-action del-opt-choice py-2" data-action="soft-delete">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <h6 class="mb-1 text-dark font-weight-bold"><i class="dripicons-trash text-warning mr-1"></i> Move to Trash (Soft Delete)</h6>
-                            <span class="badge badge-light border">Recoverable</span>
-                        </div>
-                        <p class="mb-0 small text-muted">Hides the bill from active registers and reverses its inventory. Can be restored from Deleted Data if needed.</p>
-                    </a>
-
-                    <!-- Option 2: Delete Permanently -->
-                    <a href="javascript:void(0)" class="list-group-item list-group-item-action del-opt-choice py-2 mt-2" data-action="permanent-delete">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <h6 class="mb-1 text-danger font-weight-bold"><i class="dripicons-cross text-danger mr-1"></i> Delete Permanently</h6>
-                            <span class="badge badge-danger">Irreversible</span>
-                        </div>
-                        <p class="mb-0 small text-muted">Completely removes this document and its lines from the database and reverses all inventory movements.</p>
-                    </a>
-
-                    <!-- Option 3: Official Reverse Document -->
-                    <a href="javascript:void(0)" class="list-group-item list-group-item-action del-opt-choice py-2 mt-2" data-action="reverse-doc">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <h6 class="mb-1 text-secondary font-weight-bold"><i class="dripicons-return text-secondary mr-1"></i> Reverse Document (Audit Trail)</h6>
-                            <span class="badge badge-secondary">Accounting</span>
-                        </div>
-                        <p class="mb-0 small text-muted">Posts reversing journal entries, backs out stock, and marks the document as <strong>Reversed</strong> while keeping history for tax &amp; audit.</p>
-                    </a>
+            
+            <!-- ACTIVE REVERSAL FORM VIEW (For posted, un-reversed bills) -->
+            <div id="reversal-active-view" class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+                    <span class="text-muted small text-uppercase font-weight-bold reversal-doc-label">Document</span>
+                    <span id="del-modal-ref" class="font-weight-bold text-dark font-monospace u-fs-15px">PUR-00000</span>
                 </div>
 
-                <!-- Reversal Form (Revealed when Option 3 is clicked) -->
-                <div id="del-reversal-form" class="mt-3 p-3 bg-light rounded border" style="display:none;">
-                    <h6 class="font-weight-bold text-dark small mb-2"><i class="dripicons-document-edit mr-1"></i> Reversal Details</h6>
-                    <div class="form-group mb-2">
-                        <label class="small text-muted font-weight-bold mb-1">Reversal Date *</label>
-                        <input type="date" id="del-reversal-date" class="form-control form-control-sm" value="{{ date('Y-m-d') }}">
+                <p class="text-muted small mb-3 reversal-lead-text">
+                    This action will reverse the accounting and applicable stock transactions. The original bill and reversal history will be retained.
+                </p>
+
+                <!-- Dependency Notification: Paid Amount / Attached Payments -->
+                <div id="reversal-payment-notice" class="alert alert-warning py-2 px-3 small mb-3 border-0 reversal-notice-box" style="display: none;">
+                    <i class="dripicons-warning text-warning mr-1"></i>
+                    <strong>Payment Settlements:</strong> This bill has recorded payments (<span id="reversal-paid-amount" class="font-weight-bold"></span>). Associated payment settlement journals will be reversed while preserving original payment history.
+                </div>
+
+                <!-- Reversal Form Fields -->
+                <div class="form-group mb-3">
+                    <label class="small text-muted font-weight-bold mb-1" for="del-reversal-date">Reversal Date *</label>
+                    <input type="date" id="del-reversal-date" class="form-control form-control-sm" value="{{ date('Y-m-d') }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label class="small text-muted font-weight-bold mb-1" for="del-reversal-reason">Reason for Reversal *</label>
+                    <textarea id="del-reversal-reason" class="form-control form-control-sm" rows="3" placeholder="Enter the reason for reversing this bill" maxlength="500"></textarea>
+                </div>
+
+                <!-- Reversal Requirements Preview Box (Toggled via button) -->
+                <div id="reversal-requirements-preview" class="p-3 bg-light rounded border mb-3 small" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong class="text-dark"><i class="dripicons-checklist text-primary mr-1"></i> Reversal Impact Checklist</strong>
+                        <span class="badge badge-success px-2 py-1">Ready</span>
                     </div>
-                    <div class="form-group mb-2">
-                        <label class="small text-muted font-weight-bold mb-1">Reason for Reversal *</label>
-                        <input type="text" id="del-reversal-reason" class="form-control form-control-sm" placeholder="e.g. Wrong quantity entered, duplicate bill" maxlength="500">
+                    <ul class="list-unstyled mb-0 text-muted reversal-preview-list">
+                        <li><i class="dripicons-checkmark text-success mr-1"></i> <strong>General Ledger:</strong> Counterbalancing journal entries will be posted.</li>
+                        <li><i class="dripicons-checkmark text-success mr-1"></i> <strong>Inventory:</strong> Received stock will be deducted from warehouse.</li>
+                        <li><i class="dripicons-checkmark text-success mr-1"></i> <strong>Settlements:</strong> Linked payment allocations will be decoupled.</li>
+                        <li><i class="dripicons-checkmark text-success mr-1"></i> <strong>Audit Compliance:</strong> Document reference &amp; logs remain permanently in ledger.</li>
+                    </ul>
+                </div>
+
+                <!-- Modal Action Buttons matching Image 3 -->
+                <div class="d-flex justify-content-between align-items-center pt-2 mt-2 border-top">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" id="btn-reversal-clear">Clear</button>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-info mr-2" id="btn-preview-requirements">
+                            <i class="dripicons-preview mr-1"></i> Preview reversal requirements
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger px-3 font-weight-bold" id="btn-confirm-reversal">
+                            <i class="dripicons-return mr-1"></i> Confirm Reversal
+                        </button>
                     </div>
-                    <div class="d-flex justify-content-end">
-                        <button type="button" class="btn btn-sm btn-secondary mr-2" id="btn-cancel-reversal">Back</button>
-                        <button type="button" class="btn btn-sm btn-danger" id="btn-confirm-reversal">Confirm Reversal</button>
-                    </div>
+                </div>
+
+                <div class="text-center mt-3 pt-1">
+                    <small class="text-muted reversal-disclaimer">
+                        Statutory Accounting Standard: Posted vouchers cannot be deleted. All adjustments are made via auditable reversals.
+                    </small>
                 </div>
             </div>
-            <div class="modal-footer border-top-0 pt-0">
-                <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Close</button>
+
+            <!-- REVERSAL HISTORY VIEW (For already reversed bills) -->
+            <div id="reversal-history-view" class="modal-body p-4" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+                    <span class="text-muted small text-uppercase font-weight-bold reversal-doc-label">Document</span>
+                    <span id="del-hist-ref" class="font-weight-bold text-dark font-monospace u-fs-15px">PUR-00000</span>
+                </div>
+
+                <div class="alert alert-secondary py-2 px-3 small mb-3 border-0 d-flex align-items-center justify-content-between reversal-notice-box">
+                    <div><i class="dripicons-lock mr-1 text-secondary"></i> <strong>Status:</strong> Document has been reversed</div>
+                    <span class="badge badge-secondary px-2 py-1">REVERSED</span>
+                </div>
+
+                <div class="p-3 bg-light rounded border mb-3 small">
+                    <div class="mb-2">
+                        <span class="text-muted font-weight-bold">Reversed On:</span>
+                        <span id="del-hist-date" class="text-dark ml-1 font-weight-bold"></span>
+                    </div>
+                    <div>
+                        <span class="text-muted font-weight-bold">Reason for Reversal:</span>
+                        <div id="del-hist-reason" class="text-dark mt-1 p-2 bg-white rounded border font-italic"></div>
+                    </div>
+                </div>
+
+                <p class="text-muted small mb-0 reversal-lead-text">
+                    In accordance with accounting laws, the original voucher, reversing journal entries, and inventory restorations are preserved permanently in the audit trail.
+                </p>
+
+                <div class="d-flex justify-content-end pt-3 mt-3 border-top">
+                    <button type="button" class="btn btn-secondary btn-sm px-4" data-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -815,6 +888,11 @@
                     <li class="nav-item">
                         <a class="nav-link" id="tab-settlement" data-toggle="tab" href="#content-settlement" role="tab">Settlement</a>
                     </li>
+                    @if(!empty($isOpticalProfile))
+                    <li class="nav-item">
+                        <a class="nav-link font-weight-bold text-info" id="tab-optical" data-toggle="tab" href="#content-optical" role="tab"><i class="dripicons-preview mr-1"></i> Optical &amp; Warranty</a>
+                    </li>
+                    @endif
                 </ul>
                 <div class="tab-content" id="chargesTabContent">
                     <!-- Transport & Bales -->
@@ -941,6 +1019,49 @@
                             </div>
                         </div>
                     </div>
+
+                    @if(!empty($isOpticalProfile))
+                    <!-- Optical & Warranty Tab -->
+                    <div class="tab-pane fade" id="content-optical" role="tabpanel">
+                        <h6 class="text-primary font-weight-bold mb-2"><i class="dripicons-user mr-1"></i> End User Details (Captured for Warranty)</h6>
+                        <div class="form-row">
+                            <div class="col-md-6 form-group">
+                                <label class="text-muted font-weight-bold">End User Name</label>
+                                <input type="text" id="drawer-end-user-name" class="form-control" placeholder="Full name of buyer">
+                            </div>
+                            <div class="col-md-6 form-group">
+                                <label class="text-muted font-weight-bold">End User Phone</label>
+                                <input type="text" id="drawer-end-user-phone" class="form-control" placeholder="Phone number">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="col-md-6 form-group">
+                                <label class="text-muted font-weight-bold">End User Email</label>
+                                <input type="email" id="drawer-end-user-email" class="form-control" placeholder="Email (optional)">
+                            </div>
+                            <div class="col-md-6 form-group">
+                                <label class="text-muted font-weight-bold">End User Address</label>
+                                <input type="text" id="drawer-end-user-address" class="form-control" placeholder="City or Address">
+                            </div>
+                        </div>
+                        <hr class="my-2">
+                        <h6 class="text-primary font-weight-bold mb-2"><i class="dripicons-wallet mr-1"></i> Optical Charges &amp; Reference</h6>
+                        <div class="form-row">
+                            <div class="col-md-4 form-group">
+                                <label class="text-muted font-weight-bold">Fitting Charge (₹)</label>
+                                <input type="number" id="drawer-fitting-charge" class="form-control" step="any" placeholder="0.00">
+                            </div>
+                            <div class="col-md-4 form-group">
+                                <label class="text-muted font-weight-bold">Tinting Cost (₹)</label>
+                                <input type="number" id="drawer-tinting-cost" class="form-control" step="any" placeholder="0.00">
+                            </div>
+                            <div class="col-md-4 form-group">
+                                <label class="text-muted font-weight-bold">Customer Order No</label>
+                                <input type="text" id="drawer-customer-order-no" class="form-control" placeholder="Customer Order No.">
+                            </div>
+                        </div>
+                    </div>
+                    @endif
                 </div>
             </div>
             <div class="modal-footer">
@@ -967,11 +1088,15 @@
                         </h4>
                         <div class="voucher-badges-strip">
                             <span id="purchase-details-status-badge" class="badge badge-success">Received</span>
+                            <span id="purchase-details-nongst-badge" class="badge badge-info" style="{{ 'display:none; background:#0284c7; color:#fff;' }}">Non-GST</span>
                             <span id="purchase-details-date-text" class="text-muted small"></span>
                         </div>
                     </div>
                 </div>
                 <div class="voucher-actions-toolbar">
+                    <button type="button" id="purchase-details-convert-gst-btn" class="btn btn-sm btn-outline-success mr-2 btn-convert-to-gst" style="{{ 'display:none;' }}" title="Convert Non-GST Bill to standard GST Bill">
+                        <i class="fa fa-refresh mr-1"></i> Convert to GST Bill
+                    </button>
                     <a href="#" id="purchase-details-edit-btn" class="voucher-edit-btn" title="Open Full Bill in Edit Mode">
                         <i class="dripicons-document-edit"></i> Edit Bill
                     </a>
@@ -1649,6 +1774,9 @@
 (function() {
     'use strict';
 
+    window.isOpticalProfile = {{ !empty($isOpticalProfile) ? 'true' : 'false' }};
+    window.isTextileProfile = {{ !empty($isTextileProfile) ? 'true' : 'false' }};
+
     // --- Product List Autocomplete & Item Master Data ---
     @php
         $gstRates = app(\App\Services\Tax\GstSetupService::class)->currentRates();
@@ -1674,6 +1802,12 @@
                 'unit' => (string)($prod->unit_code ?? ($prod->unit_name ?? 'Unit')),
                 'value' => (string)$prod->code . '|' . (string)$prod->name,
                 'label' => (string)$prod->code . ' - ' . (string)$prod->name,
+                ...(!empty($isOpticalProfile) ? [
+                    'base' => (string)($prod->base ?? ''),
+                    'addition' => (string)($prod->addition ?? ''),
+                    'lr' => (string)($prod->lr ?? ''),
+                    'dia' => (string)($prod->dia ?? ''),
+                ] : []),
             ];
         }
         foreach($lims_product_list_with_variant as $prod) {
@@ -1695,12 +1829,29 @@
                 'unit' => (string)($prod->unit_code ?? ($prod->unit_name ?? 'Unit')),
                 'value' => (string)($prod->item_code ?? $prod->code) . '|' . (string)$prod->name,
                 'label' => (string)($prod->item_code ?? $prod->code) . ' - ' . (string)$prod->name,
+                ...(!empty($isOpticalProfile) ? [
+                    'base' => (string)($prod->base ?? ''),
+                    'addition' => (string)($prod->addition ?? ''),
+                    'lr' => (string)($prod->lr ?? ''),
+                    'dia' => (string)($prod->dia ?? ''),
+                ] : []),
             ];
         }
     @endphp
 
     CommercialProductLookup.enabled = @json(config('commercial.enabled'));
     var allProducts = @json($jsProductList);
+    function ensureProductCached(p) {
+        if (!p || !p.id) return;
+        var idStr = String(p.id);
+        var existingIdx = allProducts.findIndex(function(x) { return String(x.id) === idStr; });
+        if (existingIdx === -1) {
+            allProducts.push(p);
+        } else {
+            allProducts[existingIdx] = Object.assign({}, allProducts[existingIdx], p);
+        }
+    }
+    window.ensureProductCached = ensureProductCached;
     function matchesProductMode(product) {
         var mode = $('[data-nature].active').data('nature') || 'mixed';
         return mode === 'mixed' || (mode === 'service' ? ['service', 'digital'].includes(product.type) : !['service', 'digital'].includes(product.type));
@@ -1801,6 +1952,7 @@
                     }
                     return false;
                 }
+                ensureProductCached(ui.item);
                 addProductRow({
                     product_id: ui.item.id,
                     product_name: ui.item.name,
@@ -1878,6 +2030,7 @@
                         return;
                     }
                 if (exact) {
+                    ensureProductCached(exact);
                     addProductRow({
                         product_id: exact.id,
                         product_name: exact.name,
@@ -1948,6 +2101,7 @@
 
     // --- Apply Selected Product to an Existing Table Row ---
     function applyProductToRow(tr, p) {
+        ensureProductCached(p);
         if (String(tr.find('.row-product-id').val()) !== String(p.id)) {
             tr.removeAttr('data-tracking data-batch-id data-variant-id data-order-item-id data-order-batch-no data-material-item-id data-material-document-id data-material-unit-id data-material-base-factor');
             tr.find('.row-batch-val, .row-expire-val, .row-imei-val').val('');
@@ -2046,6 +2200,43 @@
         tr.find('.row-tax-amount-input').val(taxAmount.toFixed(decimalPlaces));
         tr.find('.row-total').val(lineTotal.toFixed(decimalPlaces));
 
+        // Populate Optical Lens Specifications if present
+        if (window.isOpticalProfile) {
+            if (p.base !== undefined && p.base !== null && p.base !== '') {
+                tr.find('.row-base').val(p.base);
+                tr.find('.optical-base-text').text(p.base);
+                tr.find('.optical-base-badge').show();
+            } else {
+                tr.find('.row-base').val('');
+                tr.find('.optical-base-badge').hide();
+            }
+
+            if (p.dia !== undefined && p.dia !== null && p.dia !== '') {
+                tr.find('.row-dia').val(p.dia);
+                tr.find('.optical-dia-text').text(p.dia);
+                tr.find('.optical-dia-badge').show();
+            } else {
+                tr.find('.row-dia').val('');
+                tr.find('.optical-dia-badge').hide();
+            }
+
+            if (p.addition !== undefined && p.addition !== null && p.addition !== '') {
+                tr.find('.row-addition').val(p.addition);
+            }
+
+            if (p.lr !== undefined && p.lr !== null && p.lr !== '') {
+                tr.find('.row-lr').val(p.lr);
+            }
+
+            var typeName = p.type_name || p.product_type_name || p.product_type;
+            if (typeName) {
+                tr.find('.optical-type-text').text(typeName);
+                tr.find('.optical-type-badge').show();
+            } else {
+                tr.find('.optical-type-badge').hide();
+            }
+        }
+
         recalcTableSummary();
         $(document).trigger('command-center-row-product', [tr]);
     }
@@ -2109,6 +2300,7 @@
                         }
                         return false;
                     }
+                    ensureProductCached(ui.item);
                     applyProductToRow(tr, ui.item);
                     setTimeout(function() {
                         tr.find('.row-qty').focus().select();
@@ -2204,13 +2396,20 @@
             ));
 
             if (!exact) {
+                var partyId = document.querySelector('[name="supplier_id"]')?.value || '';
                 try {
                     var matches = await CommercialProductLookup.search(val, allProducts, 'purchase', matchesProductMode);
+                    if (CommercialProductLookup.normalize(this.value) !== normVal ||
+                        (document.querySelector('[name="supplier_id"]')?.value || '') !== partyId) return;
                     exact = CommercialProductLookup.exact(matches, val);
-                } catch(e) { console.warn(e); }
+                } catch (error) {
+                    alert(error.message);
+                    return;
+                }
             }
 
             if (exact) {
+                ensureProductCached(exact);
                 applyProductToRow(tr, exact);
             } else {
                 // If not found in catalog, prompt to create new product directly
@@ -2284,6 +2483,17 @@
 
     // --- Add Row to Items Grid Table ---
     function addProductRow(item) {
+        if (item.product_id) {
+            ensureProductCached({
+                id: item.product_id,
+                name: item.product_name,
+                code: item.product_code,
+                cost: item.cost,
+                price: item.price,
+                tax_rate: item.tax_rate,
+                unit: item.unit
+            });
+        }
         // Remove empty placeholder row if exists
         $('#order-table-body .empty-placeholder-row').remove();
 
@@ -2343,6 +2553,25 @@
                             <i class="dripicons-tag mr-1 text-primary"></i>Lot: <span class="row-lot-text">${escapeHtml(initialBatch)}</span>
                         </span>
                     </div>
+                    ${window.isOpticalProfile ? `
+                    <div class="optical-rx-strip d-flex align-items-center mt-1 pt-1 border-top" style="{{ 'gap: 4px; font-size: 11px;' }}">
+                        <span class="badge badge-info text-white px-1 optical-type-badge" style="{{ 'display:' }} ${(item.type_name || item.product_type_name) ? 'inline-block' : 'none'};"><strong class="optical-type-text">${escapeHtml(item.type_name || item.product_type_name || '')}</strong></span>
+                        <span class="badge badge-light border text-muted px-1 optical-base-badge" style="{{ 'display:' }} ${item.base ? 'inline-block' : 'none'};">Base: <strong class="optical-base-text">${escapeHtml(item.base || '')}</strong></span>
+                        <span class="badge badge-light border text-muted px-1 optical-dia-badge" style="{{ 'display:' }} ${item.dia ? 'inline-block' : 'none'};">DIA: <strong class="optical-dia-text">${escapeHtml(item.dia || '')}</strong></span>
+                        <span class="text-muted ml-1" style="{{ 'font-weight: 600;' }}">Rx:</span>
+                        <input type="text" name="sph[]" class="form-control form-control-sm row-sph px-1 text-center" style="{{ 'width: 55px; height: 24px; font-size: 11px;' }}" placeholder="SPH" value="${escapeHtml(item.sph || '')}" title="Sphere (SPH)">
+                        <input type="text" name="cyl[]" class="form-control form-control-sm row-cyl px-1 text-center" style="{{ 'width: 55px; height: 24px; font-size: 11px;' }}" placeholder="CYL" value="${escapeHtml(item.cyl || '')}" title="Cylinder (CYL)">
+                        <input type="text" name="axis[]" class="form-control form-control-sm row-axis px-1 text-center" style="{{ 'width: 50px; height: 24px; font-size: 11px;' }}" placeholder="AXIS" value="${escapeHtml(item.axis || '')}" title="Axis (1-180)">
+                        <input type="text" name="addition[]" class="form-control form-control-sm row-addition px-1 text-center" style="{{ 'width: 55px; height: 24px; font-size: 11px;' }}" placeholder="ADD" value="${escapeHtml(item.addition || '')}" title="Addition (ADD)">
+                        <select name="lr[]" class="form-control form-control-sm custom-select-native row-lr px-1 text-center" style="{{ 'width: 48px; height: 24px; font-size: 11px;' }}" title="Eye (L/R/Pair)">
+                            <option value="" ${!item.lr ? 'selected' : ''}>-</option>
+                            <option value="L" ${item.lr === 'L' ? 'selected' : ''}>L</option>
+                            <option value="R" ${item.lr === 'R' ? 'selected' : ''}>R</option>
+                            <option value="Pair" ${item.lr === 'Pair' ? 'selected' : ''}>Pair</option>
+                        </select>
+                        <input type="hidden" name="base[]" class="row-base" value="${escapeHtml(item.base || '')}">
+                        <input type="hidden" name="dia[]" class="row-dia" value="${escapeHtml(item.dia || '')}">
+                    </div>` : ''}
                 </td>
                 <td>
                     <select name="purchase_type_line[]" class="form-control form-control-sm custom-select-native row-type-select">
@@ -2452,10 +2681,18 @@
     });
 
     // Multi-Item Modal Batch Picker
-    function populateMultiItemModal() {
+    var multiItemSearchTimer = null;
+    function populateMultiItemModal(items) {
         var tbody = $('#multi-item-tbody');
         tbody.empty();
-        allProducts.filter(matchesProductMode).forEach(function(p) {
+        var list = items || allProducts.filter(matchesProductMode);
+        if (!list.length) {
+            tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">No matching items found. Type above to search the product catalog.</td></tr>');
+            updateMultiItemCount();
+            return;
+        }
+        list.forEach(function(p) {
+            ensureProductCached(p);
             tbody.append(`
                 <tr class="multi-item-row" data-id="${p.id}" data-name="${escapeHtml((p.name || '').toLowerCase())}" data-code="${escapeHtml((p.code || '').toLowerCase())}">
                     <td class="u-ta-center">
@@ -2489,16 +2726,26 @@
     });
 
     $('#multi-item-filter').on('input', function() {
-        var term = $(this).val().toLowerCase().trim();
-        $('#multi-item-tbody tr').each(function() {
-            var name = $(this).data('name') || '';
-            var code = $(this).data('code') || '';
-            if (name.includes(term) || code.includes(term)) {
-                $(this).show();
-            } else {
-                $(this).hide();
-            }
-        });
+        var term = $(this).val().trim();
+        clearTimeout(multiItemSearchTimer);
+        if (!term) {
+            populateMultiItemModal();
+            return;
+        }
+        multiItemSearchTimer = setTimeout(function() {
+            CommercialProductLookup.search(term, allProducts, 'purchase').then(function(matches) {
+                var filtered = (matches || []).filter(matchesProductMode);
+                filtered.forEach(ensureProductCached);
+                populateMultiItemModal(filtered);
+            }).catch(function() {
+                var lowerTerm = term.toLowerCase();
+                $('#multi-item-tbody tr').each(function() {
+                    var name = $(this).data('name') || '';
+                    var code = $(this).data('code') || '';
+                    $(this).toggle(name.includes(lowerTerm) || code.includes(lowerTerm));
+                });
+            });
+        }, 200);
     });
 
     $('#multi-item-select-all').on('change', function() {
@@ -3342,6 +3589,7 @@
 
     // --- Recalculate Table Summary Totals ---
     function recalcTableSummary() {
+        var isNonGst = $('#hidden-is-non-gst').val() === '1';
         var net = 0;
         var tax = 0;
         var grand = 0;
@@ -3352,9 +3600,9 @@
             count++;
             var rate = parseFloat($(this).find('.row-rate').val()) || 0;
             var qty = parseFloat($(this).find('.row-qty').val()) || 0;
-            var taxRate = parseFloat($(this).find('.row-tax-rate').val()) || 0;
+            var taxRate = isNonGst ? 0 : (parseFloat($(this).find('.row-tax-rate').val()) || 0);
             var amount = rate * qty;
-            var taxAmount = amount * (taxRate / 100);
+            var taxAmount = isNonGst ? 0 : (amount * (taxRate / 100));
 
             net += amount;
             tax += taxAmount;
@@ -3375,6 +3623,60 @@
         $('#hidden-total-tax').val(tax.toFixed(decimalPlaces));
         $('#hidden-grand-total').val(grand.toFixed(decimalPlaces));
     }
+
+    $(document).on('click', '#seg-bill-mode button', function () {
+        var mode = $(this).data('bill-mode');
+        $('#seg-bill-mode button').removeClass('active');
+        $(this).addClass('active');
+        var isNon = mode === 'non_gst';
+        $('#hidden-is-non-gst').val(isNon ? '1' : '0');
+        $('#hidden-bill-type').val(isNon ? 'non_gst' : 'gst');
+
+        $('#order-table-body tr.order-item-row').each(function () {
+            var $row = $(this);
+            if (isNon) {
+                $row.find('.row-tax-rate').val('0');
+                $row.find('.row-tax-amount-input').val('0.0000');
+            } else {
+                var id = $row.find('.row-product-id').val();
+                var prod = (allProducts || []).find(p => String(p.id) === String(id));
+                if (prod && prod.tax_rate !== undefined) {
+                    $row.find('.row-tax-rate').val(String(prod.tax_rate));
+                }
+            }
+        });
+        recalcTableSummary();
+    });
+
+    $(document).on('click', '.btn-convert-to-gst', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var id = $(this).data('id');
+        var ref = $(this).data('ref') || ('#' + id);
+        if (!confirm('Are you sure you want to convert Non-GST Bill ' + ref + ' to a GST Bill? Full GST tax determination and compliance checks will be applied.')) {
+            return;
+        }
+        var btn = $(this);
+        btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Converting...');
+        $.ajax({
+            url: '{{ url("commercial/purchase") }}/' + id + '/convert-to-gst',
+            type: 'POST',
+            data: { _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            success: function (res) {
+                alert(res.message || 'Bill converted to GST successfully.');
+                if ($.fn.DataTable.isDataTable('#purchase-table')) {
+                    $('#purchase-table').DataTable().ajax.reload(null, false);
+                } else {
+                    location.reload();
+                }
+            },
+            error: function (xhr) {
+                btn.prop('disabled', false).html('<i class="fa fa-refresh text-success"></i> Convert to GST Bill');
+                alert(xhr.responseJSON?.message || 'Failed to convert to GST bill. Check party GST details and product tax rates.');
+            }
+        });
+    });
 
     // --- Supplier Selection / Party Card Updates ---
     function updatePartyCard() {
@@ -3715,7 +4017,7 @@
         }
     });
 
-    // --- Document Delete & Reversal Modal Handlers ---
+    // --- Universal Document Reversal Modal Handlers (Purchase) ---
     var activeDeleteDocId = null;
     var activeDeleteDocRef = '';
 
@@ -3725,71 +4027,53 @@
         activeDeleteDocId = $(this).data('id');
         activeDeleteDocRef = $(this).data('ref') || ('#' + activeDeleteDocId);
         var isReversed = $(this).data('reversed') == 1;
+        var paidAmount = parseFloat($(this).data('paid')) || 0;
+        var docDate = $(this).data('doc-date') || '';
+        var reversedAt = $(this).data('reversed-at') || '';
+        var reversalReason = $(this).data('reversal-reason') || '';
 
         $('#del-modal-ref').text(activeDeleteDocRef);
-        $('#del-reversal-form').hide();
-        $('.delete-options-list').show();
+        $('#del-hist-ref').text(activeDeleteDocRef);
         $('#del-reversal-reason').val('');
+        $('#reversal-requirements-preview').hide();
+
+        var today = new Date().toISOString().split('T')[0];
+        $('#del-reversal-date').val(today);
+        if (docDate) {
+            $('#del-reversal-date').attr('min', docDate);
+        }
 
         if (isReversed) {
-            $('.del-opt-choice[data-action="reverse-doc"]').addClass('disabled').css('opacity', '0.5');
+            $('#reversal-modal-title').html('<i class="dripicons-history text-secondary mr-2"></i> Reversal History');
+            $('#del-hist-date').text(reversedAt || 'Recorded in system');
+            $('#del-hist-reason').text(reversalReason || 'No reason specified in record');
+            $('#reversal-active-view').hide();
+            $('#reversal-history-view').show();
         } else {
-            $('.del-opt-choice[data-action="reverse-doc"]').removeClass('disabled').css('opacity', '1');
+            $('#reversal-modal-title').html('<i class="dripicons-return text-danger mr-2"></i> Reverse Purchase Bill');
+            if (paidAmount > 0) {
+                $('#reversal-paid-amount').text('₹ ' + paidAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                $('#reversal-payment-notice').show();
+            } else {
+                $('#reversal-payment-notice').hide();
+            }
+            $('#reversal-history-view').hide();
+            $('#reversal-active-view').show();
+            setTimeout(function() { $('#del-reversal-reason').focus(); }, 250);
         }
 
         $('#document-delete-modal').modal('show');
     });
 
-    $(document).on('click', '.del-opt-choice', function(e) {
-        e.preventDefault();
-        var action = $(this).data('action');
-        if (!activeDeleteDocId) return;
-
-        if (action === 'soft-delete') {
-            if (!confirm('Move ' + activeDeleteDocRef + ' to trash? This can be restored from Deleted Data.')) return;
-            $.ajax({
-                url: '{{ url("purchases") }}/' + activeDeleteDocId,
-                type: 'DELETE',
-                data: { _token: '{{ csrf_token() }}' },
-                dataType: 'json',
-                success: function(res) {
-                    $('#document-delete-modal').modal('hide');
-                    if (window.toastr) toastr.success(res.message || 'Purchase moved to trash.');
-                    else alert(res.message || 'Purchase moved to trash.');
-                    location.reload();
-                },
-                error: function(xhr) {
-                    alert(xhr.responseJSON?.message || 'Delete failed.');
-                }
-            });
-        } else if (action === 'permanent-delete') {
-            if (!confirm('PERMANENT ACTION: Are you sure you want to permanently delete ' + activeDeleteDocRef + '? This action CANNOT be undone and purges all records and inventory.')) return;
-            $.ajax({
-                url: '{{ url("purchases") }}/' + activeDeleteDocId + '/force-delete',
-                type: 'DELETE',
-                data: { _token: '{{ csrf_token() }}' },
-                dataType: 'json',
-                success: function(res) {
-                    $('#document-delete-modal').modal('hide');
-                    if (window.toastr) toastr.success(res.message || 'Purchase permanently deleted.');
-                    else alert(res.message || 'Purchase permanently deleted.');
-                    location.reload();
-                },
-                error: function(xhr) {
-                    alert(xhr.responseJSON?.message || 'Permanent delete failed.');
-                }
-            });
-        } else if (action === 'reverse-doc') {
-            if ($(this).hasClass('disabled')) return;
-            $('.delete-options-list').hide();
-            $('#del-reversal-form').slideDown(200);
-            $('#del-reversal-reason').focus();
-        }
+    $('#btn-reversal-clear').on('click', function() {
+        $('#del-reversal-reason').val('').focus();
+        var today = new Date().toISOString().split('T')[0];
+        $('#del-reversal-date').val(today);
+        $('#reversal-requirements-preview').slideUp(150);
     });
 
-    $('#btn-cancel-reversal').on('click', function() {
-        $('#del-reversal-form').hide();
-        $('.delete-options-list').show();
+    $('#btn-preview-requirements').on('click', function() {
+        $('#reversal-requirements-preview').slideToggle(200);
     });
 
     $('#btn-confirm-reversal').on('click', function() {
@@ -3801,7 +4085,8 @@
             return;
         }
 
-        $(this).prop('disabled', true).text('Reversing…');
+        var $btn = $(this);
+        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin mr-1"></i> Reversing…');
         $.ajax({
             url: '{{ url("commercial/purchase") }}/' + activeDeleteDocId + '/reverse',
             type: 'POST',
@@ -3818,7 +4103,7 @@
                 location.reload();
             },
             error: function(xhr) {
-                $('#btn-confirm-reversal').prop('disabled', false).text('Confirm Reversal');
+                $btn.prop('disabled', false).html('<i class="dripicons-return mr-1"></i> Confirm Reversal');
                 alert(xhr.responseJSON?.message || 'Reversal failed. Check dates and permissions.');
             }
         });
@@ -4014,6 +4299,13 @@
                     if (attr.station_to) $('#drawer-station-to, #hidden-station-to').val(attr.station_to);
                     if (attr.order_no) $('#drawer-order-no, #hidden-order-no').val(attr.order_no);
                     if (attr.credit_days) setCreditDays(attr.credit_days);
+                    if (attr.end_user_name || p.end_user_name) $('#drawer-end-user-name, #hidden-end-user-name').val(attr.end_user_name || p.end_user_name);
+                    if (attr.end_user_phone || p.end_user_phone) $('#drawer-end-user-phone, #hidden-end-user-phone').val(attr.end_user_phone || p.end_user_phone);
+                    if (attr.end_user_email || p.end_user_email) $('#drawer-end-user-email, #hidden-end-user-email').val(attr.end_user_email || p.end_user_email);
+                    if (attr.end_user_address || p.end_user_address) $('#drawer-end-user-address, #hidden-end-user-address').val(attr.end_user_address || p.end_user_address);
+                    if (attr.fitting_charge || p.fitting_charge) $('#drawer-fitting-charge, #hidden-fitting-charge').val(attr.fitting_charge || p.fitting_charge);
+                    if (attr.tinting_cost || p.tinting_cost) $('#drawer-tinting-cost, #hidden-tinting-cost').val(attr.tinting_cost || p.tinting_cost);
+                    if (attr.customer_order_no || p.customer_order_no) $('#drawer-customer-order-no, #hidden-customer-order-no').val(attr.customer_order_no || p.customer_order_no);
                 }
 
                 recalcTableSummary();
@@ -4170,15 +4462,34 @@
         $('#input-paying-method').val($('#drawer-paying-method').val());
         $('#hidden-paid-amount').val($('#drawer-paid-amount').val());
 
+        if (window.isOpticalProfile) {
+            $('#hidden-end-user-name').val($('#drawer-end-user-name').val() || '');
+            $('#hidden-end-user-phone').val($('#drawer-end-user-phone').val() || '');
+            $('#hidden-end-user-email').val($('#drawer-end-user-email').val() || '');
+            $('#hidden-end-user-address').val($('#drawer-end-user-address').val() || '');
+            $('#hidden-fitting-charge').val($('#drawer-fitting-charge').val() || '');
+            $('#hidden-tinting-cost').val($('#drawer-tinting-cost').val() || '');
+            $('#hidden-customer-order-no').val($('#drawer-customer-order-no').val() || '');
+        }
+
         var count = 0;
         if ($('#drawer-bale-no').val()) count++;
         if ($('#drawer-lr-no').val()) count++;
         if ($('#drawer-note').val()) count++;
         if (parseFloat($('#drawer-paid-amount').val()) > 0) count++;
+        if (window.isOpticalProfile) {
+            if ($('#drawer-end-user-name').val()) count++;
+            if (parseFloat($('#drawer-fitting-charge').val()) > 0) count++;
+        }
         $('#charges-badge-count').text(count);
         if ($('#drawer-note').val()) {
             $('#remarks-summary-preview').text('Remarks: ' + $('#drawer-note').val().slice(0, 40) + '...');
         }
+    });
+
+    $('#btn-quick-optical').on('click', function() {
+        $('#tab-optical').tab('show');
+        $('#charges-drawer').modal('show');
     });
 
     // Pill Segmented Mode Toggle (Cash/Credit)
@@ -4529,6 +4840,15 @@
                 var editUrl = "{{ url('purchases') }}/" + p.id + "/edit";
                 $('#purchase-details-edit-btn').attr('href', editUrl);
 
+                var isNon = p.is_non_gst || (p.attributes_json && p.attributes_json.is_non_gst) || (p.tax_snapshot_json && p.tax_snapshot_json.is_non_gst) || (p.attributes_json && p.attributes_json.bill_type === 'non_gst');
+                if (isNon && !p.reversed_at) {
+                    $('#purchase-details-nongst-badge').show();
+                    $('#purchase-details-convert-gst-btn').data('id', p.id).data('ref', p.reference_no).show();
+                } else {
+                    $('#purchase-details-nongst-badge').hide();
+                    $('#purchase-details-convert-gst-btn').hide();
+                }
+
                 // Supplier Card
                 var s = p.supplier || {};
                 var supplierName = s.name || 'Walk-in / Cash Supplier';
@@ -4596,6 +4916,17 @@
                             '<td class="align-middle">' +
                                 '<div class="font-weight-bold text-dark">' + name + '</div>' +
                                 (code ? '<span class="badge badge-light border text-muted mt-1">' + code + '</span>' : '') +
+                                (function() {
+                                    if (!item.sph && !item.cyl && !item.axis && !item.addition && !item.dia && !item.lr) return '';
+                                    var badges = '';
+                                    if (item.lr) badges += '<span class="badge badge-primary px-1">Eye: ' + escapeHtml(item.lr) + '</span> ';
+                                    if (item.sph) badges += '<span class="badge badge-light border px-1">SPH: ' + escapeHtml(item.sph) + '</span> ';
+                                    if (item.cyl) badges += '<span class="badge badge-light border px-1">CYL: ' + escapeHtml(item.cyl) + '</span> ';
+                                    if (item.axis) badges += '<span class="badge badge-light border px-1">AXIS: ' + escapeHtml(item.axis) + '</span> ';
+                                    if (item.addition) badges += '<span class="badge badge-light border px-1">ADD: ' + escapeHtml(item.addition) + '</span> ';
+                                    if (item.dia) badges += '<span class="badge badge-light border px-1">DIA: ' + escapeHtml(item.dia) + '</span> ';
+                                    return '<div class="mt-1 d-flex flex-wrap align-items-center" style="{{ 'gap: 4px; font-size: 11px;' }}">' + badges + '</div>';
+                                })() +
                             '</td>' +
                             '<td class="align-middle">' +
                                 (batch !== '—' ? '<span class="badge badge-secondary px-2 py-1">' + batch + '</span>' : '<span class="text-muted">—</span>') +

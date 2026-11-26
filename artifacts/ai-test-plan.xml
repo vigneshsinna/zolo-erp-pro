@@ -1,0 +1,797 @@
+<?xml version="1.0"?>
+<testSuite xmlns="https://xml.phpunit.de/testSuite">
+ <tests>
+  <testClass name="Tests\Feature\Ai\AiChatApiAndWorkspaceTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\AiChatApiAndWorkspaceTest.php">
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_workspace_view_renders_for_authenticated_actor" name="test_workspace_view_renders_for_authenticated_actor"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_settings_endpoint_returns_effective_company_configuration" name="test_settings_endpoint_returns_effective_company_configuration"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_thread_lifecycle_create_list_and_ownership" name="test_thread_lifecycle_create_list_and_ownership"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_endpoint_denies_unpermitted_user" name="test_chat_endpoint_denies_unpermitted_user"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_endpoint_denies_when_company_ai_disabled" name="test_chat_endpoint_denies_when_company_ai_disabled"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_feature_gate_fails_closed_when_company_settings_table_is_unavailable" name="test_feature_gate_fails_closed_when_company_settings_table_is_unavailable"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_legacy_turn_orders_the_question_before_its_answer_on_timestamp_ties" name="test_legacy_turn_orders_the_question_before_its_answer_on_timestamp_ties"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_revoked_tool_facts_are_hidden_from_history_and_provider_replay" name="test_revoked_tool_facts_are_hidden_from_history_and_provider_replay"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread" name="test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_sanctum_routes_accept_bearer_tokens_and_workspace_routes_require_sessions" name="test_sanctum_routes_accept_bearer_tokens_and_workspace_routes_require_sessions"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_threads_are_bound_to_their_active_branch_and_financial_year" name="test_threads_are_bound_to_their_active_branch_and_financial_year"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_report_role_requires_ai_permission_and_company_override_applies_to_admin" name="test_report_role_requires_ai_permission_and_company_override_applies_to_admin"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_step_reservation_blocks_an_overlapping_company_call_and_releases_unused_tokens" name="test_step_reservation_blocks_an_overlapping_company_call_and_releases_unused_tokens"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_endpoint_executes_copilot_and_persists_telemetry" name="test_chat_endpoint_executes_copilot_and_persists_telemetry"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_monitoring_endpoint_returns_telemetry_for_admins_and_denies_unauthorized_users" name="test_monitoring_endpoint_returns_telemetry_for_admins_and_denies_unauthorized_users"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_provider_rpm_rate_limiter_throttles_when_limit_exceeded" name="test_provider_rpm_rate_limiter_throttles_when_limit_exceeded"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_provider_usage_reports_disabled_limit_and_expired_window_accurately" name="test_provider_usage_reports_disabled_limit_and_expired_window_accurately"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_nvidia_retries_share_provider_bucket_and_count_separately_from_steps" name="test_nvidia_retries_share_provider_bucket_and_count_separately_from_steps"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_turn_persists_model_invocation_steps" name="test_chat_turn_persists_model_invocation_steps"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_unrelated_http_posts_do_not_affect_provider_request_count" name="test_unrelated_http_posts_do_not_affect_provider_request_count"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_empty_model_text_triggers_deterministic_verified_summary" name="test_empty_model_text_triggers_deterministic_verified_summary"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_model_written_narrative_is_preserved_when_present" name="test_model_written_narrative_is_preserved_when_present"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_workspace_stylesheet_enforces_full_width_assistant_cards_and_no_shrink" name="test_workspace_stylesheet_enforces_full_width_assistant_cards_and_no_shrink"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_download_document_pdf_endpoint_streams_pdf" name="test_download_document_pdf_endpoint_streams_pdf"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_delivers_deltas_then_persists_the_complete_answer_and_meters_deferred_dispatch" name="test_stream_delivers_deltas_then_persists_the_complete_answer_and_meters_deferred_dispatch"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_reads_compatible_provider_frames_and_counts_the_real_http_dispatch" name="test_stream_reads_compatible_provider_frames_and_counts_the_real_http_dispatch"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_provider_failure_emits_error_and_retains_unknown_usage_for_reconciliation" name="test_stream_provider_failure_emits_error_and_retains_unknown_usage_for_reconciliation"/>
+   <testMethod id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_rejects_disabled_company_unauthorized_actor_and_invalid_media_before_dispatch" name="test_stream_rejects_disabled_company_unauthorized_actor_and_invalid_media_before_dispatch"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Billing\ConcurrentCreditLoadTest.php">
+   <testMethod id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reservations_at_5_users_prevent_overspend" name="test_concurrent_reservations_at_5_users_prevent_overspend"/>
+   <testMethod id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reservations_at_10_users_prevent_overspend" name="test_concurrent_reservations_at_10_users_prevent_overspend"/>
+   <testMethod id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reservations_at_20_users_prevent_overspend" name="test_concurrent_reservations_at_20_users_prevent_overspend"/>
+   <testMethod id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_duplicate_payment_webhooks_grant_credits_exactly_once" name="test_concurrent_duplicate_payment_webhooks_grant_credits_exactly_once"/>
+   <testMethod id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reserve_and_settle_endpoint_executes_atomically" name="test_concurrent_reserve_and_settle_endpoint_executes_atomically"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Billing\CreditLedgerRulesTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Billing\CreditLedgerRulesTest.php">
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_01_and_cr_02_idempotent_period_and_grant_initialization" name="test_cr_01_and_cr_02_idempotent_period_and_grant_initialization"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_03_and_cr_04_monthly_period_rollover_and_expiry" name="test_cr_03_and_cr_04_monthly_period_rollover_and_expiry"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_05_and_cr_08_reservation_charges_actual_and_releases_difference" name="test_cr_05_and_cr_08_reservation_charges_actual_and_releases_difference"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_06_insufficient_credits_rejects_before_provider_dispatch" name="test_cr_06_insufficient_credits_rejects_before_provider_dispatch"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_09_uncertain_timeout_flags_reconcile_required" name="test_cr_09_uncertain_timeout_flags_reconcile_required"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_10_provider_429_release_frees_held_credits" name="test_cr_10_provider_429_release_frees_held_credits"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_12_same_idempotency_key_returns_existing_reservation" name="test_cr_12_same_idempotency_key_returns_existing_reservation"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_17_refund_creates_compensating_ledger_entries" name="test_cr_17_refund_creates_compensating_ledger_entries"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_20_reconciliation_service_audits_ledger_integrity" name="test_cr_20_reconciliation_service_audits_ledger_integrity"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_settlement_when_actual_usage_exceeds_held_reservation_debits_full_amount" name="test_settlement_when_actual_usage_exceeds_held_reservation_debits_full_amount"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_sec_17_missing_rate_card_fails_closed_with_rate_card_missing_exception" name="test_sec_17_missing_rate_card_fails_closed_with_rate_card_missing_exception"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_preflight_estimate_exceeding_max_credits_per_request_throws_request_exceeds_credit_limit" name="test_preflight_estimate_exceeding_max_credits_per_request_throws_request_exceeds_credit_limit"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Billing\CreditSecurityTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Billing\CreditSecurityTest.php">
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_01_and_02_tenant_and_user_history_isolation" name="test_sec_01_and_02_tenant_and_user_history_isolation"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_03_cross_tenant_wallet_drawing_forbidden" name="test_sec_03_cross_tenant_wallet_drawing_forbidden"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_04_pooled_subscription_shares_balance_when_mapped" name="test_sec_04_pooled_subscription_shares_balance_when_mapped"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_12_forged_webhook_rejected_with_403_and_zero_grant" name="test_sec_12_forged_webhook_rejected_with_403_and_zero_grant"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_13_valid_webhook_repeated_100x_grants_exactly_once" name="test_sec_13_valid_webhook_repeated_100x_grants_exactly_once"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_14_holds_exceeding_balance_fail_closed" name="test_sec_14_holds_exceeding_balance_fail_closed"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_20_replaying_settled_attempt_id_is_idempotent" name="test_sec_20_replaying_settled_attempt_id_is_idempotent"/>
+   <testMethod id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_17_missing_model_pricing_fails_closed" name="test_sec_17_missing_model_pricing_fails_closed"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Billing\PrepaidCreditSafetyTest.php">
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_01_insufficient_funds_on_overage_caps_customer_debit_and_records_variance" name="test_bill_01_insufficient_funds_on_overage_caps_customer_debit_and_records_variance"/>
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_02_sufficient_funds_on_overage_settles_full_amount_and_keeps_balance_positive" name="test_bill_02_sufficient_funds_on_overage_settles_full_amount_and_keeps_balance_positive"/>
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_06_duplicate_settlement_attempt_is_idempotent" name="test_bill_06_duplicate_settlement_attempt_is_idempotent"/>
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_07_in_flight_timeout_does_not_free_held_credits" name="test_bill_07_in_flight_timeout_does_not_free_held_credits"/>
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_09_idempotency_key_payload_conflict_throws_409" name="test_bill_09_idempotency_key_payload_conflict_throws_409"/>
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_10_exact_decimal_ceil_boundary_values" name="test_bill_10_exact_decimal_ceil_boundary_values"/>
+   <testMethod id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_concurrent_reserve_settle_endpoint_succeeds_in_testing_env" name="test_concurrent_reserve_settle_endpoint_succeeds_in_testing_env"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest.php">
+   <testMethod id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e01_production_environment_is_strictly_blocked" name="test_sec_e01_production_environment_is_strictly_blocked"/>
+   <testMethod id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e02_disabled_evaluation_flag_blocks_execution" name="test_sec_e02_disabled_evaluation_flag_blocks_execution"/>
+   <testMethod id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e03_valid_testing_environment_and_database_passes" name="test_sec_e03_valid_testing_environment_and_database_passes"/>
+   <testMethod id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e04_ephemeral_credentials_are_random_and_unpredictable" name="test_sec_e04_ephemeral_credentials_are_random_and_unpredictable"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Clarification\DependentMasterResolutionTest.php">
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_field_issue_generates_three_way_disambiguation_triad" name="test_field_issue_generates_three_way_disambiguation_triad"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_spawn_master_requirements_returns_prefilled_defaults_and_options" name="test_spawn_master_requirements_returns_prefilled_defaults_and_options"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_preview_master_proposal_creates_sealed_proposal" name="test_preview_master_proposal_creates_sealed_proposal"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_approve_and_execute_master_creates_erp_record_and_resumes_parent_task" name="test_approve_and_execute_master_creates_erp_record_and_resumes_parent_task"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_full_sequential_resolution_auto_advances_task_to_ready" name="test_full_sequential_resolution_auto_advances_task_to_ready"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_execution_without_permission_is_blocked" name="test_execution_without_permission_is_blocked"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_warehouse_creation_automatically_defaults_branch_id_when_omitted" name="test_warehouse_creation_automatically_defaults_branch_id_when_omitted"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted" name="test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest.php">
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_exact_numeric_id_lookup_resolves_warehouse" name="test_exact_numeric_id_lookup_resolves_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_exact_name_lookup_resolves_warehouse" name="test_exact_name_lookup_resolves_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_unique_partial_match_resolves_warehouse" name="test_unique_partial_match_resolves_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_multiple_partial_matches_return_candidates_without_silent_auto_select" name="test_multiple_partial_matches_return_candidates_without_silent_auto_select"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_inactive_warehouse_is_never_resolved" name="test_inactive_warehouse_is_never_resolved"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_wrong_branch_warehouse_is_rejected" name="test_wrong_branch_warehouse_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_unknown_warehouse_returns_none" name="test_unknown_warehouse_returns_none"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_cross_tenant_isolation_never_returns_other_company_warehouse" name="test_cross_tenant_isolation_never_returns_other_company_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_unique_branch_default_auto_selects_when_single_active_warehouse" name="test_unique_branch_default_auto_selects_when_single_active_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_multiple_branch_warehouses_return_candidates_when_query_omitted" name="test_multiple_branch_warehouses_return_candidates_when_query_omitted"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_requirements_provider_rejects_inactive_or_wrong_branch_warehouse" name="test_requirements_provider_rejects_inactive_or_wrong_branch_warehouse"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Clarification\UnifiedInputClarificationTest.php">
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification" name="test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_missing_supplier_retains_confirmed_product_and_warehouse" name="test_missing_supplier_retains_confirmed_product_and_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_unique_product_code_and_warehouse_default_auto_resolve_without_questions" name="test_unique_product_code_and_warehouse_default_auto_resolve_without_questions"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_line_deletion_preserves_stable_ids_and_rejects_stale_or_implicit_removals" name="test_line_deletion_preserves_stable_ids_and_rejects_stale_or_implicit_removals"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict" name="test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes" name="test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_task_cancel_terminates_without_erp_writes" name="test_task_cancel_terminates_without_erp_writes"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_cross_tenant_isolation_prevents_accessing_other_company_tasks" name="test_cross_tenant_isolation_prevents_accessing_other_company_tasks"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_patching_entity_slot_with_text_name_resolves_via_batch_resolver" name="test_patching_entity_slot_with_text_name_resolves_via_batch_resolver"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest.php">
+   <testMethod id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_legacy_slots_patch_payload_fails_validation_with_422" name="test_legacy_slots_patch_payload_fails_validation_with_422"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_typed_corrections_with_expected_revision_succeeds_and_increments_revision" name="test_typed_corrections_with_expected_revision_succeeds_and_increments_revision"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_stale_expected_revision_returns_409_conflict" name="test_stale_expected_revision_returns_409_conflict"/>
+   <testMethod id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_incomplete_task_blocks_prepare_proposal_and_prevents_unapproved_writes" name="test_incomplete_task_blocks_prepare_proposal_and_prevents_unapproved_writes"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\CommercialDocumentActionTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_quotation_preview_and_approved_execution_have_no_stock_or_ledger_effect_and_replay_once" name="test_quotation_preview_and_approved_execution_have_no_stock_or_ledger_effect_and_replay_once"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_sales_invoice_posts_only_after_approval_with_authoritative_total" name="test_sales_invoice_posts_only_after_approval_with_authoritative_total"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_foreign_branch_warehouse_and_changed_price_fail_closed" name="test_foreign_branch_warehouse_and_changed_price_fail_closed"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_quote_intake_uses_consolidated_clarification" name="test_quote_intake_uses_consolidated_clarification"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_delivery_challan_then_invoice_settles_dispatched_stock_without_a_second_issue" name="test_delivery_challan_then_invoice_settles_dispatched_stock_without_a_second_issue"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_foreign_branch_warehouse_is_rejected_during_sales_preview" name="test_foreign_branch_warehouse_is_rejected_during_sales_preview"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_unauthorized_user_cannot_create_grn_proposal" name="test_unauthorized_user_cannot_create_grn_proposal"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_preview_calculates_intake_with_zero_database_writes" name="test_grn_preview_calculates_intake_with_zero_database_writes"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_approved_grn_execution_receives_physical_stock_and_posts_accrual_journal" name="test_approved_grn_execution_receives_physical_stock_and_posts_accrual_journal"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_execution_against_purchase_order_consumes_order_delivery_stage" name="test_grn_execution_against_purchase_order_consumes_order_delivery_stage"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_preview_rejects_foreign_branch_and_combined_over_receipt" name="test_grn_preview_rejects_foreign_branch_and_combined_over_receipt"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_keeps_fractional_quantities_and_four_decimal_costs" name="test_grn_keeps_fractional_quantities_and_four_decimal_costs"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_ambiguous_customer_presents_disambiguation_options_with_triad" name="test_ambiguous_customer_presents_disambiguation_options_with_triad"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_low_stock_advisory_warning_surfaces_non_blockingly" name="test_low_stock_advisory_warning_surfaces_non_blockingly"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_proposal_preparation_creates_governed_action_proposal_without_erp_mutations" name="test_proposal_preparation_creates_governed_action_proposal_without_erp_mutations"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_approving_sales_order_proposal_executes_via_command_adapter" name="test_approving_sales_order_proposal_executes_via_command_adapter"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_strict_tenancy_cross_company_isolation" name="test_strict_tenancy_cross_company_isolation"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_record_resolution_service_resolves_supplier_product_and_warehouse" name="test_record_resolution_service_resolves_supplier_product_and_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_prepare_purchase_order_tool_returns_needs_input_on_ambiguity" name="test_prepare_purchase_order_tool_returns_needs_input_on_ambiguity"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_prepare_purchase_order_tool_creates_proposal_with_zero_ledger_writes" name="test_prepare_purchase_order_tool_creates_proposal_with_zero_ledger_writes"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_action_review_center_desk_renders_and_approves_proposal" name="test_action_review_center_desk_renders_and_approves_proposal"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\PaymentReminderDispatchTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_preparing_a_reminder_draft_never_creates_delivery_and_send_defaults_disabled" name="test_preparing_a_reminder_draft_never_creates_delivery_and_send_defaults_disabled"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_approval_queues_one_encrypted_delivery_and_worker_sends_once_to_the_sealed_recipient" name="test_approval_queues_one_encrypted_delivery_and_worker_sends_once_to_the_sealed_recipient"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_changed_customer_email_invalidates_approval_before_outbox_creation" name="test_changed_customer_email_invalidates_approval_before_outbox_creation"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_worker_revalidates_current_balance_and_never_sends_an_outdated_amount" name="test_worker_revalidates_current_balance_and_never_sends_an_outdated_amount"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_worker_revalidates_membership_before_delivery" name="test_worker_revalidates_membership_before_delivery"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_uncertain_smtp_failure_is_recorded_and_never_automatically_retried" name="test_uncertain_smtp_failure_is_recorded_and_never_automatically_retried"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_worker_honors_kill_switch_and_expired_approval" name="test_worker_honors_kill_switch_and_expired_approval"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_suppressed_mail_transport_does_not_claim_a_sent_message" name="test_suppressed_mail_transport_does_not_claim_a_sent_message"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_anonymous_worker_installs_actor_and_restores_request_context_after_delivery" name="test_anonymous_worker_installs_actor_and_restores_request_context_after_delivery"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_sending_requires_explicit_communication_permission_in_addition_to_accounting_access" name="test_sending_requires_explicit_communication_permission_in_addition_to_accounting_access"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_reminder_rejects_a_foreign_invoice_and_sync_transport" name="test_reminder_rejects_a_foreign_invoice_and_sync_transport"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\PurchaseBillActionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\PurchaseBillActionTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_unauthorized_user_cannot_create_purchase_bill_proposal" name="test_unauthorized_user_cannot_create_purchase_bill_proposal"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_preview_calculates_gst_breakdown_with_zero_database_writes" name="test_purchase_bill_preview_calculates_gst_breakdown_with_zero_database_writes"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_approved_direct_purchase_bill_creates_voucher_moves_stock_and_posts_financial_ledger" name="test_approved_direct_purchase_bill_creates_voucher_moves_stock_and_posts_financial_ledger"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_against_grn_settles_accrual_without_duplicate_stock_movement" name="test_purchase_bill_against_grn_settles_accrual_without_duplicate_stock_movement"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_against_open_po_consumes_order_billing_stage" name="test_purchase_bill_against_open_po_consumes_order_billing_stage"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_tampered_source_state_fails_closed_during_purchase_bill_approval" name="test_tampered_source_state_fails_closed_during_purchase_bill_approval"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_duplicate_supplier_invoice_is_rejected_before_a_second_bill_or_stock_movement" name="test_duplicate_supplier_invoice_is_rejected_before_a_second_bill_or_stock_movement"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_bill_preview_cannot_create_a_missing_supplier_tax_profile" name="test_bill_preview_cannot_create_a_missing_supplier_tax_profile"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_preserves_four_decimal_unit_cost_and_posted_total" name="test_purchase_bill_preserves_four_decimal_unit_cost_and_posted_total"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\PurchaseOrderActionTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_unauthorized_user_cannot_create_purchase_order_proposal" name="test_unauthorized_user_cannot_create_purchase_order_proposal"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_purchase_order_preview_computes_deterministic_pricing_with_zero_database_writes" name="test_purchase_order_preview_computes_deterministic_pricing_with_zero_database_writes"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_disabled_compliance_rejects_taxable_proposal_without_writes" name="test_disabled_compliance_rejects_taxable_proposal_without_writes"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_change_request_updates_line_items_and_increments_version" name="test_change_request_updates_line_items_and_increments_version"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_execution_creates_status_4_purchase_order_in_order_register_atomically" name="test_execution_creates_status_4_purchase_order_in_order_register_atomically"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_execution_fails_closed_when_underlying_source_state_changes_after_approval" name="test_execution_fails_closed_when_underlying_source_state_changes_after_approval"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_proposals_endpoint_enforces_actor_specific_filtering_and_approval_permission" name="test_proposals_endpoint_enforces_actor_specific_filtering_and_approval_permission"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_tax_rate_or_fiscal_year_modification_fails_closed_with_source_state_validation_exception" name="test_tax_rate_or_fiscal_year_modification_fails_closed_with_source_state_validation_exception"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_order_grand_total_discrepancy_fails_closed_with_totals_validation_error" name="test_order_grand_total_discrepancy_fails_closed_with_totals_validation_error"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_supplier_party_tax_profile_mutation_invalidates_source_state_hash_and_fails_closed" name="test_supplier_party_tax_profile_mutation_invalidates_source_state_hash_and_fails_closed"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_tax_breakdown_discrepancy_fails_closed_with_totals_validation_error" name="test_tax_breakdown_discrepancy_fails_closed_with_totals_validation_error"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest.php">
+   <testMethod id="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest::test_erp_copilot_registers_sales_and_settlement_tools" name="test_erp_copilot_registers_sales_and_settlement_tools"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest::test_prepare_quotation_tool_creates_proposal_and_executes_into_quotation" name="test_prepare_quotation_tool_creates_proposal_and_executes_into_quotation"/>
+   <testMethod id="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest::test_prepare_sales_invoice_tool_creates_proposal_and_posts_invoice" name="test_prepare_sales_invoice_tool_creates_proposal_and_posts_invoice"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Directory\AiEntityLookupTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Directory\AiEntityLookupTest.php">
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_unauthenticated_request_is_rejected" name="test_unauthenticated_request_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_invalid_entity_type_is_rejected" name="test_invalid_entity_type_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_query_length_is_bounded" name="test_query_length_is_bounded"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_search_is_strictly_scoped_to_current_company" name="test_warehouse_search_is_strictly_scoped_to_current_company"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_eligibility_enforces_branch_and_active_status" name="test_warehouse_eligibility_enforces_branch_and_active_status"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_recommendation_returns_unique_branch_default" name="test_warehouse_recommendation_returns_unique_branch_default"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_recommendation_is_null_when_branch_has_multiple_warehouses" name="test_warehouse_recommendation_is_null_when_branch_has_multiple_warehouses"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_search_matches_query_and_sanitizes_wildcards" name="test_warehouse_search_matches_query_and_sanitizes_wildcards"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_cross_tenant_task_id_is_rejected" name="test_cross_tenant_task_id_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_can_create_reflects_actor_permission" name="test_can_create_reflects_actor_permission"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_pagination_and_per_page_bounds" name="test_pagination_and_per_page_bounds"/>
+   <testMethod id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_supplier_product_customer_unit_searches" name="test_supplier_product_customer_unit_searches"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Documents\DocumentIntakeTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Documents\DocumentIntakeTest.php">
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_document_workspace_renders_authenticated_scoped_import_and_knowledge_controls" name="test_document_workspace_renders_authenticated_scoped_import_and_knowledge_controls"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_quarantine_encrypts_bytes_and_rejects_parsing_without_scan" name="test_quarantine_encrypts_bytes_and_rejects_parsing_without_scan"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_scanner_outage_leaves_document_quarantined_and_creates_no_chunks" name="test_scanner_outage_leaves_document_quarantined_and_creates_no_chunks"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_document_processing_refuses_sync_dispatch_and_uses_the_dedicated_async_queue" name="test_document_processing_refuses_sync_dispatch_and_uses_the_dedicated_async_queue"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_upload_rejects_mismatched_extension_and_tenant_cannot_read_document" name="test_upload_rejects_mismatched_extension_and_tenant_cannot_read_document"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_scanned_invoice_hints_remain_untrusted_and_never_create_erp_documents" name="test_scanned_invoice_hints_remain_untrusted_and_never_create_erp_documents"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_vector_results_recheck_revoked_acl_and_never_trust_foreign_payloads" name="test_vector_results_recheck_revoked_acl_and_never_trust_foreign_payloads"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_product_import_requires_exact_review_and_recovers_completed_rows_without_duplicates" name="test_product_import_requires_exact_review_and_recovers_completed_rows_without_duplicates"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_partial_import_preserves_row_receipts_and_retries_only_unfinished_rows" name="test_partial_import_preserves_row_receipts_and_retries_only_unfinished_rows"/>
+   <testMethod id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_product_import_action_uses_the_approved_pipeline_and_replays_one_receipt" name="test_product_import_action_uses_the_approved_pipeline_and_replays_one_receipt"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Documents\ProductImportChatWorkflowTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Documents\ProductImportChatWorkflowTest.php">
+   <testMethod id="Tests\Feature\Ai\Documents\ProductImportChatWorkflowTest::test_simulate_product_import_and_prepare_proposal_executes_cleanly" name="test_simulate_product_import_and_prepare_proposal_executes_cleanly"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest.php">
+   <testMethod id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_manifest_contains_exactly_50_distinct_cases" name="test_difficult_manifest_contains_exactly_50_distinct_cases"/>
+   <testMethod id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_missing_product_skus_prevent_unapproved_writes_and_fail_resolution" name="test_difficult_missing_product_skus_prevent_unapproved_writes_and_fail_resolution"/>
+   <testMethod id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_invalid_gstin_syntax_and_checksum_fails_validation" name="test_difficult_invalid_gstin_syntax_and_checksum_fails_validation"/>
+   <testMethod id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_prompt_injection_is_treated_as_untrusted_input" name="test_difficult_prompt_injection_is_treated_as_untrusted_input"/>
+   <testMethod id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_provider_rate_limits_and_insufficient_credits_fail_closed" name="test_difficult_provider_rate_limits_and_insufficient_credits_fail_closed"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Evaluations\ErpCopilotCorpusTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Evaluations\ErpCopilotCorpusTest.php">
+   <testMethod id="Tests\Feature\Ai\Evaluations\ErpCopilotCorpusTest::test_copilot_manifest_contains_exactly_100_distinct_cases" name="test_copilot_manifest_contains_exactly_100_distinct_cases"/>
+   <testMethod id="Tests\Feature\Ai\Evaluations\ErpCopilotCorpusTest::test_sample_5_workflow_families_meter_model_dispatch_and_prevent_unapproved_writes" name="test_sample_5_workflow_families_meter_model_dispatch_and_prevent_unapproved_writes"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Evaluations\IndianInvoiceCorpusTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Evaluations\IndianInvoiceCorpusTest.php">
+   <testMethod id="Tests\Feature\Ai\Evaluations\IndianInvoiceCorpusTest::test_invoice_manifest_contains_exactly_100_distinct_cases_with_verified_checksums" name="test_invoice_manifest_contains_exactly_100_distinct_cases_with_verified_checksums"/>
+   <testMethod id="Tests\Feature\Ai\Evaluations\IndianInvoiceCorpusTest::test_sample_10_document_families_satisfy_tax_invariants_and_credit_metering" name="test_sample_10_document_families_satisfy_tax_invariants_and_credit_metering"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\ExtendedActions\ExtendedActionsTest.php">
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_transfer_preview_is_read_only_and_approval_posts_balanced_movement_once" name="test_transfer_preview_is_read_only_and_approval_posts_balanced_movement_once"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_transfer_rejects_foreign_warehouse_and_insufficient_stock" name="test_transfer_rejects_foreign_warehouse_and_insufficient_stock"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_source_change_invalidates_approved_transfer_without_stock_mutation" name="test_source_change_invalidates_approved_transfer_without_stock_mutation"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_journal_rejects_unbalanced_values_and_posts_exact_balanced_values_once" name="test_journal_rejects_unbalanced_values_and_posts_exact_balanced_values_once"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_account_creation_requires_approval_and_preserves_zero_balances" name="test_account_creation_requires_approval_and_preserves_zero_balances"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_price_list_shows_old_new_diff_and_updates_only_after_approval" name="test_price_list_shows_old_new_diff_and_updates_only_after_approval"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_stock_adjustment_posts_movement_value_and_balanced_variance_journal" name="test_stock_adjustment_posts_movement_value_and_balanced_variance_journal"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_opening_proposals_reject_unvalidated_batches" name="test_opening_proposals_reject_unvalidated_batches"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_production_plan_uses_published_bom_without_consuming_stock" name="test_production_plan_uses_published_bom_without_consuming_stock"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_job_work_dispatch_and_partial_receipt_use_actual_domain_commands" name="test_job_work_dispatch_and_partial_receipt_use_actual_domain_commands"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_validated_opening_batch_commits_stock_and_financial_entries_once" name="test_validated_opening_batch_commits_stock_and_financial_entries_once"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_validated_financial_opening_batch_posts_without_editing_account_balances_directly" name="test_validated_financial_opening_batch_posts_without_editing_account_balances_directly"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_opening_spreadsheet_dry_run_prepares_exact_rows_and_rechecks_revoked_document_before_posting" name="test_opening_spreadsheet_dry_run_prepares_exact_rows_and_rechecks_revoked_document_before_posting"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_opening_source_tool_stages_and_previews_without_financial_or_stock_mutations" name="test_opening_source_tool_stages_and_previews_without_financial_or_stock_mutations"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest.php">
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest::test_prepare_stock_transfer_creates_proposal_and_executes" name="test_prepare_stock_transfer_creates_proposal_and_executes"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest::test_prepare_stock_adjustment_creates_proposal_and_executes" name="test_prepare_stock_adjustment_creates_proposal_and_executes"/>
+   <testMethod id="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest::test_prepare_journal_entry_creates_balanced_proposal_and_posts" name="test_prepare_journal_entry_creates_balanced_proposal_and_posts"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest.php">
+   <testMethod id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_gateway_strictly_enforces_35_rpm_rate_limit_for_nvidia_provider" name="test_gateway_strictly_enforces_35_rpm_rate_limit_for_nvidia_provider"/>
+   <testMethod id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_provider_failure_releases_credit_reservation_hold_with_zero_ledger_debit" name="test_provider_failure_releases_credit_reservation_hold_with_zero_ledger_debit"/>
+   <testMethod id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_provider_success_settles_atomically_and_debits_ledger_exactly_once" name="test_provider_success_settles_atomically_and_debits_ledger_exactly_once"/>
+   <testMethod id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_provider_transient_error_cleans_up_on_exhaustion" name="test_provider_transient_error_cleans_up_on_exhaustion"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest::test_public_health_and_ping_endpoints_respond_with_ok" name="test_public_health_and_ping_endpoints_respond_with_ok"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest::test_ai_responses_include_security_and_correlation_headers" name="test_ai_responses_include_security_and_correlation_headers"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest::test_foundation_killswitch_denies_ai_requests" name="test_foundation_killswitch_denies_ai_requests"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_discovery_is_filtered_by_token_and_server_allowlists" name="test_mcp_discovery_is_filtered_by_token_and_server_allowlists"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_infrastructure_and_schedule_routes_are_mounted_by_the_application_provider" name="test_infrastructure_and_schedule_routes_are_mounted_by_the_application_provider"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_horizon_requires_installation_operator_allowlist_and_current_company_role" name="test_horizon_requires_installation_operator_allowlist_and_current_company_role"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_rejects_session_authentication_and_wildcard_tokens" name="test_mcp_rejects_session_authentication_and_wildcard_tokens"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_rejects_expired_binding_origin_and_revoked_membership" name="test_mcp_rejects_expired_binding_origin_and_revoked_membership"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_scope_injection_fails_executor_and_write_alias_is_unavailable" name="test_mcp_scope_injection_fails_executor_and_write_alias_is_unavailable"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_initialization_notifications_limits_and_kill_switch" name="test_mcp_initialization_notifications_limits_and_kill_switch"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_returns_same_authoritative_facts_as_native_executor_and_bounds_output" name="test_mcp_returns_same_authoritative_facts_as_native_executor_and_bounds_output"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_async_execution_queues_references_then_executes_once" name="test_async_execution_queues_references_then_executes_once"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_worker_actor_context_restores_daemon_state_even_after_domain_failure" name="test_worker_actor_context_restores_daemon_state_even_after_domain_failure"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_async_worker_revalidates_membership_and_skips_stale_version" name="test_async_worker_revalidates_membership_and_skips_stale_version"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_async_worker_respects_emergency_execution_switch_after_dispatch" name="test_async_worker_respects_emergency_execution_switch_after_dispatch"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_mcp_is_default_off_and_rejects_unauthorized_dispatch" name="test_mcp_is_default_off_and_rejects_unauthorized_dispatch"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_mcp_endpoint_policy_enforces_https_and_allowlist" name="test_mcp_endpoint_policy_enforces_https_and_allowlist"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_mcp_endpoint_policy_prevents_ssrf_and_private_destinations" name="test_mcp_endpoint_policy_prevents_ssrf_and_private_destinations"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_document_knowledge_feature_flag_and_company_scoping" name="test_document_knowledge_feature_flag_and_company_scoping"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\McpEndpointPolicyTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\McpEndpointPolicyTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpEndpointPolicyTest::test_https_host_port_and_url_components_are_closed" name="test_https_host_port_and_url_components_are_closed"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\McpEndpointPolicyTest::test_private_reserved_and_mixed_dns_answers_are_rejected" name="test_private_reserved_and_mixed_dns_answers_are_rejected"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_allowlisted_read_uses_bound_scope_pinned_https_and_no_discovery_or_writes" name="test_allowlisted_read_uses_bound_scope_pinned_https_and_no_discovery_or_writes"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_sse_read_keeps_text_untrusted_and_does_not_execute_server_callbacks" name="test_sse_read_keeps_text_untrusted_and_does_not_execute_server_callbacks"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_unknown_servers_write_tools_and_foreign_branch_bindings_fail_before_http" name="test_unknown_servers_write_tools_and_foreign_branch_bindings_fail_before_http"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_discovery_uses_only_explicit_local_read_aliases_and_schema" name="test_discovery_uses_only_explicit_local_read_aliases_and_schema"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_configured_alias_runs_through_the_live_manifest_and_native_executor_once" name="test_configured_alias_runs_through_the_live_manifest_and_native_executor_once"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_scope_injection_unknown_arguments_and_wrong_types_fail_before_http" name="test_scope_injection_unknown_arguments_and_wrong_types_fail_before_http"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_redirect_overflow_and_mismatched_rpc_responses_fail_without_leaking_remote_errors" name="test_redirect_overflow_and_mismatched_rpc_responses_fail_without_leaking_remote_errors"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_revoked_branch_and_disabled_company_cannot_dispatch_external_reads" name="test_revoked_branch_and_disabled_company_cannot_dispatch_external_reads"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\ScheduledRulesTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_opt_in_is_required_and_tenant_or_branch_injection_is_denied" name="test_opt_in_is_required_and_tenant_or_branch_injection_is_denied"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_registered_schedule_api_creates_lists_and_cancels_owned_rule" name="test_registered_schedule_api_creates_lists_and_cancels_owned_rule"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_stock_alert_run_is_durable_deduplicated_and_has_no_business_writes" name="test_stock_alert_run_is_durable_deduplicated_and_has_no_business_writes"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_scheduled_purchase_preparation_creates_pending_proposal_only_once_per_review" name="test_scheduled_purchase_preparation_creates_pending_proposal_only_once_per_review"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_cancellation_and_permission_revocation_stop_queued_runs" name="test_cancellation_and_permission_revocation_stop_queued_runs"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_daily_caps_and_expiry_prevent_more_runs" name="test_daily_caps_and_expiry_prevent_more_runs"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Infrastructure\TelemetryExportTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Infrastructure\TelemetryExportTest.php">
+   <testMethod id="Tests\Feature\Ai\Infrastructure\TelemetryExportTest::test_export_contains_only_pseudonymous_model_metrics_and_exact_cost_estimate" name="test_export_contains_only_pseudonymous_model_metrics_and_exact_cost_estimate"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\TelemetryExportTest::test_export_is_disabled_by_default_and_dispatch_failure_does_not_escape" name="test_export_is_disabled_by_default_and_dispatch_failure_does_not_escape"/>
+   <testMethod id="Tests\Feature\Ai\Infrastructure\TelemetryExportTest::test_export_dispatch_uses_isolated_queue_and_rejects_unapproved_origin" name="test_export_dispatch_uses_isolated_queue_and_rejects_unapproved_origin"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\InventoryVerticalSliceTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\InventoryVerticalSliceTest.php">
+   <testMethod id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_erp_copilot_registers_inventory_tool_when_permitted" name="test_erp_copilot_registers_inventory_tool_when_permitted"/>
+   <testMethod id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_stock_summary_tool_executes_deterministically" name="test_inventory_stock_summary_tool_executes_deterministically"/>
+   <testMethod id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_stock_summary_groups_by_unit_without_mixing" name="test_inventory_stock_summary_groups_by_unit_without_mixing"/>
+   <testMethod id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_stock_summary_denies_unauthorized_principal" name="test_inventory_stock_summary_denies_unauthorized_principal"/>
+   <testMethod id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_catalog_batches_queries_without_truncating_totals" name="test_inventory_catalog_batches_queries_without_truncating_totals"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Multimodal\AudioTranscriptionTest.php">
+   <testMethod id="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest::test_silent_and_over_duration_audio_are_rejected_before_model_dispatch" name="test_silent_and_over_duration_audio_are_rejected_before_model_dispatch"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest::test_valid_wav_transcribes_via_omni_and_flags_number_negation_and_telemetry" name="test_valid_wav_transcribes_via_omni_and_flags_number_negation_and_telemetry"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest::test_non_english_speech_marks_unsupported_and_warns_user" name="test_non_english_speech_marks_unsupported_and_warns_user"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Multimodal\InvoiceExtractionTest.php">
+   <testMethod id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_image_extraction_routes_through_gateway_with_no_tools_and_detects_gstin_and_duplicates" name="test_image_extraction_routes_through_gateway_with_no_tools_and_detects_gstin_and_duplicates"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_multipage_pdf_partial_failure_and_carried_forward_line_suppression" name="test_multipage_pdf_partial_failure_and_carried_forward_line_suppression"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_incoming_supplier_invoice_normalizes_to_purchase_bill_and_companion_text_is_saved" name="test_incoming_supplier_invoice_normalizes_to_purchase_bill_and_companion_text_is_saved"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_company_mismatch_warning_emitted_when_buyer_does_not_match_active_company" name="test_company_mismatch_warning_emitted_when_buyer_does_not_match_active_company"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_all_pages_failed_returns_422_with_safe_diagnostic_categories_and_retryable_flag" name="test_all_pages_failed_returns_422_with_safe_diagnostic_categories_and_retryable_flag"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_company_mismatch_blocks_action_staging_in_workflow_handoff" name="test_company_mismatch_blocks_action_staging_in_workflow_handoff"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Multimodal\MediaUploadSecurityTest.php">
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_disabled_multimodal_rejects_upload_without_provider_calls_and_leaves_text_chat_working" name="test_disabled_multimodal_rejects_upload_without_provider_calls_and_leaves_text_chat_working"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_remote_url_ssrf_and_unauthorized_user_are_rejected" name="test_remote_url_ssrf_and_unauthorized_user_are_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_pdf_with_embedded_javascript_or_actions_is_rejected_at_validation" name="test_pdf_with_embedded_javascript_or_actions_is_rejected_at_validation"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_private_storage_exif_stripping_preview_headers_and_cross_company_isolation" name="test_private_storage_exif_stripping_preview_headers_and_cross_company_isolation"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_idempotency_daily_quota_and_cleanup_expiry_lifecycle" name="test_idempotency_daily_quota_and_cleanup_expiry_lifecycle"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_active_upload_reservation_spans_creation_and_blocks_concurrent_overflow" name="test_active_upload_reservation_spans_creation_and_blocks_concurrent_overflow"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_idempotency_key_with_different_file_content_is_rejected_with_409_conflict" name="test_idempotency_key_with_different_file_content_is_rejected_with_409_conflict"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_pdf_with_active_content_beyond_512_kib_is_rejected" name="test_pdf_with_active_content_beyond_512_kib_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_raw_image_url_and_base64_on_chat_are_rejected_with_422" name="test_raw_image_url_and_base64_on_chat_are_rejected_with_422"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_gateway_rate_limit_settles_reserved_tokens_without_stranding" name="test_gateway_rate_limit_settles_reserved_tokens_without_stranding"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest.php">
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_supplier_invoice_automatic_preparation_and_approved_execution_journey" name="test_supplier_invoice_automatic_preparation_and_approved_execution_journey"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_duplicate_invoice_number_blocks_media_proposal_without_business_writes" name="test_duplicate_invoice_number_blocks_media_proposal_without_business_writes"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_missing_warehouse_defaults_to_active_branch_warehouse" name="test_missing_warehouse_defaults_to_active_branch_warehouse"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_edited_proposal_bumps_version_and_updates_totals" name="test_edited_proposal_bumps_version_and_updates_totals"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_expired_proposal_fails_closed_on_approval" name="test_expired_proposal_fails_closed_on_approval"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_repeated_approval_button_clicks_are_idempotent" name="test_repeated_approval_button_clicks_are_idempotent"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks" name="test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_unconfirmed_media_attached_to_chat_is_rejected_with_422" name="test_unconfirmed_media_attached_to_chat_is_rejected_with_422"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_cross_modal_handoff_detects_conflicts_between_document_and_voice" name="test_cross_modal_handoff_detects_conflicts_between_document_and_voice"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions" name="test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions"/>
+   <testMethod id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_chat_rejects_attached_media_with_unresolved_conflicts" name="test_chat_rejects_attached_media_with_unresolved_conflicts"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest.php">
+   <testMethod id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_request_correlation_middleware_propagates_request_and_correlation_ids" name="test_request_correlation_middleware_propagates_request_and_correlation_ids"/>
+   <testMethod id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_telemetry_dispatcher_records_structured_operational_events" name="test_telemetry_dispatcher_records_structured_operational_events"/>
+   <testMethod id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_credit_reconciliation_verifies_ledger_and_period_counters" name="test_credit_reconciliation_verifies_ledger_and_period_counters"/>
+   <testMethod id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_provider_attempt_reconciliation" name="test_provider_attempt_reconciliation"/>
+   <testMethod id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_reconciling_unknown_attempt_reports_discrepancy" name="test_reconciling_unknown_attempt_reports_discrepancy"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\OperationalAndActionProposalsTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\OperationalAndActionProposalsTest.php">
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_manufacturing_boms_tool_returns_recipe_components" name="test_manufacturing_boms_tool_returns_recipe_components"/>
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_open_orders_tool_lists_unfulfilled_sales_and_purchases" name="test_open_orders_tool_lists_unfulfilled_sales_and_purchases"/>
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_open_orders_lifecycle_calculates_remaining_balances_with_partial_billing_cancellation_and_returns" name="test_open_orders_lifecycle_calculates_remaining_balances_with_partial_billing_cancellation_and_returns"/>
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_proposals_remain_quarantined_with_write_flags_enabled" name="test_proposals_remain_quarantined_with_write_flags_enabled"/>
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_sales_permission_does_not_grant_purchase_preview_or_orders" name="test_sales_permission_does_not_grant_purchase_preview_or_orders"/>
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_document_preview_tool_returns_verified_link" name="test_document_preview_tool_returns_verified_link"/>
+   <testMethod id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_company_knowledge_does_not_invent_payment_terms" name="test_company_knowledge_does_not_invent_payment_terms"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest.php">
+   <testMethod id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_outbound_prompt_sanitization_strips_credentials_and_personal_identifiers" name="test_outbound_prompt_sanitization_strips_credentials_and_personal_identifiers"/>
+   <testMethod id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_tax_critical_business_fields_are_strictly_preserved" name="test_tax_critical_business_fields_are_strictly_preserved"/>
+   <testMethod id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_prompt_injection_is_detected_and_neutralized_in_untrusted_input" name="test_prompt_injection_is_detected_and_neutralized_in_untrusted_input"/>
+   <testMethod id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_ai_audit_recorder_redacts_sensitive_keys_recursively" name="test_ai_audit_recorder_redacts_sensitive_keys_recursively"/>
+   <testMethod id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_approved_model_gateway_preflight_sanitizes_step_messages" name="test_approved_model_gateway_preflight_sanitizes_step_messages"/>
+   <testMethod id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_privacy_safe_error_envelopes_never_leak_sql_or_stack_traces" name="test_privacy_safe_error_envelopes_never_leak_sql_or_stack_traces"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest.php">
+   <testMethod id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_cross_company_isolation_blocks_user_from_accessing_foreign_company" name="test_cross_company_isolation_blocks_user_from_accessing_foreign_company"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_unpermitted_role_is_denied_receivables_tool" name="test_unpermitted_role_is_denied_receivables_tool"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_company_level_killswitch_blocks_execution" name="test_company_level_killswitch_blocks_execution"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_input_schema_validation_rejects_out_of_bounds_and_unexpected_inputs" name="test_input_schema_validation_rejects_out_of_bounds_and_unexpected_inputs"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_audit_log_persists_redacted_records_in_database" name="test_audit_log_persists_redacted_records_in_database"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\ReceivablesVerticalSliceTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\ReceivablesVerticalSliceTest.php">
+   <testMethod id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_erp_copilot_registers_only_authorized_tools" name="test_erp_copilot_registers_only_authorized_tools"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_customer_outstanding_tool_executes_deterministically" name="test_customer_outstanding_tool_executes_deterministically"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_customer_outstanding_tool_denies_unauthorized_principal" name="test_customer_outstanding_tool_denies_unauthorized_principal"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_customer_outstanding_rejects_as_of_outside_financial_year" name="test_customer_outstanding_rejects_as_of_outside_financial_year"/>
+   <testMethod id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_sdk_arguments_reach_strict_validation_and_share_run_limit" name="test_sdk_arguments_reach_strict_validation_and_share_run_limit"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Setup\BootstrapCompanyCreationTest.php">
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_non_admin_cannot_access_bootstrap_api" name="test_non_admin_cannot_access_bootstrap_api"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_bootstrap_preview_does_not_mutate_database" name="test_bootstrap_preview_does_not_mutate_database"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_change_request_increments_version_and_updates_preview" name="test_change_request_increments_version_and_updates_preview"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_tampered_bootstrap_approval_rejected" name="test_tampered_bootstrap_approval_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_installation_admin_creates_company_atomically" name="test_installation_admin_creates_company_atomically"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_kill_switch_disables_bootstrap_endpoints" name="test_kill_switch_disables_bootstrap_endpoints"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_bootstrap_proposal_creation_prevents_unscoped_task_hijack" name="test_bootstrap_proposal_creation_prevents_unscoped_task_hijack"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_bootstrap_retry_prevents_receipt_leak_to_unauthorized_actor" name="test_bootstrap_retry_prevents_receipt_leak_to_unauthorized_actor"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_installation_admin_creates_company_group" name="test_installation_admin_creates_company_group"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_completed_bootstrap_task_proposal_is_immutable_and_cannot_be_recreated" name="test_completed_bootstrap_task_proposal_is_immutable_and_cannot_be_recreated"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_company_creation_safely_reconciles_pre_committed_erp_company" name="test_company_creation_safely_reconciles_pre_committed_erp_company"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_unapproved_proposal_cannot_trigger_reconciliation_without_active_execution_claim" name="test_unapproved_proposal_cannot_trigger_reconciliation_without_active_execution_claim"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_repeated_preview_creation_increments_version_and_preserves_monotonicity" name="test_repeated_preview_creation_increments_version_and_preserves_monotonicity"/>
+   <testMethod id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_company_provisioning_respects_installation_disabled_policy" name="test_company_provisioning_respects_installation_disabled_policy"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\Setup\ModeBSetupActionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\Setup\ModeBSetupActionTest.php">
+   <testMethod id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_unit_setup_creates_unit_atomically" name="test_unit_setup_creates_unit_atomically"/>
+   <testMethod id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_product_setup_creates_product_atomically" name="test_product_setup_creates_product_atomically"/>
+   <testMethod id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_supplier_setup_creates_supplier_and_tax_profile" name="test_supplier_setup_creates_supplier_and_tax_profile"/>
+   <testMethod id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_customer_setup_creates_customer_and_tax_profile" name="test_customer_setup_creates_customer_and_tax_profile"/>
+   <testMethod id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_cross_company_unit_or_category_reference_is_rejected" name="test_cross_company_unit_or_category_reference_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_source_state_change_fails_closed_before_product_setup_execution" name="test_source_state_change_fails_closed_before_product_setup_execution"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\SprintASecurityAndLineageTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\SprintASecurityAndLineageTest.php">
+   <testMethod id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_inventory_warehouse_branch_isolation_and_fail_closed" name="test_inventory_warehouse_branch_isolation_and_fail_closed"/>
+   <testMethod id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_customer_invoices_tool_returns_exact_invoices_and_matches_totals" name="test_customer_invoices_tool_returns_exact_invoices_and_matches_totals"/>
+   <testMethod id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_customer_invoice_allocations_tool_reconstructs_payment_history_and_reversals" name="test_customer_invoice_allocations_tool_reconstructs_payment_history_and_reversals"/>
+   <testMethod id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_negative_cross_tenant_isolation_rejects_foreign_open_item" name="test_negative_cross_tenant_isolation_rejects_foreign_open_item"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\SprintBAndP2CapabilitiesTest.php">
+   <testMethod id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_sales_summary_tool_returns_aggregates_and_top_products" name="test_sales_summary_tool_returns_aggregates_and_top_products"/>
+   <testMethod id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_payables_summary_tool_reconciles_supplier_dues" name="test_payables_summary_tool_reconciles_supplier_dues"/>
+   <testMethod id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_financial_statements_tool_generates_pnl_and_balance_sheet" name="test_financial_statements_tool_generates_pnl_and_balance_sheet"/>
+   <testMethod id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_gst_summary_tool_returns_tax_projections" name="test_gst_summary_tool_returns_tax_projections"/>
+   <testMethod id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_copilot_help_tool_returns_authorized_catalog" name="test_copilot_help_tool_returns_authorized_catalog"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\UI\AiEntityPickerUiTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\UI\AiEntityPickerUiTest.php">
+   <testMethod id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_ai_entity_picker_script_exists_and_defines_methods" name="test_ai_entity_picker_script_exists_and_defines_methods"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_ai_workspace_css_includes_picker_and_responsive_styles" name="test_ai_workspace_css_includes_picker_and_responsive_styles"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_workspace_blade_includes_ai_entity_picker_script" name="test_workspace_blade_includes_ai_entity_picker_script"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_ai_media_input_integrates_entity_picker" name="test_ai_media_input_integrates_entity_picker"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_entity_options_endpoint_serves_picker_payload" name="test_entity_options_endpoint_serves_picker_payload"/>
+  </testClass>
+  <testClass name="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest" file="F:\PROJECTS\WEBSITES\zolo-erp-pro\tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest.php">
+   <testMethod id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_ai_master_create_script_exists_and_defines_panel" name="test_ai_master_create_script_exists_and_defines_panel"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_workspace_blade_includes_ai_master_create_script" name="test_workspace_blade_includes_ai_master_create_script"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_missing_warehouse_creation_and_automatic_task_resumption" name="test_missing_warehouse_creation_and_automatic_task_resumption"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_replay_with_stale_version_is_rejected" name="test_replay_with_stale_version_is_rejected"/>
+   <testMethod id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_user_without_warehouse_permission_is_forbidden" name="test_user_without_warehouse_permission_is_forbidden"/>
+  </testClass>
+ </tests>
+ <groups>
+  <group name="default">
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_workspace_view_renders_for_authenticated_actor"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_settings_endpoint_returns_effective_company_configuration"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_thread_lifecycle_create_list_and_ownership"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_endpoint_denies_unpermitted_user"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_endpoint_denies_when_company_ai_disabled"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_feature_gate_fails_closed_when_company_settings_table_is_unavailable"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_legacy_turn_orders_the_question_before_its_answer_on_timestamp_ties"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_revoked_tool_facts_are_hidden_from_history_and_provider_replay"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_clarification_cards_and_action_proposals_replay_cleanly_on_show_thread"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_sanctum_routes_accept_bearer_tokens_and_workspace_routes_require_sessions"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_threads_are_bound_to_their_active_branch_and_financial_year"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_report_role_requires_ai_permission_and_company_override_applies_to_admin"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_step_reservation_blocks_an_overlapping_company_call_and_releases_unused_tokens"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_endpoint_executes_copilot_and_persists_telemetry"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_monitoring_endpoint_returns_telemetry_for_admins_and_denies_unauthorized_users"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_provider_rpm_rate_limiter_throttles_when_limit_exceeded"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_provider_usage_reports_disabled_limit_and_expired_window_accurately"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_nvidia_retries_share_provider_bucket_and_count_separately_from_steps"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_chat_turn_persists_model_invocation_steps"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_unrelated_http_posts_do_not_affect_provider_request_count"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_empty_model_text_triggers_deterministic_verified_summary"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_model_written_narrative_is_preserved_when_present"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_workspace_stylesheet_enforces_full_width_assistant_cards_and_no_shrink"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_download_document_pdf_endpoint_streams_pdf"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_delivers_deltas_then_persists_the_complete_answer_and_meters_deferred_dispatch"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_reads_compatible_provider_frames_and_counts_the_real_http_dispatch"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_provider_failure_emits_error_and_retains_unknown_usage_for_reconciliation"/>
+   <test id="Tests\Feature\Ai\AiChatApiAndWorkspaceTest::test_stream_rejects_disabled_company_unauthorized_actor_and_invalid_media_before_dispatch"/>
+   <test id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reservations_at_5_users_prevent_overspend"/>
+   <test id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reservations_at_10_users_prevent_overspend"/>
+   <test id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reservations_at_20_users_prevent_overspend"/>
+   <test id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_duplicate_payment_webhooks_grant_credits_exactly_once"/>
+   <test id="Tests\Feature\Ai\Billing\ConcurrentCreditLoadTest::test_concurrent_reserve_and_settle_endpoint_executes_atomically"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_01_and_cr_02_idempotent_period_and_grant_initialization"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_03_and_cr_04_monthly_period_rollover_and_expiry"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_05_and_cr_08_reservation_charges_actual_and_releases_difference"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_06_insufficient_credits_rejects_before_provider_dispatch"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_09_uncertain_timeout_flags_reconcile_required"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_10_provider_429_release_frees_held_credits"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_12_same_idempotency_key_returns_existing_reservation"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_17_refund_creates_compensating_ledger_entries"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_cr_20_reconciliation_service_audits_ledger_integrity"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_settlement_when_actual_usage_exceeds_held_reservation_debits_full_amount"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_sec_17_missing_rate_card_fails_closed_with_rate_card_missing_exception"/>
+   <test id="Tests\Feature\Ai\Billing\CreditLedgerRulesTest::test_preflight_estimate_exceeding_max_credits_per_request_throws_request_exceeds_credit_limit"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_01_and_02_tenant_and_user_history_isolation"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_03_cross_tenant_wallet_drawing_forbidden"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_04_pooled_subscription_shares_balance_when_mapped"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_12_forged_webhook_rejected_with_403_and_zero_grant"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_13_valid_webhook_repeated_100x_grants_exactly_once"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_14_holds_exceeding_balance_fail_closed"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_20_replaying_settled_attempt_id_is_idempotent"/>
+   <test id="Tests\Feature\Ai\Billing\CreditSecurityTest::test_sec_17_missing_model_pricing_fails_closed"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_01_insufficient_funds_on_overage_caps_customer_debit_and_records_variance"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_02_sufficient_funds_on_overage_settles_full_amount_and_keeps_balance_positive"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_06_duplicate_settlement_attempt_is_idempotent"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_07_in_flight_timeout_does_not_free_held_credits"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_09_idempotency_key_payload_conflict_throws_409"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_bill_10_exact_decimal_ceil_boundary_values"/>
+   <test id="Tests\Feature\Ai\Billing\PrepaidCreditSafetyTest::test_concurrent_reserve_settle_endpoint_succeeds_in_testing_env"/>
+   <test id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e01_production_environment_is_strictly_blocked"/>
+   <test id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e02_disabled_evaluation_flag_blocks_execution"/>
+   <test id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e03_valid_testing_environment_and_database_passes"/>
+   <test id="Tests\Feature\Ai\Billing\SafeEvaluationEnvironmentTest::test_sec_e04_ephemeral_credentials_are_random_and_unpredictable"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_field_issue_generates_three_way_disambiguation_triad"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_spawn_master_requirements_returns_prefilled_defaults_and_options"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_preview_master_proposal_creates_sealed_proposal"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_approve_and_execute_master_creates_erp_record_and_resumes_parent_task"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_full_sequential_resolution_auto_advances_task_to_ready"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_execution_without_permission_is_blocked"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_warehouse_creation_automatically_defaults_branch_id_when_omitted"/>
+   <test id="Tests\Feature\Ai\Clarification\DependentMasterResolutionTest::test_product_creation_automatically_defaults_tax_category_and_hsn_when_omitted"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_exact_numeric_id_lookup_resolves_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_exact_name_lookup_resolves_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_unique_partial_match_resolves_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_multiple_partial_matches_return_candidates_without_silent_auto_select"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_inactive_warehouse_is_never_resolved"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_wrong_branch_warehouse_is_rejected"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_unknown_warehouse_returns_none"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_cross_tenant_isolation_never_returns_other_company_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_unique_branch_default_auto_selects_when_single_active_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_multiple_branch_warehouses_return_candidates_when_query_omitted"/>
+   <test id="Tests\Feature\Ai\Clarification\SafeWarehouseResolutionTest::test_requirements_provider_rejects_inactive_or_wrong_branch_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_unresolved_supplier_product_and_warehouse_return_one_consolidated_clarification"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_missing_supplier_retains_confirmed_product_and_warehouse"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_unique_product_code_and_warehouse_default_auto_resolve_without_questions"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_line_deletion_preserves_stable_ids_and_rejects_stale_or_implicit_removals"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_patching_inputs_with_expected_revision_updates_state_and_detects_conflict"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_proposal_prepared_only_when_100_percent_ready_with_zero_erp_writes"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_task_cancel_terminates_without_erp_writes"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_cross_tenant_isolation_prevents_accessing_other_company_tasks"/>
+   <test id="Tests\Feature\Ai\Clarification\UnifiedInputClarificationTest::test_patching_entity_slot_with_text_name_resolves_via_batch_resolver"/>
+   <test id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_legacy_slots_patch_payload_fails_validation_with_422"/>
+   <test id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_typed_corrections_with_expected_revision_succeeds_and_increments_revision"/>
+   <test id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_stale_expected_revision_returns_409_conflict"/>
+   <test id="Tests\Feature\Ai\Clarification\WorkflowTaskCorrectionMismatchRegressionTest::test_incomplete_task_blocks_prepare_proposal_and_prevents_unapproved_writes"/>
+   <test id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_quotation_preview_and_approved_execution_have_no_stock_or_ledger_effect_and_replay_once"/>
+   <test id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_sales_invoice_posts_only_after_approval_with_authoritative_total"/>
+   <test id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_foreign_branch_warehouse_and_changed_price_fail_closed"/>
+   <test id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_quote_intake_uses_consolidated_clarification"/>
+   <test id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_delivery_challan_then_invoice_settles_dispatched_stock_without_a_second_issue"/>
+   <test id="Tests\Feature\Ai\Commercial\CommercialDocumentActionTest::test_foreign_branch_warehouse_is_rejected_during_sales_preview"/>
+   <test id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_unauthorized_user_cannot_create_grn_proposal"/>
+   <test id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_preview_calculates_intake_with_zero_database_writes"/>
+   <test id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_approved_grn_execution_receives_physical_stock_and_posts_accrual_journal"/>
+   <test id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_execution_against_purchase_order_consumes_order_delivery_stage"/>
+   <test id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_preview_rejects_foreign_branch_and_combined_over_receipt"/>
+   <test id="Tests\Feature\Ai\Commercial\GoodsReceivedNoteActionTest::test_grn_keeps_fractional_quantities_and_four_decimal_costs"/>
+   <test id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_ambiguous_customer_presents_disambiguation_options_with_triad"/>
+   <test id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_low_stock_advisory_warning_surfaces_non_blockingly"/>
+   <test id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_proposal_preparation_creates_governed_action_proposal_without_erp_mutations"/>
+   <test id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_approving_sales_order_proposal_executes_via_command_adapter"/>
+   <test id="Tests\Feature\Ai\Commercial\MultiSlotSalesOrderWorkflowTest::test_strict_tenancy_cross_company_isolation"/>
+   <test id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_record_resolution_service_resolves_supplier_product_and_warehouse"/>
+   <test id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_prepare_purchase_order_tool_returns_needs_input_on_ambiguity"/>
+   <test id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_prepare_purchase_order_tool_creates_proposal_with_zero_ledger_writes"/>
+   <test id="Tests\Feature\Ai\Commercial\NaturalLanguagePurchaseOrderWorkflowTest::test_action_review_center_desk_renders_and_approves_proposal"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_preparing_a_reminder_draft_never_creates_delivery_and_send_defaults_disabled"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_approval_queues_one_encrypted_delivery_and_worker_sends_once_to_the_sealed_recipient"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_changed_customer_email_invalidates_approval_before_outbox_creation"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_worker_revalidates_current_balance_and_never_sends_an_outdated_amount"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_worker_revalidates_membership_before_delivery"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_uncertain_smtp_failure_is_recorded_and_never_automatically_retried"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_worker_honors_kill_switch_and_expired_approval"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_suppressed_mail_transport_does_not_claim_a_sent_message"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_anonymous_worker_installs_actor_and_restores_request_context_after_delivery"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_sending_requires_explicit_communication_permission_in_addition_to_accounting_access"/>
+   <test id="Tests\Feature\Ai\Commercial\PaymentReminderDispatchTest::test_reminder_rejects_a_foreign_invoice_and_sync_transport"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_unauthorized_user_cannot_create_purchase_bill_proposal"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_preview_calculates_gst_breakdown_with_zero_database_writes"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_approved_direct_purchase_bill_creates_voucher_moves_stock_and_posts_financial_ledger"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_against_grn_settles_accrual_without_duplicate_stock_movement"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_against_open_po_consumes_order_billing_stage"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_tampered_source_state_fails_closed_during_purchase_bill_approval"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_duplicate_supplier_invoice_is_rejected_before_a_second_bill_or_stock_movement"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_bill_preview_cannot_create_a_missing_supplier_tax_profile"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseBillActionTest::test_purchase_bill_preserves_four_decimal_unit_cost_and_posted_total"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_unauthorized_user_cannot_create_purchase_order_proposal"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_purchase_order_preview_computes_deterministic_pricing_with_zero_database_writes"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_disabled_compliance_rejects_taxable_proposal_without_writes"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_change_request_updates_line_items_and_increments_version"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_execution_creates_status_4_purchase_order_in_order_register_atomically"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_execution_fails_closed_when_underlying_source_state_changes_after_approval"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_proposals_endpoint_enforces_actor_specific_filtering_and_approval_permission"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_tax_rate_or_fiscal_year_modification_fails_closed_with_source_state_validation_exception"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_order_grand_total_discrepancy_fails_closed_with_totals_validation_error"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_supplier_party_tax_profile_mutation_invalidates_source_state_hash_and_fails_closed"/>
+   <test id="Tests\Feature\Ai\Commercial\PurchaseOrderActionTest::test_tax_breakdown_discrepancy_fails_closed_with_totals_validation_error"/>
+   <test id="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest::test_erp_copilot_registers_sales_and_settlement_tools"/>
+   <test id="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest::test_prepare_quotation_tool_creates_proposal_and_executes_into_quotation"/>
+   <test id="Tests\Feature\Ai\Commercial\SalesAndSettlementChatWorkflowTest::test_prepare_sales_invoice_tool_creates_proposal_and_posts_invoice"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_unauthenticated_request_is_rejected"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_invalid_entity_type_is_rejected"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_query_length_is_bounded"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_search_is_strictly_scoped_to_current_company"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_eligibility_enforces_branch_and_active_status"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_recommendation_returns_unique_branch_default"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_recommendation_is_null_when_branch_has_multiple_warehouses"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_warehouse_search_matches_query_and_sanitizes_wildcards"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_cross_tenant_task_id_is_rejected"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_can_create_reflects_actor_permission"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_pagination_and_per_page_bounds"/>
+   <test id="Tests\Feature\Ai\Directory\AiEntityLookupTest::test_supplier_product_customer_unit_searches"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_document_workspace_renders_authenticated_scoped_import_and_knowledge_controls"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_quarantine_encrypts_bytes_and_rejects_parsing_without_scan"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_scanner_outage_leaves_document_quarantined_and_creates_no_chunks"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_document_processing_refuses_sync_dispatch_and_uses_the_dedicated_async_queue"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_upload_rejects_mismatched_extension_and_tenant_cannot_read_document"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_scanned_invoice_hints_remain_untrusted_and_never_create_erp_documents"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_vector_results_recheck_revoked_acl_and_never_trust_foreign_payloads"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_product_import_requires_exact_review_and_recovers_completed_rows_without_duplicates"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_partial_import_preserves_row_receipts_and_retries_only_unfinished_rows"/>
+   <test id="Tests\Feature\Ai\Documents\DocumentIntakeTest::test_product_import_action_uses_the_approved_pipeline_and_replays_one_receipt"/>
+   <test id="Tests\Feature\Ai\Documents\ProductImportChatWorkflowTest::test_simulate_product_import_and_prepare_proposal_executes_cleanly"/>
+   <test id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_manifest_contains_exactly_50_distinct_cases"/>
+   <test id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_missing_product_skus_prevent_unapproved_writes_and_fail_resolution"/>
+   <test id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_invalid_gstin_syntax_and_checksum_fails_validation"/>
+   <test id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_prompt_injection_is_treated_as_untrusted_input"/>
+   <test id="Tests\Feature\Ai\Evaluations\DifficultScenarioCorpusTest::test_difficult_provider_rate_limits_and_insufficient_credits_fail_closed"/>
+   <test id="Tests\Feature\Ai\Evaluations\ErpCopilotCorpusTest::test_copilot_manifest_contains_exactly_100_distinct_cases"/>
+   <test id="Tests\Feature\Ai\Evaluations\ErpCopilotCorpusTest::test_sample_5_workflow_families_meter_model_dispatch_and_prevent_unapproved_writes"/>
+   <test id="Tests\Feature\Ai\Evaluations\IndianInvoiceCorpusTest::test_invoice_manifest_contains_exactly_100_distinct_cases_with_verified_checksums"/>
+   <test id="Tests\Feature\Ai\Evaluations\IndianInvoiceCorpusTest::test_sample_10_document_families_satisfy_tax_invariants_and_credit_metering"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_transfer_preview_is_read_only_and_approval_posts_balanced_movement_once"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_transfer_rejects_foreign_warehouse_and_insufficient_stock"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_source_change_invalidates_approved_transfer_without_stock_mutation"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_journal_rejects_unbalanced_values_and_posts_exact_balanced_values_once"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_account_creation_requires_approval_and_preserves_zero_balances"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_price_list_shows_old_new_diff_and_updates_only_after_approval"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_stock_adjustment_posts_movement_value_and_balanced_variance_journal"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_opening_proposals_reject_unvalidated_batches"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_production_plan_uses_published_bom_without_consuming_stock"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_job_work_dispatch_and_partial_receipt_use_actual_domain_commands"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_validated_opening_batch_commits_stock_and_financial_entries_once"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_validated_financial_opening_batch_posts_without_editing_account_balances_directly"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_opening_spreadsheet_dry_run_prepares_exact_rows_and_rechecks_revoked_document_before_posting"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\ExtendedActionsTest::test_opening_source_tool_stages_and_previews_without_financial_or_stock_mutations"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest::test_prepare_stock_transfer_creates_proposal_and_executes"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest::test_prepare_stock_adjustment_creates_proposal_and_executes"/>
+   <test id="Tests\Feature\Ai\ExtendedActions\InventoryAndManufacturingChatWorkflowTest::test_prepare_journal_entry_creates_balanced_proposal_and_posts"/>
+   <test id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_gateway_strictly_enforces_35_rpm_rate_limit_for_nvidia_provider"/>
+   <test id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_provider_failure_releases_credit_reservation_hold_with_zero_ledger_debit"/>
+   <test id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_provider_success_settles_atomically_and_debits_ledger_exactly_once"/>
+   <test id="Tests\Feature\Ai\Gateway\ProviderGatewayRateLimitAndSettlementTest::test_provider_transient_error_cleans_up_on_exhaustion"/>
+   <test id="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest::test_public_health_and_ping_endpoints_respond_with_ok"/>
+   <test id="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest::test_ai_responses_include_security_and_correlation_headers"/>
+   <test id="Tests\Feature\Ai\Infrastructure\EdgeSecurityAndHealthTest::test_foundation_killswitch_denies_ai_requests"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_discovery_is_filtered_by_token_and_server_allowlists"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_infrastructure_and_schedule_routes_are_mounted_by_the_application_provider"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_horizon_requires_installation_operator_allowlist_and_current_company_role"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_rejects_session_authentication_and_wildcard_tokens"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_rejects_expired_binding_origin_and_revoked_membership"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_scope_injection_fails_executor_and_write_alias_is_unavailable"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_initialization_notifications_limits_and_kill_switch"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_mcp_returns_same_authoritative_facts_as_native_executor_and_bounds_output"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_async_execution_queues_references_then_executes_once"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_worker_actor_context_restores_daemon_state_even_after_domain_failure"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_async_worker_revalidates_membership_and_skips_stale_version"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndAsyncInfrastructureTest::test_async_worker_respects_emergency_execution_switch_after_dispatch"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_mcp_is_default_off_and_rejects_unauthorized_dispatch"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_mcp_endpoint_policy_enforces_https_and_allowlist"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_mcp_endpoint_policy_prevents_ssrf_and_private_destinations"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpAndRagHardeningTest::test_document_knowledge_feature_flag_and_company_scoping"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpEndpointPolicyTest::test_https_host_port_and_url_components_are_closed"/>
+   <test id="Tests\Feature\Ai\Infrastructure\McpEndpointPolicyTest::test_private_reserved_and_mixed_dns_answers_are_rejected"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_allowlisted_read_uses_bound_scope_pinned_https_and_no_discovery_or_writes"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_sse_read_keeps_text_untrusted_and_does_not_execute_server_callbacks"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_unknown_servers_write_tools_and_foreign_branch_bindings_fail_before_http"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_discovery_uses_only_explicit_local_read_aliases_and_schema"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_configured_alias_runs_through_the_live_manifest_and_native_executor_once"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_scope_injection_unknown_arguments_and_wrong_types_fail_before_http"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_redirect_overflow_and_mismatched_rpc_responses_fail_without_leaking_remote_errors"/>
+   <test id="Tests\Feature\Ai\Infrastructure\OutboundMcpReadClientTest::test_revoked_branch_and_disabled_company_cannot_dispatch_external_reads"/>
+   <test id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_opt_in_is_required_and_tenant_or_branch_injection_is_denied"/>
+   <test id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_registered_schedule_api_creates_lists_and_cancels_owned_rule"/>
+   <test id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_stock_alert_run_is_durable_deduplicated_and_has_no_business_writes"/>
+   <test id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_scheduled_purchase_preparation_creates_pending_proposal_only_once_per_review"/>
+   <test id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_cancellation_and_permission_revocation_stop_queued_runs"/>
+   <test id="Tests\Feature\Ai\Infrastructure\ScheduledRulesTest::test_daily_caps_and_expiry_prevent_more_runs"/>
+   <test id="Tests\Feature\Ai\Infrastructure\TelemetryExportTest::test_export_contains_only_pseudonymous_model_metrics_and_exact_cost_estimate"/>
+   <test id="Tests\Feature\Ai\Infrastructure\TelemetryExportTest::test_export_is_disabled_by_default_and_dispatch_failure_does_not_escape"/>
+   <test id="Tests\Feature\Ai\Infrastructure\TelemetryExportTest::test_export_dispatch_uses_isolated_queue_and_rejects_unapproved_origin"/>
+   <test id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_erp_copilot_registers_inventory_tool_when_permitted"/>
+   <test id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_stock_summary_tool_executes_deterministically"/>
+   <test id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_stock_summary_groups_by_unit_without_mixing"/>
+   <test id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_stock_summary_denies_unauthorized_principal"/>
+   <test id="Tests\Feature\Ai\InventoryVerticalSliceTest::test_inventory_catalog_batches_queries_without_truncating_totals"/>
+   <test id="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest::test_silent_and_over_duration_audio_are_rejected_before_model_dispatch"/>
+   <test id="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest::test_valid_wav_transcribes_via_omni_and_flags_number_negation_and_telemetry"/>
+   <test id="Tests\Feature\Ai\Multimodal\AudioTranscriptionTest::test_non_english_speech_marks_unsupported_and_warns_user"/>
+   <test id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_image_extraction_routes_through_gateway_with_no_tools_and_detects_gstin_and_duplicates"/>
+   <test id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_multipage_pdf_partial_failure_and_carried_forward_line_suppression"/>
+   <test id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_incoming_supplier_invoice_normalizes_to_purchase_bill_and_companion_text_is_saved"/>
+   <test id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_company_mismatch_warning_emitted_when_buyer_does_not_match_active_company"/>
+   <test id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_all_pages_failed_returns_422_with_safe_diagnostic_categories_and_retryable_flag"/>
+   <test id="Tests\Feature\Ai\Multimodal\InvoiceExtractionTest::test_company_mismatch_blocks_action_staging_in_workflow_handoff"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_disabled_multimodal_rejects_upload_without_provider_calls_and_leaves_text_chat_working"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_remote_url_ssrf_and_unauthorized_user_are_rejected"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_pdf_with_embedded_javascript_or_actions_is_rejected_at_validation"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_private_storage_exif_stripping_preview_headers_and_cross_company_isolation"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_idempotency_daily_quota_and_cleanup_expiry_lifecycle"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_active_upload_reservation_spans_creation_and_blocks_concurrent_overflow"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_idempotency_key_with_different_file_content_is_rejected_with_409_conflict"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_pdf_with_active_content_beyond_512_kib_is_rejected"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_raw_image_url_and_base64_on_chat_are_rejected_with_422"/>
+   <test id="Tests\Feature\Ai\Multimodal\MediaUploadSecurityTest::test_gateway_rate_limit_settles_reserved_tokens_without_stranding"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_supplier_invoice_automatic_preparation_and_approved_execution_journey"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_duplicate_invoice_number_blocks_media_proposal_without_business_writes"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_missing_warehouse_defaults_to_active_branch_warehouse"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_edited_proposal_bumps_version_and_updates_totals"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_expired_proposal_fails_closed_on_approval"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_repeated_approval_button_clicks_are_idempotent"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_missing_product_enters_unified_clarification_card_and_posted_bill_mutation_blocks"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_unconfirmed_media_attached_to_chat_is_rejected_with_422"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_cross_modal_handoff_detects_conflicts_between_document_and_voice"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions"/>
+   <test id="Tests\Feature\Ai\Multimodal\NormalizedInputWorkflowTest::test_chat_rejects_attached_media_with_unresolved_conflicts"/>
+   <test id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_request_correlation_middleware_propagates_request_and_correlation_ids"/>
+   <test id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_telemetry_dispatcher_records_structured_operational_events"/>
+   <test id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_credit_reconciliation_verifies_ledger_and_period_counters"/>
+   <test id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_provider_attempt_reconciliation"/>
+   <test id="Tests\Feature\Ai\Observability\AiObservabilityAndCreditConsistencyTest::test_reconciling_unknown_attempt_reports_discrepancy"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_manufacturing_boms_tool_returns_recipe_components"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_open_orders_tool_lists_unfulfilled_sales_and_purchases"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_open_orders_lifecycle_calculates_remaining_balances_with_partial_billing_cancellation_and_returns"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_proposals_remain_quarantined_with_write_flags_enabled"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_sales_permission_does_not_grant_purchase_preview_or_orders"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_document_preview_tool_returns_verified_link"/>
+   <test id="Tests\Feature\Ai\OperationalAndActionProposalsTest::test_company_knowledge_does_not_invent_payment_terms"/>
+   <test id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_outbound_prompt_sanitization_strips_credentials_and_personal_identifiers"/>
+   <test id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_tax_critical_business_fields_are_strictly_preserved"/>
+   <test id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_prompt_injection_is_detected_and_neutralized_in_untrusted_input"/>
+   <test id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_ai_audit_recorder_redacts_sensitive_keys_recursively"/>
+   <test id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_approved_model_gateway_preflight_sanitizes_step_messages"/>
+   <test id="Tests\Feature\Ai\Privacy\AiDataPrivacyAndBoundaryTest::test_privacy_safe_error_envelopes_never_leak_sql_or_stack_traces"/>
+   <test id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_cross_company_isolation_blocks_user_from_accessing_foreign_company"/>
+   <test id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_unpermitted_role_is_denied_receivables_tool"/>
+   <test id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_company_level_killswitch_blocks_execution"/>
+   <test id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_input_schema_validation_rejects_out_of_bounds_and_unexpected_inputs"/>
+   <test id="Tests\Feature\Ai\ReceivablesSecurityAndAccuracyTest::test_audit_log_persists_redacted_records_in_database"/>
+   <test id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_erp_copilot_registers_only_authorized_tools"/>
+   <test id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_customer_outstanding_tool_executes_deterministically"/>
+   <test id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_customer_outstanding_tool_denies_unauthorized_principal"/>
+   <test id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_customer_outstanding_rejects_as_of_outside_financial_year"/>
+   <test id="Tests\Feature\Ai\ReceivablesVerticalSliceTest::test_sdk_arguments_reach_strict_validation_and_share_run_limit"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_non_admin_cannot_access_bootstrap_api"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_bootstrap_preview_does_not_mutate_database"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_change_request_increments_version_and_updates_preview"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_tampered_bootstrap_approval_rejected"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_installation_admin_creates_company_atomically"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_kill_switch_disables_bootstrap_endpoints"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_bootstrap_proposal_creation_prevents_unscoped_task_hijack"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_bootstrap_retry_prevents_receipt_leak_to_unauthorized_actor"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_installation_admin_creates_company_group"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_completed_bootstrap_task_proposal_is_immutable_and_cannot_be_recreated"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_company_creation_safely_reconciles_pre_committed_erp_company"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_unapproved_proposal_cannot_trigger_reconciliation_without_active_execution_claim"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_repeated_preview_creation_increments_version_and_preserves_monotonicity"/>
+   <test id="Tests\Feature\Ai\Setup\BootstrapCompanyCreationTest::test_company_provisioning_respects_installation_disabled_policy"/>
+   <test id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_unit_setup_creates_unit_atomically"/>
+   <test id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_product_setup_creates_product_atomically"/>
+   <test id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_supplier_setup_creates_supplier_and_tax_profile"/>
+   <test id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_customer_setup_creates_customer_and_tax_profile"/>
+   <test id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_cross_company_unit_or_category_reference_is_rejected"/>
+   <test id="Tests\Feature\Ai\Setup\ModeBSetupActionTest::test_source_state_change_fails_closed_before_product_setup_execution"/>
+   <test id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_inventory_warehouse_branch_isolation_and_fail_closed"/>
+   <test id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_customer_invoices_tool_returns_exact_invoices_and_matches_totals"/>
+   <test id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_customer_invoice_allocations_tool_reconstructs_payment_history_and_reversals"/>
+   <test id="Tests\Feature\Ai\SprintASecurityAndLineageTest::test_negative_cross_tenant_isolation_rejects_foreign_open_item"/>
+   <test id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_sales_summary_tool_returns_aggregates_and_top_products"/>
+   <test id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_payables_summary_tool_reconciles_supplier_dues"/>
+   <test id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_financial_statements_tool_generates_pnl_and_balance_sheet"/>
+   <test id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_gst_summary_tool_returns_tax_projections"/>
+   <test id="Tests\Feature\Ai\SprintBAndP2CapabilitiesTest::test_copilot_help_tool_returns_authorized_catalog"/>
+   <test id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_ai_entity_picker_script_exists_and_defines_methods"/>
+   <test id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_ai_workspace_css_includes_picker_and_responsive_styles"/>
+   <test id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_workspace_blade_includes_ai_entity_picker_script"/>
+   <test id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_ai_media_input_integrates_entity_picker"/>
+   <test id="Tests\Feature\Ai\UI\AiEntityPickerUiTest::test_entity_options_endpoint_serves_picker_payload"/>
+   <test id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_ai_master_create_script_exists_and_defines_panel"/>
+   <test id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_workspace_blade_includes_ai_master_create_script"/>
+   <test id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_missing_warehouse_creation_and_automatic_task_resumption"/>
+   <test id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_replay_with_stale_version_is_rejected"/>
+   <test id="Tests\Feature\Ai\UI\AiMasterCreateAndResumptionTest::test_user_without_warehouse_permission_is_forbidden"/>
+  </group>
+ </groups>
+</testSuite>

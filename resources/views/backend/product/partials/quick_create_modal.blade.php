@@ -15,7 +15,7 @@
     }
     $companyId = $companyId ?: session('company_id');
     $profileRow = $companyId ? \Illuminate\Support\Facades\DB::table('company_industry_settings')->where('company_id', $companyId)->first() : null;
-    $isOpticalProfile = ($profileRow && $profileRow->profile_key === 'opticals');
+    $isOpticalProfile = !empty($isOpticalProfile) || ($profileRow && $profileRow->profile_key === 'opticals') || \App\Services\Industry\IndustryProfileService::isOptical();
     $quickProductTypes = $isOpticalProfile ? \App\Models\ProductType::forCompany($companyId)->where('is_active', true)->orderBy('name')->get() : collect();
 @endphp
 
@@ -137,6 +137,7 @@
                                         <span class="validation-msg text-danger small"></span>
                                     </div>
                                 </div>
+                                @if($isOpticalProfile)
                                 <div class="col-md-4 col-12" id="quick-product-type-col" style="{{ $isOpticalProfile ? '' : 'display:none;' }}">
                                     <div class="form-group">
                                         <label>Type *</label>
@@ -153,6 +154,7 @@
                                         <span class="validation-msg text-danger small"></span>
                                     </div>
                                 </div>
+                                @endif
 
                                 <div id="quick-unit-container" class="col-12">
                                     <div class="row">
@@ -401,11 +403,13 @@
                             </label>
                             @endif
 
+                            @if($isOpticalProfile)
                             <label id="quick-optical-option" class="zolo-toggle-pill {{ $isOpticalProfile ? 'is-active' : '' }}" data-role="purple" for="quick-is-optical" title="Optical Lens Specifications">
                                 <input name="is_optical" type="checkbox" id="quick-is-optical" value="1" {{ $isOpticalProfile ? 'checked' : '' }}>
                                 <span class="zolo-switch-track"><span class="zolo-switch-thumb"></span></span>
                                 <span>Optical / Lens Rx</span>
                             </label>
+                            @endif
 
                             <label class="zolo-toggle-pill is-active" data-role="purple" for="quick_is_online" title="{{ __('db.Sell Online') }}">
                                 <input name="is_online" type="checkbox" id="quick_is_online" value="1" checked>
@@ -421,6 +425,7 @@
                         </div>
                     </div>
 
+                    @if($isOpticalProfile)
                     <!-- Optical Lens Specifications Card (Controlled by Optical / Lens Rx toggle) -->
                     <div class="zolo-product-grid mt-2" id="quick-optical-container" style="{{ $isOpticalProfile ? '' : 'display:none;' }}">
                         <div id="quick-optical-section" class="w-100">
@@ -462,6 +467,7 @@
                             </x-ui.section-box>
                         </div>
                     </div>
+                    @endif
 
                     <!-- Extended Conditional Details Container (4-column grid mirroring dedicated page) -->
                     <div class="product-extended-details-container mt-2 d-none">
@@ -626,7 +632,9 @@
 </div>
 
 <script>
-$(document).ready(function() {
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof $ === 'undefined') return;
+    @if($isOpticalProfile)
     $('#quick-is-optical').on('change', function () {
         var isChecked = $(this).is(':checked');
         if (isChecked) {
@@ -651,5 +659,6 @@ $(document).ready(function() {
     if ($('#quick-item-product-type').val()) {
         $('#quick-optical-type-label').text($('#quick-item-product-type option:selected').text());
     }
+    @endif
 });
 </script>

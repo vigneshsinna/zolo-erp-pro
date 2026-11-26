@@ -96,13 +96,7 @@ class ExpenseApiController extends BaseApiController
             ?? 1);
 
         if (!$context && Auth::check()) {
-            try {
-                $context = app(\App\Services\Platform\CompanyContextResolver::class)->resolve(Auth::id(), $companyId, $branchId);
-            } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
-                throw $e;
-            } catch (\Throwable $e) {
-                $context = null;
-            }
+            $context = app(\App\Services\Platform\CompanyContextResolver::class)->resolve(Auth::id(), $companyId, $branchId);
         }
         if ($context) {
             $companyId = $context->companyId;
@@ -129,7 +123,20 @@ class ExpenseApiController extends BaseApiController
             $branchId,
             $request->filled('warehouse_id') ? (int) $request->warehouse_id : null
         );
-        $accountId = $request->account_id ?? (DB::table('accounts')->where('company_id', $companyId)->where('is_active', true)->orderBy('id')->value('id') ?? 1);
+
+        $account = null;
+        if ($request->filled('account_id')) {
+            $account = DB::table('accounts')->where('company_id', $companyId)->where('id', (int) $request->account_id)->where('is_active', true)->first();
+            if (!$account) {
+                return $this->sendError('Validation Error', ['account_id' => ['The selected account is invalid or does not belong to the active company.']], 422);
+            }
+        } else {
+            $account = DB::table('accounts')->where('company_id', $companyId)->where('is_active', true)->orderBy('id')->first();
+            if (!$account) {
+                return $this->sendError('Configuration Error', ['account_id' => ['No active settlement account found for this company.']], 422);
+            }
+        }
+        $accountId = $account->id;
 
         $noteText = trim(($request->input('category') ? "[{$request->input('category')}] " : '') . ($request->note ?? 'Mobile Field Expense'));
         if ($request->latitude) {
@@ -148,37 +155,40 @@ class ExpenseApiController extends BaseApiController
             'document' => $documentName,
             'company_id' => $companyId,
         ]);
-        $expense->save();
 
-        // Post balanced double-entry journal entry using resolved leaf ChartOfAccount IDs
-        if ($context) {
-            try {
+        $creditAccId = $account->chart_of_account_id
+            ?? ($context ? $this->accountingService->getAccount('cash', $context)?->id : null)
+            ?? ($context ? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
+                ->where(fn ($q) => $q->where('code', '1010')->orWhere('control_type', 'cash'))->value('id') : null);
+
+        return DB::transaction(function () use ($expense, $refNo, $noteText, $amount, $context, $creditAccId) {
+            $expense->save();
+
+            // Post balanced double-entry journal entry atomically using resolved ChartOfAccount IDs
+            if ($context) {
                 $expAcc = $this->accountingService->getAccount('expense', $context)?->id
                     ?? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
                         ->where('type', 'expense')->orderBy('code')->value('id');
-                $cashAcc = $this->accountingService->getAccount('cash', $context)?->id
-                    ?? \App\Models\Accounting\ChartOfAccount::forCompany($context)->where('is_active', true)->whereDoesntHave('children')
-                        ->where(fn ($q) => $q->where('code', '1010')->orWhere('control_type', 'cash'))->value('id');
 
-                if ($expAcc && $cashAcc) {
-                    $this->accountingService->postJournalEntry([
-                        'entry_date' => date('Y-m-d'),
-                        'reference_type' => 'expense',
-                        'reference_id' => $expense->id,
-                        'reference_no' => $refNo,
-                        'description' => "Operational Expense [{$refNo}] - {$noteText}",
-                        'created_by' => Auth::id() ?? 1,
-                    ], [
-                        ['chart_of_account_id' => (int) $expAcc, 'debit' => $amount, 'credit' => 0, 'memo' => 'Operating Expense'],
-                        ['chart_of_account_id' => (int) $cashAcc, 'debit' => 0, 'credit' => $amount, 'memo' => 'Disbursed from Cash'],
-                    ], $context);
+                if (!$expAcc || !$creditAccId) {
+                    throw new \RuntimeException('Cannot post expense journal: missing expense or settlement ledger account.');
                 }
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('Mobile expense journal post warning: ' . $e->getMessage());
-            }
-        }
 
-        return $this->sendResponse($expense, 'Expense recorded successfully', 201);
+                $this->accountingService->postJournalEntry([
+                    'entry_date' => date('Y-m-d'),
+                    'reference_type' => 'expense',
+                    'reference_id' => $expense->id,
+                    'reference_no' => $refNo,
+                    'description' => "Operational Expense [{$refNo}] - {$noteText}",
+                    'created_by' => Auth::id() ?? 1,
+                ], [
+                    ['chart_of_account_id' => (int) $expAcc, 'debit' => $amount, 'credit' => 0, 'memo' => 'Operating Expense'],
+                    ['chart_of_account_id' => (int) $creditAccId, 'debit' => 0, 'credit' => $amount, 'memo' => 'Disbursed from Settlement Account'],
+                ], $context);
+            }
+
+            return $this->sendResponse($expense, 'Expense recorded successfully', 201);
+        });
     }
 
     /**

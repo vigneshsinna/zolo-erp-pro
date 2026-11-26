@@ -1,0 +1,41 @@
+﻿Filename,Title,Words,Bytes
+01_REPOSITORY_BASELINE.md,"01 â€” Verified Code Baseline, Risks and Starting Point",628,5382
+02_OPEN_SOURCE_STACK.md,02 â€” Laravel-Native Open Source Stack and Selection Record,515,4011
+03_ARCHITECTURE.md,03 â€” Current vs Target Architecture and Trust Boundaries,896,7685
+04_SECURITY_AND_TENANCY.md,"04 â€” Security, Tenancy, Privacy and Approval Model",833,6570
+05_INSTALLATION.md,"05 â€” Installation, Version Gates and Environment Setup",494,3775
+06_DATABASE_SCHEMA.md,"06 â€” Canonical AI, Task, Proposal and Audit Data Model",869,6963
+07_LARAVEL_AI_SDK.md,07 â€” Laravel AI SDK Usage and Copilot Compatibility Contract,587,4637
+08_ERP_TOOL_REGISTRY.md,08 â€” Shared ERP Read Tool Registry and Capability Conventions,575,4813
+09_FIRST_VERTICAL_SLICE.md,09 â€” Read-Only Receivables Copilot Vertical Slice and Regression Baseline,441,3555
+10_AGENT_CATALOG.md,10 â€” Agent Experiences vs Shared ERP Capabilities,604,4472
+11_MCP_INTEGRATION.md,11 â€” Optional Laravel MCP Integration with Shared ERP Guard,343,2484
+12_APPROVAL_AND_ACTIONS.md,12 â€” Human Approval and Transactional Action Safety,930,7325
+13_API_AND_FRONTEND.md,"13 â€” Authenticated Chat, Task API and AI Command Center Frontend",638,4855
+14_HORIZON_AND_QUEUES.md,"14 â€” Async Workers, Scheduling, Resumption and Recovery",533,4062
+15_RAG_AND_QDRANT.md,15 â€” RAG and Document Knowledge Retrieval (Optional),318,2585
+16_LANGFUSE_OBSERVABILITY.md,"16 â€” AI Observability, Telemetry, Costs and Business Audit",456,3334
+17_OPTIONAL_NEURON_OLLAMA.md,17 â€” Evaluation of Advanced Orchestration and Local Models,257,2008
+18_TESTING_AND_EVALUATIONS.md,"18 â€” Quality Engineering, Golden Data and Adversarial Tests",619,4868
+19_CI_CD_AND_PRODUCTION.md,"19 â€” CI, Staging, Release Controls and VPS Deployment",576,4445
+20_DELIVERY_BACKLOG.md,20 â€” Full Delivery Backlog and Dependency Gates,1250,8917
+21_ROLLOUT_AND_OPERATIONS.md,"21 â€” Product Rollout, Quotas, Monitoring and Support Runbook",532,4141
+22_DECISIONS_AND_ASSUMPTIONS.md,22 â€” Architecture Decision Log and Open Business Questions,843,6036
+23_CODING_AGENT_HANDOFF.md,"23 â€” Coding-Agent Handoff: Stabilize, Then Implement Action Foundation",637,5212
+24_SOURCE_REFERENCES.md,"24 â€” Source References, Provenance and Verification Rules",340,4625
+25_PRODUCT_VISION_AND_AUTONOMY.md,"25 â€” Product Vision, User Outcomes and Autonomy Policy",820,5925
+26_COMMAND_CENTER_UX.md,"26 â€” AI Command Center, Conversational Forms and Review UX",807,5999
+27_INTENT_AND_RECORD_RESOLUTION.md,"27 â€” Natural-Language Intent, Slot Filling and Record Resolution",692,5790
+28_ACTION_CAPABILITY_CATALOG.md,28 â€” Action Capability Registry and ERP Command Ownership,725,6463
+29_WORKFLOW_ORCHESTRATION.md,29 â€” Durable Natural-Language Workflow Orchestration and Recovery,652,5557
+30_PURCHASE_WORKFLOWS.md,"30 â€” Purchase Order, Goods Receipt and Supplier Bill Workflows",893,7047
+31_SALES_AND_COLLECTION_WORKFLOWS.md,"31 â€” Sales Quotation, Sales Order, Invoice and Collections",686,5740
+32_INVENTORY_FINANCE_MANUFACTURING.md,"32 â€” Inventory, Accounting, Manufacturing and Other High-Risk Effects",706,5695
+33_MASTERS_OTHER_MODULES.md,33 â€” Guided Master Data and Full ERP Module Onboarding,803,6068
+34_DOCUMENT_AND_BULK_ENTRY.md,"34 â€” Document Extraction, Matching, Excel/CSV Bulk Entry and Error Review",629,5082
+35_SCENARIO_EVALUATION_CATALOG.md,"35 â€” End-to-End Acceptance Scenarios, Metrics and Traceability",948,6704
+36_REPLACEMENT_MIGRATION_AND_RELEASE_GATES.md,36 â€” Replacing the Old Documents and Safely Migrating the Product,945,7482
+37_GUIDED_INITIAL_SETUP_AGENT.md,37 â€” Guided Initial ERP Setup Agent: Company to Business Readiness,1165,9263
+38_TRANSACTION_LIFECYCLE_ENFORCEMENT.md,38 â€” Mandatory ERP Transaction Lifecycle and AI Edit Restrictions,975,7393
+39_INITIAL_SETUP_CAPABILITY_AND_TEST_MATRIX.md,"39 â€” Initial Setup Service Inventory, Capability Map and Acceptance Matrix",1948,13357
+README.md,zoloERP â€” AI Operating Layer: Master Documentation Index,1022,8892

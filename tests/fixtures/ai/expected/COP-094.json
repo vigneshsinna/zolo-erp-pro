@@ -1,0 +1,14 @@
+{
+    "scenario_id": "COP-094",
+    "workflow_family": "Corrections & Proposal Revisions",
+    "action_key": "proposal.change_request.v1",
+    "input_text": "In draft proposal PO-14, change quantity of line 1 from 50 to 75 and warehouse to Central Depot.",
+    "expected_slots": {
+        "target_index": 14,
+        "is_draft": true
+    },
+    "expected_status": "proposal_created",
+    "no_financial_writes_before_approval": true,
+    "expected_provider_calls": 1,
+    "expected_credits_approx": 8
+}

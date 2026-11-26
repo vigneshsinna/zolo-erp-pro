@@ -1689,7 +1689,7 @@ body.commercial-screen-lock.topbar-hidden .reveal-topbar-strip {
     flex: 1;
 }
 
-.desk-bill-list-panel .side-filter-group .bootstrap-select > .btn.dropdown-toggle {
+.desk-bill-list-panel .side-filter-group .bootstrap-select>.btn.dropdown-toggle {
     height: 24px !important;
     font-size: 11px !important;
     padding: 1px 6px !important;
@@ -4261,11 +4261,11 @@ body.dark-mode #quick-create-party-modal .compact-field-block .form-control:focu
     }
 
     .doc-primary-fields .fields-compact-row.doc-row-b {
-        grid-template-columns: max-content max-content minmax(160px, 1.4fr) minmax(100px, .8fr) minmax(130px, 1.1fr) minmax(200px, 1.8fr);
+        grid-template-columns: max-content max-content max-content minmax(240px, 1.6fr) minmax(120px, .9fr) minmax(180px, 1.5fr);
     }
 
     .doc-primary-fields .fields-compact-row.doc-row-b.has-biller {
-        grid-template-columns: max-content max-content minmax(150px, 1.3fr) minmax(95px, .7fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(190px, 1.6fr);
+        grid-template-columns: max-content max-content max-content minmax(170px, 1.2fr) minmax(120px, 1fr) minmax(110px, .9fr) minmax(130px, 1fr) minmax(200px, 1.5fr);
     }
 }
 
@@ -4329,11 +4329,18 @@ body.dark-mode .doc-primary-fields .doc-segment .segment-btn.active {
 
 @container billhead (max-width: 1180px) {
 
-    .doc-primary-fields .fields-compact-row.doc-row-a,
-    .doc-primary-fields .fields-compact-row.doc-row-b {
+    .doc-primary-fields .fields-compact-row.doc-row-a {
         display: flex !important;
         flex-wrap: wrap;
         align-items: flex-end;
+    }
+
+    .doc-primary-fields .fields-compact-row.doc-row-b {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: flex-end !important;
+        gap: 6px !important;
+        overflow-x: auto;
     }
 
     .doc-primary-fields .fields-compact-row>.field-compact-item {
@@ -4349,11 +4356,26 @@ body.dark-mode .doc-primary-fields .doc-segment .segment-btn.active {
     }
 
     .doc-primary-fields .doc-row-b>.field-compact-item:not(.doc-seg-item) {
-        flex: 1 1 100px;
+        flex: 1 1 95px;
+    }
+
+    .doc-primary-fields .doc-row-b>.field-compact-item.u-w-160px {
+        width: auto !important;
+        min-width: 85px !important;
+        max-width: 120px !important;
+        flex: 1 1 90px !important;
+    }
+
+    .doc-primary-fields .doc-row-b>.field-compact-item.u-w-230px {
+        width: auto !important;
+        min-width: 105px !important;
+        max-width: 160px !important;
+        flex: 1.2 1 115px !important;
     }
 
     .doc-primary-fields .doc-segment .segment-btn {
-        padding: 0 8px;
+        padding: 0 7px;
+        font-size: 11.5px;
     }
 
     .doc-primary-fields .fields-compact-row>.doc-seg-item {
@@ -4361,11 +4383,10 @@ body.dark-mode .doc-primary-fields .doc-segment .segment-btn.active {
     }
 
     .doc-primary-fields .doc-row-b>.field-compact-item:not(.doc-seg-item):not(.doc-terms) {
-        max-width: 260px;
+        max-width: 240px;
     }
 
-    .doc-primary-fields .doc-party-details,
-    .doc-primary-fields .doc-terms {
+    .doc-primary-fields .doc-party-details {
         flex: 1 1 100% !important;
         display: grid !important;
         grid-template-columns: 108px minmax(0, 1fr);
@@ -4373,7 +4394,12 @@ body.dark-mode .doc-primary-fields .doc-segment .segment-btn.active {
     }
 
     .doc-primary-fields .doc-terms {
-        flex: 1 1 340px !important;
+        flex: 1.4 1 190px !important;
+        min-width: 180px !important;
+        max-width: 270px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
     }
 
     .doc-primary-fields .doc-party-details>label,
@@ -4601,9 +4627,10 @@ table.desk-grid-table td .bootstrap-select {
     min-height: 0 !important;
     width: 100% !important;
 }
-.desk-grid-table .bootstrap-select > .btn.dropdown-toggle,
-.order-item-row .bootstrap-select > .btn.dropdown-toggle,
-table.desk-grid-table td .bootstrap-select > .btn.dropdown-toggle {
+
+.desk-grid-table .bootstrap-select>.btn.dropdown-toggle,
+.order-item-row .bootstrap-select>.btn.dropdown-toggle,
+table.desk-grid-table td .bootstrap-select>.btn.dropdown-toggle {
     height: 28px !important;
     font-size: 12px !important;
     padding: 3px 8px !important;
@@ -4666,19 +4693,28 @@ table.desk-grid-table td .bootstrap-select > .btn.dropdown-toggle {
 
 /* GST place of supply + RCM: the wrapper is a control row, not a label line, so it keeps full control height
    (the 10px label-line rule hid the "GST · Place of supply" label behind the select). */
+.doc-primary-fields #gst-entry-field {
+    min-width: 220px;
+}
+
 .doc-primary-fields #gst-entry-field>.d-flex {
     height: var(--doc-h) !important;
     margin-bottom: 0 !important;
+    gap: 8px !important;
 }
 
 .doc-primary-fields #gst-entry-field>.d-flex>select {
     flex: 1 1 auto;
-    min-width: 0;
+    min-width: 140px;
 }
 
 .doc-primary-fields #gst-entry-field>.d-flex>label {
     flex: 0 0 auto;
     margin: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
 }
 
 .doc-primary-fields #gst-entry-field>label {
@@ -4690,8 +4726,9 @@ table.desk-grid-table td .bootstrap-select > .btn.dropdown-toggle {
 
 @container billhead (max-width: 1180px) {
     .doc-primary-fields .doc-row-b>#gst-entry-field {
-        flex: 1.4 1 190px !important;
-        min-width: 190px;
+        flex: 1.5 1 220px !important;
+        min-width: 210px !important;
+        max-width: none !important;
     }
 }
 
@@ -4905,13 +4942,45 @@ tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]):hover .
 }
 
 @media (hover: none) {
+
     .row-item-input-wrap.has-product .btn-quick-edit-product,
     tr[data-product-id]:not([data-product-id=""]):not([data-product-id="0"]) .row-item-input-wrap .btn-quick-edit-product {
         opacity: 1;
         pointer-events: auto;
         transform: translateY(-50%) scale(1);
     }
+
     .row-item-input-wrap.has-product .row-item-name {
         padding-right: 52px;
     }
+}
+
+/* Universal Document Reversal Modal */
+.reversal-modal-content {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.reversal-close-btn {
+    line-height: 1;
+}
+
+.reversal-doc-label {
+    letter-spacing: 0.5px;
+}
+
+.reversal-lead-text {
+    line-height: 1.5;
+}
+
+.reversal-notice-box {
+    border-radius: 8px;
+}
+
+.reversal-preview-list {
+    line-height: 1.8;
+}
+
+.reversal-disclaimer {
+    font-size: 11px;
 }

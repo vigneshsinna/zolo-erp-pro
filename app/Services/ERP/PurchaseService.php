@@ -170,10 +170,17 @@ class PurchaseService
                 $batchId = $item['product_batch_id'] ?? null;
                 $batchNo = $item['batch']['batch_no'] ?? ($item['batch_no'] ?? ($data['lot_number'] ?? null));
                 if (!$batchId && !empty($batchNo)) {
-                    // The shared commercial path validates the optional batch metadata before deferring posting.
-                    $batch = \App\Models\ProductBatch::firstOrCreateOwned($context->companyId, $productId, (string) $batchNo, [
-                        'expired_date' => $item['batch']['expired_date'] ?? ($item['expired_date'] ?? null),
-                    ] + ($deferPosting ? (array) ($item['batch'] ?? []) : []));
+                    $batchData = (array) ($item['batch'] ?? []);
+                    $batchAttributes = [
+                        'expired_date' => $batchData['expired_date'] ?? ($item['expired_date'] ?? null),
+                        'mfg_date' => $batchData['mfg_date'] ?? ($item['mfg_date'] ?? null),
+                        'mrp' => isset($batchData['mrp']) ? (float) $batchData['mrp'] : (isset($item['mrp']) ? (float) $item['mrp'] : null),
+                    ];
+                    $expiryRequired = app(\App\Services\Platform\CapabilityService::class)->enabled('inventory.batch_expiry', $context->companyId);
+                    if ($expiryRequired && empty($batchAttributes['expired_date'])) {
+                        throw new InvalidArgumentException("New batch {$batchNo} needs an expiry date.");
+                    }
+                    $batch = \App\Models\ProductBatch::firstOrCreateOwned($context->companyId, $productId, (string) $batchNo, $batchAttributes);
                     $batchId = $batch->id;
                 }
 

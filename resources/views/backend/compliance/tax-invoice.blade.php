@@ -106,7 +106,8 @@ td, th { padding: 2px 4px; vertical-align: top; }
 </style></head><body>
 {{-- Added by script so PDF and e-mail copies never show it. --}}
 <script>document.write('<button type="button" class="print-action" onclick="window.print()">Print</button>');</script>
-@foreach($profile['copies'] as $copy)
+@php $copiesList = $profile['copies'] ?? ($copies ?? ['Original']); @endphp
+@foreach($copiesList as $copy)
 <div class="sheet copy">
     @if($d['reversed_at'] ?? null)<div class="reversed">REVERSED {{ $d['reversed_at'] }}</div>@endif
     <table class="top"><tr>
@@ -142,6 +143,17 @@ td, th { padding: 2px 4px; vertical-align: top; }
                 @if($d['party_state'] ?? null)<div>State: {{ $state($d['party_state']) }}</div>@endif
                 @if($contact['phone'] ?? null)<div>Ph: {{ $contact['phone'] }}</div>@endif
                 <div><strong>GSTIN: {{ $d['party_gstin'] ?: 'Unregistered' }}</strong></div>
+                @if(!empty($d['end_user_name']))
+                    <div style="margin-top: 3px; font-size: 8pt; color: #444;">
+                        <strong>Patient / End User:</strong> {{ $d['end_user_name'] }}
+                        @if(!empty($d['end_user_phone'])) · Ph: {{ $d['end_user_phone'] }} @endif
+                    </div>
+                @endif
+                @if(!empty($d['customer_order_no']))
+                    <div style="font-size: 8pt; color: #444;">
+                        <strong>Customer Order No:</strong> {{ $d['customer_order_no'] }}
+                    </div>
+                @endif
                 @if($d['ship_to'] ?? null)
                     <div class="label" style="margin-top:4px">Shipped to</div>
                     <div class="party-name">{{ $d['ship_to']['name'] }}</div>
@@ -181,7 +193,20 @@ td, th { padding: 2px 4px; vertical-align: top; }
             <tr>
                 <td class="c">{{ $i + 1 }}</td>
                 <td><span class="desc">{{ $line['name'] }}</span>
-                    @if($dimension = $line['dimensions'] ?? null)<div class="small">Piece {{ $dimension['identity_no'] ?? '' }} · {{ $dimension['length'] }} × {{ $dimension['width'] }} × {{ $dimension['thickness'] }} {{ $dimension['dimension_uom'] }}</div>@endif</td>
+                    @if($dimension = $line['dimensions'] ?? null)<div class="small">Piece {{ $dimension['identity_no'] ?? '' }} · {{ $dimension['length'] }} × {{ $dimension['width'] }} × {{ $dimension['thickness'] }} {{ $dimension['dimension_uom'] }}</div>@endif
+                    @php
+                        $hasRx = (!empty($line['sph']) || !empty($line['cyl']) || !empty($line['axis']) || !empty($line['addition']) || !empty($line['dia']) || !empty($line['lr']));
+                    @endphp
+                    @if($hasRx)
+                        <div class="small" style="font-size: 7.5pt; color: #2563eb; margin-top: 2px;">
+                            @if(!empty($line['lr']))<strong>Eye:</strong> {{ strtoupper($line['lr']) }} @endif
+                            @if($line['sph'] !== null && $line['sph'] !== '')· <strong>SPH:</strong> {{ $line['sph'] }} @endif
+                            @if($line['cyl'] !== null && $line['cyl'] !== '')· <strong>CYL:</strong> {{ $line['cyl'] }} @endif
+                            @if($line['axis'] !== null && $line['axis'] !== '')· <strong>AXIS:</strong> {{ $line['axis'] }}&deg; @endif
+                            @if($line['addition'] !== null && $line['addition'] !== '')· <strong>ADD:</strong> {{ $line['addition'] }} @endif
+                            @if(!empty($line['dia']))· <strong>DIA:</strong> {{ $line['dia'] }}mm @endif
+                        </div>
+                    @endif</td>
                 <td class="c">{{ $line['hsn_sac'] ?: '—' }}</td>
                 <td class="c">{{ $line['date'] ?? (!empty($d['supplier_bill_date']) ? \Carbon\Carbon::parse($d['supplier_bill_date'])->format('d-m-Y') : (!empty($d['date']) ? \Carbon\Carbon::parse($d['date'])->format('d-m-Y') : '—')) }}</td>
                 <td class="c">{{ $line['lot_no'] ?? '—' }}</td>
@@ -213,7 +238,20 @@ td, th { padding: 2px 4px; vertical-align: top; }
             <tr>
                 <td class="c">{{ $i + 1 }}</td>
                 <td><span class="desc">{{ $line['name'] }}</span>
-                    @if($dimension = $line['dimensions'] ?? null)<div class="small">Piece {{ $dimension['identity_no'] ?? '' }} · {{ $dimension['length'] }} × {{ $dimension['width'] }} × {{ $dimension['thickness'] }} {{ $dimension['dimension_uom'] }} · CFT {{ $dimension['line_cft'] ?? $dimension['computed_cft'] }} · CBM {{ $dimension['line_cbm'] ?? $dimension['computed_cbm'] }} · {{ $dimension['formula_version'] }}</div>@endif</td>
+                    @if($dimension = $line['dimensions'] ?? null)<div class="small">Piece {{ $dimension['identity_no'] ?? '' }} · {{ $dimension['length'] }} × {{ $dimension['width'] }} × {{ $dimension['thickness'] }} {{ $dimension['dimension_uom'] }} · CFT {{ $dimension['line_cft'] ?? $dimension['computed_cft'] }} · CBM {{ $dimension['line_cbm'] ?? $dimension['computed_cbm'] }} · {{ $dimension['formula_version'] }}</div>@endif
+                    @php
+                        $hasRx = (!empty($line['sph']) || !empty($line['cyl']) || !empty($line['axis']) || !empty($line['addition']) || !empty($line['dia']) || !empty($line['lr']));
+                    @endphp
+                    @if($hasRx)
+                        <div class="small" style="font-size: 7.5pt; color: #2563eb; margin-top: 2px;">
+                            @if(!empty($line['lr']))<strong>Eye:</strong> {{ strtoupper($line['lr']) }} @endif
+                            @if($line['sph'] !== null && $line['sph'] !== '')· <strong>SPH:</strong> {{ $line['sph'] }} @endif
+                            @if($line['cyl'] !== null && $line['cyl'] !== '')· <strong>CYL:</strong> {{ $line['cyl'] }} @endif
+                            @if($line['axis'] !== null && $line['axis'] !== '')· <strong>AXIS:</strong> {{ $line['axis'] }}&deg; @endif
+                            @if($line['addition'] !== null && $line['addition'] !== '')· <strong>ADD:</strong> {{ $line['addition'] }} @endif
+                            @if(!empty($line['dia']))· <strong>DIA:</strong> {{ $line['dia'] }}mm @endif
+                        </div>
+                    @endif</td>
                 <td class="c">{{ $line['hsn_sac'] ?: '—' }}</td>
                 <td class="c">{{ $qty($line['tax_rate']) }}%</td>
                 <td class="num">{{ $qty($line['qty']) }} {{ $line['unit'] ?? '' }}</td>
@@ -259,6 +297,8 @@ td, th { padding: 2px 4px; vertical-align: top; }
                     @endforeach
                     @if($otherTax != 0)<tr><td>Tax</td><td class="num">{{ $money($otherTax) }}</td></tr>@endif
                     @if($d['shipping'] > 0)<tr><td>Freight</td><td class="num">{{ $money($d['shipping']) }}</td></tr>@endif
+                    @if(($d['fitting_charge'] ?? 0) > 0)<tr><td>Fitting Charge</td><td class="num">{{ $money($d['fitting_charge']) }}</td></tr>@endif
+                    @if(($d['tinting_cost'] ?? 0) > 0)<tr><td>Tinting Cost</td><td class="num">{{ $money($d['tinting_cost']) }}</td></tr>@endif
                     @if(!$gst && $d['discount'] > 0)<tr><td>Discount</td><td class="num">-{{ $money($d['discount']) }}</td></tr>@endif
                     @if($roundOff != 0)<tr><td>Round Off</td><td class="num">{{ $roundOff > 0 ? '+' : '' }}{{ $money($roundOff) }}</td></tr>@endif
                     <tr class="grand"><td>Grand Total</td><td class="num">{{ $d['currency'] === 'INR' ? '' : $d['currency'].' ' }}{{ $money($d['grand_total']) }}</td></tr>

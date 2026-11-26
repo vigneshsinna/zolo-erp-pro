@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-032",
+    "risk_group": "Closed financial year or expired period",
+    "expected_error_code": "PERIOD_CLOSED",
+    "expected_http_status": 422,
+    "input_text": "Record credit note adjusting sales voucher dated 2022-08-10 in closed tax period.",
+    "expected_no_erp_writes": true
+}

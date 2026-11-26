@@ -55,6 +55,23 @@ class CommercialDraftService
         return $query->orderBy('id')->get(['id', 'version', 'title', 'party_id', 'party_name_snapshot', 'created_at', 'updated_at']);
     }
 
+    public function metaWithPayload(\Illuminate\Database\Query\Builder $query): \Illuminate\Support\Collection
+    {
+        return $query->orderBy('id')->get(['id', 'version', 'title', 'party_id', 'party_name_snapshot', 'payload_json', 'created_at', 'updated_at'])
+            ->map(function ($row) {
+                return [
+                    'id' => $row->id,
+                    'version' => $row->version,
+                    'title' => $row->title,
+                    'party_id' => $row->party_id,
+                    'party_name_snapshot' => $row->party_name_snapshot,
+                    'payload' => json_decode($row->payload_json, true),
+                    'created_at' => $row->created_at,
+                    'updated_at' => $row->updated_at,
+                ];
+            });
+    }
+
     public function save(string $kind, array $payload, ?int $id, int $version, CompanyContext $context, int $actor, array $meta = []): array
     {
         app(CommercialPermission::class)->assert(self::permission($kind), $context, $actor);

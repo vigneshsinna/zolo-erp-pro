@@ -45,7 +45,7 @@
             @endif
             @if($isAdmin)
                 <button class="cp-btn" type="button" data-open="dlg-group">New group</button>
-                <button class="cp-btn cp-btn-primary" type="button" data-open="dlg-company">New company</button>
+                <a href="{{ route('company.create') }}" class="cp-btn cp-btn-primary">+ New company</a>
             @endif
         </div>
     </div>
@@ -72,7 +72,7 @@
                     <span>{{ count($section['companies']) }} {{ \Illuminate\Support\Str::plural('company', count($section['companies'])) }}@if($section['code']) · <code>{{ $section['code'] }}</code>@endif</span>
                 </div>
                 @if($section['manageable'])
-                    <button class="cp-link" type="button" data-open="dlg-company" data-group="{{ $section['id'] }}">+ Add company</button>
+                    <a class="cp-link" href="{{ route('company.create', $section['id'] ? ['group_id' => $section['id']] : []) }}">+ Add company</a>
                     @unless($section['independent'])
                         <button class="cp-link" type="button" data-edit-group="{{ json_encode(['id' => $section['id'], 'name' => $section['name'], 'code' => $section['code']]) }}">Edit group</button>
                         <button class="cp-link cp-link-danger" type="button" data-delete-group="{{ json_encode(['id' => $section['id'], 'name' => $section['name'], 'count' => count($section['companies'])]) }}">Delete group</button>

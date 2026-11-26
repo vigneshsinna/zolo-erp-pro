@@ -29,10 +29,79 @@ class JobWorkService
     public function configureProcess(array $data, CompanyContext $context, int $actor): int
     {
         app(OperationPosting::class)->authorize('operations.job_work', 'job_work.manage', $context, $actor);
-        $data = validator($data, ['code' => 'required|string|max:60|regex:/^[A-Z0-9_-]+$/D', 'name' => 'required|string|max:100',
-            'max_loss_percent' => 'required|numeric|min:0|max:100', 'conversion' => 'required|boolean',
-            'quantity_basis' => 'sometimes|in:base_qty,volume_cbm', 'output_product_id' => 'nullable|integer|min:1',
-            'service_product_id' => 'nullable|integer|min:1', 'service_rate' => 'nullable|numeric|min:0|max:99999999'])->validate();
+        $data = validator($data, [
+            'code' => 'required|string|max:60|regex:/^[A-Z0-9_-]+$/D',
+            'name' => 'required|string|max:100',
+            'max_loss_percent' => 'required|numeric|min:0|max:100',
+            'conversion' => 'required|boolean',
+            'quantity_basis' => 'sometimes|in:base_qty,volume_cbm',
+            'output_product_id' => 'nullable|integer|min:1',
+            'service_product_id' => 'nullable|integer|min:1',
+            'service_rate' => 'nullable|numeric|min:0|max:99999999',
+            'create_service_product' => 'sometimes|boolean',
+            'service_product_name' => 'nullable|string|max:150',
+            'service_product_code' => 'nullable|string|max:100',
+        ])->validate();
+
+        // If the user requested to create this policy service as a Product for later use:
+        if (!empty($data['create_service_product']) && empty($data['service_product_id'])) {
+            $serviceCode = !empty($data['service_product_code'])
+                ? trim((string) $data['service_product_code'])
+                : 'SRV-' . $data['code'];
+            $serviceName = !empty($data['service_product_name'])
+                ? trim((string) $data['service_product_name'])
+                : ($data['name'] . ' Processing Service');
+            $serviceRate = isset($data['service_rate']) ? (float) $data['service_rate'] : 0.0;
+
+            $existingService = \App\Models\Product::forCompany($context)
+                ->where('code', $serviceCode)
+                ->first();
+
+            if ($existingService) {
+                $existingService->update([
+                    'type' => 'service',
+                    'name' => $serviceName,
+                    'cost' => $serviceRate,
+                    'price' => $serviceRate,
+                    'is_active' => true,
+                ]);
+                $data['service_product_id'] = $existingService->id;
+            } else {
+                $categoryId = DB::table('categories')
+                    ->where('company_id', $context->companyId)
+                    ->where('is_active', true)
+                    ->value('id') ?? DB::table('categories')->where('is_active', true)->value('id') ?? 1;
+
+                $unitId = DB::table('units')
+                    ->where('company_id', $context->companyId)
+                    ->where('is_active', true)
+                    ->value('id') ?? DB::table('units')->where('is_active', true)->value('id') ?? 1;
+
+                $productData = [
+                    'company_id' => $context->companyId,
+                    'name' => $serviceName,
+                    'code' => $serviceCode,
+                    'type' => 'service',
+                    'barcode_symbology' => 'C128',
+                    'category_id' => $categoryId,
+                    'unit_id' => $unitId,
+                    'purchase_unit_id' => $unitId,
+                    'sale_unit_id' => $unitId,
+                    'cost' => $serviceRate,
+                    'price' => $serviceRate,
+                    'qty' => 0,
+                    'hsn_code' => '9988',
+                    'is_active' => true,
+                ];
+                if (\Illuminate\Support\Facades\Schema::hasColumn('products', 'product_usage')) {
+                    $productData['product_usage'] = 'composite';
+                }
+
+                $product = \App\Models\Product::forceCreate($productData);
+                $data['service_product_id'] = $product->id;
+            }
+        }
+
         foreach (['output_product_id' => 'standard', 'service_product_id' => 'service'] as $field => $type) {
             if (empty($data[$field])) { $data[$field] = null; continue; }
             $product = app(CompanyWriteGuard::class)->owned(\App\Models\Product::class, $data[$field], $context, $field);
@@ -51,8 +120,11 @@ class JobWorkService
             }
             // Explicit configuration activates the conservative, initially disabled Bleaching preset.
             if ($data['code'] === 'BLEACHING') $data['is_active'] = true;
+            $insertData = array_intersect_key($data, array_flip([
+                'code', 'name', 'max_loss_percent', 'conversion', 'quantity_basis', 'output_product_id', 'service_product_id', 'service_rate', 'is_active'
+            ]));
             DB::table('process_types')->updateOrInsert(['company_id' => $context->companyId, 'code' => $data['code']],
-                $data + ['created_at' => now(), 'updated_at' => now()]);
+                $insertData + ['created_at' => now(), 'updated_at' => now()]);
             $id = (int) DB::table('process_types')->where('company_id', $context->companyId)->where('code', $data['code'])->value('id');
             app(OperationPosting::class)->audit('process_configure', $id, $context, $actor, $data);
             return $id;

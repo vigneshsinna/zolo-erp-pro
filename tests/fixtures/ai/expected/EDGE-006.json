@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-006",
+    "risk_group": "Ambiguous duplicate supplier candidates",
+    "expected_error_code": "AMBIGUOUS_ENTITY",
+    "expected_http_status": 422,
+    "input_text": "Create PO for Sharma Enterprises for 50 bags of industrial starch powder.",
+    "expected_no_erp_writes": true
+}

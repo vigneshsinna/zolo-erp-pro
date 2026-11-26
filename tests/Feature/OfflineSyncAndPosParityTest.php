@@ -42,18 +42,22 @@ class OfflineSyncAndPosParityTest extends TestCase
         ]);
 
         if (Schema::hasTable('company_branches')) {
-            DB::table('company_branches')->updateOrInsert(['id' => 2], [
-                'company_id' => 2,
-                'code' => 'TMWS-MAIN',
-                'name' => 'TMWS Main Branch',
-                'is_active' => true,
-            ]);
-            DB::table('company_branches')->updateOrInsert(['id' => 3], [
-                'company_id' => 3,
-                'code' => 'DKW-MAIN',
-                'name' => 'DK Waters Main Branch',
-                'is_active' => true,
-            ]);
+            if (!DB::table('company_branches')->where('company_id', 2)->exists()) {
+                DB::table('company_branches')->insert([
+                    'company_id' => 2,
+                    'code' => 'TMWS-MAIN',
+                    'name' => 'TMWS Main Branch',
+                    'is_active' => true,
+                ]);
+            }
+            if (!DB::table('company_branches')->where('company_id', 3)->exists()) {
+                DB::table('company_branches')->insert([
+                    'company_id' => 3,
+                    'code' => 'DKW-MAIN',
+                    'name' => 'DK Waters Main Branch',
+                    'is_active' => true,
+                ]);
+            }
         }
 
         if (Schema::hasTable('fiscal_years')) {
@@ -71,18 +75,98 @@ class OfflineSyncAndPosParityTest extends TestCase
             }
         }
 
+        if (Schema::hasTable('accounts')) {
+            foreach ([2, 3] as $cid) {
+                if (!DB::table('accounts')->where('company_id', $cid)->exists()) {
+                    DB::table('accounts')->insert([
+                        'account_no' => "ACC-CO{$cid}-01",
+                        'name' => "Company {$cid} Default Cash Account",
+                        'initial_balance' => 0,
+                        'total_balance' => 0,
+                        'is_active' => true,
+                        'company_id' => $cid,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+        }
+
+        if (Schema::hasTable('chart_of_accounts')) {
+            foreach ([2, 3] as $cid) {
+                if (!DB::table('chart_of_accounts')->where('company_id', $cid)->where('type', 'expense')->exists()) {
+                    DB::table('chart_of_accounts')->insert([
+                        'code' => "5010-CO{$cid}",
+                        'name' => "Operating Expense Co{$cid}",
+                        'type' => 'expense',
+                        'sub_type' => 'operating_expense',
+                        'company_id' => $cid,
+                        'is_active' => true,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+                if (!DB::table('chart_of_accounts')->where('company_id', $cid)->where('type', 'asset')->where(function ($q) {
+                    $q->where('sub_type', 'cash')->orWhere('control_type', 'cash');
+                })->exists()) {
+                    $cashId = DB::table('chart_of_accounts')->insertGetId([
+                        'code' => "1010-CO{$cid}",
+                        'name' => "Cash Co{$cid}",
+                        'type' => 'asset',
+                        'sub_type' => 'cash',
+                        'control_type' => 'cash',
+                        'company_id' => $cid,
+                        'is_active' => true,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    if (Schema::hasTable('accounts')) {
+                        DB::table('accounts')->where('company_id', $cid)->update(['chart_of_account_id' => $cashId]);
+                    }
+                }
+            }
+        }
+
+        if (!Schema::hasTable('water_can_plant_intakes')) {
+            Schema::create('water_can_plant_intakes', function (\Illuminate\Database\Schema\Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('route_id')->nullable();
+                $table->unsignedInteger('driver_id')->nullable();
+                $table->string('plant_name')->nullable();
+                $table->integer('load_sequence')->default(1);
+                $table->integer('cans_loaded')->default(0);
+                $table->decimal('purchase_rate_per_can', 10, 2)->default(0);
+                $table->string('slip_number')->nullable();
+                $table->string('slip_photo')->nullable();
+                $table->integer('odometer_km')->default(0);
+                $table->decimal('latitude', 10, 7)->nullable();
+                $table->decimal('longitude', 10, 7)->nullable();
+                $table->dateTime('intake_time')->nullable();
+                $table->text('notes')->nullable();
+                $table->timestamps();
+            });
+        }
+
         $admin = User::where('name', 'admin')->first() ?? User::find(1);
         if ($admin) {
             foreach ([1, 2, 3, 4] as $cid) {
-                DB::table('company_user')->updateOrInsert(['company_id' => $cid, 'user_id' => $admin->id], [
-                    'is_default' => $cid === 1 ? 1 : 0,
-                ]);
+                if (DB::table('companies')->where('id', $cid)->exists()) {
+                    DB::table('company_user')->updateOrInsert(['company_id' => $cid, 'user_id' => $admin->id], [
+                        'is_default' => $cid === 1 ? 1 : 0,
+                    ]);
+                }
             }
             if (Schema::hasTable('company_user_branches')) {
                 DB::table('company_user_branches')->where('company_id', 1)->where('user_id', $admin->id)->delete();
                 DB::table('company_user_branches')->insert(['company_id' => 1, 'user_id' => $admin->id, 'branch_id' => 1]);
-                DB::table('company_user_branches')->updateOrInsert(['company_id' => 2, 'user_id' => $admin->id, 'branch_id' => 2], []);
-                DB::table('company_user_branches')->updateOrInsert(['company_id' => 3, 'user_id' => $admin->id, 'branch_id' => 3], []);
+                $b2 = DB::table('company_branches')->where('company_id', 2)->value('id');
+                if ($b2) {
+                    DB::table('company_user_branches')->updateOrInsert(['company_id' => 2, 'user_id' => $admin->id, 'branch_id' => $b2], []);
+                }
+                $b3 = DB::table('company_branches')->where('company_id', 3)->value('id');
+                if ($b3) {
+                    DB::table('company_user_branches')->updateOrInsert(['company_id' => 3, 'user_id' => $admin->id, 'branch_id' => $b3], []);
+                }
             }
         }
 
@@ -168,10 +252,11 @@ class OfflineSyncAndPosParityTest extends TestCase
     {
         $user = User::where('name', 'admin')->first() ?? User::find(1);
         $token = $user->createToken('test-all-outbox')->plainTextToken;
+        $b3 = DB::table('company_branches')->where('company_id', 3)->value('id') ?? 3;
         $headers = [
             'Authorization' => "Bearer {$token}",
             'X-Company-ID' => '3',
-            'X-Branch-ID' => '3',
+            'X-Branch-ID' => (string) $b3,
         ];
 
         // 1. Water Can Delivery mobile schema
@@ -186,6 +271,7 @@ class OfflineSyncAndPosParityTest extends TestCase
         ], $headers)->assertStatus(201);
 
         // 2. Tanker Trip Sheet mobile schema
+        $b2 = DB::table('company_branches')->where('company_id', 2)->value('id') ?? 2;
         $this->postJson('/api/v1/trip-sheets', [
             'tanker_id' => 1,
             'customer_name' => 'Surya Dyeing Works',
@@ -196,7 +282,7 @@ class OfflineSyncAndPosParityTest extends TestCase
             'waiting_charge' => 100.0,
             'total_trip_amount' => 2850.0,
             'client_timestamp' => now()->toIso8601String(),
-        ], ['Authorization' => "Bearer {$token}", 'X-Company-ID' => '2', 'X-Branch-ID' => '2'])->assertStatus(201);
+        ], ['Authorization' => "Bearer {$token}", 'X-Company-ID' => '2', 'X-Branch-ID' => (string) $b2])->assertStatus(201);
 
         // 3. Payment collection with 'amount' key + cross-company customer rejection
         $co3CustomerId = DB::table('customers')->insertGetId([

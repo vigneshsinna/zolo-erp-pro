@@ -1,0 +1,125 @@
+{
+    "scope": "Mapped JUnit assertions only",
+    "test_cases": [
+        {
+            "id": "SEC-01",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_01_and_02_tenant_and_user_history_isolation",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-02",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-03",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_03_cross_tenant_wallet_drawing_forbidden",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-04",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_04_pooled_subscription_shares_balance_when_mapped",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-05",
+            "test": "Tests\\Feature\\Ai\\Multimodal\\NormalizedInputWorkflowTest::test_cross_branch_or_financial_year_handoff_is_forbidden_for_write_actions",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-06",
+            "test": "Tests\\Feature\\Ai\\AiChatApiAndWorkspaceTest::test_chat_endpoint_denies_unpermitted_user",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-07",
+            "test": "Tests\\Feature\\Ai\\AiChatApiAndWorkspaceTest::test_chat_endpoint_denies_when_company_ai_disabled",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-08",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-09",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-10",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-11",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-12",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_12_forged_webhook_rejected_with_403_and_zero_grant",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-13",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_13_valid_webhook_repeated_100x_grants_exactly_once",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-14",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_14_holds_exceeding_balance_fail_closed",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-15",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-16",
+            "test": null,
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-17",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_17_missing_model_pricing_fails_closed",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-18",
+            "test": "Tests\\Feature\\Ai\\Multimodal\\MediaUploadSecurityTest::test_private_storage_exif_stripping_preview_headers_and_cross_company_isolation",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-19",
+            "test": "Tests\\Feature\\Ai\\ReceivablesSecurityAndAccuracyTest::test_audit_log_persists_redacted_records_in_database",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        },
+        {
+            "id": "SEC-20",
+            "test": "Tests\\Feature\\Ai\\Billing\\CreditSecurityTest::test_sec_20_replaying_settled_attempt_id_is_idempotent",
+            "status": "NOT_EVIDENCED",
+            "assertions": null
+        }
+    ]
+}

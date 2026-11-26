@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-028",
+    "risk_group": "Insufficient stock or negative balance",
+    "expected_error_code": "INSUFFICIENT_STOCK",
+    "expected_http_status": 422,
+    "input_text": "Transfer 45 drums of reactive dye to processing floor (current physical stock: 2 drums).",
+    "expected_no_erp_writes": true
+}

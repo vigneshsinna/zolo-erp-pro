@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-014",
+    "risk_group": "Incompatible UOM conversion",
+    "expected_error_code": "INVALID_UOM",
+    "expected_http_status": 422,
+    "input_text": "Invoice customer for 35 Hours of Standard Blue Denim Jeans 32W.",
+    "expected_no_erp_writes": true
+}

@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\ProductType;
+use Spatie\Permission\Models\Role;
+use App\Services\Commercial\CommercialPermission;
+use App\Services\Platform\CompanyContext;
 use App\Services\Platform\CompanyContextResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -10,12 +13,27 @@ use Illuminate\Validation\Rule;
 
 class ProductTypeController extends Controller
 {
+    private function assertPermission(string $permission, ?CompanyContext $context = null): void
+    {
+        if ($context && Auth::check()) {
+            app(CommercialPermission::class)->assert($permission, $context, Auth::id());
+            return;
+        }
+        if (Auth::check()) {
+            $role = Role::find(Auth::user()->role_id);
+            if ($role && !$role->hasPermissionTo($permission)) {
+                abort(403, __('db.not_permitted'));
+            }
+        }
+    }
+
     /**
      * Display a listing of product types.
      */
     public function index(Request $request)
     {
-        $companyId = app(CompanyContextResolver::class)->forActor()?->companyId ?? session('company_id');
+        $context = app(CompanyContextResolver::class)->forActor();
+        $companyId = $context?->companyId ?? session('company_id');
 
         $types = ProductType::forCompany($companyId)
             ->where('is_active', true)
@@ -34,7 +52,9 @@ class ProductTypeController extends Controller
      */
     public function store(Request $request)
     {
-        $companyId = app(CompanyContextResolver::class)->forActor()?->companyId ?? session('company_id');
+        $context = app(CompanyContextResolver::class)->forActor();
+        $this->assertPermission('products-add', $context);
+        $companyId = $context?->companyId ?? session('company_id');
 
         $request->validate([
             'name' => [
@@ -70,7 +90,11 @@ class ProductTypeController extends Controller
      */
     public function edit($id)
     {
-        $productType = ProductType::findOrFail($id);
+        $context = app(CompanyContextResolver::class)->forActor();
+        $this->assertPermission('products-edit', $context);
+        $companyId = $context?->companyId ?? session('company_id');
+
+        $productType = ProductType::forCompany($companyId)->findOrFail($id);
         return response()->json($productType);
     }
 
@@ -79,8 +103,12 @@ class ProductTypeController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $productType = ProductType::findOrFail($id);
-        $companyId = app(CompanyContextResolver::class)->forActor()?->companyId ?? session('company_id');
+        $context = app(CompanyContextResolver::class)->forActor();
+        $this->assertPermission('products-edit', $context);
+        $companyId = $context?->companyId ?? session('company_id');
+
+        // Only allow updating types owned by the active company
+        $productType = ProductType::where('company_id', $companyId)->findOrFail($id);
 
         $request->validate([
             'name' => [
@@ -115,7 +143,12 @@ class ProductTypeController extends Controller
      */
     public function destroy($id)
     {
-        $productType = ProductType::findOrFail($id);
+        $context = app(CompanyContextResolver::class)->forActor();
+        $this->assertPermission('products-delete', $context);
+        $companyId = $context?->companyId ?? session('company_id');
+
+        // Only allow deleting types owned by the active company
+        $productType = ProductType::where('company_id', $companyId)->findOrFail($id);
         $productType->is_active = false;
         $productType->save();
 

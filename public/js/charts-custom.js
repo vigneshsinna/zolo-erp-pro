@@ -58,7 +58,9 @@ $(document).ready(function () {
                 }
             };
             function draw(id, type, labels, datasets, options) {
-                charts.push(new Chart(document.getElementById(id), {
+                var el = document.getElementById(id);
+                if (!el) return;
+                charts.push(new Chart(el, {
                     type: type,
                     data: {labels: labels, datasets: datasets},
                     options: Object.assign({}, layout, {tooltips: tooltips}, options)
@@ -66,30 +68,46 @@ $(document).ready(function () {
             }
             function line(label, data, color, fill) {
                 return {
-                    label: label, data: data, borderColor: color, backgroundColor: fill, borderWidth: 2,
+                    label: label, data: data, borderColor: color, backgroundColor: fill, borderWidth: 2.5,
                     pointBackgroundColor: surface, pointBorderColor: color, pointBorderWidth: 2,
-                    pointRadius: 3, pointHitRadius: 8, lineTension: 0
+                    pointRadius: 3.5, pointHoverRadius: 6, pointHitRadius: 10, lineTension: 0.35, fill: true
                 };
             }
 
             if (cash) {
+                var cashEl = document.getElementById('cashFlow');
+                var fillReceived = token('--z-primary-soft-strong');
+                var fillSent = token('--z-warning-soft');
+                if (cashEl && cashEl.getContext) {
+                    var ctx = cashEl.getContext('2d');
+                    var g1 = ctx.createLinearGradient(0, 0, 0, 260);
+                    g1.addColorStop(0, 'rgba(125, 40, 126, 0.28)');
+                    g1.addColorStop(1, 'rgba(125, 40, 126, 0.0)');
+                    fillReceived = g1;
+
+                    var g2 = ctx.createLinearGradient(0, 0, 0, 260);
+                    g2.addColorStop(0, 'rgba(217, 119, 6, 0.25)');
+                    g2.addColorStop(1, 'rgba(217, 119, 6, 0.0)');
+                    fillSent = g2;
+                }
                 draw('cashFlow', 'line', cash.month, [
-                    line(cash.label1, cash.recieved, plum, token('--z-primary-soft-strong')),
-                    line(cash.label2, cash.sent, amber, token('--z-warning-soft'))
+                    line(cash.label1, cash.recieved, plum, fillReceived),
+                    line(cash.label2, cash.sent, amber, fillSent)
                 ], {legend: legend, scales: axes});
             }
             if (yearly) {
                 draw('saleChart', 'bar', yearly.month, [
-                    {label: yearly.label1, data: yearly.purchase_chart_value, backgroundColor: amber},
-                    {label: yearly.label2, data: yearly.sale_chart_value, backgroundColor: plum}
+                    {label: yearly.label1, data: yearly.purchase_chart_value, backgroundColor: amber, borderRadius: 4},
+                    {label: yearly.label2, data: yearly.sale_chart_value, backgroundColor: plum, borderRadius: 4}
                 ], {legend: legend, scales: axes});
             }
             if (monthly) {
                 draw('transactionChart', 'doughnut', [monthly.label1, monthly.label2, monthly.label3], [{
                     data: [monthly.purchase, monthly.revenue, monthly.expense],
                     backgroundColor: [plum, green, amber],
-                    borderWidth: 0
-                }], {cutoutPercentage: 76, legend: {display: false}});
+                    borderWidth: 2,
+                    borderColor: surface
+                }], {cutoutPercentage: 72, legend: {display: false}});
             }
         }
 

@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-019",
+    "risk_group": "Mismatched GST split or invalid GSTIN",
+    "expected_error_code": "TAX_DETERMINATION_FAILED",
+    "expected_http_status": 422,
+    "input_text": "Record tax bill with corrupted GSTIN 33AAAC*9999F1Z1 containing invalid punctuation characters.",
+    "expected_no_erp_writes": true
+}

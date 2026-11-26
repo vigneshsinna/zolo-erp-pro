@@ -367,18 +367,98 @@
                                     <input name="service_rate" type="number" step="0.0001" min="0" placeholder="e.g. 15">
                                 </div>
                             </div>
+                            <div class="form-group mb-2 p-2 rounded" style="{{ 'background: #f8fafc; border: 1px solid #e2e8f0;' }}">
+                                <div class="custom-control custom-checkbox d-flex align-items-center">
+                                    <input type="checkbox" class="custom-control-input" id="create_service_product" name="create_service_product" value="1" checked>
+                                    <label class="custom-control-label font-weight-bold text-dark ml-1" for="create_service_product" style="{{ 'cursor: pointer;' }}">
+                                        <i class="fa fa-cubes text-primary mr-1"></i> Also create this process policy as a Service Product for later use
+                                    </label>
+                                </div>
+                                <small class="text-muted d-block mt-1">
+                                    Automatically registers a reusable Service Item in your product catalog (type: Service, SAC: 9988) so it can be added to sales, purchase bills, and job work orders immediately.
+                                </small>
+                                <div id="service-product-details-wrap" class="row mt-2">
+                                    <div class="col-6 form-group mb-0">
+                                        <label class="small text-muted mb-1">Service Item Name</label>
+                                        <input type="text" name="service_product_name" id="service_product_name" class="form-control form-control-sm" placeholder="Auto: [Process Name] Processing Service">
+                                    </div>
+                                    <div class="col-6 form-group mb-0">
+                                        <label class="small text-muted mb-1">Service Item Code</label>
+                                        <input type="text" name="service_product_code" id="service_product_code" class="form-control form-control-sm" placeholder="Auto: SRV-[CODE]">
+                                    </div>
+                                </div>
+                            </div>
                             <button type="submit" class="btn-ops-submit mt-2">
                                 <i class="fa fa-save mr-1"></i> Save Process Policy
                             </button>
                             <script>
-                            document.getElementById('process-load').addEventListener('change', function () {
-                                var option = this.selectedOptions[0], data = option && option.dataset.process ? JSON.parse(option.dataset.process) : {};
+                            (function () {
                                 var form = document.getElementById('process-form');
-                                ['code', 'name', 'max_loss_percent', 'quantity_basis', 'output_product_id', 'service_product_id', 'service_rate'].forEach(function (field) {
-                                    var input = form.querySelector('[name="' + field + '"]'); if (input) input.value = data[field] == null ? '' : data[field];
+                                var svcBox = document.getElementById('create_service_product');
+                                var svcDetails = document.getElementById('service-product-details-wrap');
+                                var svcSelect = form.querySelector('[name="service_product_id"]');
+                                var codeInput = form.querySelector('[name="code"]');
+                                var nameInput = form.querySelector('[name="name"]');
+                                var svcNameInput = document.getElementById('service_product_name');
+                                var svcCodeInput = document.getElementById('service_product_code');
+
+                                function updateSvcFields() {
+                                    if (svcBox && svcDetails) {
+                                        svcDetails.style.display = svcBox.checked ? 'flex' : 'none';
+                                        if (svcBox.checked) {
+                                            if (nameInput && nameInput.value) {
+                                                svcNameInput.placeholder = nameInput.value + ' Processing Service';
+                                            }
+                                            if (codeInput && codeInput.value) {
+                                                svcCodeInput.placeholder = 'SRV-' + codeInput.value;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (svcBox && svcSelect) {
+                                    svcBox.addEventListener('change', function () {
+                                        if (this.checked && svcSelect.value) {
+                                            svcSelect.value = '';
+                                        }
+                                        updateSvcFields();
+                                    });
+                                    svcSelect.addEventListener('change', function () {
+                                        if (this.value && svcBox) {
+                                            svcBox.checked = false;
+                                        }
+                                        updateSvcFields();
+                                    });
+                                }
+                                if (nameInput && svcNameInput) {
+                                    nameInput.addEventListener('input', function () {
+                                        if (!svcNameInput.value) {
+                                            svcNameInput.placeholder = this.value ? (this.value + ' Processing Service') : 'Auto: [Process Name] Processing Service';
+                                        }
+                                    });
+                                }
+                                if (codeInput && svcCodeInput) {
+                                    codeInput.addEventListener('input', function () {
+                                        if (!svcCodeInput.value) {
+                                            svcCodeInput.placeholder = this.value ? ('SRV-' + this.value) : 'Auto: SRV-[CODE]';
+                                        }
+                                    });
+                                }
+
+                                document.getElementById('process-load').addEventListener('change', function () {
+                                    var option = this.selectedOptions[0], data = option && option.dataset.process ? JSON.parse(option.dataset.process) : {};
+                                    ['code', 'name', 'max_loss_percent', 'quantity_basis', 'output_product_id', 'service_product_id', 'service_rate'].forEach(function (field) {
+                                        var input = form.querySelector('[name="' + field + '"]'); if (input) input.value = data[field] == null ? '' : data[field];
+                                    });
+                                    form.querySelector('[name="conversion"]').value = data.conversion ? '1' : '0';
+                                    if (data.service_product_id) {
+                                        if (svcBox) svcBox.checked = false;
+                                    } else {
+                                        if (svcBox) svcBox.checked = true;
+                                    }
+                                    updateSvcFields();
                                 });
-                                form.querySelector('[name="conversion"]').value = data.conversion ? '1' : '0';
-                            });
+                            })();
                             </script>
                         </div>
                         </form>

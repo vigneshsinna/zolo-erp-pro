@@ -1,0 +1,1002 @@
+[
+    {
+        "scenario_id": "BILL-001",
+        "family": "F01",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-001.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-001.json",
+        "sha256": "c9aa2c942ab666c1fa543214b3d28de1b82f845787cda4bae49af128438e7ba6",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1001A1ZI"
+    },
+    {
+        "scenario_id": "BILL-002",
+        "family": "F01",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-002.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-002.json",
+        "sha256": "43aeddf4f9ad7db0e8ce1e9edbd17e96c7a610b0fe74ee2412c20ebf18a55b2e",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1002A1ZH"
+    },
+    {
+        "scenario_id": "BILL-003",
+        "family": "F01",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-003.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-003.json",
+        "sha256": "4319b2965a138be71a284c01de009f0509db649bc7ab9abf3c77a9cb3d317497",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1003A1ZG"
+    },
+    {
+        "scenario_id": "BILL-004",
+        "family": "F01",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-004.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-004.json",
+        "sha256": "eba31a4144aecb96d24f9e00e903a74c4e47cc189491332dc750945a44935288",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1004A1ZF"
+    },
+    {
+        "scenario_id": "BILL-005",
+        "family": "F01",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-005.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-005.json",
+        "sha256": "a5920fce696f487082dc1fc248f490762b32b28dc413a18955757290dbc3dc3d",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1005A1ZE"
+    },
+    {
+        "scenario_id": "BILL-006",
+        "family": "F01",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-006.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-006.json",
+        "sha256": "7974ca2a0bf39f667945b9991d8454a93eb49910dabf5d871bd7d0d7028ae8a7",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1006A1ZD"
+    },
+    {
+        "scenario_id": "BILL-007",
+        "family": "F01",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-007.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-007.json",
+        "sha256": "d9766a90450504603dfed867ff31e072e622503fda04b2746cd25c9fd403e849",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1007A1ZC"
+    },
+    {
+        "scenario_id": "BILL-008",
+        "family": "F01",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-008.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-008.json",
+        "sha256": "665d062c2947ccd7901d519c068e51d4201e6ecf6a8c3853b6471022a2dd617f",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1008A1ZB"
+    },
+    {
+        "scenario_id": "BILL-009",
+        "family": "F01",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-009.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-009.json",
+        "sha256": "5f0670e592bc492afdbe34bff8ab03dc2ffd22fa9998a5c98c0c986908c433ee",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1009A1ZA"
+    },
+    {
+        "scenario_id": "BILL-010",
+        "family": "F01",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-010.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-010.json",
+        "sha256": "1724324a4a9566392a17a66eb6ce02f60ba72faf60e4148a5f44c1796877f343",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1010A1ZH"
+    },
+    {
+        "scenario_id": "BILL-011",
+        "family": "F02",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-011.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-011.json",
+        "sha256": "d77dc07176f7cb9a3cb05097c5c7dd85fdb0b495fc883f3e3b6e31c8dd62f448",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1011A1Z5"
+    },
+    {
+        "scenario_id": "BILL-012",
+        "family": "F02",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-012.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-012.json",
+        "sha256": "5c2408148a369dd280769d664ecdc596042805553ab4733802032b0a46e13937",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1012A1Z4"
+    },
+    {
+        "scenario_id": "BILL-013",
+        "family": "F02",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-013.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-013.json",
+        "sha256": "ff0cb5e8c7279823653f950ae6a4f4c40dff9f9916b0c98eb5bc56cff0b697dd",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1013A1Z3"
+    },
+    {
+        "scenario_id": "BILL-014",
+        "family": "F02",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-014.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-014.json",
+        "sha256": "da7c5b8223c17ab52dd0ccdcc316fc07faed58519e504a2ad37846b2fc0233f6",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1014A1Z2"
+    },
+    {
+        "scenario_id": "BILL-015",
+        "family": "F02",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-015.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-015.json",
+        "sha256": "e7f8ae147f6536af95f6a94f1537095acba87ea54e107610a0af2632d80a0536",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1015A1Z1"
+    },
+    {
+        "scenario_id": "BILL-016",
+        "family": "F02",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-016.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-016.json",
+        "sha256": "a0c008d9c08133e3427e48194209d1cb190aeeb03e87afc99aac6428cd87c59b",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1016A1Z0"
+    },
+    {
+        "scenario_id": "BILL-017",
+        "family": "F02",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-017.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-017.json",
+        "sha256": "c31755ba9a90cb15d6c5a94822f835df3a806fe296ec84fc4a3ae4d40faad50b",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1017A1ZZ"
+    },
+    {
+        "scenario_id": "BILL-018",
+        "family": "F02",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-018.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-018.json",
+        "sha256": "fe7796e739d48bfe8e8ac17fe492e38bc1c36fcfc03a70d163ce7fc1e423a2a4",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1018A1ZY"
+    },
+    {
+        "scenario_id": "BILL-019",
+        "family": "F02",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-019.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-019.json",
+        "sha256": "d78a6ab6133303a6d41099788c98212add3f912787c910376bd5e636b7f59078",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1019A1ZX"
+    },
+    {
+        "scenario_id": "BILL-020",
+        "family": "F02",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-020.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-020.json",
+        "sha256": "87bb81e654ac8d8d24cc6ed5bb00c9cb5ce33700c9ff96bc69a2e46977a7cd05",
+        "grand_total": 5015,
+        "supplier_gstin": "29AABCT1020A1Z4"
+    },
+    {
+        "scenario_id": "BILL-021",
+        "family": "F03",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-021.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-021.json",
+        "sha256": "9586e0096cf0b616adc40151cf7d621ed8a52b9aa3d98060e66a34cf43d9e0e9",
+        "grand_total": 4672.5,
+        "supplier_gstin": "33AABCT1021A1ZE"
+    },
+    {
+        "scenario_id": "BILL-022",
+        "family": "F03",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-022.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-022.json",
+        "sha256": "ad9d24c17724bec251fc7b3fe58d24983b9da5402a4531a97a9af8d75f2f327e",
+        "grand_total": 4940,
+        "supplier_gstin": "33AABCT1022A1ZD"
+    },
+    {
+        "scenario_id": "BILL-023",
+        "family": "F03",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-023.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-023.json",
+        "sha256": "3f2273bbf5ffa44d42dc133348a1db01c4b8e1f24e13f6035e254f61a74e9f2d",
+        "grand_total": 5315,
+        "supplier_gstin": "33AABCT1023A1ZC"
+    },
+    {
+        "scenario_id": "BILL-024",
+        "family": "F03",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-024.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-024.json",
+        "sha256": "ee2a9fd80abc54d824d0a495b511f03356958929fc09359cbbde76d3f3527d34",
+        "grand_total": 4600,
+        "supplier_gstin": "33AABCT1024A1ZB"
+    },
+    {
+        "scenario_id": "BILL-025",
+        "family": "F03",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-025.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-025.json",
+        "sha256": "a38d3ce1786f493ee3e7a7358c61719a88ad1326841bc50adfd7d46143ac750e",
+        "grand_total": 4400,
+        "supplier_gstin": "33AABCT1025A1ZA"
+    },
+    {
+        "scenario_id": "BILL-026",
+        "family": "F03",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-026.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-026.json",
+        "sha256": "efe4cc8013da352bb4f3baf27d6c3d57611c33cda79814a59f5540c240cea1cf",
+        "grand_total": 4672.5,
+        "supplier_gstin": "33AABCT1026A1Z9"
+    },
+    {
+        "scenario_id": "BILL-027",
+        "family": "F03",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-027.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-027.json",
+        "sha256": "5110fddfa257f2d254e35f5cb670e91416395c1053dbfd9b1beec15a93b9f32f",
+        "grand_total": 4940,
+        "supplier_gstin": "33AABCT1027A1Z8"
+    },
+    {
+        "scenario_id": "BILL-028",
+        "family": "F03",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-028.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-028.json",
+        "sha256": "8bea1793558c5738c4c1cf8c616b652d8597fd07f01da7f53c25c39ff7db08ae",
+        "grand_total": 5315,
+        "supplier_gstin": "33AABCT1028A1Z7"
+    },
+    {
+        "scenario_id": "BILL-029",
+        "family": "F03",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-029.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-029.json",
+        "sha256": "40b8bf68417ea1fd57e15d24fa5942cddb38afa3402a5fb00c614bf72f134525",
+        "grand_total": 4600,
+        "supplier_gstin": "33AABCT1029A1Z6"
+    },
+    {
+        "scenario_id": "BILL-030",
+        "family": "F03",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-030.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-030.json",
+        "sha256": "7ed83e44251f135b155665aa00f09b0f67161acad62fbf5c0cdb96d12adb0298",
+        "grand_total": 4400,
+        "supplier_gstin": "33AABCT1030A1ZD"
+    },
+    {
+        "scenario_id": "BILL-031",
+        "family": "F04",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-031.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-031.json",
+        "sha256": "819daaff041e5a8a5a0048f339f5e8d019e806376dcf2f46a7822b6d23bc921e",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1031A1ZC"
+    },
+    {
+        "scenario_id": "BILL-032",
+        "family": "F04",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-032.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-032.json",
+        "sha256": "ff32ea6e7735c7f63474e3b9b87d3e506a79020b524412c3901eb90c138464eb",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1032A1ZB"
+    },
+    {
+        "scenario_id": "BILL-033",
+        "family": "F04",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-033.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-033.json",
+        "sha256": "fe1ff6911d842cba20f69d8a7f279782bf919b0513bfc76bb072bbd866d2d1bf",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1033A1ZA"
+    },
+    {
+        "scenario_id": "BILL-034",
+        "family": "F04",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-034.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-034.json",
+        "sha256": "621aa96b8976b826a13354d6c216a9627699e9c5af9aab560e1691c7db918c20",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1034A1Z9"
+    },
+    {
+        "scenario_id": "BILL-035",
+        "family": "F04",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-035.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-035.json",
+        "sha256": "ac220309bbbaa73573d6b74e644a3fff299020b0cafc4469822c6452e6648b60",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1035A1Z8"
+    },
+    {
+        "scenario_id": "BILL-036",
+        "family": "F04",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-036.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-036.json",
+        "sha256": "cc56107c21db047210d4c5f63dcf5668864abe1fde1ec305a9faa0ad8e1febbc",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1036A1Z7"
+    },
+    {
+        "scenario_id": "BILL-037",
+        "family": "F04",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-037.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-037.json",
+        "sha256": "567ff11249c2cd851e33cfa8dd6b2a954adf5b40259258f64dbe284f73e73cc9",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1037A1Z6"
+    },
+    {
+        "scenario_id": "BILL-038",
+        "family": "F04",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-038.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-038.json",
+        "sha256": "da51c097cbbc42dfe40aa24db87894fa65d0322df27f3b62dcc643c5d14eca85",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1038A1Z5"
+    },
+    {
+        "scenario_id": "BILL-039",
+        "family": "F04",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-039.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-039.json",
+        "sha256": "dad3be7fa1ac900d0cbd8e4ddc7cbdda61f81bc09cd981a70fcf8f68caec4721",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1039A1Z4"
+    },
+    {
+        "scenario_id": "BILL-040",
+        "family": "F04",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-040.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-040.json",
+        "sha256": "a383909d06365fdbbb9548779171c53a50c9f59fb794d5dbf01488b671289b45",
+        "grand_total": 4856,
+        "supplier_gstin": "33AABCT1040A1ZB"
+    },
+    {
+        "scenario_id": "BILL-041",
+        "family": "F05",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-041.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-041.json",
+        "sha256": "4030476ccd7c8883060d9b3ec9f555ed3bdc873a0e6ca66528e464d16c7ae47b",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1041A1ZA"
+    },
+    {
+        "scenario_id": "BILL-042",
+        "family": "F05",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-042.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-042.json",
+        "sha256": "586abb5b33321b07dc13a138699367937a2a0a877f2ac75fa0100043ba72d5c6",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1042A1Z9"
+    },
+    {
+        "scenario_id": "BILL-043",
+        "family": "F05",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-043.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-043.json",
+        "sha256": "e6de70424f47ad49b3650ca3d7c7e55f88c0c0bebd51f875d04332b2df3501f4",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1043A1Z8"
+    },
+    {
+        "scenario_id": "BILL-044",
+        "family": "F05",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-044.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-044.json",
+        "sha256": "a1d1854faecb502108aebbc996739c1c27d88470e3fac4cbf3aaa63a13a7e0fd",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1044A1Z7"
+    },
+    {
+        "scenario_id": "BILL-045",
+        "family": "F05",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-045.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-045.json",
+        "sha256": "52f416b9dc41f28e34527d7aaf5b0056df2b55c02eb76f630f4e43ca0122668b",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1045A1Z6"
+    },
+    {
+        "scenario_id": "BILL-046",
+        "family": "F05",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-046.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-046.json",
+        "sha256": "3bd43b570fe2cff9e9dc3cd02c21816d42ef73e09f993e4c0de00d6f47860da5",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1046A1Z5"
+    },
+    {
+        "scenario_id": "BILL-047",
+        "family": "F05",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-047.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-047.json",
+        "sha256": "9807c3544b38bb35a3c3c82a1b7d9dd034147215c8693e27c03e1ceb47bd11f9",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1047A1Z4"
+    },
+    {
+        "scenario_id": "BILL-048",
+        "family": "F05",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-048.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-048.json",
+        "sha256": "881be006e1788acae95b948f2c5f4f64c36c4c0b59e234a61ff6fa716640b57f",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1048A1Z3"
+    },
+    {
+        "scenario_id": "BILL-049",
+        "family": "F05",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-049.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-049.json",
+        "sha256": "e5daa85410e4ebb0ef142b6f399240b4d075ec39e0a583935fcc01e5e5bc3f8b",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1049A1Z2"
+    },
+    {
+        "scenario_id": "BILL-050",
+        "family": "F05",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-050.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-050.json",
+        "sha256": "e81dc880a0cda766e9f66b979b9907a3037f8bf2647f4f4cde3ded86de97b258",
+        "grand_total": 5165,
+        "supplier_gstin": "33AABCT1050A1Z9"
+    },
+    {
+        "scenario_id": "BILL-051",
+        "family": "F06",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-051.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-051.json",
+        "sha256": "94f24757b15fdbc516fde0a7374ce0fb33ce8ac3b65186f1c073c623373412be",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-052",
+        "family": "F06",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-052.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-052.json",
+        "sha256": "6ac44a30379776c8aec0b619df92fcec1c3f1d55e4ffa301ca033c2201bbeb42",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-053",
+        "family": "F06",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-053.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-053.json",
+        "sha256": "c84a79b4921724f3f8d500d1c33bd52391127a74f5ebacfead6a7781d722d742",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-054",
+        "family": "F06",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-054.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-054.json",
+        "sha256": "57b95156f35de5f039e5c95e379472a938d2a5c3bba3637745589f700e1d7c6a",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-055",
+        "family": "F06",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-055.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-055.json",
+        "sha256": "8fa55dc0a84cf48c55044c34a6f04edf2fb894d02cd26835cd554dcb4879fe7d",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-056",
+        "family": "F06",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-056.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-056.json",
+        "sha256": "182cda0a46d7abd5b9f3c9d276d8c5d8b3edf09b3eac878473d917d2bbf71b2f",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-057",
+        "family": "F06",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-057.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-057.json",
+        "sha256": "17d318010d17826342ebdc8df3853753623038f19904fae345a2bbe0045d8dd6",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-058",
+        "family": "F06",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-058.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-058.json",
+        "sha256": "243cc42eb688bfcc746e66541ee33d6cd1d69f7b7a2d7970a22ef8f5f2fce117",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-059",
+        "family": "F06",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-059.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-059.json",
+        "sha256": "869cd988bd75f7249508781a348f5c467605657665e6bd36f00fd5d25888b2a7",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-060",
+        "family": "F06",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-060.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-060.json",
+        "sha256": "90615367aa02d262e0c175a0db5a9aeb993d452ebb5f7c7d1860e276f55a6a91",
+        "grand_total": 4250,
+        "supplier_gstin": null
+    },
+    {
+        "scenario_id": "BILL-061",
+        "family": "F07",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-061.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-061.json",
+        "sha256": "2ce6f33e72ee0aac7b45fd8ccfe78794c6814d278f9100a9003c2237a06a39fa",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1061A1Z6"
+    },
+    {
+        "scenario_id": "BILL-062",
+        "family": "F07",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-062.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-062.json",
+        "sha256": "6480b96ca85a35b7508c66b2b7e95dac043ceacbab98cdadb1dfddce69619cc3",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1062A1Z5"
+    },
+    {
+        "scenario_id": "BILL-063",
+        "family": "F07",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-063.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-063.json",
+        "sha256": "351b39b679f7d00f80b77e86f1b28effdb7f7d2073cccf57a7cdb0cd74415c57",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1063A1Z4"
+    },
+    {
+        "scenario_id": "BILL-064",
+        "family": "F07",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-064.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-064.json",
+        "sha256": "c45a88881ce5c603e0b60fe4690380faedb460904e7ad76fab5cfb03255ddae1",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1064A1Z3"
+    },
+    {
+        "scenario_id": "BILL-065",
+        "family": "F07",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-065.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-065.json",
+        "sha256": "0a3d059e3e9d747fef2bf023fab488cbacbd0871b1399b77c1e3f5ba318b348f",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1065A1Z2"
+    },
+    {
+        "scenario_id": "BILL-066",
+        "family": "F07",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-066.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-066.json",
+        "sha256": "4cd328294bb8e6863040971eada24f2950e79d3e97497f9b8b0f55ce08f07787",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1066A1Z1"
+    },
+    {
+        "scenario_id": "BILL-067",
+        "family": "F07",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-067.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-067.json",
+        "sha256": "caf7f77eeae8b1a5633db783bdb4295db4a7bbb3040bc5ab9e19eca3d731b480",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1067A1Z0"
+    },
+    {
+        "scenario_id": "BILL-068",
+        "family": "F07",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-068.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-068.json",
+        "sha256": "ed1c3757c7a257e92c75da753091ce695cf2b13f42e670f03c9448a6a4067cab",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1068A1ZZ"
+    },
+    {
+        "scenario_id": "BILL-069",
+        "family": "F07",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-069.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-069.json",
+        "sha256": "d9b6255a1536bcf6d742b568496ac99855039fc7604a94e54906aad65c5673de",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1069A1ZY"
+    },
+    {
+        "scenario_id": "BILL-070",
+        "family": "F07",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-070.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-070.json",
+        "sha256": "2e6a441b085039234b5620efe653cbb4263933bccf31642d502d2fcbcacdc773",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1070A1Z5"
+    },
+    {
+        "scenario_id": "BILL-071",
+        "family": "F08",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-071.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-071.json",
+        "sha256": "b03b2c9672a75644931ecb8b925e370fa9f97fde76d948b4ee7a4750c41a237d",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1071A1Z4"
+    },
+    {
+        "scenario_id": "BILL-072",
+        "family": "F08",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-072.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-072.json",
+        "sha256": "62ccbc3c460e8411d6b8a1caaf77046fa26c8326d1efb888af1224ea535a5a06",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1072A1Z3"
+    },
+    {
+        "scenario_id": "BILL-073",
+        "family": "F08",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-073.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-073.json",
+        "sha256": "35cc9d24efb79d035437b8f6e6ba80f598d73ef99caac04cfa2ded5c34b9ee2d",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1073A1Z2"
+    },
+    {
+        "scenario_id": "BILL-074",
+        "family": "F08",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-074.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-074.json",
+        "sha256": "21837afb5e7793c42721953940f9d7f00d389cebf782a316641b228a6334b4a9",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1074A1Z1"
+    },
+    {
+        "scenario_id": "BILL-075",
+        "family": "F08",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-075.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-075.json",
+        "sha256": "a457723cc022efde6c8f24e69021c26e12bdc9ce62cab9c25ae6844c505b7751",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1075A1Z0"
+    },
+    {
+        "scenario_id": "BILL-076",
+        "family": "F08",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-076.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-076.json",
+        "sha256": "ec578901ba2603e62439eab0d76bca889568a51381cb1e69dfefc78a2c5b0bdc",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1076A1ZZ"
+    },
+    {
+        "scenario_id": "BILL-077",
+        "family": "F08",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-077.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-077.json",
+        "sha256": "be3c5380e85f82196ab361b807d5e2c8461976582f925f8467bf576984de9467",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1077A1ZY"
+    },
+    {
+        "scenario_id": "BILL-078",
+        "family": "F08",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-078.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-078.json",
+        "sha256": "5ce711b488fa260c58bda752f949879a99037e7458889f078f63b76963702a9d",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1078A1ZX"
+    },
+    {
+        "scenario_id": "BILL-079",
+        "family": "F08",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-079.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-079.json",
+        "sha256": "7db7a4091ede6c2d5ad788cf1ae51974f005ab5808ce0b71534c4467977b40f0",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1079A1ZW"
+    },
+    {
+        "scenario_id": "BILL-080",
+        "family": "F08",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-080.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-080.json",
+        "sha256": "100c3e5a22ab637f690bf18cf091c3490a3104a0ce7c81b4a1bcbb71d491dcf4",
+        "grand_total": 20650,
+        "supplier_gstin": "33AABCT1080A1Z3"
+    },
+    {
+        "scenario_id": "BILL-081",
+        "family": "F09",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-081.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-081.json",
+        "sha256": "9cc9f1229ca5345fe2811e55c47c694c3f282ea73fad50027e5bbc21d53175f8",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1081A1Z2"
+    },
+    {
+        "scenario_id": "BILL-082",
+        "family": "F09",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-082.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-082.json",
+        "sha256": "c72d2b6a2165e7f11a6345a71adaaf58672271520c041d26318d565d5394dd36",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1082A1Z1"
+    },
+    {
+        "scenario_id": "BILL-083",
+        "family": "F09",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-083.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-083.json",
+        "sha256": "7a20b90f5443996224de3f123ac075da0f92219f4ec6be118515a235e5edcd98",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1083A1Z0"
+    },
+    {
+        "scenario_id": "BILL-084",
+        "family": "F09",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-084.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-084.json",
+        "sha256": "49428901c3dde5741c5e0dadc353cad356231665ba4243f9853734bfcdc6925a",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1084A1ZZ"
+    },
+    {
+        "scenario_id": "BILL-085",
+        "family": "F09",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-085.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-085.json",
+        "sha256": "a7bd06ae015bd4d86396fffefff41c030da6cd6c64890ccece6811aa78998851",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1085A1ZY"
+    },
+    {
+        "scenario_id": "BILL-086",
+        "family": "F09",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-086.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-086.json",
+        "sha256": "d1ea8aa15836e5b933a89dd06783aeb65699682d99338b4da38b9a9e7c6f2101",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1086A1ZX"
+    },
+    {
+        "scenario_id": "BILL-087",
+        "family": "F09",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-087.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-087.json",
+        "sha256": "f5c3ca3733251005f9275d6f7218c63d3e8df3e73a23de09aa568e278cd1517e",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1087A1ZW"
+    },
+    {
+        "scenario_id": "BILL-088",
+        "family": "F09",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-088.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-088.json",
+        "sha256": "5819df362ca6873b435d54a7d0f34a493c7cc58d8b005fcf2261aa72ea09260e",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1088A1ZV"
+    },
+    {
+        "scenario_id": "BILL-089",
+        "family": "F09",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-089.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-089.json",
+        "sha256": "6f048f3086bec92674af3dbd2d29a8cffed4d10c46932e2a89d02262ebd5765d",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1089A1ZU"
+    },
+    {
+        "scenario_id": "BILL-090",
+        "family": "F09",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-090.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-090.json",
+        "sha256": "d899807f1ad3ea35c7fe5ad7ef96348f6aefd90cbbcf826af06b82629068cdcb",
+        "grand_total": 5015,
+        "supplier_gstin": "33AABCT1090A1Z1"
+    },
+    {
+        "scenario_id": "BILL-091",
+        "family": "F10",
+        "variant": "V01",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-091.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-091.json",
+        "sha256": "1a09f8afc5f8b4a1bdb59f6ff31d929d689aff9997de4a6b1445460c4638336b",
+        "grand_total": 158812.5,
+        "supplier_gstin": "33AABCT1091A1Z0"
+    },
+    {
+        "scenario_id": "BILL-092",
+        "family": "F10",
+        "variant": "V02",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-092.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-092.json",
+        "sha256": "fef7db283bc79d64859f4c59a33f8e07def39d0a7d6654e4f17dc35bee40a20d",
+        "grand_total": 451500,
+        "supplier_gstin": "33AABCT1092A1ZZ"
+    },
+    {
+        "scenario_id": "BILL-093",
+        "family": "F10",
+        "variant": "V03",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-093.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-093.json",
+        "sha256": "aab34c82ff93b8a3cae55908f7dbda987cca972bb48a66f4962f57cd123ea626",
+        "grand_total": 973875,
+        "supplier_gstin": "33AABCT1093A1ZY"
+    },
+    {
+        "scenario_id": "BILL-094",
+        "family": "F10",
+        "variant": "V04",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-094.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-094.json",
+        "sha256": "8bc9c5816dea3c4301e2be7fa7a241e21ab3f26d9295651b43028a955b797c35",
+        "grand_total": 1791562.5,
+        "supplier_gstin": "33AABCT1094A1ZX"
+    },
+    {
+        "scenario_id": "BILL-095",
+        "family": "F10",
+        "variant": "V05",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-095.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-095.json",
+        "sha256": "4446d8843f884d526703e11c9e7fc394f32b342e796d66e91f093e2f7ed4d341",
+        "grand_total": 2970187.5,
+        "supplier_gstin": "33AABCT1095A1ZW"
+    },
+    {
+        "scenario_id": "BILL-096",
+        "family": "F10",
+        "variant": "V06",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-096.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-096.json",
+        "sha256": "d2041031dace1961ab3773fc449f6ccb48a5c20ba46844d3ad7362efd6c6565d",
+        "grand_total": 4575375,
+        "supplier_gstin": "33AABCT1096A1ZV"
+    },
+    {
+        "scenario_id": "BILL-097",
+        "family": "F10",
+        "variant": "V07",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-097.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-097.json",
+        "sha256": "f129505545038068c910bc4c54421dea9d9e2dd37b3758b03926eae899dd89aa",
+        "grand_total": 6672750,
+        "supplier_gstin": "33AABCT1097A1ZU"
+    },
+    {
+        "scenario_id": "BILL-098",
+        "family": "F10",
+        "variant": "V08",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-098.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-098.json",
+        "sha256": "8b8cde525b5f5a86e078ed10af2290dcaba60bb17da673f027f7cc1d08031cb5",
+        "grand_total": 12606562.5,
+        "supplier_gstin": "33AABCT1098A1ZT"
+    },
+    {
+        "scenario_id": "BILL-099",
+        "family": "F10",
+        "variant": "V09",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-099.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-099.json",
+        "sha256": "aa5bc13bef9d7f9d792fe49c4a28929ba80b5276d5b18402d751318234d20847",
+        "grand_total": 40648125,
+        "supplier_gstin": "33AABCT1099A1ZS"
+    },
+    {
+        "scenario_id": "BILL-100",
+        "family": "F10",
+        "variant": "V10",
+        "media_path": "tests/fixtures/ai/invoice_media/BILL-100.png",
+        "expected_path": "tests/fixtures/ai/expected/BILL-100.json",
+        "sha256": "549227dc77f0408e55efcc97c3716083245e0a6f8ba98bf2b8d41c08b8b81ebb",
+        "grand_total": 94119375,
+        "supplier_gstin": "33AABCT1100A1ZI"
+    }
+]

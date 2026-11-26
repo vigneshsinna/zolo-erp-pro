@@ -298,8 +298,8 @@
 <div class="a6-slip-wrapper">
     <div class="slip-header">
         <div>
-            <div class="slip-brand">{{ $sale->warehouse->name ?? ($general_setting->site_title ?? 'Opticals Lab') }}</div>
-            <div class="slip-brand-sub">{{ $sale->warehouse->address ?? 'Central Laboratory & Fulfillment' }} &bull; Ph: {{ $sale->warehouse->phone ?? '-' }}</div>
+            <div class="slip-brand">{{ $sale->warehouse->name ?? ($general_setting->site_title ?? config('app.name', 'Warehouse')) }}</div>
+            <div class="slip-brand-sub">{{ $sale->warehouse->address ?? 'Central Fulfillment & Logistics' }} &bull; Ph: {{ $sale->warehouse->phone ?? '-' }}</div>
         </div>
         <div class="slip-doc-badge">
             <span class="main-title">Packing Slip</span>
@@ -369,12 +369,13 @@
             @foreach($packing_slip_product_data as $item)
                 @php
                     $prod = $item->product ?? \App\Models\Product::find($item->product_id);
-                    $hasRx = !empty($item->sph) || !empty($item->cyl) || !empty($item->axis) || !empty($item->addition) || !empty($item->lr);
+                    $isOptical = \App\Services\Industry\IndustryProfileService::isOptical();
+                    $hasRx = $isOptical && (!empty($item->sph) || !empty($item->cyl) || !empty($item->axis) || !empty($item->addition) || !empty($item->lr));
                 @endphp
                 <tr>
                     <td class="text-center">{{ $count++ }}</td>
                     <td>
-                        <div class="item-main-name">{{ $prod->name ?? 'Lens Item' }} [{{ $prod->code ?? '-' }}]</div>
+                        <div class="item-main-name">{{ $prod->name ?? 'Item' }} [{{ $prod->code ?? '-' }}]</div>
                         @if($hasRx)
                             <div class="rx-badge-strip">
                                 @if($item->lr)<div>Eye: <span>{{ $item->lr }}</span></div>@endif

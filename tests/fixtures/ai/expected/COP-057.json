@@ -1,0 +1,14 @@
+{
+    "scenario_id": "COP-057",
+    "workflow_family": "Product Master Creation",
+    "action_key": "product.create.v1",
+    "input_text": "Create new product Cotton Twill Blue 17 under Textile category with HSN 5208 and 5% GST.",
+    "expected_slots": {
+        "target_index": 17,
+        "is_draft": true
+    },
+    "expected_status": "proposal_created",
+    "no_financial_writes_before_approval": true,
+    "expected_provider_calls": 1,
+    "expected_credits_approx": 8
+}

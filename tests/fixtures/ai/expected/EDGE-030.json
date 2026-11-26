@@ -1,0 +1,8 @@
+{
+    "scenario_id": "EDGE-030",
+    "risk_group": "Insufficient stock or negative balance",
+    "expected_error_code": "INSUFFICIENT_STOCK",
+    "expected_http_status": 422,
+    "input_text": "Create sales delivery note for 350 boxes of packaging materials with verified stock count 12.",
+    "expected_no_erp_writes": true
+}
