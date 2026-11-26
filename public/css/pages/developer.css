@@ -1,6 +1,58 @@
-/* SaaS Developer Portal: multi-tenant control plane, 37-module licensing matrix, plans, quotas & audits. */
-.dev-flash { margin: 0 12px 8px; padding: 8px 12px; font-size: 12.5px; }
-.dev-shell { display: flex; flex-direction: column; gap: 10px; margin: 0 12px 18px; }
+/* Standalone Multi-Tenant SaaS Developer Portal (zero ERP left sidebar, platform-wide shell). */
+.dev-page {
+    margin: 0; min-height: 100vh; background: var(--z-bg); color: var(--z-text);
+    font-family: var(--neo-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+.dev-topbar {
+    position: sticky; top: 0; z-index: 20; height: 56px; padding: 0 20px;
+    background: var(--z-surface); border-bottom: 1px solid var(--z-border);
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+}
+.dev-brand { display: flex; align-items: center; gap: 10px; min-width: 0; text-decoration: none; color: var(--z-text); }
+.dev-brand:hover { text-decoration: none; color: var(--z-text); }
+.dev-brand-mark {
+    display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--z-radius-sm);
+    background: var(--z-primary); color: var(--z-primary-contrast); font-weight: 800; font-size: 16px; flex-shrink: 0;
+}
+.dev-topbar-title { font-size: 15px; font-weight: 800; color: var(--z-text); line-height: 1.15; }
+.dev-topbar-sub { font-size: 11px; color: var(--z-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dev-topbar-actions form { margin: 0; }
+.dev-user-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+    border-radius: 99px; background: var(--z-surface-2); border: 1px solid var(--z-border);
+    font-size: 12px; font-weight: 600; color: var(--z-text-2);
+}
+
+.dev-flash { margin: 12px auto 0; max-width: 1500px; padding: 8px 14px; font-size: 12.5px; }
+.dev-shell { display: flex; flex-direction: column; gap: 12px; max-width: 1500px; margin: 14px auto 24px; padding: 0 18px; }
+
+.dev-action-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 10px; align-items: start; }
+.dev-group-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.dev-group-pill {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 99px;
+    border: 1px solid var(--z-border); background: var(--z-surface-2); color: var(--z-text-2);
+    font-size: 11px; font-weight: 600; text-decoration: none;
+}
+.dev-group-pill:hover { border-color: var(--z-primary-border); color: var(--z-text); text-decoration: none; }
+.dev-group-pill.is-active { background: var(--z-primary); border-color: var(--z-primary); color: var(--z-primary-contrast); }
+
+.dev-dir-section { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.dev-dir-heading {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--z-text-muted); padding: 4px 4px 2px; border-bottom: 1px solid var(--z-border);
+}
+.dev-group-manage-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.dev-group-manage-row {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+    padding: 8px 10px; border: 1px solid var(--z-border); border-radius: var(--z-radius-sm); background: var(--z-surface);
+}
+.dev-hero-group-form {
+    display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    background: var(--z-surface); padding: 4px 8px; border-radius: var(--z-radius-sm); border: 1px solid var(--z-border);
+}
+.dev-hero-group-form .form-control-sm { height: 26px; font-size: 11.5px; width: auto; min-width: 170px; }
 
 .dev-kpi-strip {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px;
@@ -93,21 +145,23 @@
 .dev-quota-top { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--z-text); }
 .dev-meter { width: 100%; height: 6px; accent-color: var(--z-primary); }
 
-.dev-module-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.dev-module-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(410px, 1fr)); gap: 12px; }
 .dev-module-group {
     border: 1px solid var(--z-border); border-radius: var(--z-radius-sm); background: var(--z-surface-2);
-    padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
 }
-.dev-module-group-title { font-size: 12px; font-weight: 700; color: var(--z-text); border-bottom: 1px solid var(--z-border); padding-bottom: 4px; }
+.dev-module-group-title { font-size: 12.5px; font-weight: 700; color: var(--z-text); border-bottom: 1px solid var(--z-border); padding-bottom: 5px; margin-bottom: 2px; }
 .dev-module-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center;
-    padding: 4px 0; border-bottom: 1px dashed var(--z-border);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 6px 0; border-bottom: 1px dashed var(--z-border);
 }
 .dev-module-row:last-child { border-bottom: 0; }
-.dev-module-check { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 12px; font-weight: 600; color: var(--z-text); cursor: pointer; }
-.dev-module-sub { font-size: 10.5px; color: var(--z-text-muted); font-weight: 400; display: block; }
-.dev-module-side { display: flex; align-items: center; gap: 5px; }
-.dev-module-expiry { width: 124px; height: 25px; font-size: 11px; padding: 2px 5px; }
+.dev-module-check { display: flex; align-items: flex-start; gap: 8px; flex: 1 1 auto; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--z-text); cursor: pointer; }
+.dev-module-check input { margin-top: 3px; flex-shrink: 0; }
+.dev-module-sub { font-size: 11px; color: var(--z-text-muted); font-weight: 400; display: block; margin-top: 1px; line-height: 1.35; }
+.dev-module-sub code { word-break: break-word; }
+.dev-module-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.dev-module-expiry { width: 132px; height: 26px; font-size: 11px; padding: 2px 6px; }
 
 .dev-section-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; max-height: 360px; overflow: auto; }
 .dev-section {

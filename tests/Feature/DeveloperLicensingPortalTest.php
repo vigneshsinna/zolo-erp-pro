@@ -188,8 +188,8 @@ class DeveloperLicensingPortalTest extends CompanyContextTestCase
 
         $this->get('/developer?tab=plans')->assertOk()->assertSee('Enterprise All-Modules');
         $this->get('/developer?tab=admins')->assertOk()->assertSee('Tenant Admin Logins');
-        $this->get('/developer?tab=modules')->assertOk()->assertSee('Complete ERP Module Catalog');
-        $this->get('/developer?tab=audits')->assertOk()->assertSee('Licensing &amp; Tenant Lifecycle Audit Log', false);
+        $this->get('/developer?tab=modules')->assertOk()->assertSee('Complete ERP & AI Module Catalog');
+        $this->get('/developer?tab=audits')->assertOk()->assertSee('Licensing, Group &amp; Lifecycle Audit Log', false);
     }
 
     public function test_plan_assignment_and_module_licensing_enforce_api_and_lock_company_admin_bypass(): void
@@ -596,5 +596,46 @@ class DeveloperLicensingPortalTest extends CompanyContextTestCase
         $this->actingAs($dev, 'web');
         $this->post('/developer/tenants/1/lifecycle', ['action' => 'activate'])->assertRedirect();
         $this->assertSame(1, (int) DB::table('ai_feature_settings')->where('company_id', 1)->value('enabled'));
+    }
+
+    public function test_developer_portal_renders_standalone_shell_and_manages_groups_and_independent_companies(): void
+    {
+        $dev = $this->makeDeveloperUser();
+        $this->actingAs($dev, 'web');
+        $this->withoutMiddleware([\App\Http\Middleware\Common::class, \App\Http\Middleware\Active::class]);
+
+        // Standalone shell: no left ERP sidebar and no single-company topbar chrome.
+        $html = $this->get('/developer?company=1&tab=tenants')->assertOk()->getContent();
+        $this->assertStringContainsString('zoloERP Developer Portal', $html);
+        $this->assertStringContainsString('Independent Companies', $html);
+        $this->assertStringNotContainsString('id="side-main-menu"', $html);
+        $this->assertStringNotContainsString('Guided Tour', $html);
+
+        // Create and rename a company group, then move Company 1 into it and filter by group.
+        $this->post('/developer/groups', ['name' => 'Alpha Holdings', 'code' => 'ALPHA'])->assertRedirect();
+        $groupId = (int) DB::table('company_groups')->where('code', 'ALPHA')->value('id');
+        $this->assertGreaterThan(0, $groupId);
+
+        $this->post("/developer/groups/{$groupId}", ['name' => 'Alpha Group Renamed', 'code' => 'ALPHAGR'])->assertRedirect();
+        $this->assertSame('Alpha Group Renamed', DB::table('company_groups')->where('id', $groupId)->value('name'));
+
+        $this->post('/developer/tenants/1/group', ['company_group_id' => $groupId])->assertRedirect();
+        $this->assertSame($groupId, (int) Company::findOrFail(1)->company_group_id);
+        $this->assertTrue(CompanyLicenseAudit::where('company_id', 1)->where('action', 'group_updated')->exists());
+
+        $grpHtml = $this->get("/developer?tab=tenants&group={$groupId}")->assertOk()->getContent();
+        $this->assertStringContainsString('Alpha Group Renamed', $grpHtml);
+
+        // Detach back to Independent Companies, verify ?group=independent filter, and delete group safely.
+        $this->post('/developer/tenants/1/group', ['company_group_id' => ''])->assertRedirect();
+        $this->assertNull(Company::findOrFail(1)->company_group_id);
+
+        $indHtml = $this->get('/developer?tab=tenants&group=independent')->assertOk()->getContent();
+        $this->assertStringContainsString('Independent', $indHtml);
+
+        $this->post('/developer/tenants/1/group', ['company_group_id' => $groupId])->assertRedirect();
+        $this->delete("/developer/groups/{$groupId}")->assertRedirect();
+        $this->assertNull(DB::table('company_groups')->where('id', $groupId)->first());
+        $this->assertNull(Company::findOrFail(1)->company_group_id);
     }
 }
