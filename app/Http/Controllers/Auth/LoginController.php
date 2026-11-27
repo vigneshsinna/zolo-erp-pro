@@ -18,6 +18,14 @@ class LoginController extends Controller
 
     protected $redirectTo = null;
 
+    public function redirectTo()
+    {
+        if (\App\Services\Platform\MenuSwitches::isDeveloper(auth()->user())) {
+            return route('developer.index');
+        }
+        return route('company.select');
+    }
+
     /**
 
      * Create a new controller instance.
@@ -70,6 +78,9 @@ class LoginController extends Controller
             $request->session()->regenerate();
             // Every sign-in starts at the company picker; it forwards to the intended page once a company is chosen.
             $request->session()->forget(['company_id', 'branch_id', 'financial_year_id']);
+            if (\App\Services\Platform\MenuSwitches::isDeveloper(auth()->user())) {
+                return redirect()->route('developer.index');
+            }
             return redirect()->route('company.select');
         }
         else {

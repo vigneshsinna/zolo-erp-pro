@@ -19,6 +19,9 @@ class RedirectIfAuthenticated
     public function handle($request, Closure $next, $guard = null)
     {
         if (Auth::guard($guard)->check()) {
+            if (\App\Services\Platform\MenuSwitches::isDeveloper(Auth::guard($guard)->user())) {
+                return redirect()->route('developer.index');
+            }
             return redirect('/dashboard');
         }
 
