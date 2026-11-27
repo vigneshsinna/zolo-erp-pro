@@ -80,12 +80,20 @@ final class BusinessKnowledgeRegistry
     }
 
     /** @return list<KnowledgeDefinition> */
-    public function forAction(string $key, bool $reviewedOnly = true): array
-    {
+    public function forAction(
+        string $key,
+        bool $reviewedOnly = true,
+        ?string $profile = null,
+        ?string $subtype = null,
+        ?string $asOfDate = null,
+    ): array {
         return array_values(array_filter(
             $this->all(),
             fn (KnowledgeDefinition $d): bool => $d->kind === 'action'
                 && ($d->data['action_key'] ?? null) === $key
+                && $d->isEffectiveOn($asOfDate)
+                && !$d->isWithdrawnOrDeprecated()
+                && ($profile === null || $d->appliesToProfile($profile, $subtype))
                 && (!$reviewedOnly || $d->isReviewed())
         ));
     }

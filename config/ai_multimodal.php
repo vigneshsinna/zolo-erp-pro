@@ -54,6 +54,7 @@ return [
     */
 
     'allow_direct_purchase_bill' => (bool) env('AI_MULTIMODAL_ALLOW_DIRECT_PURCHASE_BILL', false),
+    'allow_direct_sales_invoice' => (bool) env('AI_MULTIMODAL_ALLOW_DIRECT_SALES_INVOICE', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -118,12 +119,14 @@ return [
 
     'schema_versions' => [
         'invoice' => 'media.invoice.v1',
+        'invoice_optical' => 'media.invoice.optical.v2',
         'transcript' => 'media.transcript.v1',
         'normalized_input' => 'normalized.input.v1',
     ],
 
     'prompt_versions' => [
         'invoice' => 'prompt.invoice.v1',
+        'invoice_optical' => 'prompt.invoice.optical.v2',
         'transcript' => 'prompt.transcript.v1',
     ],
 ];

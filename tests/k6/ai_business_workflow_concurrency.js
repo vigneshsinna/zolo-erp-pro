@@ -178,18 +178,28 @@ export default function () {
             workflowSuccessRate.add(0);
         }
     } else if (testMode === 'optical_mixed') {
-        const capRes = http.get(`${baseUrl}/api/v1/ai/capabilities`, {
-            headers,
-            tags: { name: 'optical_capabilities_list' },
+        const capRes = http.get(`${apiUrl}/api/v1/ai/capabilities`, {
+            headers: commonHeaders,
+            tags: { workflow: 'optical_capabilities_list' },
         });
         const okCap = check(capRes, {
             'capabilities status valid': (r) => [200, 403, 404].includes(r.status),
         });
         workflowSuccessRate.add(okCap ? 1 : 0);
 
-        const settingsRes = http.get(`${baseUrl}/api/v1/ai/settings`, {
-            headers,
-            tags: { name: 'optical_ai_settings' },
+        const optLookupRes = http.get(`${apiUrl}/api/v1/ai/entity-options?type=product&q=sph:-2.00`, {
+            headers: commonHeaders,
+            tags: { workflow: 'optical_product_lookup' },
+        });
+        workflowReadLatency.add(optLookupRes.timings.duration);
+        const okLookup = check(optLookupRes, {
+            'optical lookup status valid': (r) => [200, 403, 404].includes(r.status),
+        });
+        workflowSuccessRate.add(okLookup ? 1 : 0);
+
+        const settingsRes = http.get(`${apiUrl}/api/v1/ai/settings`, {
+            headers: commonHeaders,
+            tags: { workflow: 'optical_ai_settings' },
         });
         const okSettings = check(settingsRes, {
             'settings status valid': (r) => [200, 403, 404].includes(r.status),

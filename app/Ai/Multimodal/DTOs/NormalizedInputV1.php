@@ -15,6 +15,7 @@ final readonly class NormalizedInputV1
      * @param array<string, mixed> $sourceProvenance
      * @param array<int, array<string, mixed>> $conflicts
      * @param array<int, string> $warnings
+     * @param array<string, mixed>|null $intentDecision
      */
     public function __construct(
         public string $schemaVersion,
@@ -26,6 +27,7 @@ final readonly class NormalizedInputV1
         public array $conflicts = [],
         public array $warnings = [],
         public ?string $capabilityUnavailableReason = null,
+        public ?array $intentDecision = null,
     ) {}
 
     /**
@@ -43,7 +45,7 @@ final readonly class NormalizedInputV1
             'conflicts' => $this->conflicts,
             'warnings' => $this->warnings,
             'capability_unavailable_reason' => $this->capabilityUnavailableReason,
+            'intent_decision' => $this->intentDecision,
         ];
     }
 }
-

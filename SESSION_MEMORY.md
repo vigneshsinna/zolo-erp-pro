@@ -1,5 +1,64 @@
 # zoloERP Pro — Persistent Session Memory & State
 
+## ZOLOERP Main AI Completion & Copilot UI Implementation (R01–R12) — 2026-11-27
+
+- **Scope:** Implemented work packages `R01`–`R09` and automated offline verification for `R10`–`R12` from [docs/ZOLOERP_MAIN_AI_COMPLETION_AND_COPILOT_UI_IMPLEMENTATION.md](docs/ZOLOERP_MAIN_AI_COMPLETION_AND_COPILOT_UI_IMPLEMENTATION.md), keeping all release switches default-off (`false`) and preserving pre-existing working-tree fixes (`ApprovedModelGateway`, `NvidiaOmniPerceptionClient`, `MultimodalException`, `MediaExtractionService` timeout, `OmniRequestPayloadTest`).
+- **Key Deliverables Implemented & Verified:**
+  1. **R01 — Transaction Intent Contract:** Added `TransactionIntentDecision`, `TransactionIntentResolver`, `CompanyDocumentRoleClassifier`, and `TransactionIntentResolverTest`; updated `VoiceIntentResolver`, `NormalizedInputV1`, `InvoiceExtractionV1`, `NormalizedInputBuilder`, `NormalizedInputWorkflowBridge`, `AiMediaController`, and `ConversationTurnRouter` so explicit purchase vs. sales phrases route deterministically without falling back to `purchase_bill.create.v1`.
+  2. **R02 — Governed Media-to-Sales-Invoice:** Added default-off `AI_MULTIMODAL_ALLOW_DIRECT_SALES_INVOICE=false` in `config/ai_multimodal.php` and `.env.example`; wired sales-invoice media routing in `NormalizedInputBuilder`, `CommercialDocumentAdapter::preview()`, `PurchaseBillPreviewAdapter`, and `SalesInvoiceMediaWorkflowTest`.
+  3. **R03 — Optical Media Perception & Security:** Updated `config/ai_multimodal.php` (`media.invoice.optical.v2`, `prompt.invoice.optical.v2`), `InvoiceExtractionV1` (`ALLOWED_ROW_ROLES`, `UNTRUSTED_AUTHORITY_KEYS` stripping model `user_confirmed`/authority keys, optical line normalization distinguishing `PL`->`0.00` vs null without guessing missing axis, `rx_sheet`/`lab_slip` monetary suppression, page coverage & field evidence sanitization), `MediaExtractionService` (`class_exists(IndustryContextResolver::class)` fix), `ExtractionRevisionService`, `NormalizedInputBuilder` (`incomplete_document_coverage`), and `OpticalMediaPerceptionTest`.
+  4. **R04 — End-to-End Optical Provenance & Proposal Invalidation:** Migrated `2026_11_27_000100_add_optical_spec_columns_to_commercial_order_items.php` onto `zolo_test_ai_release`; updated `CommercialOrderItem`, `OrderLifecycleService`, `PurchaseOrderCommandAdapter`, `SalesOrderCommandAdapter` (preserving optical lines), `EntityDirectorySearchService`/`AiMediaController`/`TaskCorrectionService`, `WorkflowTaskStateService`, `ActionProposalService`, and `ActionPreparationService` (patching via `TaskCorrectionService` immediately marks linked proposals `superseded` to block stale `v1` approval while keeping task linkage so re-preparation increments `v1 -> v2`), verified by `OpticalRoundTripAndInvalidationTest`.
+  5. **R05 — Copilot UX, Conflict Cards & Exact Optical Lookup:** Updated `EntityDirectorySearchService`, `AiEntityLookupController`, `AiEntityOptionsController` (`type=product` delegated to optical-aware directory search), `public/js/ai-entity-picker.js`, `public/js/ai-media-input.js` (scope-epoch reset, conflict/confirmation cards without Purchase Bill Review, sales invoice review cards, source-vs-ERP total diff badge, inline optical editor), `workspace.blade.php`, and `OpticalLookupAndUiContractTest`.
+  6. **R06 — Knowledge Governance & Planner Hardening:** Documented all 95 draft definitions across 10 active JSON packs (`0` reviewed; `pending_owner_signoff` untouched) in [KNOWLEDGE_COVERAGE_REGISTER.md](docs/zoloerp-ai-agent-implementation/KNOWLEDGE_COVERAGE_REGISTER.md); hardened `BusinessKnowledgeRegistry::forAction()` profile/subtype/date scoping, `BusinessWorkflowPlanner` (`requiresCapabilities()`, `knowledge_drifted`, `assertWorkflowDefinitionCurrent()`), `BusinessWorkflowProgress` (`skipNotApplicableStep()` restricted to `optional: true` steps, drift enforcement on progress/reconciliation), and `KnowledgePlannerHardeningTest`.
+  7. **R07 — Optical Lab Allocation & Reversal Hardening:** Migrated `2026_11_27_000101_create_optical_rx_job_allocations_table.php` onto `zolo_test_ai_release`; hardened `OpticalRxJobService` to record `qc_inspector_id`, enforce `qty_packed <= qty_accepted`, validate physical DC/Sale customer + optical identity + stock movement (rejecting service-only sales and preventing DC->Sale settlement double-counting via `material_settlements`), enforce DB-verified `returns`/`sales`/`production_orders`/`job_work_orders` cancellation proofs, and release allocations on cancellation (`OpticalRxHardeningTest`).
+  8. **R08 — Commercial & Optical Reconciliation Parity:** Verified all existing commercial/optical parity suites and added `OpticalCommercialReconciliationAndParityTest` proving manual vs. approved AI sales invoice stock-movement, balanced journal, open-item AR, partial receipt allocation, zero-movement service sales, and blocked expense-only AP.
+  9. **R09 — Selective MCP & Automation Gating:** Configured default-off optical reads (`optical.lens_candidates.v1`, `optical.power_matrix.v1`) and commercial prepare capabilities (`purchase_bill.create.v1`, `sales_order.create.v1`, `sales_invoice.create.v1` behind `AI_MCP_COMMERCIAL_PREPARE_ENABLED=false`) in `config/ai_capabilities.php`, `config/ai_infrastructure.php`, `.env.example`, `CapabilityExposurePolicy`, and `McpClientBindingService`, plus `OpticalMcpAndAutomationExpansionTest` and `OpticalDeterministicTriggers` zero-LLM verification.
+  10. **R10–R12 Automated Offline Checks & External Blockers:** Fixed undefined `baseUrl`/`headers` bug in `tests/k6/ai_business_workflow_concurrency.js` `optical_mixed` scenario. Final post-edit PHPUnit run (`AI_CONVERSATION_ENABLED=false` against `zolo_test_ai_release`): **93 / 93** feature tests passed (`741` assertions across `Optical`, `Knowledge`, `Multimodal`, `SharedCapabilityDiscovery`, `McpAndAsyncInfrastructure`, `McpGovernedProposals`), **100%** JS syntax (`node --check` on all 12 `public/js/ai-*.js`), `DesignTokensTest` **4 / 4** passed, `route:cache`/`view:cache` clean. Unexecuted due to external environment gaps: live NVIDIA Omni corpus (`R10`, no live `NVIDIA` key in `.env`), `k6` load execution (`R11`, `k6` not installed), Playwright browser suite (`R12`, `node_modules/@playwright/test` absent), and human owner signoffs (`resources/ai/knowledge/governance/review-manifest.json` + UAT/deploy signoffs).
+
+---
+
+## Developer Login & Root Redirect Directly to Developer Portal (`/developer`) — 2026-11-27
+
+- **Problem Identified:**
+  - When developer user logged in at `/login` or hit root domain (`/`), the system previously redirected them to `company.select` (`/select-company`) or `/dashboard`.
+  - Developer portal users are system architects managing SaaS licensing, plans, and tenants across companies, so forcing them into tenant company selection on login was erroneous.
+  - Additionally, `User::$fillable` was missing `'is_developer'`, preventing developer user creation/updates via mass-assignment.
+- **Root Cause & Fixes:**
+  1. **`app/Http/Controllers/Auth/LoginController.php`:**
+     - Updated `login()` post-authentication hook and added `redirectTo()`: if `MenuSwitches::isDeveloper(auth()->user())`, redirect immediately to `route('developer.index')`; non-developer accounts still redirect to `route('company.select')`.
+  2. **`app/Http/Middleware/RedirectIfAuthenticated.php`:**
+     - When an authenticated developer accesses `/login` or guest routes, redirect to `route('developer.index')` instead of `/dashboard`.
+  3. **`app/Http/Controllers/HomeController.php`:**
+     - In `index()`, redirect developer users to `route('developer.index')`.
+  4. **`app/Http/Middleware/ResolveLegacyCompanyContext.php`:**
+     - When unselected company validation occurs for developer, redirect to `route('developer.index')` instead of `company.select`.
+  5. **`app/Models/User.php`:**
+     - Added `'is_developer'` to `$fillable`.
+  6. **`tests/Feature/DeveloperLicensingPortalTest.php`:**
+     - Added `test_developer_login_and_root_redirect_directly_to_developer_portal()` covering non-dev login redirect (`company.select`), developer login redirect (`/developer`), root `/` redirect, `/login` redirect, and unselected session `/dashboard` redirect. All 11 tests (202 assertions) passed.
+  7. **Pull Request:**
+     - PR #51 opened: `https://github.com/vigneshsinna/zolo-erp-pro/pull/51`.
+
+---
+
+## Multimodal `PROVIDER_TIMEOUT` Root Cause Fix (`cURL error 60` + Error Classification) — 2026-11-27
+
+- **Root Cause Identified:**
+  - Browser `/ai` media preparation (`POST /api/v1/ai/media/prepare`) for `samplebill.png` (`bda90825-f93b-4488-9774-bbf6a5cb8073`, 5.9 MB) failed in `931 ms` (`ai_model_invocations` ID `ded2f03a-5432-4079-8962-eb087f69c16d`) with `PROVIDER_TIMEOUT`.
+  - EnvKit's PHP 8.5.12 configs (`C:\ProgramData\envkit\conf\php\php.ini` and `C:\ProgramData\envkit\services\php\8.5.12\php.ini`) had empty `curl.cainfo` and `openssl.cafile`, causing immediate `cURL error 60: SSL certificate OpenSSL verify result: unable to get local issuer certificate (20)` against `https://integrate.api.nvidia.com/v1/chat/completions`.
+  - `NvidiaOmniPerceptionClient::dispatchPerception()` caught every `Illuminate\Http\Client\ConnectionException`, retried non-transient SSL failures, discarded the cURL error code, and reported `PROVIDER_TIMEOUT`; `ApprovedModelGateway::admitPerceptionDispatch()` also hardcoded `httpAttempts: 1` on failures.
+- **Changes Applied:**
+  1. **EnvKit PHP Config (`C:\ProgramData\envkit\conf\php\php.ini`):** Added `curl.cainfo = "C:/ProgramData/envkit/certs/cacert.pem"`, `openssl.cafile = "C:/ProgramData/envkit/certs/cacert.pem"`, and `max_execution_time = 180`; ran `envkit apply`, `envkit stop php`, `envkit start php` (verified `http_code=200`, `curl_errno=0` against `https://integrate.api.nvidia.com/v1/models`).
+  2. **`app/Ai/Multimodal/Clients/NvidiaOmniPerceptionClient.php`:** Added `classifyConnectionException()` to separate SSL/TLS errors (`PROVIDER_SSL_ERROR`, HTTP 502, fails fast without retries), actual timeouts (`PROVIDER_TIMEOUT`, HTTP 504, cURL 28 / timeout), and network errors (`PROVIDER_CONNECTION_FAILED`, HTTP 503), passing `http_attempts` in `MultimodalException::$details`.
+  3. **`app/Ai/Multimodal/Exceptions/MultimodalException.php`, `app/Ai/Gateway/ApprovedModelGateway.php`, `app/Ai/Multimodal/Services/MediaExtractionService.php`:** Propagated `details` on `providerUnavailable()`, logged actual `http_attempts` on perception failures, and marked `PROVIDER_SSL_ERROR` and `PROVIDER_AUTH_FAILED` non-retryable in per-page extraction failures.
+  4. **`tests/Unit/Ai/Multimodal/OmniRequestPayloadTest.php`:** Added 3 unit tests covering `cURL error 60` (`PROVIDER_SSL_ERROR`, 1 attempt), `cURL error 28` (`PROVIDER_TIMEOUT`, 3 attempts), and `cURL error 7` (`PROVIDER_CONNECTION_FAILED`, 2 attempts).
+- **Verification:**
+  - `php -l` on all 5 edited PHP files: 0 syntax errors.
+  - `php vendor/phpunit/phpunit/phpunit -c phpunit.ai.xml tests/Unit/Ai/Multimodal`: **20 / 20 passed (93 assertions)**.
+  - `php vendor/phpunit/phpunit/phpunit -c phpunit.ai.xml tests/Feature/Ai/Multimodal`: **33 / 33 passed (269 assertions)**.
+
+---
+
 ## Merge of `feature/ai-unified-input-clarification` (`ai-unified`) into `main` — 2026-11-26
 
 - **Merge Summary (`d84b75fc` on local `main`):**
@@ -8455,6 +8514,47 @@
 
 # zoloERP Pro — Persistent Session Memory & State
 
+## ZOLOERP Main AI Completion & Copilot UI Implementation (R01–R12) — 2026-11-27
+
+- **Scope:** Implemented work packages `R01`–`R09` and automated offline verification for `R10`–`R12` from [docs/ZOLOERP_MAIN_AI_COMPLETION_AND_COPILOT_UI_IMPLEMENTATION.md](docs/ZOLOERP_MAIN_AI_COMPLETION_AND_COPILOT_UI_IMPLEMENTATION.md), keeping all release switches default-off (`false`) and preserving pre-existing working-tree fixes (`ApprovedModelGateway`, `NvidiaOmniPerceptionClient`, `MultimodalException`, `MediaExtractionService` timeout, `OmniRequestPayloadTest`).
+- **Key Deliverables Implemented & Verified:**
+  1. **R01 — Transaction Intent Contract:** Added `TransactionIntentDecision`, `TransactionIntentResolver`, `CompanyDocumentRoleClassifier`, and `TransactionIntentResolverTest`; updated `VoiceIntentResolver`, `NormalizedInputV1`, `InvoiceExtractionV1`, `NormalizedInputBuilder`, `NormalizedInputWorkflowBridge`, `AiMediaController`, and `ConversationTurnRouter` so explicit purchase vs. sales phrases route deterministically without falling back to `purchase_bill.create.v1`.
+  2. **R02 — Governed Media-to-Sales-Invoice:** Added default-off `AI_MULTIMODAL_ALLOW_DIRECT_SALES_INVOICE=false` in `config/ai_multimodal.php` and `.env.example`; wired sales-invoice media routing in `NormalizedInputBuilder`, `CommercialDocumentAdapter::preview()`, `PurchaseBillPreviewAdapter`, and `SalesInvoiceMediaWorkflowTest`.
+  3. **R03 — Optical Media Perception & Security:** Updated `config/ai_multimodal.php` (`media.invoice.optical.v2`, `prompt.invoice.optical.v2`), `InvoiceExtractionV1` (`ALLOWED_ROW_ROLES`, `UNTRUSTED_AUTHORITY_KEYS` stripping model `user_confirmed`/authority keys, optical line normalization distinguishing `PL`->`0.00` vs null without guessing missing axis, `rx_sheet`/`lab_slip` monetary suppression, page coverage & field evidence sanitization), `MediaExtractionService` (`class_exists(IndustryContextResolver::class)` fix), `ExtractionRevisionService`, `NormalizedInputBuilder` (`incomplete_document_coverage`), and `OpticalMediaPerceptionTest`.
+  4. **R04 — End-to-End Optical Provenance & Proposal Invalidation:** Migrated `2026_11_27_000100_add_optical_spec_columns_to_commercial_order_items.php` onto `zolo_test_ai_release`; updated `CommercialOrderItem`, `OrderLifecycleService`, `PurchaseOrderCommandAdapter`, `SalesOrderCommandAdapter` (preserving optical lines), `EntityDirectorySearchService`/`AiMediaController`/`TaskCorrectionService`, `WorkflowTaskStateService`, `ActionProposalService`, and `ActionPreparationService` (patching via `TaskCorrectionService` immediately marks linked proposals `superseded` to block stale `v1` approval while keeping task linkage so re-preparation increments `v1 -> v2`), verified by `OpticalRoundTripAndInvalidationTest`.
+  5. **R05 — Copilot UX, Conflict Cards & Exact Optical Lookup:** Updated `EntityDirectorySearchService`, `AiEntityLookupController`, `AiEntityOptionsController` (`type=product` delegated to optical-aware directory search), `public/js/ai-entity-picker.js`, `public/js/ai-media-input.js` (scope-epoch reset, conflict/confirmation cards without Purchase Bill Review, sales invoice review cards, source-vs-ERP total diff badge, inline optical editor), `workspace.blade.php`, and `OpticalLookupAndUiContractTest`.
+  6. **R06 — Knowledge Governance & Planner Hardening:** Documented all 95 draft definitions across 10 active JSON packs (`0` reviewed; `pending_owner_signoff` untouched) in [KNOWLEDGE_COVERAGE_REGISTER.md](docs/zoloerp-ai-agent-implementation/KNOWLEDGE_COVERAGE_REGISTER.md); hardened `BusinessKnowledgeRegistry::forAction()` profile/subtype/date scoping, `BusinessWorkflowPlanner` (`requiresCapabilities()`, `knowledge_drifted`, `assertWorkflowDefinitionCurrent()`), `BusinessWorkflowProgress` (`skipNotApplicableStep()` restricted to `optional: true` steps, drift enforcement on progress/reconciliation), and `KnowledgePlannerHardeningTest`.
+  7. **R07 — Optical Lab Allocation & Reversal Hardening:** Migrated `2026_11_27_000101_create_optical_rx_job_allocations_table.php` onto `zolo_test_ai_release`; hardened `OpticalRxJobService` to record `qc_inspector_id`, enforce `qty_packed <= qty_accepted`, validate physical DC/Sale customer + optical identity + stock movement (rejecting service-only sales and preventing DC->Sale settlement double-counting via `material_settlements`), enforce DB-verified `returns`/`sales`/`production_orders`/`job_work_orders` cancellation proofs, and release allocations on cancellation (`OpticalRxHardeningTest`).
+  8. **R08 — Commercial & Optical Reconciliation Parity:** Verified all existing commercial/optical parity suites and added `OpticalCommercialReconciliationAndParityTest` proving manual vs. approved AI sales invoice stock-movement, balanced journal, open-item AR, partial receipt allocation, zero-movement service sales, and blocked expense-only AP.
+  9. **R09 — Selective MCP & Automation Gating:** Configured default-off optical reads (`optical.lens_candidates.v1`, `optical.power_matrix.v1`) and commercial prepare capabilities (`purchase_bill.create.v1`, `sales_order.create.v1`, `sales_invoice.create.v1` behind `AI_MCP_COMMERCIAL_PREPARE_ENABLED=false`) in `config/ai_capabilities.php`, `config/ai_infrastructure.php`, `.env.example`, `CapabilityExposurePolicy`, and `McpClientBindingService`, plus `OpticalMcpAndAutomationExpansionTest` and `OpticalDeterministicTriggers` zero-LLM verification.
+  10. **R10–R12 Automated Offline Checks & External Blockers:** Fixed undefined `baseUrl`/`headers` bug in `tests/k6/ai_business_workflow_concurrency.js` `optical_mixed` scenario. Final post-edit PHPUnit run (`AI_CONVERSATION_ENABLED=false` against `zolo_test_ai_release`): **93 / 93** feature tests passed (`741` assertions across `Optical`, `Knowledge`, `Multimodal`, `SharedCapabilityDiscovery`, `McpAndAsyncInfrastructure`, `McpGovernedProposals`), **100%** JS syntax (`node --check` on all 12 `public/js/ai-*.js`), `DesignTokensTest` **4 / 4** passed, `route:cache`/`view:cache` clean. Unexecuted due to external environment gaps: live NVIDIA Omni corpus (`R10`, no live `NVIDIA` key in `.env`), `k6` load execution (`R11`, `k6` not installed), Playwright browser suite (`R12`, `node_modules/@playwright/test` absent), and human owner signoffs (`resources/ai/knowledge/governance/review-manifest.json` + UAT/deploy signoffs).
+
+---
+
+## Developer Login & Root Redirect Directly to Developer Portal (`/developer`) — 2026-11-27
+
+- **Problem Identified:**
+  - When developer user logged in at `/login` or hit root domain (`/`), the system previously redirected them to `company.select` (`/select-company`) or `/dashboard`.
+  - Developer portal users are system architects managing SaaS licensing, plans, and tenants across companies, so forcing them into tenant company selection on login was erroneous.
+  - Additionally, `User::$fillable` was missing `'is_developer'`, preventing developer user creation/updates via mass-assignment.
+- **Root Cause & Fixes:**
+  1. **`app/Http/Controllers/Auth/LoginController.php`:**
+     - Updated `login()` post-authentication hook and added `redirectTo()`: if `MenuSwitches::isDeveloper(auth()->user())`, redirect immediately to `route('developer.index')`; non-developer accounts still redirect to `route('company.select')`.
+  2. **`app/Http/Middleware/RedirectIfAuthenticated.php`:**
+     - When an authenticated developer accesses `/login` or guest routes, redirect to `route('developer.index')` instead of `/dashboard`.
+  3. **`app/Http/Controllers/HomeController.php`:**
+     - In `index()`, redirect developer users to `route('developer.index')`.
+  4. **`app/Http/Middleware/ResolveLegacyCompanyContext.php`:**
+     - When unselected company validation occurs for developer, redirect to `route('developer.index')` instead of `company.select`.
+  5. **`app/Models/User.php`:**
+     - Added `'is_developer'` to `$fillable`.
+  6. **`tests/Feature/DeveloperLicensingPortalTest.php`:**
+     - Added `test_developer_login_and_root_redirect_directly_to_developer_portal()` covering non-dev login redirect (`company.select`), developer login redirect (`/developer`), root `/` redirect, `/login` redirect, and unselected session `/dashboard` redirect. All 11 tests (202 assertions) passed.
+  7. **Pull Request:**
+     - PR #51 opened: `https://github.com/vigneshsinna/zolo-erp-pro/pull/51`.
+
+---
+
 ## Chat Replay Preservation, Product GST Defaults & Session Continuity Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
 
 - **Incidents & Symptoms Reported (with User Screenshots):**
@@ -8786,6 +8886,47 @@
 ---
 
 # zoloERP Pro — Persistent Session Memory & State
+
+## ZOLOERP Main AI Completion & Copilot UI Implementation (R01–R12) — 2026-11-27
+
+- **Scope:** Implemented work packages `R01`–`R09` and automated offline verification for `R10`–`R12` from [docs/ZOLOERP_MAIN_AI_COMPLETION_AND_COPILOT_UI_IMPLEMENTATION.md](docs/ZOLOERP_MAIN_AI_COMPLETION_AND_COPILOT_UI_IMPLEMENTATION.md), keeping all release switches default-off (`false`) and preserving pre-existing working-tree fixes (`ApprovedModelGateway`, `NvidiaOmniPerceptionClient`, `MultimodalException`, `MediaExtractionService` timeout, `OmniRequestPayloadTest`).
+- **Key Deliverables Implemented & Verified:**
+  1. **R01 — Transaction Intent Contract:** Added `TransactionIntentDecision`, `TransactionIntentResolver`, `CompanyDocumentRoleClassifier`, and `TransactionIntentResolverTest`; updated `VoiceIntentResolver`, `NormalizedInputV1`, `InvoiceExtractionV1`, `NormalizedInputBuilder`, `NormalizedInputWorkflowBridge`, `AiMediaController`, and `ConversationTurnRouter` so explicit purchase vs. sales phrases route deterministically without falling back to `purchase_bill.create.v1`.
+  2. **R02 — Governed Media-to-Sales-Invoice:** Added default-off `AI_MULTIMODAL_ALLOW_DIRECT_SALES_INVOICE=false` in `config/ai_multimodal.php` and `.env.example`; wired sales-invoice media routing in `NormalizedInputBuilder`, `CommercialDocumentAdapter::preview()`, `PurchaseBillPreviewAdapter`, and `SalesInvoiceMediaWorkflowTest`.
+  3. **R03 — Optical Media Perception & Security:** Updated `config/ai_multimodal.php` (`media.invoice.optical.v2`, `prompt.invoice.optical.v2`), `InvoiceExtractionV1` (`ALLOWED_ROW_ROLES`, `UNTRUSTED_AUTHORITY_KEYS` stripping model `user_confirmed`/authority keys, optical line normalization distinguishing `PL`->`0.00` vs null without guessing missing axis, `rx_sheet`/`lab_slip` monetary suppression, page coverage & field evidence sanitization), `MediaExtractionService` (`class_exists(IndustryContextResolver::class)` fix), `ExtractionRevisionService`, `NormalizedInputBuilder` (`incomplete_document_coverage`), and `OpticalMediaPerceptionTest`.
+  4. **R04 — End-to-End Optical Provenance & Proposal Invalidation:** Migrated `2026_11_27_000100_add_optical_spec_columns_to_commercial_order_items.php` onto `zolo_test_ai_release`; updated `CommercialOrderItem`, `OrderLifecycleService`, `PurchaseOrderCommandAdapter`, `SalesOrderCommandAdapter` (preserving optical lines), `EntityDirectorySearchService`/`AiMediaController`/`TaskCorrectionService`, `WorkflowTaskStateService`, `ActionProposalService`, and `ActionPreparationService` (patching via `TaskCorrectionService` immediately marks linked proposals `superseded` to block stale `v1` approval while keeping task linkage so re-preparation increments `v1 -> v2`), verified by `OpticalRoundTripAndInvalidationTest`.
+  5. **R05 — Copilot UX, Conflict Cards & Exact Optical Lookup:** Updated `EntityDirectorySearchService`, `AiEntityLookupController`, `AiEntityOptionsController` (`type=product` delegated to optical-aware directory search), `public/js/ai-entity-picker.js`, `public/js/ai-media-input.js` (scope-epoch reset, conflict/confirmation cards without Purchase Bill Review, sales invoice review cards, source-vs-ERP total diff badge, inline optical editor), `workspace.blade.php`, and `OpticalLookupAndUiContractTest`.
+  6. **R06 — Knowledge Governance & Planner Hardening:** Documented all 95 draft definitions across 10 active JSON packs (`0` reviewed; `pending_owner_signoff` untouched) in [KNOWLEDGE_COVERAGE_REGISTER.md](docs/zoloerp-ai-agent-implementation/KNOWLEDGE_COVERAGE_REGISTER.md); hardened `BusinessKnowledgeRegistry::forAction()` profile/subtype/date scoping, `BusinessWorkflowPlanner` (`requiresCapabilities()`, `knowledge_drifted`, `assertWorkflowDefinitionCurrent()`), `BusinessWorkflowProgress` (`skipNotApplicableStep()` restricted to `optional: true` steps, drift enforcement on progress/reconciliation), and `KnowledgePlannerHardeningTest`.
+  7. **R07 — Optical Lab Allocation & Reversal Hardening:** Migrated `2026_11_27_000101_create_optical_rx_job_allocations_table.php` onto `zolo_test_ai_release`; hardened `OpticalRxJobService` to record `qc_inspector_id`, enforce `qty_packed <= qty_accepted`, validate physical DC/Sale customer + optical identity + stock movement (rejecting service-only sales and preventing DC->Sale settlement double-counting via `material_settlements`), enforce DB-verified `returns`/`sales`/`production_orders`/`job_work_orders` cancellation proofs, and release allocations on cancellation (`OpticalRxHardeningTest`).
+  8. **R08 — Commercial & Optical Reconciliation Parity:** Verified all existing commercial/optical parity suites and added `OpticalCommercialReconciliationAndParityTest` proving manual vs. approved AI sales invoice stock-movement, balanced journal, open-item AR, partial receipt allocation, zero-movement service sales, and blocked expense-only AP.
+  9. **R09 — Selective MCP & Automation Gating:** Configured default-off optical reads (`optical.lens_candidates.v1`, `optical.power_matrix.v1`) and commercial prepare capabilities (`purchase_bill.create.v1`, `sales_order.create.v1`, `sales_invoice.create.v1` behind `AI_MCP_COMMERCIAL_PREPARE_ENABLED=false`) in `config/ai_capabilities.php`, `config/ai_infrastructure.php`, `.env.example`, `CapabilityExposurePolicy`, and `McpClientBindingService`, plus `OpticalMcpAndAutomationExpansionTest` and `OpticalDeterministicTriggers` zero-LLM verification.
+  10. **R10–R12 Automated Offline Checks & External Blockers:** Fixed undefined `baseUrl`/`headers` bug in `tests/k6/ai_business_workflow_concurrency.js` `optical_mixed` scenario. Final post-edit PHPUnit run (`AI_CONVERSATION_ENABLED=false` against `zolo_test_ai_release`): **93 / 93** feature tests passed (`741` assertions across `Optical`, `Knowledge`, `Multimodal`, `SharedCapabilityDiscovery`, `McpAndAsyncInfrastructure`, `McpGovernedProposals`), **100%** JS syntax (`node --check` on all 12 `public/js/ai-*.js`), `DesignTokensTest` **4 / 4** passed, `route:cache`/`view:cache` clean. Unexecuted due to external environment gaps: live NVIDIA Omni corpus (`R10`, no live `NVIDIA` key in `.env`), `k6` load execution (`R11`, `k6` not installed), Playwright browser suite (`R12`, `node_modules/@playwright/test` absent), and human owner signoffs (`resources/ai/knowledge/governance/review-manifest.json` + UAT/deploy signoffs).
+
+---
+
+## Developer Login & Root Redirect Directly to Developer Portal (`/developer`) — 2026-11-27
+
+- **Problem Identified:**
+  - When developer user logged in at `/login` or hit root domain (`/`), the system previously redirected them to `company.select` (`/select-company`) or `/dashboard`.
+  - Developer portal users are system architects managing SaaS licensing, plans, and tenants across companies, so forcing them into tenant company selection on login was erroneous.
+  - Additionally, `User::$fillable` was missing `'is_developer'`, preventing developer user creation/updates via mass-assignment.
+- **Root Cause & Fixes:**
+  1. **`app/Http/Controllers/Auth/LoginController.php`:**
+     - Updated `login()` post-authentication hook and added `redirectTo()`: if `MenuSwitches::isDeveloper(auth()->user())`, redirect immediately to `route('developer.index')`; non-developer accounts still redirect to `route('company.select')`.
+  2. **`app/Http/Middleware/RedirectIfAuthenticated.php`:**
+     - When an authenticated developer accesses `/login` or guest routes, redirect to `route('developer.index')` instead of `/dashboard`.
+  3. **`app/Http/Controllers/HomeController.php`:**
+     - In `index()`, redirect developer users to `route('developer.index')`.
+  4. **`app/Http/Middleware/ResolveLegacyCompanyContext.php`:**
+     - When unselected company validation occurs for developer, redirect to `route('developer.index')` instead of `company.select`.
+  5. **`app/Models/User.php`:**
+     - Added `'is_developer'` to `$fillable`.
+  6. **`tests/Feature/DeveloperLicensingPortalTest.php`:**
+     - Added `test_developer_login_and_root_redirect_directly_to_developer_portal()` covering non-dev login redirect (`company.select`), developer login redirect (`/developer`), root `/` redirect, `/login` redirect, and unselected session `/dashboard` redirect. All 11 tests (202 assertions) passed.
+  7. **Pull Request:**
+     - PR #51 opened: `https://github.com/vigneshsinna/zolo-erp-pro/pull/51`.
+
+---
 
 ## Chat Replay Preservation, Product GST Defaults & Session Continuity Resolved — 2026-11-12 (`feature/ai-unified-input-clarification`)
 

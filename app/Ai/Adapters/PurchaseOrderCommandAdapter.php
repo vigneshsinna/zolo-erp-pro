@@ -125,6 +125,16 @@ final class PurchaseOrderCommandAdapter implements ActionCommandAdapterInterface
                 context: $context,
             );
 
+            $opticalLines = array_values(array_map(
+                static fn (array $line): array => \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line),
+                $payload['items'] ?? []
+            ));
+            if (collect($opticalLines)->contains(fn (array $l) => $l !== [])) {
+                $attrs = is_array($createdPurchase->attributes_json) ? $createdPurchase->attributes_json : [];
+                $attrs['optical_lines'] = $opticalLines;
+                $createdPurchase->forceFill(['attributes_json' => $attrs])->save();
+            }
+
             // 4. Assert executed totals match approved proposal totals exactly
             if (!empty($payload['expected_totals']['grand_total'])) {
                 $expectedGrandTotal = (float) $payload['expected_totals']['grand_total'];

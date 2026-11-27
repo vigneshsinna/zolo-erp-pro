@@ -269,7 +269,7 @@ final class BusinessWorkflowProgress
         DB::transaction(function () use ($principal, $workflowId, $revision): void {
             $workflow = $this->owned($principal, $workflowId)->lockForUpdate()->first();
             $this->assertRevision($workflow, $revision);
-            $this->assertProcessEnabled($workflow);
+            $this->assertProcessEnabled($workflow, $principal);
             if ($workflow->status !== 'planned') {
                 throw ValidationException::withMessages(['workflow' => 'Pause/cancelled workflows cannot progress.']);
             }
@@ -350,7 +350,7 @@ final class BusinessWorkflowProgress
             foreach ($steps as $step) {
                 if ($step->status !== 'blocked') continue;
                 $dependencies = json_decode($step->depends_on_json, true, flags: JSON_THROW_ON_ERROR);
-                if (collect($dependencies)->every(static fn (string $k): bool => ($byKey[$k]->status ?? '') === 'completed')) {
+                if (collect($dependencies)->every(static fn (string $k): bool => in_array($byKey[$k]->status ?? '', ['completed', 'skipped_not_applicable'], true))) {
                     $next = match ($step->kind) {
                         'reviewed_action' => 'awaiting_proposal',
                         'external_event' => 'awaiting_real_event',
@@ -364,7 +364,8 @@ final class BusinessWorkflowProgress
                 }
             }
             $freshSteps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->get();
-            $allCompleted = $freshSteps->isNotEmpty() && $freshSteps->every(static fn ($s): bool => $s->status === 'completed');
+            $allCompleted = $freshSteps->isNotEmpty()
+                && $freshSteps->every(static fn ($s): bool => in_array($s->status, ['completed', 'skipped_not_applicable'], true));
             if ($allCompleted) {
                 DB::table('ai_business_workflows')->where('id', $workflowId)->update([
                     'status' => 'completed', 'updated_at' => now('UTC'),
@@ -384,7 +385,7 @@ final class BusinessWorkflowProgress
         DB::transaction(function () use ($principal, $workflowId, $revision, $stepKey, $update, $event): void {
             $workflow = $this->owned($principal, $workflowId)->lockForUpdate()->first();
             $this->assertRevision($workflow, $revision);
-            $this->assertProcessEnabled($workflow);
+            $this->assertProcessEnabled($workflow, $principal);
             if ($workflow->status !== 'planned') {
                 throw ValidationException::withMessages(['workflow' => 'Only active planned workflows can advance.']);
             }
@@ -402,13 +403,13 @@ final class BusinessWorkflowProgress
             DB::table('ai_business_workflow_steps')->where('id', $step->id)
                 ->update($changes + ['updated_at' => now('UTC')]);
 
-            if (($changes['status'] ?? '') === 'completed') {
+            if (in_array($changes['status'] ?? '', ['completed', 'skipped_not_applicable'], true)) {
                 $allSteps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->get();
                 $byKey = $allSteps->keyBy('step_key');
                 foreach ($allSteps as $s) {
                     if ($s->status !== 'blocked') continue;
                     $deps = json_decode($s->depends_on_json, true, flags: JSON_THROW_ON_ERROR);
-                    if (collect($deps)->every(static fn (string $k): bool => ($byKey[$k]->status ?? '') === 'completed')) {
+                    if (collect($deps)->every(static fn (string $k): bool => in_array($byKey[$k]->status ?? '', ['completed', 'skipped_not_applicable'], true))) {
                         $next = match ($s->kind) {
                             'reviewed_action' => 'awaiting_proposal',
                             'external_event' => 'awaiting_real_event',
@@ -422,7 +423,7 @@ final class BusinessWorkflowProgress
                 }
 
                 $freshSteps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)->get();
-                if ($freshSteps->isNotEmpty() && $freshSteps->every(static fn ($s): bool => $s->status === 'completed')) {
+                if ($freshSteps->isNotEmpty() && $freshSteps->every(static fn ($s): bool => in_array($s->status, ['completed', 'skipped_not_applicable'], true))) {
                     DB::table('ai_business_workflows')->where('id', $workflowId)
                         ->update(['status' => 'completed', 'updated_at' => now('UTC')]);
                     DB::table('ai_business_workflow_events')->insert([
@@ -445,9 +446,11 @@ final class BusinessWorkflowProgress
     {
         $deps = json_decode($step->depends_on_json, true, flags: JSON_THROW_ON_ERROR);
         foreach ($deps as $dep) {
-            if (!DB::table('ai_business_workflow_steps')->where([
-                'workflow_id' => $workflowId, 'step_key' => $dep, 'status' => 'completed',
-            ])->exists()) {
+            if (!DB::table('ai_business_workflow_steps')
+                ->where('workflow_id', $workflowId)
+                ->where('step_key', $dep)
+                ->whereIn('status', ['completed', 'skipped_not_applicable'])
+                ->exists()) {
                 throw ValidationException::withMessages(['step' => 'Finish the earlier verified step before proceeding.']);
             }
         }
@@ -486,11 +489,44 @@ final class BusinessWorkflowProgress
         ]);
     }
 
-    private function assertProcessEnabled(object $workflow): void
+    /** Skip explicitly optional non-applicable predecessor steps (e.g., direct route without DC/SO). */
+    public function skipNotApplicableStep(
+        AiPrincipal $principal,
+        string $workflowId,
+        int $revision,
+        string $stepKey,
+        string $reason,
+    ): array {
+        $this->enabled($principal);
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => 'Specify why the optional step does not apply on this route.']);
+        }
+        return $this->change($principal, $workflowId, $revision, $stepKey, function (object $step, object $workflow) use ($principal, $workflowId, $stepKey, $reason): array {
+            if ($step->status === 'skipped_not_applicable') {
+                throw ValidationException::withMessages(['step' => 'Step was already skipped as not applicable.']);
+            }
+            $this->assertDependencies($workflowId, $step);
+            $preview = $this->planner->preview($principal, (string) $workflow->process_id);
+            $stepDef = collect($preview['steps'] ?? [])->firstWhere('step_key', $stepKey);
+            if (!is_array($stepDef) || empty($stepDef['optional'])) {
+                throw ValidationException::withMessages(['step' => 'Required workflow steps cannot be skipped.']);
+            }
+
+            return [
+                'status' => 'skipped_not_applicable',
+                'evidence_hash' => hash('sha256', 'skipped:'.$stepKey.':'.trim($reason)),
+            ];
+        }, 'step_skipped');
+    }
+
+    private function assertProcessEnabled(object $workflow, ?AiPrincipal $principal = null): void
     {
         if (str_contains((string) $workflow->process_id, 'job_work')
             && !config('ai_business_knowledge.job_work_enabled', false)) {
             throw new AuthorizationException('Job-work workflow tracking is disabled.');
+        }
+        if ($principal !== null) {
+            $this->planner->assertWorkflowDefinitionCurrent($principal, $workflow);
         }
     }
 

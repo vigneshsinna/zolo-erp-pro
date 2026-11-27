@@ -84,9 +84,11 @@ final class ActionProposalService
         array $changes,
         int $expectedVersion,
         bool $reuseUnchanged = false,
+        bool $allowSuperseded = false,
     ): array {
+        $allowedStatuses = $allowSuperseded ? ['pending', 'approved', 'superseded'] : ['pending', 'approved'];
         $old = $this->getOwned($principal, $id);
-        if ((int) $old['version'] !== $expectedVersion || !in_array($old['status'], ['pending', 'approved'], true)) {
+        if ((int) $old['version'] !== $expectedVersion || !in_array($old['status'], $allowedStatuses, true)) {
             throw ValidationException::withMessages(['proposal' => 'The proposal changed or cannot be edited.']);
         }
 
@@ -100,7 +102,7 @@ final class ActionProposalService
         }
         $validated = $this->security->validate($definition, $input);
         $preview = $this->preview($definition, $validated, $this->security->context($principal));
-        if ($reuseUnchanged && $old['expires_at'] > now('UTC')->toDateTimeString()
+        if ($reuseUnchanged && $old['status'] !== 'superseded' && $old['expires_at'] > now('UTC')->toDateTimeString()
             && hash_equals($old['payload_hash'], CanonicalActionPayload::hash($preview->payload))
             && hash_equals($old['source_state_hash'], $preview->sourceStateHash)) {
             return $old;
@@ -112,7 +114,7 @@ final class ActionProposalService
             ->where('branch_id', $principal->branchId)
             ->where('financial_year_id', $principal->financialYearId)
             ->where('version', $expectedVersion)
-            ->whereIn('status', ['pending', 'approved'])
+            ->whereIn('status', $allowedStatuses)
             ->where('expires_at', '>', now('UTC'))
             ->update([
                 'version' => $expectedVersion + 1,

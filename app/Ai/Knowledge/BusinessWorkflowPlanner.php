@@ -38,12 +38,30 @@ final class BusinessWorkflowPlanner
         $profileMatches = $definition->appliesToProfile($industry['profile'], $industry['subtype'])
             && $definition->isEffectiveOn()
             && !$definition->isWithdrawnOrDeprecated();
+        foreach ($definition->requiresCapabilities() as $requiredCap) {
+            if (!$this->capabilities->has($requiredCap)) {
+                $profileMatches = false;
+                break;
+            }
+            try {
+                $this->security->definition($requiredCap, $principal);
+            } catch (AuthorizationException|\InvalidArgumentException) {
+                $profileMatches = false;
+                break;
+            }
+        }
         $steps = [];
         foreach ($definition->data['steps'] as $step) {
             $supported = $profileMatches && $step['kind'] !== 'unsupported_action';
             if ($step['kind'] === 'reviewed_action') {
-                $supported = $this->capabilities->has($step['action_key'])
-                    && $this->knowledge->forAction($step['action_key'], reviewedOnly: true) !== [];
+                $supported = $supported
+                    && $this->capabilities->has($step['action_key'])
+                    && $this->knowledge->forAction(
+                        $step['action_key'],
+                        reviewedOnly: true,
+                        profile: $industry['profile'],
+                        subtype: $industry['subtype'],
+                    ) !== [];
                 if ($supported) {
                     try {
                         $this->security->definition($step['action_key'], $principal);
@@ -55,6 +73,7 @@ final class BusinessWorkflowPlanner
             $steps[] = [
                 'step_key' => $step['id'], 'kind' => $step['kind'],
                 'action_key' => $step['action_key'] ?? null, 'depends_on' => $step['depends_on'],
+                'optional' => (bool) ($step['optional'] ?? false),
                 'status' => $supported ? 'planned' : 'unsupported',
                 'requires_separate_approval' => $step['kind'] === 'reviewed_action',
                 'requires_verified_external_event' => $step['kind'] === 'external_event',
@@ -64,12 +83,16 @@ final class BusinessWorkflowPlanner
             'process_id' => $definition->id,
             'knowledge_hash' => $this->knowledge->versionHash(),
             'definition_status' => $definition->status,
-            'can_start' => $definition->isReviewed() && !in_array('unsupported', array_column($steps, 'status'), true),
+            'profile' => $industry['profile'],
+            'subtype' => $industry['subtype'],
+            'can_start' => $definition->isReviewed()
+                && $profileMatches
+                && !in_array('unsupported', array_column($steps, 'status'), true),
             'writes_executed' => false,
             'steps' => $steps,
-            'message' => $definition->isReviewed()
+            'message' => $definition->isReviewed() && $profileMatches
                 ? 'Planning preview. No action has been executed.'
-                : 'Draft process knowledge only; owner review is required before starting.',
+                : 'Draft or inapplicable process knowledge; reviewed alignment with active company profile is required before starting.',
         ];
     }
 
@@ -130,10 +153,13 @@ final class BusinessWorkflowPlanner
         if (!$workflow) throw new AuthorizationException('Workflow not accessible.');
         $steps = DB::table('ai_business_workflow_steps')->where('workflow_id', $workflowId)
             ->orderBy('created_at')->orderBy('step_key')->get();
+        $currentHash = $this->knowledge->versionHash();
         return [
             'workflow_id' => $workflow->id, 'process_id' => $workflow->process_id,
             'revision' => (int) $workflow->revision, 'status' => $workflow->status,
             'knowledge_hash' => $workflow->knowledge_hash,
+            'current_knowledge_hash' => $currentHash,
+            'knowledge_drifted' => (string) $workflow->knowledge_hash !== $currentHash,
             'facts' => json_decode($workflow->facts_json ?: '{}', true, flags: JSON_THROW_ON_ERROR),
             'steps' => $steps->map(static fn ($s): array => [
                 'step_key' => $s->step_key, 'kind' => $s->kind,
@@ -236,6 +262,50 @@ final class BusinessWorkflowPlanner
             'id' => $id, 'company_id' => $principal->companyId, 'branch_id' => $principal->branchId,
             'financial_year_id' => $principal->financialYearId, 'actor_id' => $principal->actorId,
         ]);
+    }
+
+    public function currentKnowledgeHash(): string
+    {
+        return $this->knowledge->versionHash();
+    }
+
+    public function assertWorkflowDefinitionCurrent(AiPrincipal $principal, object $workflow): void
+    {
+        $definition = $this->knowledge->find((string) $workflow->process_id);
+        if (!$definition || $definition->kind !== 'process') {
+            throw ValidationException::withMessages(['workflow' => 'Unknown business process definition.']);
+        }
+        if ($definition->isWithdrawnOrDeprecated() || !$definition->isEffectiveOn()) {
+            throw ValidationException::withMessages(['workflow' => 'Process definition is withdrawn, deprecated, or outside effective dates.']);
+        }
+        $context = $this->security->context($principal);
+        $industryResolver = app(IndustryContextResolver::class);
+        $industry = $industryResolver->resolve($context);
+        if (!$definition->appliesToProfile($industry['profile'], $industry['subtype'])) {
+            throw new AuthorizationException('Process definition does not apply to the active company profile.');
+        }
+        if (str_contains((string) $workflow->process_id, 'opticals')) {
+            if (!config('ai_business_knowledge.opticals_enabled', false) || !$industry['is_optical']) {
+                throw new AuthorizationException('Optical workflow execution is disabled for this company profile.');
+            }
+            if (str_contains((string) $workflow->process_id, 'rx_lab') && !$industry['has_lab_capability']) {
+                throw new AuthorizationException('Optical Rx lab workflow is disabled for this store profile.');
+            }
+        }
+        // If started through planner::start(), enforce review + knowledge hash drift invariant.
+        $plannerStarted = DB::table('ai_business_workflow_events')
+            ->where('workflow_id', $workflow->id)
+            ->where('event_type', 'created')
+            ->exists();
+        if ($plannerStarted) {
+            if (!$definition->isReviewed()) {
+                throw ValidationException::withMessages(['workflow' => 'Process definition is no longer in reviewed status.']);
+            }
+            $liveHash = $this->knowledge->versionHash();
+            if ((string) $workflow->knowledge_hash !== $liveHash) {
+                throw ValidationException::withMessages(['workflow' => 'Process knowledge hash has drifted since this workflow was started; re-preview and start a new plan.']);
+            }
+        }
     }
 
     private function assertEnabled(AiPrincipal $principal): void

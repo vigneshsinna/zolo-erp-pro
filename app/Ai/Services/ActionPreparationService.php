@@ -98,13 +98,14 @@ final class ActionPreparationService
                     ->where('financial_year_id', $principal->financialYearId)
                     ->first();
 
-                if ($existingProposal && in_array($existingProposal->status, ['pending', 'approved'], true)) {
+                if ($existingProposal && in_array($existingProposal->status, ['pending', 'approved', 'superseded'], true)) {
                     $proposal = $proposalService->applyChangeRequest(
                         principal: $principal,
                         id: (string) $existingProposal->id,
                         changes: $evaluation->validatedSlots,
                         expectedVersion: (int) $existingProposal->version,
                         reuseUnchanged: true,
+                        allowSuperseded: true,
                     );
                 }
             }

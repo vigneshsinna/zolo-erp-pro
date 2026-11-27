@@ -211,23 +211,29 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
                         }
 
                         if ($status === 400 || $status === 422) {
-                            throw MultimodalException::extractionFailed('PROVIDER_HTTP_400', "Perception provider rejected request (HTTP {$status}).", 422);
+                            throw MultimodalException::extractionFailed('PROVIDER_HTTP_400', "Perception provider rejected request (HTTP {$status}).", 422, ['http_attempts' => $attempts]);
                         }
 
                         if ($status === 401 || $status === 403) {
-                            throw MultimodalException::extractionFailed('PROVIDER_AUTH_FAILED', 'Perception provider authentication or permission failed.', 503);
+                            throw MultimodalException::extractionFailed('PROVIDER_AUTH_FAILED', 'Perception provider authentication or permission failed.', 503, ['http_attempts' => $attempts]);
                         }
 
                         if ($status === 408 || $status === 504) {
                             if ($attempts > $maxRetries) {
-                                throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider timed out.', 504);
+                                throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider timed out.', 504, ['http_attempts' => $attempts]);
                             }
                         } elseif (! in_array($status, [500, 502, 503], true) || $attempts > $maxRetries) {
-                            throw MultimodalException::providerUnavailable("Perception provider returned HTTP {$status}.");
+                            throw MultimodalException::providerUnavailable("Perception provider returned HTTP {$status}.", ['http_attempts' => $attempts]);
                         }
                     } catch (ConnectionException $e) {
-                        if ($attempts > $maxRetries) {
-                            throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider connection timed out.', 504);
+                        $classified = $this->classifyConnectionException($e);
+                        if (! $classified['retryable'] || $attempts > $maxRetries) {
+                            throw MultimodalException::extractionFailed(
+                                $classified['code'],
+                                $classified['message'],
+                                $classified['status'],
+                                ['http_attempts' => $attempts],
+                            );
                         }
                     }
                 }
@@ -323,6 +329,46 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
         }
 
         throw MultimodalException::extractionFailed('INVALID_PERCEPTION_JSON', 'Perception model output did not contain valid JSON.');
+    }
+
+    /**
+     * Classify transport exceptions so SSL/TLS failures surface immediately instead of masquerading as timeouts.
+     *
+     * @return array{code: string, message: string, status: int, retryable: bool}
+     */
+    private function classifyConnectionException(ConnectionException $e): array
+    {
+        $raw = $e->getMessage();
+        $curlCode = preg_match('/\bcURL error (\d+)\b/i', $raw, $m) === 1 ? (int) $m[1] : null;
+        $suffix = $curlCode !== null ? " (cURL {$curlCode})" : '';
+
+        $sslCurlCodes = [35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91, 98];
+        if (($curlCode !== null && in_array($curlCode, $sslCurlCodes, true))
+            || preg_match('/\bSSL\b|certificate|cainfo/i', $raw) === 1
+        ) {
+            return [
+                'code' => 'PROVIDER_SSL_ERROR',
+                'message' => 'Perception provider TLS/SSL certificate verification failed.' . $suffix,
+                'status' => 502,
+                'retryable' => false,
+            ];
+        }
+
+        if ($curlCode === 28 || preg_match('/timed?\s*out/i', $raw) === 1) {
+            return [
+                'code' => 'PROVIDER_TIMEOUT',
+                'message' => 'Perception provider connection timed out.' . $suffix,
+                'status' => 504,
+                'retryable' => true,
+            ];
+        }
+
+        return [
+            'code' => 'PROVIDER_CONNECTION_FAILED',
+            'message' => 'Unable to reach perception provider.' . $suffix,
+            'status' => 503,
+            'retryable' => true,
+        ];
     }
 }
 

@@ -110,6 +110,7 @@ final class WorkflowTaskStateService
         ?array $issues = null,
         ?string $status = null,
         ?array $patch = null,
+        bool $supersedeLinkedProposal = false,
     ): array {
         $task = $this->getTask($principal, $taskId);
 
@@ -133,8 +134,12 @@ final class WorkflowTaskStateService
         if ($status !== null) {
             $updates['status'] = $status;
         }
+        $supersededProposalId = null;
+        if ($supersedeLinkedProposal && $patch !== null && !empty($task['linked_proposal_id'])) {
+            $supersededProposalId = (string) $task['linked_proposal_id'];
+        }
 
-        $updated = DB::transaction(function () use ($taskId, $expectedRevision, $updates, $principal, $newRevision, $patch): bool {
+        $updated = DB::transaction(function () use ($taskId, $expectedRevision, $updates, $principal, $newRevision, $patch, $supersededProposalId): bool {
             $count = DB::table('ai_workflow_tasks')
                 ->where('id', $taskId)
                 ->where('actor_id', $principal->actorId)
@@ -143,6 +148,17 @@ final class WorkflowTaskStateService
 
             if ($count !== 1) {
                 return false;
+            }
+
+            if ($supersededProposalId !== null) {
+                DB::table('ai_action_proposals')
+                    ->where('id', $supersededProposalId)
+                    ->where('company_id', $principal->companyId)
+                    ->whereIn('status', ['pending', 'approved'])
+                    ->update([
+                        'status' => 'superseded',
+                        'updated_at' => now('UTC'),
+                    ]);
             }
 
             DB::table('ai_workflow_task_events')->insert([

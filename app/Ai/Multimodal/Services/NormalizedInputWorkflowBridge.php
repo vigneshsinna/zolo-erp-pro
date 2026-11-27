@@ -50,6 +50,7 @@ final class NormalizedInputWorkflowBridge
         ?AiMediaAsset $companionAsset = null,
         ?AiMediaExtraction $companionExtraction = null,
         bool $allowTrustedPreparation = false,
+        ?string $resolutionMode = null,
     ): array {
         // When conversational AI is enabled, standalone voice instructions
         // must pass transcript confirmation and the owned conversation router.
@@ -111,6 +112,28 @@ final class NormalizedInputWorkflowBridge
             ? (array) $companionExtraction->extracted_json
             : null;
 
+        $effectiveThreadId = $threadId ?? $asset->thread_id;
+        $activeTaskAction = null;
+        if ($effectiveThreadId !== null && $resolutionMode !== 'start_new_task') {
+            $activeTasks = app(\App\Ai\Conversation\ActiveWorkflowTaskResolver::class)
+                ->tasks($principal, $effectiveThreadId)
+                ->whereIn('status', ['collecting', 'ready', 'proposal_created', 'awaiting_master'])
+                ->where('expires_at', '>', now('UTC'))
+                ->get(['action_key']);
+            if ($activeTasks->count() === 1) {
+                $activeTaskAction = (string) $activeTasks->first()->action_key;
+            }
+        }
+
+        $resaleConfirmed = $resolutionMode === 'use_as_resale_reference';
+        if ($resolutionMode === 'record_purchase_instead' && $overrideActionKey === null) {
+            $overrideActionKey = 'purchase_bill.create.v1';
+        } elseif ($resolutionMode === 'record_sales_instead' && $overrideActionKey === null) {
+            $overrideActionKey = 'sales_invoice.create.v1';
+        } elseif ($resaleConfirmed && $overrideActionKey === null) {
+            $overrideActionKey = 'sales_invoice.create.v1';
+        }
+
         $normalized = $this->normalizedBuilder->build(
             principal: $principal,
             asset: $asset,
@@ -121,7 +144,33 @@ final class NormalizedInputWorkflowBridge
             companionText: $companionText,
             companionExtracted: $companionExtracted,
             overrideIntentKey: $overrideActionKey,
+            activeTaskAction: $activeTaskAction,
+            resaleReferenceConfirmed: $resaleConfirmed,
         );
+
+        $decision = $normalized->intentDecision ?? [];
+        $decisionStatus = (string) ($decision['decision_status'] ?? 'ready');
+        $reasonCode = (string) ($decision['reason_code'] ?? '');
+
+        if ($decisionStatus === 'blocked') {
+            throw MultimodalException::extractionFailed(
+                'INVALID_ACTION_OVERRIDE',
+                (string) ($decision['message'] ?? 'Requested transaction override is not permitted.')
+            );
+        }
+
+        if (in_array($decisionStatus, ['needs_intent_confirmation', 'needs_source_confirmation', 'active_task_conflict'], true)
+            || ($decisionStatus === 'source_role_conflict' && $reasonCode !== 'DOCUMENT_FOREIGN_COMPANY_MISMATCH')) {
+            return [
+                'status' => $decisionStatus,
+                'media_id' => $asset->id,
+                'extraction_id' => $extraction->id,
+                'action_key' => $normalized->intentKey,
+                'decision' => $decision,
+                'normalized_input' => $normalized->toArray(),
+                'message' => (string) ($decision['message'] ?? 'Confirmation is required before staging an ERP draft.'),
+            ];
+        }
 
         if ($normalized->conflicts !== []) {
             $firstConflict = $normalized->conflicts[0]['message'] ?? 'Conflicting values detected between document and instruction.';

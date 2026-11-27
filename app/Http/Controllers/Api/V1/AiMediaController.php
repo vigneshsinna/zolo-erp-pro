@@ -116,6 +116,7 @@ class AiMediaController extends Controller
                     overrideActionKey: $actionKey,
                     threadId: $request->input('thread_id'),
                     allowTrustedPreparation: true,
+                    resolutionMode: $request->input('resolution_mode'),
                 );
 
                 return response()->json([
@@ -124,6 +125,7 @@ class AiMediaController extends Controller
                     'media' => $this->presentAsset($asset->fresh()),
                     'extraction' => $this->presentExtraction($extraction->fresh()),
                     'action_key' => $result['action_key'] ?? null,
+                    'decision' => $result['decision'] ?? null,
                     'task_id' => $result['task_id'] ?? ($result['task']['id'] ?? null),
                     'proposal' => $result['proposal'] ?? null,
                     'task' => $result['task'] ?? null,
@@ -285,6 +287,7 @@ class AiMediaController extends Controller
             $validated = $request->validate([
                 'expected_revision' => ['required', 'integer', 'min:1'],
                 'document_type' => ['nullable', 'string', 'max:40'],
+                'document_kind' => ['nullable', 'string', 'max:40'],
                 'supplier_name' => ['nullable', 'string', 'max:180'],
                 'supplier_gstin' => ['nullable', 'string', 'max:20'],
                 'supplier_phone' => ['nullable', 'string', 'max:32'],
@@ -342,7 +345,11 @@ class AiMediaController extends Controller
                 'expected_revision' => ['nullable', 'integer', 'min:1'],
                 'companion_text' => ['nullable', 'string', 'max:2000'],
                 'document_type' => ['nullable', 'string', 'max:40'],
+                'document_kind' => ['nullable', 'string', 'max:40'],
                 'supplier_name' => ['nullable', 'string', 'max:180'],
+                'supplier_gstin' => ['nullable', 'string', 'max:20'],
+                'buyer_name' => ['nullable', 'string', 'max:180'],
+                'buyer_gstin' => ['nullable', 'string', 'max:20'],
                 'invoice_number' => ['nullable', 'string', 'max:80'],
                 'invoice_date' => ['nullable', 'string', 'max:32'],
                 'transcript_text' => ['nullable', 'string', 'max:4000'],
@@ -351,6 +358,8 @@ class AiMediaController extends Controller
                 'warehouse_name' => ['nullable', 'string', 'max:120'],
                 'lines_patch' => ['nullable', 'array', 'max:100'],
                 'items_patch' => ['nullable', 'array', 'max:100'],
+                'remove_client_line_ids' => ['nullable', 'array', 'max:100'],
+                'add_lines' => ['nullable', 'array', 'max:50'],
             ]);
 
             $latest = $asset->latestExtraction;
@@ -394,6 +403,7 @@ class AiMediaController extends Controller
                 'action_key' => ['nullable', 'string', 'max:80'],
                 'thread_id' => ['nullable', 'uuid'],
                 'companion_media_id' => ['nullable', 'uuid'],
+                'resolution_mode' => ['nullable', 'string', 'in:record_purchase_instead,record_sales_instead,use_as_resale_reference,review_source,start_new_task,resume_active_task,confirm_intent'],
             ]);
 
             $companionAsset = null;
@@ -418,6 +428,7 @@ class AiMediaController extends Controller
                 threadId: $validated['thread_id'] ?? null,
                 companionAsset: $companionAsset,
                 companionExtraction: $companionExtraction,
+                resolutionMode: $validated['resolution_mode'] ?? null,
             );
 
             return response()->json($result);
@@ -500,6 +511,7 @@ class AiMediaController extends Controller
                 overrideActionKey: $actionKey,
                 threadId: $threadId,
                 allowTrustedPreparation: true,
+                resolutionMode: $request->input('resolution_mode'),
             );
 
             return response()->json([
@@ -507,6 +519,7 @@ class AiMediaController extends Controller
                 'media' => $this->presentAsset($asset->fresh()),
                 'extraction' => $this->presentExtraction($extraction->fresh()),
                 'action_key' => $result['action_key'] ?? null,
+                'decision' => $result['decision'] ?? null,
                 'task_id' => $result['task_id'] ?? ($result['task']['id'] ?? null),
                 'proposal' => $result['proposal'] ?? null,
                 'task' => $result['task'] ?? null,

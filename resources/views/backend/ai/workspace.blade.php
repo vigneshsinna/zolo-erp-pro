@@ -2197,6 +2197,7 @@
                 'enabled' => (bool) ($isMultimodalEnabled ?? false),
                 'conversationEnabled' => (bool) config('erp_ai.conversation_enabled', false),
                 'allowDirectPurchaseBill' => (bool) config('ai_multimodal.allow_direct_purchase_bill', false),
+                'allowDirectSalesInvoice' => (bool) config('ai_multimodal.allow_direct_sales_invoice', false),
                 'mediaBaseUrl' => url('ai'),
                 'maxAudioSeconds' => (int) ($multimodalLimits['max_audio_seconds'] ?? 120),
                 'maxPdfPages' => (int) ($multimodalLimits['max_pdf_pages'] ?? 5),

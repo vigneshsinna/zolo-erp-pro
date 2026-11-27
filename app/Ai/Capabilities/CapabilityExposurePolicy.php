@@ -105,7 +105,18 @@ final class CapabilityExposurePolicy
                 return false;
             }
             if (str_starts_with($descriptor->capabilityKey, 'optical.')
-                && !config('ai_business_knowledge.opticals_mcp_enabled', false)) {
+                && (!config('ai_business_knowledge.opticals_mcp_enabled', false)
+                    || !in_array($descriptor->capabilityKey, (array) config('ai_infrastructure.mcp.tools', []), true))) {
+                return false;
+            }
+            if ($descriptor->operation === 'prepare'
+                && in_array($descriptor->capabilityKey, ['purchase_bill.create.v1', 'sales_order.create.v1', 'sales_invoice.create.v1'], true)
+                && (!config('ai_infrastructure.mcp.commercial_prepare_enabled', false)
+                    || !in_array($descriptor->capabilityKey, (array) config('ai_infrastructure.mcp.prepare_tools', []), true))) {
+                return false;
+            }
+            if (in_array($descriptor->operation, ['prepare', 'status'], true)
+                && !config('ai_infrastructure.mcp.governed_proposals_enabled', false)) {
                 return false;
             }
             if (!$grant->allowsCapability($descriptor->capabilityKey, $descriptor->operation)) {

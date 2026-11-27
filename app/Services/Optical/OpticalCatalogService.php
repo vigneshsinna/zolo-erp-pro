@@ -106,11 +106,13 @@ final class OpticalCatalogService
         $hasSpec = $this->hasAnyOpticalFilter($opticalSpec);
         $normalizedReq = $hasSpec ? OpticalSpecNormalizer::normalizeSpec($opticalSpec)['canonical'] : [];
 
-        $baseQuery = Product::where('products.company_id', $context->companyId)
+        $baseQuery = Product::withoutGlobalScopes()
+            ->where('products.company_id', $context->companyId)
             ->where('products.is_active', true)
             ->where(function ($q) {
                 $q->whereNull('products.type')->orWhereNotIn('products.type', ['combo']);
             });
+        $baseQuery->getQuery()->withoutCompanyScope();
 
         $aliasProductIds = collect();
         if ($trimmed !== '' && Schema::hasTable('product_aliases')) {

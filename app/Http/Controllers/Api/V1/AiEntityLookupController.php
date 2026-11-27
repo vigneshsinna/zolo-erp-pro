@@ -48,6 +48,8 @@ final class AiEntityLookupController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'warehouse_id' => ['nullable', 'integer', 'min:1'],
+            'optical_spec' => ['nullable', 'array'],
         ]);
 
         $actorId = (int) $request->user()->id;
@@ -71,6 +73,8 @@ final class AiEntityLookupController extends Controller
             perPage: $perPage,
             taskId: $taskId,
             fieldPath: $fieldPath !== '' ? $fieldPath : null,
+            opticalSpec: $validated['optical_spec'] ?? null,
+            warehouseId: isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null,
         );
 
         return response()->json($result);

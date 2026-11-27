@@ -58,7 +58,7 @@ final class PurchaseBillPreviewAdapter implements ActionPreviewAdapterInterface
         }
         $poId = (int) ($slots['purchase_order_id'] ?? 0);
         $grnId = (int) ($slots['grn_id'] ?? 0);
-        if (($slots['receipt_status'] ?? null) === 'not_received' && $grnId === 0) {
+        if (in_array($slots['receipt_status'] ?? null, ['not_received', 'pending_grn'], true) && $grnId === 0) {
             throw ValidationException::withMessages([
                 'receipt_status' => 'Goods are not physically received. Invoice-before-receipt posting is unsupported; hold this bill as a draft or post a GRN once goods arrive.',
             ]);

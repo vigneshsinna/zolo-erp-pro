@@ -212,6 +212,18 @@
                     if (item.code) {
                         metaParts.push('Code: ' + item.code);
                     }
+                    const spec = item.optical_spec || (item.metadata && item.metadata.optical_spec);
+                    if (spec && typeof spec === 'object') {
+                        const specParts = [];
+                        if (spec.lr) specParts.push(spec.lr);
+                        if (spec.sph != null) specParts.push('SPH ' + spec.sph);
+                        if (spec.cyl != null) specParts.push('CYL ' + spec.cyl);
+                        if (spec.axis != null) specParts.push('AXIS ' + spec.axis);
+                        if (spec.addition != null) specParts.push('ADD ' + spec.addition);
+                        if (spec.dia != null) specParts.push('DIA ' + spec.dia);
+                        if (spec.coating) specParts.push(spec.coating);
+                        if (specParts.length > 0) metaParts.push(specParts.join(' · '));
+                    }
                     if (metaParts.length > 0) {
                         $info.append($('<small class="text-muted d-block"></small>').text(metaParts.join(' · ')));
                     }
@@ -221,6 +233,15 @@
                     const $badges = $('<div class="text-right"></div>');
                     if (res.recommended_id && Number(res.recommended_id) === Number(item.id)) {
                         $badges.append('<span class="badge badge-success px-2 py-1 small font-weight-normal"><i class="dripicons-star mr-1"></i>Recommended</span>');
+                    }
+                    if (item.available_qty != null) {
+                        const qtyLabel = 'Stock: ' + item.available_qty + (item.stock_as_of ? ' @ ' + String(item.stock_as_of).slice(11, 16) + 'Z' : '');
+                        $badges.append($('<span class="badge badge-info px-2 py-1 small font-weight-normal ml-1"></span>').text(qtyLabel));
+                    }
+                    if (Array.isArray(item.mismatch_badges) && item.mismatch_badges.length > 0) {
+                        item.mismatch_badges.forEach(function (mb) {
+                            $badges.append($('<span class="badge badge-warning px-2 py-1 small font-weight-normal ml-1"></span>').text(mb));
+                        });
                     }
                     if (!isEligible && item.disabled_reason) {
                         $badges.append('<span class="badge badge-secondary px-2 py-1 small font-weight-normal ml-1">' + escapeHtml(item.disabled_reason) + '</span>');

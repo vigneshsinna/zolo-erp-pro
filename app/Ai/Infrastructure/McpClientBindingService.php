@@ -50,10 +50,17 @@ final class McpClientBindingService
             if (!in_array($tool, $allowedConfigRead, true)) {
                 throw new InvalidArgumentException("MCP read tool [{$tool}] is not on the server allowlist.");
             }
+            if (str_starts_with($tool, 'optical.') && !config('ai_business_knowledge.opticals_mcp_enabled', false)) {
+                throw new InvalidArgumentException("Optical MCP read tool [{$tool}] is disabled by configuration.");
+            }
         }
         foreach ($prepareActions as $action) {
             if (!in_array($action, $allowedConfigPrepare, true)) {
                 throw new InvalidArgumentException("MCP prepare action [{$action}] is not on the server allowlist.");
+            }
+            if (in_array($action, ['purchase_bill.create.v1', 'sales_order.create.v1', 'sales_invoice.create.v1'], true)
+                && !config('ai_infrastructure.mcp.commercial_prepare_enabled', false)) {
+                throw new InvalidArgumentException("Commercial MCP prepare action [{$action}] is disabled by configuration.");
             }
         }
 

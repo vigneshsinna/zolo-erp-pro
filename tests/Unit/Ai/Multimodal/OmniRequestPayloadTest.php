@@ -10,6 +10,7 @@ use App\Ai\Multimodal\Clients\NvidiaOmniPerceptionClient;
 use App\Ai\Multimodal\Enums\ModelPurpose;
 use App\Ai\Multimodal\Exceptions\MultimodalException;
 use App\Ai\Services\AiFeatureGate;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -270,6 +271,136 @@ final class OmniRequestPayloadTest extends TestCase
         } catch (MultimodalException $e) {
             $this->assertSame('EMPTY_PERCEPTION_RESPONSE', $e->errorCode);
             $this->assertSame(422, $e->httpStatus);
+        }
+    }
+
+    public function test_ssl_certificate_connection_exception_fails_fast_without_retries_or_timeout_misclassification(): void
+    {
+        config()->set('ai_multimodal.enabled', true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        config()->set('ai.providers.nvidia.key', 'nv-test-key');
+
+        $attempts = 0;
+        Http::fake([
+            'integrate.api.nvidia.com/*' => function () use (&$attempts) {
+                $attempts++;
+                throw new ConnectionException('cURL error 60: SSL certificate OpenSSL verify result: unable to get local issuer certificate (20)');
+            },
+        ]);
+
+        $gate = $this->createStub(AiFeatureGate::class);
+        $gate->method('isMultimodalEnabledForCompany')->willReturn(true);
+
+        $gateway = $this->createStub(ApprovedModelGateway::class);
+        $gateway->method('admitPerceptionDispatch')->willReturnCallback(function ($principal, $date, $purpose, $bytes, $cb, $mediaId = null) {
+            return $cb('nvidia', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        });
+
+        $client = new NvidiaOmniPerceptionClient($gateway, $gate);
+
+        try {
+            $client->extractStructuredFromImages(
+                $this->principal(),
+                '66666666-6666-6666-6666-666666666666',
+                [['mime' => 'image/jpeg', 'base64' => base64_encode('fake-img')]],
+                'system prompt',
+                'user prompt',
+            );
+            $this->fail('Expected MultimodalException for SSL verification failure.');
+        } catch (MultimodalException $e) {
+            $this->assertSame('PROVIDER_SSL_ERROR', $e->errorCode);
+            $this->assertSame(502, $e->httpStatus);
+            $this->assertSame(1, $attempts);
+            $this->assertSame(1, $e->details['http_attempts'] ?? null);
+            $this->assertStringContainsString('cURL 60', $e->getMessage());
+        }
+    }
+
+    public function test_curl_timeout_connection_exception_retries_and_classifies_as_provider_timeout(): void
+    {
+        config()->set('ai_multimodal.enabled', true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        config()->set('ai_multimodal.max_retry_attempts', 2);
+        config()->set('ai.providers.nvidia.key', 'nv-test-key');
+
+        $attempts = 0;
+        Http::fake([
+            'integrate.api.nvidia.com/*' => function () use (&$attempts) {
+                $attempts++;
+                throw new ConnectionException('cURL error 28: Operation timed out after 75001 milliseconds');
+            },
+        ]);
+
+        $gate = $this->createStub(AiFeatureGate::class);
+        $gate->method('isMultimodalEnabledForCompany')->willReturn(true);
+
+        $gateway = $this->createStub(ApprovedModelGateway::class);
+        $gateway->method('admitPerceptionDispatch')->willReturnCallback(function ($principal, $date, $purpose, $bytes, $cb, $mediaId = null) {
+            return $cb('nvidia', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        });
+
+        $client = new NvidiaOmniPerceptionClient($gateway, $gate);
+
+        try {
+            $client->extractStructuredFromImages(
+                $this->principal(),
+                '77777777-7777-7777-7777-777777777777',
+                [['mime' => 'image/jpeg', 'base64' => base64_encode('fake-img')]],
+                'system prompt',
+                'user prompt',
+            );
+            $this->fail('Expected MultimodalException for cURL timeout.');
+        } catch (MultimodalException $e) {
+            $this->assertSame('PROVIDER_TIMEOUT', $e->errorCode);
+            $this->assertSame(504, $e->httpStatus);
+            $this->assertSame(3, $attempts);
+            $this->assertSame(3, $e->details['http_attempts'] ?? null);
+            $this->assertStringContainsString('cURL 28', $e->getMessage());
+        }
+    }
+
+    public function test_non_timeout_network_connection_exception_classifies_as_provider_connection_failed(): void
+    {
+        config()->set('ai_multimodal.enabled', true);
+        config()->set('ai_multimodal.provider', 'nvidia');
+        config()->set('ai_multimodal.model', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        config()->set('ai_multimodal.max_retry_attempts', 1);
+        config()->set('ai.providers.nvidia.key', 'nv-test-key');
+
+        $attempts = 0;
+        Http::fake([
+            'integrate.api.nvidia.com/*' => function () use (&$attempts) {
+                $attempts++;
+                throw new ConnectionException('cURL error 7: Failed to connect to integrate.api.nvidia.com port 443');
+            },
+        ]);
+
+        $gate = $this->createStub(AiFeatureGate::class);
+        $gate->method('isMultimodalEnabledForCompany')->willReturn(true);
+
+        $gateway = $this->createStub(ApprovedModelGateway::class);
+        $gateway->method('admitPerceptionDispatch')->willReturnCallback(function ($principal, $date, $purpose, $bytes, $cb, $mediaId = null) {
+            return $cb('nvidia', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
+        });
+
+        $client = new NvidiaOmniPerceptionClient($gateway, $gate);
+
+        try {
+            $client->extractStructuredFromImages(
+                $this->principal(),
+                '88888888-8888-8888-8888-888888888888',
+                [['mime' => 'image/jpeg', 'base64' => base64_encode('fake-img')]],
+                'system prompt',
+                'user prompt',
+            );
+            $this->fail('Expected MultimodalException for network connect failure.');
+        } catch (MultimodalException $e) {
+            $this->assertSame('PROVIDER_CONNECTION_FAILED', $e->errorCode);
+            $this->assertSame(503, $e->httpStatus);
+            $this->assertSame(2, $attempts);
+            $this->assertSame(2, $e->details['http_attempts'] ?? null);
         }
     }
 }

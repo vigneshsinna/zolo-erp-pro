@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Ai\Multimodal\Services;
 
+use App\Ai\Conversation\TransactionIntentResolver;
 use App\Ai\DTOs\AiPrincipal;
 use App\Ai\Multimodal\DTOs\NormalizedInputV1;
+use App\Ai\DTOs\TransactionIntentDecision;
 use App\Ai\Registries\ActionCapabilityRegistry;
 use App\Models\AiMediaAsset;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +21,8 @@ final class NormalizedInputBuilder
 {
     public function __construct(
         protected ActionCapabilityRegistry $capabilityRegistry,
-    ) {}
+    ) {
+    }
 
     /**
      * @param array<string, mixed> $extracted
@@ -35,14 +38,40 @@ final class NormalizedInputBuilder
         ?string $companionText = null,
         ?array $companionExtracted = null,
         ?string $overrideIntentKey = null,
+        ?string $activeTaskAction = null,
+        bool $resaleReferenceConfirmed = false,
+        bool $coverageConfirmed = false,
     ): NormalizedInputV1 {
         $warnings = array_values((array) ($extracted['warnings'] ?? []));
         $conflicts = [];
 
-        $intentKey = $this->resolveIntentKey($asset, $extracted, $companionText, $overrideIntentKey);
-        $slots = $this->mapSlots($asset, $intentKey, $extracted, $companionText);
+        $allowedOverrides = array_values(array_filter(
+            TransactionIntentResolver::SUPPORTED_ACTIONS,
+            fn(string $key): bool => $this->capabilityRegistry->has($key)
+                && ($principal->permittedToolNames === [] || $principal->hasTool($key))
+        ));
 
-        $fieldSources = $this->buildFieldSources($asset, $extracted, $slots, $companionText);
+        $decision = app(TransactionIntentResolver::class)->decideForMedia(
+            sourceKind: (string) $asset->source_kind,
+            extracted: $extracted,
+            companionText: $companionText,
+            overrideActionKey: $overrideIntentKey,
+            activeTaskAction: $activeTaskAction,
+            extractionRevision: $extractionRevision,
+            resaleReferenceConfirmed: $resaleReferenceConfirmed,
+            allowedOverrideKeys: $allowedOverrides !== [] ? $allowedOverrides : TransactionIntentResolver::SUPPORTED_ACTIONS,
+        );
+
+        $intentKey = $decision->requestedAction;
+        foreach ($decision->conflicts as $decisionConflict) {
+            $conflicts[] = $decisionConflict;
+        }
+        if ($decision->message !== null && $decision->decisionStatus !== 'ready') {
+            $warnings[] = $decision->message;
+        }
+
+        $slots = $this->mapSlots($asset, $intentKey, $extracted, $companionText, $decision);
+        $fieldSources = $this->buildFieldSources($asset, $extracted, $slots, $companionText, $decision);
 
         if ($companionExtracted !== null) {
             $this->detectCrossModalConflicts($extracted, $companionExtracted, $conflicts, $warnings);
@@ -50,8 +79,27 @@ final class NormalizedInputBuilder
 
         $this->detectPostedImmutableConflict($principal, $extracted, $companionText, $conflicts, $warnings);
 
-        if ((bool) ($extracted['erp_checks']['company_mismatch'] ?? false)) {
-            $msg = 'Company Mismatch: Document buyer identity does not match active workspace company. Direct transaction staging is blocked.';
+        if (isset($extracted['coverage']['complete']) && $extracted['coverage']['complete'] === false && !$coverageConfirmed && $asset->state !== 'confirmed') {
+            $processed = (int) ($extracted['coverage']['pages_processed'] ?? 0);
+            $expected = (int) ($extracted['coverage']['pages_expected'] ?? 1);
+            $missing = implode(', ', (array) ($extracted['coverage']['missing_pages'] ?? []));
+            $msg = "Incomplete document coverage ({$processed} of {$expected} pages extracted; missing page(s): {$missing}). Complete extraction or manually confirm reviewed facts before staging.";
+            $conflicts[] = [
+                'code' => 'incomplete_document_coverage',
+                'message' => $msg,
+                'pages_expected' => $expected,
+                'pages_processed' => $processed,
+                'missing_pages' => (array) ($extracted['coverage']['missing_pages'] ?? []),
+            ];
+            $warnings[] = $msg;
+        }
+
+        if (
+            (bool) ($extracted['erp_checks']['company_mismatch'] ?? false)
+            && !$decision->isResaleReferenceOnly
+            && !collect($conflicts)->contains('code', 'company_mismatch')
+        ) {
+            $msg = 'Company Mismatch: Document parties do not match active company workspace. Direct transaction staging is blocked.';
             $conflicts[] = [
                 'code' => 'company_mismatch',
                 'message' => $msg,
@@ -59,17 +107,37 @@ final class NormalizedInputBuilder
             $warnings[] = $msg;
         }
 
+        if (
+            $intentKey === 'sales_invoice.create.v1'
+            && !$decision->isResaleReferenceOnly
+            && !empty($extracted['erp_checks']['duplicate_sale']['is_posted'])
+        ) {
+            $dupRef = (string) ($extracted['erp_checks']['duplicate_sale']['reference_no'] ?? '');
+            $msg = "Source sales invoice [{$dupRef}] is already posted. Review the existing invoice or create a Sales Return / Credit Note instead of duplicating.";
+            $conflicts[] = [
+                'code' => 'already_posted_source',
+                'message' => $msg,
+                'existing_sale_id' => $extracted['erp_checks']['duplicate_sale']['id'] ?? null,
+                'reference_no' => $dupRef,
+            ];
+            $warnings[] = $msg;
+        }
+
         $capabilityReason = null;
         $isActionable = false;
 
-        if ($intentKey !== null && $intentKey !== 'query_readonly') {
+        if ($decision->decisionStatus === 'ready' && $intentKey !== null && $intentKey !== 'query_readonly') {
             $allowDirectPurchaseBill = (bool) config('ai_multimodal.allow_direct_purchase_bill', false);
-            $disallowed = ['sales_invoice.create.v1'];
-            if (! $allowDirectPurchaseBill) {
+            $allowDirectSalesInvoice = (bool) config('ai_multimodal.allow_direct_sales_invoice', false);
+            $disallowed = [];
+            if (!$allowDirectPurchaseBill) {
                 $disallowed[] = 'purchase_bill.create.v1';
             }
+            if (!$allowDirectSalesInvoice) {
+                $disallowed[] = 'sales_invoice.create.v1';
+            }
             $disallowedDirectHandoff = in_array($intentKey, $disallowed, true);
-            if ($disallowedDirectHandoff || ! $this->capabilityRegistry->has($intentKey)) {
+            if ($disallowedDirectHandoff || !$this->capabilityRegistry->has($intentKey)) {
                 $capabilityReason = $this->unimplementedCapabilityMessage($intentKey);
                 $warnings[] = $capabilityReason;
             } elseif ($conflicts === []) {
@@ -90,75 +158,14 @@ final class NormalizedInputBuilder
                 'source_kind' => $asset->source_kind,
                 'model_key' => $modelKey,
                 'companion_text_present' => $companionText !== null && trim($companionText) !== '',
+                'resale_reference_only' => $decision->isResaleReferenceOnly,
                 'field_sources' => $fieldSources,
             ],
             conflicts: $conflicts,
             warnings: array_values(array_unique($warnings)),
             capabilityUnavailableReason: $capabilityReason,
+            intentDecision: $decision->toArray(),
         );
-    }
-
-    /**
-     * @param array<string, mixed> $extracted
-     */
-    private function resolveIntentKey(
-        AiMediaAsset $asset,
-        array $extracted,
-        ?string $companionText,
-        ?string $overrideIntentKey,
-    ): ?string {
-        if ($asset->source_kind === 'audio') {
-            $resolver = app(\App\Ai\Conversation\VoiceIntentResolver::class);
-            $spoken = $resolver->resolve((string) ($extracted['transcript_text'] ?? ''));
-            $typed = $resolver->resolve((string) ($companionText ?? ''));
-
-            // Explicit, conflicting instructions must be clarified by the user,
-            // never resolved through document-type precedence or a model guess.
-            if ($spoken !== null && $typed !== null && $spoken !== $typed) {
-                return null;
-            }
-            $intent = $typed ?? $spoken;
-            if ($overrideIntentKey !== null && trim($overrideIntentKey) !== ''
-                && $overrideIntentKey !== $intent) {
-                return null;
-            }
-
-            // Transcription intent_guess is deliberately NOT a fallback.
-            return $intent;
-        }
-
-        if ($overrideIntentKey !== null && trim($overrideIntentKey) !== '') {
-            return trim($overrideIntentKey);
-        }
-
-        $text = strtolower((string) $companionText);
-        if ($text !== '') {
-            if (preg_match('/\b(create|make|prepare|draft|raise|convert)\b.*\b(purchase\s*order|p\.?\s*o\.?)\b/', $text)
-                || preg_match('/\b(purchase\s*order|po)\b/', $text)) {
-                return 'purchase_order.create.v1';
-            }
-            if (preg_match('/\b(create|make|prepare|draft|raise|convert)\b.*\b(sales\s*order|s\.?\s*o\.?)\b/', $text)
-                || preg_match('/\b(sales\s*order|so)\b/', $text)) {
-                return 'sales_order.create.v1';
-            }
-            if (preg_match('/\b(post|create|enter|book|make|prepare|draft|raise)\b.*\b(purchase\s*bill|vendor\s*bill|supplier\s*bill|supplier\s*invoice|bill)\b/', $text)
-                || preg_match('/\b(purchase\s*bill|vendor\s*bill|supplier\s*invoice)\b/', $text)) {
-                return 'purchase_bill.create.v1';
-            }
-            if (preg_match('/\b(post|create|enter|book)\b.*\b(sales\s*invoice|tax\s*invoice)\b/', $text)) {
-                return 'sales_invoice.create.v1';
-            }
-        }
-
-        $docType = (string) ($extracted['document_type'] ?? 'unknown');
-
-        return match ($docType) {
-            'purchase_order' => 'purchase_order.create.v1',
-            'sales_order' => 'sales_order.create.v1',
-            'purchase_bill', 'supplier_invoice' => 'purchase_bill.create.v1',
-            'sales_invoice' => 'sales_invoice.create.v1',
-            default => null,
-        };
     }
 
     /**
@@ -170,8 +177,9 @@ final class NormalizedInputBuilder
         ?string $intentKey,
         array $extracted,
         ?string $companionText,
+        TransactionIntentDecision $decision,
     ): array {
-        $isSales = $intentKey === 'sales_order.create.v1' || $intentKey === 'sales_invoice.create.v1';
+        $isSales = in_array($intentKey, ['sales_order.create.v1', 'sales_invoice.create.v1', 'delivery_challan.create.v1', 'quotation.create.v1'], true);
         $invoiceNo = $extracted['supplier_invoice_no'] ?? $extracted['invoice_number'] ?? null;
 
         if ($asset->source_kind === 'audio') {
@@ -183,12 +191,12 @@ final class NormalizedInputBuilder
                 'note' => $extracted['notes'] ?? null,
                 'items' => [],
             ];
-            if (! $isSales && $invoiceNo !== null && trim((string) $invoiceNo) !== '') {
+            if (!$isSales && $invoiceNo !== null && trim((string) $invoiceNo) !== '') {
                 $slots['supplier_invoice_no'] = trim((string) $invoiceNo);
             }
 
             foreach ((array) ($extracted['items'] ?? []) as $idx => $item) {
-                if (! is_array($item)) {
+                if (!is_array($item)) {
                     continue;
                 }
                 $row = [
@@ -203,13 +211,15 @@ final class NormalizedInputBuilder
                 $slots['items'][] = $row;
             }
 
-            return array_filter($slots, static fn ($v) => $v !== null);
+            return array_filter($slots, static fn($v) => $v !== null);
         }
 
         // Image / PDF extracted commercial fields -> draft workflow slots
+        // R02: Never fall back from missing buyer to supplier as a customer.
+        $buyerQuery = $extracted['buyer_name'] ?? $extracted['buyer_gstin'] ?? null;
         $party = $isSales
-            ? ($extracted['buyer_name'] ?? $extracted['supplier_name'] ?? null)
-            : ($extracted['supplier_name'] ?? null);
+            ? ($decision->isResaleReferenceOnly ? null : $buyerQuery)
+            : ($extracted['supplier_name'] ?? $extracted['supplier_gstin'] ?? null);
 
         $warehouseQuery = $this->extractWarehouseFromText($companionText) ?? ($extracted['warehouse_name'] ?? null);
 
@@ -221,36 +231,68 @@ final class NormalizedInputBuilder
             'items' => [],
         ];
 
-        if (! $isSales && $invoiceNo !== null && trim((string) $invoiceNo) !== '') {
+        if (!$isSales && $invoiceNo !== null && trim((string) $invoiceNo) !== '') {
             $slots['supplier_invoice_no'] = trim((string) $invoiceNo);
         }
 
+        $isOpticalProfile = (bool) ($extracted['optical_profile'] ?? false);
         foreach ((array) ($extracted['lines'] ?? []) as $idx => $line) {
-            if (! is_array($line)) {
+            if (!is_array($line)) {
                 continue;
             }
+            $rawLineId = (string) ($line['client_line_id'] ?? '');
+            $clientLineId = ($rawLineId !== '' && !preg_match('/^line_\d+$/', $rawLineId))
+                ? $rawLineId
+                : ('line-' . $idx);
+            $desc = isset($line['description']) ? trim((string) $line['description']) : null;
+            $productName = isset($line['product_name']) && trim((string) $line['product_name']) !== ''
+                ? trim((string) $line['product_name'])
+                : null;
+            $isEyeOnlyDesc = $isOpticalProfile && $desc !== null && (bool) preg_match('/^(?:R|RE|OD|RIGHT|L|LE|OS|LEFT)$/iD', $desc);
+            $productQuery = $productName ?? ($isEyeOnlyDesc ? null : ($desc !== '' ? $desc : null));
+
             $row = [
-                'client_line_id' => 'line-' . $idx,
-                'product_query' => $line['description'] ?? null,
+                'client_line_id' => $clientLineId,
+                'product_query' => $productQuery,
                 'qty' => is_numeric($line['quantity'] ?? null) ? (float) $line['quantity'] : null,
                 'uom' => $line['uom'] ?? null,
             ];
-            if (isset($line['unit_price']) && is_numeric($line['unit_price'])) {
+            if (!empty($line['row_role'])) {
+                $row['row_role'] = (string) $line['row_role'];
+            }
+            if (!empty($line['supplier_sku'])) {
+                $row['supplier_sku'] = (string) $line['supplier_sku'];
+            }
+            // R02: On reference-only resale from an incoming supplier bill, do not inherit vendor cost as selling price.
+            if (!($isSales && $decision->isResaleReferenceOnly) && isset($line['unit_price']) && is_numeric($line['unit_price'])) {
                 $row[$isSales ? 'net_unit_price' : 'net_unit_cost'] = (float) $line['unit_price'];
             }
             if (isset($line['tax_rate']) && is_numeric($line['tax_rate'])) {
                 $row['tax_rate'] = (float) $line['tax_rate'];
             }
-            if (! empty($line['sku_or_hsn'])) {
+            if (!empty($line['hsn_code'])) {
+                $row['hsn_code'] = (string) $line['hsn_code'];
+                $row['note'] = 'Ref/HSN: ' . $line['hsn_code'];
+            } elseif (!empty($line['sku_or_hsn'])) {
                 $row['note'] = 'Ref/HSN: ' . $line['sku_or_hsn'];
                 $row['hsn_code'] = (string) $line['sku_or_hsn'];
-            } elseif (! empty($line['hsn_code'])) {
-                $row['hsn_code'] = (string) $line['hsn_code'];
+            }
+            if ($isOpticalProfile && !empty($line['optical_spec']) && is_array($line['optical_spec'])) {
+                $opt = $line['optical_spec'];
+                $row['optical_spec'] = $opt;
+                foreach (['lr', 'sph', 'cyl', 'axis', 'addition', 'dia'] as $optField) {
+                    if (isset($opt[$optField]) && $opt[$optField] !== null && $opt[$optField] !== '') {
+                        $row[$optField] = $opt[$optField];
+                    }
+                }
+                if (isset($opt['base_curve']) && $opt['base_curve'] !== null && $opt['base_curve'] !== '') {
+                    $row['base'] = $opt['base_curve'];
+                }
             }
             $slots['items'][] = $row;
         }
 
-        return array_filter($slots, static fn ($v) => $v !== null);
+        return array_filter($slots, static fn($v) => $v !== null);
     }
 
     /**
@@ -263,9 +305,13 @@ final class NormalizedInputBuilder
         array $extracted,
         array $slots,
         ?string $companionText,
+        TransactionIntentDecision $decision,
     ): array {
         $sources = [];
         $baseSource = $asset->source_kind === 'audio' ? 'audio_transcript_unverified' : 'document_ocr_unverified';
+        if ($decision->isResaleReferenceOnly) {
+            $baseSource = 'document_reference_only';
+        }
 
         foreach ($slots as $key => $val) {
             if ($key === 'warehouse_query' && $companionText !== null && $this->extractWarehouseFromText($companionText) !== null) {
@@ -275,10 +321,15 @@ final class NormalizedInputBuilder
             if ($key === 'items' && is_array($val)) {
                 $rows = $asset->source_kind === 'audio' ? ($extracted['items'] ?? []) : ($extracted['lines'] ?? []);
                 $anyConfirmed = false;
-                foreach ($rows as $r) {
-                    if (is_array($r) && ! empty($r['user_confirmed'])) {
+                foreach ($rows as $rIdx => $r) {
+                    if (!is_array($r)) {
+                        continue;
+                    }
+                    $cid = (string) ($val[$rIdx]['client_line_id'] ?? ($r['client_line_id'] ?? "line-{$rIdx}"));
+                    $lineConfirmed = !empty($r['user_confirmed']);
+                    $sources["items.{$cid}"] = $lineConfirmed ? 'user_confirmed_extraction' : $baseSource;
+                    if ($lineConfirmed) {
                         $anyConfirmed = true;
-                        break;
                     }
                 }
                 $sources[$key] = $anyConfirmed ? 'user_confirmed_extraction' : $baseSource;
@@ -305,7 +356,7 @@ final class NormalizedInputBuilder
         $primaryParty = strtolower(trim((string) ($primary['supplier_name'] ?? $primary['party_name'] ?? '')));
         $secondaryParty = strtolower(trim((string) ($secondary['party_name'] ?? $secondary['supplier_name'] ?? '')));
 
-        if ($primaryParty !== '' && $secondaryParty !== '' && $primaryParty !== $secondaryParty && ! str_contains($primaryParty, $secondaryParty) && ! str_contains($secondaryParty, $primaryParty)) {
+        if ($primaryParty !== '' && $secondaryParty !== '' && $primaryParty !== $secondaryParty && !str_contains($primaryParty, $secondaryParty) && !str_contains($secondaryParty, $primaryParty)) {
             $msg = "Cross-modal mismatch on party name: document says '{$primaryParty}' while voice recording says '{$secondaryParty}'.";
             $conflicts[] = ['code' => 'cross_modal_party_conflict', 'message' => $msg];
             $warnings[] = $msg;
@@ -325,12 +376,12 @@ final class NormalizedInputBuilder
         array &$warnings,
     ): void {
         $text = strtolower((string) $companionText);
-        if ($text === '' || ! preg_match('/\b(edit|modify|update|alter|overwrite|delete|change)\b/', $text)) {
+        if ($text === '' || !preg_match('/\b(edit|modify|update|alter|overwrite|delete|change)\b/', $text)) {
             return;
         }
 
         $invoiceNo = $extracted['invoice_number'] ?? null;
-        if (! is_string($invoiceNo) || trim($invoiceNo) === '') {
+        if (!is_string($invoiceNo) || trim($invoiceNo) === '') {
             return;
         }
 

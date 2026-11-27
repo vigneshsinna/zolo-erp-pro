@@ -125,6 +125,7 @@ final class TaskCorrectionService
             issues: $evaluation->issuesArray(),
             status: $newStatus,
             patch: $corrections,
+            supersedeLinkedProposal: true,
         );
 
         $clarification = null;
@@ -154,7 +155,7 @@ final class TaskCorrectionService
         $service = app(ActionProposalService::class);
         if ($task['linked_proposal_id']) {
             $old = $service->getOwned($principal, $task['linked_proposal_id']);
-            $proposal = $service->applyChangeRequest($principal, $old['id'], $evaluation->validatedSlots, (int) $old['version'], reuseUnchanged: true);
+            $proposal = $service->applyChangeRequest($principal, $old['id'], $evaluation->validatedSlots, (int) $old['version'], reuseUnchanged: true, allowSuperseded: true);
         } else {
             $proposal = $service->create($principal, $task['action_key'], $evaluation->validatedSlots, $task['thread_id']);
             $this->taskState->linkProposal($task['id'], $proposal['id']);
@@ -214,7 +215,10 @@ final class TaskCorrectionService
                     if (!is_array($line))
                         continue;
                     $lineId = (string) ($line['client_line_id'] ?? "line-{$idx}");
-                    $cleanLine = array_intersect_key($line, array_flip(['client_line_id', 'uom', 'discount', 'tax_rate', 'note', 'sale_unit_id']));
+                    $cleanLine = array_intersect_key($line, array_flip([
+                        'client_line_id', 'uom', 'discount', 'tax_rate', 'note', 'sale_unit_id', 'hsn_code',
+                        'sph', 'cyl', 'axis', 'base', 'addition', 'lr', 'dia', 'optical_spec', 'prescription_json',
+                    ]));
                     $cleanLine['client_line_id'] = $lineId;
                     if (!empty($line['product_id']) && is_numeric($line['product_id'])) {
                         $cleanLine['product_id'] = (int) $line['product_id'];
@@ -275,8 +279,8 @@ final class TaskCorrectionService
             return;
         }
 
-        // 2. Line item fields (e.g. items[line-0].product_id, items.0.net_unit_cost, items[0].qty)
-        if (preg_match('/^items(?:\[([^\]]+)\]|\.([0-9a-zA-Z\-_]+))\.([a-z_]+)$/D', $field, $matches)) {
+        // 2. Line item fields (e.g. items[line-0].product_id, items.0.net_unit_cost, items[0].optical_spec.sph)
+        if (preg_match('/^items(?:\[([^\]]+)\]|\.([0-9a-zA-Z\-_]+))\.([a-z_]+(?:\.[a-z_]+)?)$/D', $field, $matches)) {
             $clientLineId = !empty($matches[1]) ? $matches[1] : $matches[2];
             $property = $matches[3];
 
@@ -337,8 +341,19 @@ final class TaskCorrectionService
                 $val = CommercialDecimal::format((float) $value);
                 $slots['items'][$lineIndex]['net_unit_cost'] = $val;
                 $slots['items'][$lineIndex]['net_unit_price'] = $val;
+            } elseif (str_contains($property, '.')) {
+                [$parentProp, $subProp] = explode('.', $property, 2);
+                if (!is_array($slots['items'][$lineIndex][$parentProp] ?? null)) {
+                    $slots['items'][$lineIndex][$parentProp] = [];
+                }
+                $slots['items'][$lineIndex][$parentProp][$subProp] = $value;
             } else {
                 $slots['items'][$lineIndex][$property] = $value;
+                if (in_array($property, ['sph', 'cyl', 'axis', 'addition', 'base', 'lr', 'dia'], true)
+                    && is_array($slots['items'][$lineIndex]['optical_spec'] ?? null)) {
+                    $specKey = $property === 'base' ? 'base_curve' : $property;
+                    $slots['items'][$lineIndex]['optical_spec'][$specKey] = $value;
+                }
             }
         }
     }

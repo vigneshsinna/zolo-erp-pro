@@ -443,19 +443,55 @@ class OrderLifecycleService
         $qty = (float) $line['qty'];
         $base = app(UomConversionService::class)->toBase($product, $qty, $unit);
         if (!is_finite($base) || $base <= 0) $this->fail('items.qty', 'Order quantity must convert to a positive base quantity.');
-        CommercialOrderItem::create(['company_id' => $context->companyId, 'order_kind' => $kind, 'order_id' => $orderId,
+        $attrs = [
+            'company_id' => $context->companyId, 'order_kind' => $kind, 'order_id' => $orderId,
             'source_line_id' => $source, 'product_id' => $product->id, 'uom_id' => $unit, 'qty' => $qty, 'qty_base' => $base,
             'unit_rate' => $line[$kind === 'sale' ? 'net_unit_price' : 'net_unit_cost'], 'variant_id' => $line['variant_id'] ?? null,
-            'product_batch_id' => $line['product_batch_id'] ?? null, 'batch_no' => $line['batch']['batch_no'] ?? $line['batch_no'] ?? null]);
+            'product_batch_id' => $line['product_batch_id'] ?? null, 'batch_no' => $line['batch']['batch_no'] ?? $line['batch_no'] ?? null,
+        ];
+        if (Schema::hasColumn('commercial_order_items', 'optical_spec_json')) {
+            $optFields = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line);
+            if ($optFields !== []) {
+                $attrs['optical_spec_json'] = $optFields;
+                $attrs['optical_signature'] = $optFields['optical_spec']['spec_signature'] ?? null;
+            }
+        }
+        CommercialOrderItem::create($attrs);
     }
 
     private function identityMatches(CommercialOrderItem $item, array $line): bool
     {
-        return (int) $item->product_id === (int) ($line['product_id'] ?? 0)
+        $baseMatch = (int) $item->product_id === (int) ($line['product_id'] ?? 0)
             && (int) $item->variant_id === (int) ($line['variant_id'] ?? 0)
             && (!$item->product_batch_id || (int) $item->product_batch_id === (int) ($line['product_batch_id'] ?? 0))
             && (($item->product_batch_id && !$item->batch_no)
                 || (string) $item->batch_no === (string) ($line['batch']['batch_no'] ?? $line['batch_no'] ?? ''));
+
+        if (!$baseMatch) {
+            return false;
+        }
+
+        $itemOpt = is_array($item->optical_spec_json) ? $item->optical_spec_json : [];
+        $lineOpt = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line);
+        if ($itemOpt === [] || $lineOpt === []) {
+            return true;
+        }
+
+        $itemSig = $item->optical_signature ?? ($itemOpt['optical_spec']['spec_signature'] ?? null);
+        $lineSig = $lineOpt['optical_spec']['spec_signature'] ?? null;
+        if ($itemSig !== null && $lineSig !== null && $itemSig !== $lineSig) {
+            return false;
+        }
+
+        foreach (['lr', 'sph', 'cyl', 'axis', 'addition', 'base', 'dia'] as $field) {
+            $iv = $itemOpt[$field] ?? ($itemOpt['optical_spec'][$field === 'base' ? 'base_curve' : $field] ?? null);
+            $lv = $lineOpt[$field] ?? ($lineOpt['optical_spec'][$field === 'base' ? 'base_curve' : $field] ?? null);
+            if ($iv !== null && $lv !== null && (string) $iv !== (string) $lv) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function items(string $kind, int $id, CompanyContext $context)

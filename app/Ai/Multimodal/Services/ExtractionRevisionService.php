@@ -67,18 +67,51 @@ final class ExtractionRevisionService
             }
 
             $base = is_array($latest->extracted_json) ? $latest->extracted_json : [];
+            $isOpticalProfile = (bool) ($base['optical_profile'] ?? false);
+            $previouslyConfirmedIds = [];
+            $lineKey = $asset->source_kind === 'audio' ? 'items' : 'lines';
+            foreach ((array) ($base[$lineKey] ?? []) as $row) {
+                if (is_array($row) && ! empty($row['user_confirmed']) && ! empty($row['client_line_id'])) {
+                    $previouslyConfirmedIds[(string) $row['client_line_id']] = true;
+                }
+            }
+            $patchedLineIds = [];
+            if ($asset->source_kind !== 'audio') {
+                foreach ((array) ($patch['lines_patch'] ?? []) as $rp) {
+                    if (is_array($rp) && ! empty($rp['client_line_id'])) {
+                        $patchedLineIds[(string) $rp['client_line_id']] = true;
+                    }
+                }
+                foreach ((array) ($patch['add_lines'] ?? []) as $i => $ap) {
+                    if (is_array($ap)) {
+                        $patchedLineIds[(string) ($ap['client_line_id'] ?? ('line_' . (count((array) ($base['lines'] ?? [])) + $i + 1)))] = true;
+                    }
+                }
+            } else {
+                foreach ((array) ($patch['items_patch'] ?? []) as $rp) {
+                    if (is_array($rp) && ! empty($rp['client_line_id'])) {
+                        $patchedLineIds[(string) $rp['client_line_id']] = true;
+                    }
+                }
+            }
+
             $merged = $asset->source_kind === 'audio'
                 ? $this->applyTranscriptPatch($base, $patch, $markConfirmed)
                 : $this->applyInvoicePatch($base, $patch, $markConfirmed);
 
             $normalizedExtraction = $asset->source_kind === 'audio'
                 ? $this->transcriptSchema->validateAndNormalize($merged, $asset->duration_seconds, $this->multilingualSpeech)
-                : $this->invoiceSchema->validateAndNormalize($principal->companyId, $merged, (array) $latest->source_evidence_json);
+                : $this->invoiceSchema->validateAndNormalize(
+                    companyId: $principal->companyId,
+                    raw: $merged,
+                    sourceEvidence: (array) $latest->source_evidence_json,
+                    isOpticalProfile: $isOpticalProfile,
+                );
 
-            // Preserve user_confirmed flags through schema normalization
-            if ($markConfirmed) {
-                $lineKey = $asset->source_kind === 'audio' ? 'items' : 'lines';
-                foreach ($normalizedExtraction[$lineKey] ?? [] as $i => $row) {
+            // Preserve server-side user_confirmed flags only (never trust raw model claims)
+            foreach ($normalizedExtraction[$lineKey] ?? [] as $i => $row) {
+                $cid = (string) ($row['client_line_id'] ?? '');
+                if ($markConfirmed || ($cid !== '' && (isset($previouslyConfirmedIds[$cid]) || isset($patchedLineIds[$cid])))) {
                     $normalizedExtraction[$lineKey][$i]['user_confirmed'] = true;
                 }
             }
@@ -94,6 +127,7 @@ final class ExtractionRevisionService
                 extractionRevision: $nextRevision,
                 modelKey: (string) $latest->model_key,
                 companionText: isset($patch['companion_text']) && is_string($patch['companion_text']) ? $patch['companion_text'] : null,
+                coverageConfirmed: $markConfirmed || $asset->state === 'confirmed',
             );
 
             $newRecord = AiMediaExtraction::query()->create([
@@ -130,6 +164,7 @@ final class ExtractionRevisionService
     {
         $allowedScalars = [
             'document_type',
+            'document_kind',
             'supplier_name',
             'supplier_gstin',
             'supplier_phone',
@@ -169,13 +204,43 @@ final class ExtractionRevisionService
                 }
             }
 
-            $allowedLineKeys = ['description', 'sku_or_hsn', 'quantity', 'uom', 'unit_price', 'discount_amount', 'tax_rate', 'tax_amount', 'line_total'];
+            $allowedLineKeys = [
+                'row_role',
+                'description',
+                'product_name',
+                'supplier_sku',
+                'sku_or_hsn',
+                'hsn_code',
+                'quantity',
+                'uom',
+                'unit_price',
+                'discount_amount',
+                'tax_rate',
+                'tax_amount',
+                'line_total',
+                'optical_spec',
+                'sph',
+                'cyl',
+                'axis',
+                'addition',
+                'base_curve',
+                'base',
+                'dia',
+                'lr',
+            ];
             foreach ($lines as $i => $line) {
                 $id = (string) ($line['client_line_id'] ?? '');
                 if (isset($byId[$id])) {
                     foreach ($allowedLineKeys as $k) {
                         if (array_key_exists($k, $byId[$id])) {
-                            $lines[$i][$k] = $byId[$id][$k];
+                            if ($k === 'optical_spec' && is_array($byId[$id][$k])) {
+                                $lines[$i]['optical_spec'] = array_replace(
+                                    is_array($lines[$i]['optical_spec'] ?? null) ? $lines[$i]['optical_spec'] : [],
+                                    $byId[$id]['optical_spec']
+                                );
+                            } else {
+                                $lines[$i][$k] = $byId[$id][$k];
+                            }
                         }
                     }
                     $lines[$i]['user_confirmed'] = true;

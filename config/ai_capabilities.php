@@ -76,7 +76,7 @@ return [
             ],
             'optical.lens_candidates.v1' => [
                 'read' => [
-                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => true, 'automation' => false],
                     'aliases' => ['sdk' => 'OpticalLensCandidates', 'mcp' => 'optical_lens_candidates'],
                     'owner' => 'optical-inventory',
                     'review_reference' => 'REV-READ-OPT-CAND-V1',
@@ -85,7 +85,7 @@ return [
             ],
             'optical.power_matrix.v1' => [
                 'read' => [
-                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => true],
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => true, 'automation' => true],
                     'aliases' => ['sdk' => 'OpticalPowerMatrix', 'mcp' => 'optical_power_matrix'],
                     'owner' => 'optical-inventory',
                     'review_reference' => 'REV-READ-OPT-MATRIX-V1',
@@ -146,8 +146,8 @@ return [
             ],
             'sales_order.create.v1' => [
                 'prepare' => [
-                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
-                    'aliases' => ['sdk' => 'prepare_sales_order'],
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => true, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_sales_order', 'mcp' => 'erp_sales_order_prepare'],
                     'owner' => 'sales',
                     'review_reference' => 'REV-U1-SO-PREP-V1',
                     'lifecycle' => 'active',
@@ -167,8 +167,8 @@ return [
             ],
             'purchase_bill.create.v1' => [
                 'prepare' => [
-                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
-                    'aliases' => ['sdk' => 'prepare_purchase_bill'],
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => true, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_purchase_bill', 'mcp' => 'erp_purchase_bill_prepare'],
                     'owner' => 'accounting',
                     'review_reference' => 'REV-U1-PBILL-PREP-V1',
                     'lifecycle' => 'active',
@@ -188,8 +188,8 @@ return [
             ],
             'sales_invoice.create.v1' => [
                 'prepare' => [
-                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => false, 'automation' => false],
-                    'aliases' => ['sdk' => 'prepare_sales_invoice'],
+                    'channels' => ['sdk' => true, 'rest' => true, 'mcp' => true, 'automation' => false],
+                    'aliases' => ['sdk' => 'prepare_sales_invoice', 'mcp' => 'erp_sales_invoice_prepare'],
                     'owner' => 'sales',
                     'review_reference' => 'REV-U1-SINV-PREP-V1',
                     'lifecycle' => 'active',

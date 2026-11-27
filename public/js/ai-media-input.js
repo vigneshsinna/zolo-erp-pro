@@ -115,6 +115,54 @@
     // Media IDs attached to chat turns once confirmed
     const attachedMedia = new Map();
 
+    // Monotonic scope/thread epoch to discard stale asynchronous extraction/handoff responses
+    let activeScopeEpoch = 0;
+
+    function clearScopedMediaState() {
+        activeScopeEpoch += 1;
+        clearStagedAttachment();
+        attachedMedia.clear();
+        renderAttachedChips();
+        $('.ai-unified-workflow-wrap, .ai-media-review-bubble, .ai-decision-card-wrap').remove();
+    }
+
+    $(document).on('zolo:ai:scope-changed', function () {
+        clearScopedMediaState();
+    });
+
+    function isResponseCurrent(reqEpoch, responseThreadId) {
+        if (reqEpoch !== activeScopeEpoch) {
+            return false;
+        }
+        const ws = getWs();
+        const activeThreadId = ws && ws.getCurrentThreadId ? ws.getCurrentThreadId() : null;
+        if (responseThreadId && activeThreadId && String(responseThreadId) !== String(activeThreadId)) {
+            return false;
+        }
+        return true;
+    }
+
+    function formatOpticalSpecSummary(item) {
+        if (!item || typeof item !== 'object') {
+            return '';
+        }
+        const spec = (item.optical_spec && typeof item.optical_spec === 'object') ? item.optical_spec : item;
+        const parts = [];
+        const lr = spec.lr || item.lr;
+        if (lr) parts.push(String(lr));
+        if (spec.sph != null && spec.sph !== '') parts.push('SPH ' + spec.sph);
+        else if (item.sph != null && item.sph !== '') parts.push('SPH ' + item.sph);
+        if (spec.cyl != null && spec.cyl !== '') parts.push('CYL ' + spec.cyl);
+        else if (item.cyl != null && item.cyl !== '') parts.push('CYL ' + item.cyl);
+        if (spec.axis != null && spec.axis !== '') parts.push('AXIS ' + spec.axis);
+        else if (item.axis != null && item.axis !== '') parts.push('AXIS ' + item.axis);
+        const add = spec.addition ?? item.addition;
+        if (add != null && add !== '') parts.push('ADD ' + add);
+        const dia = spec.dia ?? item.dia;
+        if (dia != null && dia !== '') parts.push('DIA ' + dia);
+        return parts.join(' · ');
+    }
+
     function getWs() {
         return window.zoloAiWorkspace || null;
     }
@@ -381,6 +429,7 @@
             fd.append('expected_task_revision', replyTask.task_revision);
         }
 
+        const prepareEpoch = activeScopeEpoch;
         $.ajax({
             url: mediaUrl('/prepare'),
             method: 'POST',
@@ -392,6 +441,9 @@
                 $('#' + placeholderId).remove();
                 if (targetStaged.previewUrl) {
                     try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
+                }
+                if (!isResponseCurrent(prepareEpoch, res?.media?.thread_id)) {
+                    return;
                 }
                 try {
                     if (res.status === 'voice_intent_review_ready' && window.zoloAiConversation) {
@@ -592,9 +644,136 @@
         return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     }
 
+    function renderDecisionCard(res, companionText, mount) {
+        const ws = getWs();
+        const decision = res.decision || {};
+        const allowed = Array.isArray(decision.allowed_next_actions) ? decision.allowed_next_actions : [];
+        const wrap = $('<div class="d-flex mb-3 justify-content-start ai-decision-card-wrap"></div>');
+        const bubble = $('<div class="chat-bubble chat-assistant shadow-sm w-100 ai-media-review-bubble"></div>');
+        const card = $('<div class="card border shadow-none ai-decision-card" data-status="' + escapeText(res.status || '') + '"></div>');
+
+        const titleMap = {
+            needs_intent_confirmation: 'Confirm Transaction Type',
+            source_role_conflict: 'Source Party / Direction Mismatch',
+            needs_source_confirmation: 'Confirm Source Handling',
+            active_task_conflict: 'Active Draft Conflict',
+            readonly_summary: 'Read-Only Source Summary',
+        };
+        const badgeMap = {
+            needs_intent_confirmation: 'badge-warning',
+            source_role_conflict: 'badge-danger',
+            needs_source_confirmation: 'badge-warning',
+            active_task_conflict: 'badge-info',
+            readonly_summary: 'badge-secondary',
+        };
+        const header = $('<div class="card-header bg-white py-3 px-3 border-bottom d-flex justify-content-between align-items-center flex-wrap"></div>');
+        header.append($('<h5 class="font-weight-bold mb-0 text-dark"></h5>').html('<i class="dripicons-warning mr-2 text-warning"></i>' + escapeText(titleMap[res.status] || 'Action Confirmation Required')));
+        header.append($('<span class="badge px-2 py-1 font-weight-bold"></span>').addClass(badgeMap[res.status] || 'badge-warning').text(decision.reason_code || res.status));
+        card.append(header);
+
+        const body = $('<div class="card-body p-3 bg-white"></div>');
+        body.append($('<p class="small text-dark mb-2"></p>').text(res.message || decision.message || 'Confirm how zoloERP should proceed with this source document.'));
+
+        const metaParts = [];
+        if (decision.document_kind) metaParts.push('Detected Kind: ' + decision.document_kind);
+        if (decision.company_role) metaParts.push('Active Company Role: ' + decision.company_role);
+        if (decision.active_task_action) metaParts.push('Open Draft: ' + decision.active_task_action);
+        if (metaParts.length > 0) {
+            body.append($('<div class="small text-muted border rounded bg-light p-2 mb-3"></div>').text(metaParts.join(' · ')));
+        }
+
+        const feedbackBox = $('<div class="small mb-2 ai-decision-feedback"></div>');
+        body.append(feedbackBox);
+
+        const btnLabelMap = {
+            record_purchase_instead: 'Record as Purchase Instead',
+            record_sales_instead: 'Record as Sales Document',
+            use_as_resale_reference: 'Use as Resale Reference Only',
+            review_source: 'Review Extracted Source',
+            confirm_intent: 'Confirm & Continue',
+            start_new_task: 'Start New Draft',
+            resume_active_task: 'Resume Open Draft',
+            'sales_invoice.create.v1': 'Draft Sales Invoice',
+            'sales_order.create.v1': 'Draft Sales Order',
+            'purchase_order.create.v1': 'Draft Purchase Order',
+            'purchase_bill.create.v1': 'Draft Purchase Bill',
+            query_readonly: 'Summarize Only',
+        };
+
+        const btnGroup = $('<div class="d-flex flex-wrap align-items-center"></div>');
+        const reqEpoch = activeScopeEpoch;
+        allowed.forEach(function (optKey) {
+            const btn = $('<button type="button" class="btn btn-sm mr-2 mb-1"></button>')
+                .addClass(optKey === 'review_source' || optKey === 'resume_active_task' ? 'btn-outline-secondary' : 'btn-primary')
+                .attr('data-resolution', optKey)
+                .text(btnLabelMap[optKey] || optKey);
+            btn.on('click', function () {
+                if (optKey === 'review_source') {
+                    if (res.media && res.extraction) {
+                        wrap.remove();
+                        renderExtractionCard(res.media, res.extraction, companionText);
+                    }
+                    return;
+                }
+                if (optKey === 'query_readonly') {
+                    wrap.remove();
+                    if (ws && ws.appendMessage) {
+                        ws.appendMessage('assistant', res.message || 'Confirmed for read-only inspection; no ERP draft created.');
+                    }
+                    return;
+                }
+                btnGroup.find('button').prop('disabled', true);
+                feedbackBox.html('<span class="text-muted"><span class="spinner-border spinner-border-sm mr-1"></span>Applying choice...</span>');
+
+                const payload = {
+                    companion_text: companionText || null,
+                    thread_id: (ws && ws.getCurrentThreadId && ws.getCurrentThreadId()) || null,
+                };
+                if (optKey.indexOf('.') !== -1) {
+                    payload.action_key = optKey;
+                    payload.resolution_mode = 'confirm_intent';
+                } else {
+                    payload.resolution_mode = optKey;
+                }
+
+                const targetMediaId = (res.media && res.media.id) || res.media_id;
+                $.ajax({
+                    url: mediaUrl('/' + encodeURIComponent(targetMediaId) + '/handoff'),
+                    method: 'POST',
+                    headers: baseHeaders(true),
+                    data: JSON.stringify(payload),
+                    success: function (nextRes) {
+                        if (!isResponseCurrent(reqEpoch, nextRes?.media?.thread_id)) {
+                            return;
+                        }
+                        wrap.remove();
+                        renderUnifiedWorkflowCard(nextRes, companionText, null, mount);
+                    },
+                    error: function (xhr) {
+                        btnGroup.find('button').prop('disabled', false);
+                        const err = xhr.responseJSON || {};
+                        feedbackBox.html($('<div class="alert alert-warning py-1 px-2 mb-0"></div>').text(err.error_message || err.message || 'Could not apply selection.'));
+                    }
+                });
+            });
+            btnGroup.append(btn);
+        });
+        body.append(btnGroup);
+        card.append(body);
+        bubble.append(card);
+        wrap.append(bubble);
+        $('.ai-welcome-box').remove();
+        (mount || $('#chat-messages')).append(wrap);
+        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+    }
+
     function renderUnifiedWorkflowCard(res, companionText, stagedRef, mount) {
         const ws = getWs();
         const aiBaseUrl = resolveAiBaseUrl();
+        if (['needs_intent_confirmation', 'source_role_conflict', 'needs_source_confirmation', 'active_task_conflict', 'readonly_summary'].includes(res.status)) {
+            renderDecisionCard(res, companionText, mount);
+            return;
+        }
         const actionCandidates = [
             res.action_key,
             res.task?.action_key,
@@ -607,6 +786,7 @@
         const allowedActions = new Set([
             'purchase_order.create.v1', 'purchase_bill.create.v1',
             'sales_order.create.v1', 'sales_invoice.create.v1',
+            'delivery_challan.create.v1', 'quotation.create.v1',
         ]);
         if (actionTypes.size !== 1 || !allowedActions.has(actionCandidates[0])) {
             const warning = $('<section class="alert alert-warning my-3" role="alert"></section>')
@@ -673,12 +853,16 @@
             const actionKey = currentRes.action_key || proposal.action_key || (preview && preview.action_key) || (currentRes.task && currentRes.task.action_key) || verifiedActionKey;
             const isPb = (actionKey === 'purchase_bill.create.v1');
             const isPo = (actionKey === 'purchase_order.create.v1');
+            const isSi = (actionKey === 'sales_invoice.create.v1');
+            const isSo = (actionKey === 'sales_order.create.v1');
             const isPurchase = isPb || isPo || actionKey.startsWith('purchase_');
 
             let docTitle = preview.document_type;
             if (!docTitle) {
                 if (isPb) docTitle = 'Purchase Bill Review';
                 else if (isPo) docTitle = 'Purchase Order Review';
+                else if (isSi) docTitle = 'Sales Invoice Review';
+                else if (isSo) docTitle = 'Sales Order Review';
                 else docTitle = 'Commercial Action Review';
             } else if (!docTitle.toLowerCase().includes('review')) {
                 docTitle += ' Review';
@@ -694,7 +878,14 @@
             const perceptionName = formatModelDisplayName((currentRes.extraction && currentRes.extraction.model_key) || media.model_key || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
             titleWrap.append($('<div class="small text-muted"></div>').text(media.id ? 'Extracted by ' + perceptionName + ' · Verified by ERP Validation' : 'Prepared from conversation · Verified by ERP Validation'));
             topRow.append(titleWrap);
-            topRow.append($('<span class="badge badge-success px-2 py-1 font-weight-bold"><i class="dripicons-checkmark mr-1"></i>Validation passed</span>'));
+            const badgeWrap = $('<div class="d-flex align-items-center flex-wrap"></div>');
+            badgeWrap.append('<span class="badge badge-warning mr-1 px-2 py-1 font-weight-bold">DRAFT v' + escapeText(version) + ' · Human Approval Required</span>');
+            if (isSi && preview.route_kind) {
+                const routeLabels = { direct_invoice: 'Direct Invoice', so_linked: 'SO-Linked', dc_linked: 'DC-Linked' };
+                badgeWrap.append($('<span class="badge badge-info mr-1 px-2 py-1"></span>').text(routeLabels[preview.route_kind] || preview.route_kind));
+            }
+            badgeWrap.append($('<span class="badge badge-success px-2 py-1 font-weight-bold"><i class="dripicons-checkmark mr-1"></i>Validation passed</span>'));
+            topRow.append(badgeWrap);
             header.append(topRow);
             card.append(header);
 
@@ -721,16 +912,20 @@
             // 4-grid Metadata box (Image 3)
             const metaBox = $('<div class="row no-gutters ai-meta-grid p-2 mb-3 border rounded bg-light"></div>');
             const partyLabel = isPurchase ? 'Supplier' : 'Customer';
-            const supplierName = (preview.supplier && (preview.supplier.name || preview.supplier.company_name)) || ext.supplier_name || '—';
-            const refLabel = isPb ? 'Invoice number' : (isPo ? 'Order Reference' : 'Reference number');
-            const invoiceNo = preview.supplier_invoice_no || preview.reference_no || ext.invoice_number || (isPo ? 'Auto-generated on booking' : '—');
-            const invoiceDate = preview.date || ext.invoice_date || '—';
+            const partyObj = isPurchase ? preview.supplier : preview.customer;
+            const partyName = (partyObj && (partyObj.name || partyObj.company_name))
+                || (isPurchase ? ext.supplier_name : (preview.customer_name || ext.buyer_name))
+                || '—';
+            const refLabel = isPb ? 'Invoice number' : ((isPo || isSo) ? 'Order Reference' : 'Reference number');
+            const invoiceNo = preview.supplier_invoice_no || preview.reference_no || ext.invoice_number || ((isPo || isSo || isSi) ? 'Auto-generated on booking' : '—');
+            const invoiceDate = preview.date || preview.order_date || ext.invoice_date || '—';
+            const whLabel = isPurchase ? 'Warehouse' : 'Dispatch Warehouse';
             const warehouseName = (preview.warehouse && preview.warehouse.name) || (res.task && res.task.slots && (res.task.slots.warehouse_name || res.task.slots.warehouse_query)) || 'Not selected';
 
-            metaBox.append('<div class="col-6 mb-2"><small class="text-muted d-block">' + escapeText(partyLabel) + '</small><strong class="text-dark">' + escapeText(supplierName) + '</strong></div>');
+            metaBox.append('<div class="col-6 mb-2"><small class="text-muted d-block">' + escapeText(partyLabel) + '</small><strong class="text-dark">' + escapeText(partyName) + '</strong></div>');
             metaBox.append('<div class="col-6 mb-2 text-right"><small class="text-muted d-block">' + escapeText(refLabel) + '</small><strong class="text-dark">' + escapeText(invoiceNo) + '</strong></div>');
             metaBox.append('<div class="col-6"><small class="text-muted d-block">Document date</small><strong class="text-dark">' + escapeText(invoiceDate) + '</strong></div>');
-            metaBox.append('<div class="col-6 text-right"><small class="text-muted d-block">Warehouse</small><strong class="text-dark">' + escapeText(warehouseName) + '</strong></div>');
+            metaBox.append('<div class="col-6 text-right"><small class="text-muted d-block">' + escapeText(whLabel) + '</small><strong class="text-dark">' + escapeText(warehouseName) + '</strong></div>');
             body.append(metaBox);
 
             if (preview.payment_terms) {
@@ -740,10 +935,10 @@
             }
 
             // Table of Line Items (Image 3)
-            const items = preview.items || ext.lines || [];
+            const items = preview.items || preview.lines || ext.lines || [];
             const tableWrap = $('<div class="table-responsive my-2"></div>');
             const table = $('<table class="table table-sm table-hover mb-0 ai-fact-table"></table>');
-            table.append('<thead class="thead-light"><tr><th>Product</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amount</th></tr></thead>');
+            table.append('<thead class="thead-light"><tr><th>Product / Optical Spec</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amount</th></tr></thead>');
             const tbody = $('<tbody></tbody>');
 
             if (items.length > 0) {
@@ -751,8 +946,10 @@
                     const tr = $('<tr></tr>');
                     const prodName = item.product_name || item.description || 'Product';
                     const prodCode = item.product_code || item.sku_or_hsn || '';
+                    const optSummary = formatOpticalSpecSummary(item);
                     const tdProd = $('<td></td>').append($('<div class="font-weight-bold"></div>').text(prodName));
-                    if (prodCode) tdProd.append($('<small class="text-muted"></small>').text(prodCode));
+                    if (prodCode) tdProd.append($('<small class="text-muted d-block"></small>').text(prodCode));
+                    if (optSummary) tdProd.append($('<span class="badge badge-light border text-dark mt-1"></span>').text(optSummary));
                     tr.append(tdProd);
                     tr.append($('<td class="text-right"></td>').text(item.qty != null ? item.qty : (item.quantity != null ? item.quantity : '—')));
                     const unitRate = item.net_unit_cost ?? item.net_unit_price ?? item.unit_price;
@@ -768,24 +965,32 @@
             tableWrap.append(table);
             body.append(tableWrap);
 
-            // Totals Block (Matching Image 3 Right-Stacked Spec)
-            const totals = preview.totals || {};
+            // Totals Block (Matching Image 3 Right-Stacked Spec + Source Claim Comparison)
+            const totals = preview.totals || preview.summary || {};
             const subtotalVal = totals.subtotal ?? ext.subtotal;
-            const taxVal = totals.tax_total ?? ext.tax_amount;
+            const taxVal = totals.tax_total ?? totals.total_tax ?? ext.tax_amount;
             const grandTotalVal = totals.grand_total ?? ext.total_amount;
 
             const totalsDiv = $('<div class="row justify-content-end no-gutters mt-2 mb-2"></div>');
-            const totalsCol = $('<div class="col-sm-6 col-md-5 text-right"></div>');
+            const totalsCol = $('<div class="col-sm-7 col-md-6 text-right"></div>');
             totalsCol.append('<div class="d-flex justify-content-between small text-muted mb-1"><span>Subtotal</span><strong class="text-dark font-weight-normal">' + formatCurrencyVal(subtotalVal) + '</strong></div>');
             totalsCol.append('<div class="d-flex justify-content-between small text-muted mb-2"><span>GST</span><strong class="text-dark font-weight-normal">' + formatCurrencyVal(taxVal) + '</strong></div>');
-            totalsCol.append('<div class="d-flex justify-content-between align-items-baseline border-top pt-2"><span class="font-weight-bold text-dark">Total</span><span class="h5 mb-0 font-weight-bold text-dark">' + formatCurrencyVal(grandTotalVal) + '</span></div>');
+            if (ext.total_amount != null && grandTotalVal != null) {
+                const diffBadge = Math.abs(Number(ext.total_amount) - Number(grandTotalVal)) > 1
+                    ? ' <span class="badge badge-warning ml-1">Diff</span>'
+                    : ' <span class="badge badge-success ml-1">Match</span>';
+                totalsCol.append('<div class="d-flex justify-content-between small text-muted mb-1"><span>Source Claimed Total</span><span>' + formatCurrencyVal(ext.total_amount) + diffBadge + '</span></div>');
+            }
+            totalsCol.append('<div class="d-flex justify-content-between align-items-baseline border-top pt-2"><span class="font-weight-bold text-dark">ERP Total</span><span class="h5 mb-0 font-weight-bold text-dark">' + formatCurrencyVal(grandTotalVal) + '</span></div>');
             totalsDiv.append(totalsCol);
             body.append(totalsDiv);
 
             // Footnote
             body.append($('<div class="small text-muted border-top pt-2 mt-2 font-italic"></div>').text(isPo
                 ? 'Purchase order pricing validated by ERP. Payment and goods receipt require separate billing and receiving workflows.'
-                : 'Original invoice number and document type verified by ERP validation. Real financial writes require human authorization.'));
+                : (isSo
+                    ? 'Sales order pricing validated by ERP. Stock allocation occurs on approval; invoicing runs separately.'
+                    : 'Document numbers and GST validated by ERP. Real financial writes require human authorization.')));
 
             // Action Feedback
             const feedbackBox = $('<div class="small mt-2 mb-1 ai-action-feedback"></div>');
@@ -793,11 +998,12 @@
 
             // Action Buttons (Image 3)
             const footer = $('<div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2 flex-wrap"></div>');
-            const btnEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-3 ai-btn-edit-bill"></button>').text(isPo ? 'Edit PO' : 'Edit Bill');
+            const editBtnLabel = isPo ? 'Edit PO' : (isSo ? 'Edit SO' : (isSi ? 'Edit Invoice' : 'Edit Bill'));
+            const btnEdit = $('<button type="button" class="btn btn-sm btn-outline-secondary mr-2 py-1 px-3 ai-btn-edit-bill"></button>').text(editBtnLabel);
             const rightWrap = $('<div class="d-flex align-items-center flex-wrap"></div>');
             const pdfUrl = aiBaseUrl + '/proposals/' + proposalId + '/pdf';
             const btnDraft = $('<button type="button" class="btn btn-sm btn-outline-primary mr-2 py-1 px-2 btn-preview-pdf" data-pdf-url="' + pdfUrl + '"><i class="dripicons-document mr-1"></i>Draft PDF</button>');
-            const approveBtnLabel = isPb ? 'Approve & Create Bill' : (isPo ? 'Approve & Create PO' : 'Approve & Create');
+            const approveBtnLabel = isPb ? 'Approve & Create Bill' : (isPo ? 'Approve & Create PO' : (isSi ? 'Approve & Create Invoice' : (isSo ? 'Approve & Create SO' : 'Approve & Create')));
             const btnApprove = $('<button type="button" class="btn btn-sm btn-success px-3 py-1 font-weight-bold ai-btn-approve-bill"><i class="dripicons-checkmark mr-1"></i>' + escapeText(approveBtnLabel) + '</button>');
 
             btnEdit.on('click', function () {
@@ -840,12 +1046,14 @@
         }
 
         function renderBookedView(receipt) {
-            const refNo = (receipt && receipt.details && receipt.details.reference_no) || (receipt && receipt.resource_id) || 'PR-BOOKED';
+            const refNo = (receipt && receipt.details && receipt.details.reference_no) || (receipt && receipt.resource_id) || 'ERP-BOOKED';
             const actionKey = currentRes.action_key || (currentRes.proposal && currentRes.proposal.action_key) || verifiedActionKey;
             const isPo = (actionKey === 'purchase_order.create.v1');
-            const resId = (receipt && receipt.resource_id) || (receipt && receipt.details && (receipt.details.purchase_id || receipt.details.purchase_order_id || receipt.details.id)) || (receipt && receipt.details && receipt.details.reference_no);
-            const docLabel = isPo ? 'Purchase Order' : 'Purchase Bill';
-            const pdfDocType = isPo ? 'purchase-order' : 'purchase';
+            const isSi = (actionKey === 'sales_invoice.create.v1');
+            const isSo = (actionKey === 'sales_order.create.v1');
+            const resId = (receipt && receipt.resource_id) || (receipt && receipt.details && (receipt.details.purchase_id || receipt.details.sale_id || receipt.details.purchase_order_id || receipt.details.id)) || (receipt && receipt.details && receipt.details.reference_no);
+            const docLabel = isPo ? 'Purchase Order' : (isSo ? 'Sales Order' : (isSi ? 'Sales Invoice' : 'Purchase Bill'));
+            const pdfDocType = isPo ? 'purchase-order' : (isSo ? 'sales-order' : (isSi ? 'sale' : 'purchase'));
             const pdfUrl = resId ? (aiBaseUrl + '/documents/' + pdfDocType + '/' + encodeURIComponent(resId) + '/pdf') : null;
             const downloadUrl = pdfUrl ? (pdfUrl + (pdfUrl.indexOf('?') === -1 ? '?download=1' : '&download=1')) : null;
 
@@ -860,7 +1068,13 @@
             const successBox = $('<div class="alert alert-success p-3 border-success mb-2"></div>');
             successBox.append('<h6 class="font-weight-bold text-success mb-1">Voucher Booked: ' + escapeText(refNo) + '</h6>');
             const bookedWarehouse = receipt?.details?.warehouse_name || reviewedPreview.warehouse?.name || 'warehouse';
-            const impactDesc = isPo ? ('Status: Successfully posted to Purchase Orders, allocations updated in ' + bookedWarehouse + '.') : ('Status: Successfully posted to Accounts Payable, inventory updated in ' + bookedWarehouse + '.');
+            const impactDesc = isPo
+                ? ('Status: Successfully posted to Purchase Orders, allocations updated in ' + bookedWarehouse + '.')
+                : (isSo
+                    ? ('Status: Successfully posted to Sales Orders, allocations updated in ' + bookedWarehouse + '.')
+                    : (isSi
+                        ? ('Status: Successfully posted to Accounts Receivable and sales ledger from ' + bookedWarehouse + '.')
+                        : ('Status: Successfully posted to Accounts Payable, inventory updated in ' + bookedWarehouse + '.')));
             successBox.append('<div class="small text-muted mb-3">' + escapeText(impactDesc) + '</div>');
 
             const btnRow = $('<div class="d-flex align-items-center flex-wrap"></div>');
@@ -2492,10 +2706,18 @@
         const viewTbody = $('<tbody></tbody>');
 
         const lines = Array.isArray(data.lines) ? data.lines : [];
+        const isOpticalDoc = !!data.optical_profile || lines.some(function (l) {
+            return !!(l && (l.optical_spec || l.sph != null || l.cyl != null || l.axis != null || l.lr));
+        });
         if (lines.length > 0) {
             lines.forEach(function (line) {
                 const tr = $('<tr></tr>');
-                tr.append($('<td class="font-weight-medium"></td>').text(line.description || 'Unnamed item'));
+                const optSummary = formatOpticalSpecSummary(line);
+                const tdProd = $('<td class="font-weight-medium"></td>').text(line.product_name || line.description || 'Unnamed item');
+                if (optSummary) {
+                    tdProd.append($('<div class="small"><span class="badge badge-light border text-dark"></span></div>').find('span').text(optSummary).end());
+                }
+                tr.append(tdProd);
                 tr.append($('<td class="text-right"></td>').text(line.quantity == null ? '—' : String(line.quantity)));
                 tr.append($('<td class="text-right"></td>').text(line.unit_price == null ? '—' : formatCurrencyVal(line.unit_price)));
                 viewTbody.append(tr);
@@ -2519,10 +2741,11 @@
         const grid = $('<div class="form-row"></div>');
         const fields = [
             { key: 'document_type', label: 'Document Type', col: 'col-sm-4' },
-            { key: 'supplier_name', label: 'Supplier / Party', col: 'col-sm-8' },
+            { key: 'supplier_name', label: 'Issuer / Supplier', col: 'col-sm-4' },
+            { key: 'buyer_name', label: 'Buyer / Customer', col: 'col-sm-4' },
             { key: 'invoice_number', label: 'Invoice / Ref #', col: 'col-sm-4' },
             { key: 'invoice_date', label: 'Date (YYYY-MM-DD)', col: 'col-sm-4' },
-            { key: 'supplier_gstin', label: 'Supplier GSTIN', col: 'col-sm-4' },
+            { key: 'supplier_gstin', label: 'Issuer GSTIN', col: 'col-sm-4' },
             { key: 'subtotal', label: 'Subtotal', col: 'col-sm-4' },
             { key: 'tax_amount', label: 'Tax Amount', col: 'col-sm-4' },
             { key: 'total_amount', label: 'Printed Total', col: 'col-sm-4' },
@@ -2540,6 +2763,8 @@
                     { val: 'sales_invoice', label: 'Sales Invoice (Customer Bill)' },
                     { val: 'sales_order', label: 'Sales Order' },
                     { val: 'quotation', label: 'Quotation / Estimate' },
+                    { val: 'rx_sheet', label: 'Optical Rx Sheet' },
+                    { val: 'lab_slip', label: 'Optical Lab Slip' },
                     { val: 'unknown', label: 'Unknown / Other' },
                 ];
                 docTypes.forEach(function (dt) {
@@ -2562,22 +2787,40 @@
 
         const editTableWrap = $('<div class="table-responsive mt-2"></div>');
         const editTable = $('<table class="table table-sm table-bordered bg-white mb-0 ai-fact-table"></table>');
-        editTable.append('<thead class="thead-light"><tr><th style="min-width: 180px;">Description</th><th style="width:80px;">Qty</th><th style="width:75px;">UOM</th><th style="width:105px;">Unit Price</th><th style="width:110px;">Line Total</th></tr></thead>');
+        if (isOpticalDoc) {
+            editTable.append('<thead class="thead-light"><tr><th style="min-width: 150px;">Lens / Product</th><th style="width:65px;">Eye</th><th style="width:72px;">SPH</th><th style="width:72px;">CYL</th><th style="width:60px;">AXIS</th><th style="width:72px;">ADD</th><th style="width:60px;">DIA</th><th style="width:70px;">Qty</th><th style="width:95px;">Unit Price</th><th style="width:100px;">Line Total</th></tr></thead>');
+        } else {
+            editTable.append('<thead class="thead-light"><tr><th style="min-width: 180px;">Description</th><th style="width:80px;">Qty</th><th style="width:75px;">UOM</th><th style="width:105px;">Unit Price</th><th style="width:110px;">Line Total</th></tr></thead>');
+        }
         const editTbody = $('<tbody></tbody>');
 
         lines.forEach(function (line, idx) {
             const lineId = line.client_line_id || ('line_' + (idx + 1));
-            const tr = $('<tr class="ai-ext-line-row"></tr>').attr('data-line-id', lineId);
-            tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-desc">').val(line.description || '')));
-            tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-qty">').val(line.quantity == null ? '' : String(line.quantity))));
-            tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-uom">').val(line.uom || '')));
-            tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-price">').val(line.unit_price == null ? '' : String(line.unit_price))));
-            tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-total">').val(line.line_total == null ? '' : String(line.line_total))));
+            const tr = $('<tr class="ai-ext-line-row"></tr>').attr('data-line-id', lineId).attr('data-optical', isOpticalDoc ? '1' : '0');
+            if (isOpticalDoc) {
+                const opt = line.optical_spec || {};
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-product-name" placeholder="Lens name">').val(line.product_name || line.description || '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-opt-lr" placeholder="R/L">').val(opt.lr ?? line.lr ?? '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-opt-sph" placeholder="±0.00">').val(opt.sph ?? line.sph ?? '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-opt-cyl" placeholder="±0.00">').val(opt.cyl ?? line.cyl ?? '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-opt-axis" placeholder="0-180">').val(opt.axis ?? line.axis ?? '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-opt-add" placeholder="+0.00">').val(opt.addition ?? line.addition ?? '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-opt-dia" placeholder="mm">').val(opt.dia ?? line.dia ?? '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-qty">').val(line.quantity == null ? '' : String(line.quantity))));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-price">').val(line.unit_price == null ? '' : String(line.unit_price))));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-total">').val(line.line_total == null ? '' : String(line.line_total))));
+            } else {
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-desc">').val(line.description || '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-qty">').val(line.quantity == null ? '' : String(line.quantity))));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm ai-line-uom">').val(line.uom || '')));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-price">').val(line.unit_price == null ? '' : String(line.unit_price))));
+                tr.append($('<td></td>').append($('<input type="text" class="form-control form-control-sm text-right ai-line-total">').val(line.line_total == null ? '' : String(line.line_total))));
+            }
             editTbody.append(tr);
         });
 
         if (lines.length === 0) {
-            editTbody.append('<tr><td colspan="5" class="text-center text-muted small py-2">No line items detected.</td></tr>');
+            editTbody.append('<tr><td colspan="' + (isOpticalDoc ? 10 : 5) + '" class="text-center text-muted small py-2">No line items detected.</td></tr>');
         }
 
         editTable.append(editTbody);
@@ -2692,14 +2935,41 @@
         } else {
             const linesPatch = [];
             formCol.find('.ai-ext-line-row').each(function () {
-                linesPatch.push({
-                    client_line_id: $(this).attr('data-line-id'),
-                    description: $(this).find('.ai-line-desc').val().trim() || null,
-                    quantity: $(this).find('.ai-line-qty').val().trim() || null,
-                    uom: $(this).find('.ai-line-uom').val().trim() || null,
-                    unit_price: $(this).find('.ai-line-price').val().trim() || null,
-                    line_total: $(this).find('.ai-line-total').val().trim() || null,
-                });
+                const row = $(this);
+                const isOpt = row.attr('data-optical') === '1';
+                if (isOpt) {
+                    const lr = row.find('.ai-line-opt-lr').val().trim() || null;
+                    const sph = row.find('.ai-line-opt-sph').val().trim() || null;
+                    const cyl = row.find('.ai-line-opt-cyl').val().trim() || null;
+                    const axis = row.find('.ai-line-opt-axis').val().trim() || null;
+                    const addition = row.find('.ai-line-opt-add').val().trim() || null;
+                    const dia = row.find('.ai-line-opt-dia').val().trim() || null;
+                    const prodName = row.find('.ai-line-product-name').val().trim() || null;
+                    linesPatch.push({
+                        client_line_id: row.attr('data-line-id'),
+                        product_name: prodName,
+                        description: prodName || lr || null,
+                        quantity: row.find('.ai-line-qty').val().trim() || null,
+                        unit_price: row.find('.ai-line-price').val().trim() || null,
+                        line_total: row.find('.ai-line-total').val().trim() || null,
+                        lr: lr,
+                        sph: sph,
+                        cyl: cyl,
+                        axis: axis,
+                        addition: addition,
+                        dia: dia,
+                        optical_spec: { lr: lr, sph: sph, cyl: cyl, axis: axis, addition: addition, dia: dia },
+                    });
+                } else {
+                    linesPatch.push({
+                        client_line_id: row.attr('data-line-id'),
+                        description: row.find('.ai-line-desc').val().trim() || null,
+                        quantity: row.find('.ai-line-qty').val().trim() || null,
+                        uom: row.find('.ai-line-uom').val().trim() || null,
+                        unit_price: row.find('.ai-line-price').val().trim() || null,
+                        line_total: row.find('.ai-line-total').val().trim() || null,
+                    });
+                }
             });
             if (linesPatch.length > 0) {
                 patch.lines_patch = linesPatch;

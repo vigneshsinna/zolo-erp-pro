@@ -53,9 +53,9 @@ class DeveloperController extends Controller
         $search = $request->query('q');
         $statusFilter = $request->query('status', 'all');
         $groupFilter = (string) $request->query('group', 'all');
-        $tab = in_array($request->query('tab'), ['tenants', 'plans', 'admins', 'audits', 'modules'], true)
+        $tab = in_array($request->query('tab'), ['dashboard', 'tenants', 'plans', 'admins', 'audits', 'modules'], true)
             ? $request->query('tab')
-            : 'tenants';
+            : ($request->filled('company') || $request->has('tab') ? 'tenants' : 'dashboard');
 
         $tenants = $this->tenants->listTenants($search, $statusFilter, $groupFilter);
         $allTenants = ($search || $statusFilter !== 'all' || $groupFilter !== 'all') ? $this->tenants->listTenants() : $tenants;

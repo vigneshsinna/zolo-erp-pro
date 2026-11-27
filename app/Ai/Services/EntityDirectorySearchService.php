@@ -66,6 +66,8 @@ class EntityDirectorySearchService
         int $perPage = 20,
         ?string $taskId = null,
         ?string $fieldPath = null,
+        ?array $opticalSpec = null,
+        ?int $warehouseId = null,
     ): array {
         if (!in_array($entityType, self::ALLOWED_TYPES, true)) {
             throw new InvalidArgumentException("Invalid entity type: {$entityType}");
@@ -285,6 +287,102 @@ class EntityDirectorySearchService
                 $total = $paginator->total();
                 $hasMore = $paginator->hasMorePages();
 
+                $effectiveWarehouseId = $warehouseId;
+                $effectiveOpticalSpec = is_array($opticalSpec)
+                    ? array_filter($opticalSpec, static fn ($v) => $v !== null && $v !== '')
+                    : [];
+
+                if ($taskId !== null && ($effectiveWarehouseId === null || $effectiveOpticalSpec === [])) {
+                    $taskRow = \Illuminate\Support\Facades\DB::table('ai_workflow_tasks')
+                        ->where('id', $taskId)
+                        ->where('company_id', $context->companyId)
+                        ->where('actor_id', $actorId)
+                        ->first(['slots_json']);
+                    if ($taskRow && $taskRow->slots_json) {
+                        $taskSlots = json_decode((string) $taskRow->slots_json, true);
+                        if (is_array($taskSlots)) {
+                            if ($effectiveWarehouseId === null && !empty($taskSlots['warehouse_id'])) {
+                                $effectiveWarehouseId = (int) $taskSlots['warehouse_id'];
+                            }
+                            if ($effectiveOpticalSpec === [] && $fieldPath !== null
+                                && preg_match('/^items(?:\[([^\]]+)\]|\.(\d+))/', $fieldPath, $m)) {
+                                $targetLineId = $m[1] !== '' ? $m[1] : $m[2];
+                                foreach ((array) ($taskSlots['items'] ?? []) as $tIdx => $tLine) {
+                                    if (!is_array($tLine)) {
+                                        continue;
+                                    }
+                                    if ((string) ($tLine['client_line_id'] ?? '') === $targetLineId || (string) $tIdx === $targetLineId) {
+                                        $effectiveOpticalSpec = is_array($tLine['optical_spec'] ?? null) ? $tLine['optical_spec'] : [];
+                                        foreach (['sph', 'cyl', 'axis', 'addition', 'base', 'dia', 'lr'] as $optF) {
+                                            if (!empty($tLine[$optF]) && empty($effectiveOpticalSpec[$optF])) {
+                                                $effectiveOpticalSpec[$optF] = $tLine[$optF];
+                                            }
+                                        }
+                                        $effectiveOpticalSpec = array_filter($effectiveOpticalSpec, static fn ($v) => $v !== null && $v !== '');
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $isOptical = config('ai_business_knowledge.opticals_enabled', false)
+                    && app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($context);
+                $opticalCatalogCandidates = [];
+                $opticalResolution = null;
+                if ($isOptical) {
+                    $opticalResolution = app(\App\Services\Optical\OpticalCatalogService::class)
+                        ->resolveExactOrCandidates($context, $query ?? '', $effectiveOpticalSpec, $effectiveWarehouseId);
+                    foreach ((array) ($opticalResolution['candidates'] ?? []) as $cand) {
+                        $pid = (int) ($cand['product_id'] ?? 0);
+                        if ($pid > 0 && !isset($opticalCatalogCandidates[$pid])) {
+                            $opticalCatalogCandidates[$pid] = $cand;
+                        }
+                    }
+                    if (!empty($opticalResolution['identity']) && !empty($opticalResolution['product'])) {
+                        $exactPid = (int) $opticalResolution['product']->id;
+                        $idObj = $opticalResolution['identity'];
+                        $opticalCatalogCandidates[$exactPid] = [
+                            'product_id' => $exactPid,
+                            'optical_spec' => [
+                                'lr' => $idObj->lr ?? null,
+                                'sph' => $idObj->sph ?? null,
+                                'cyl' => $idObj->cyl ?? null,
+                                'axis' => $idObj->axis ?? null,
+                                'addition' => $idObj->addition ?? null,
+                                'base_curve' => $idObj->base_curve ?? null,
+                                'dia' => $idObj->dia ?? null,
+                                'coating' => $idObj->coating ?? null,
+                                'refractive_index' => $idObj->refractive_index ?? null,
+                                'lens_form' => $idObj->lens_form ?? null,
+                            ],
+                            'diff_fields' => [],
+                            'available_qty' => null,
+                        ];
+                    }
+                }
+
+                $stockByProduct = [];
+                if ($effectiveWarehouseId !== null && $effectiveWarehouseId > 0 && $paginator->isNotEmpty()) {
+                    $stockByProduct = app(\App\Services\Inventory\InventoryAvailabilityService::class)
+                        ->forCatalogBatch($context, $paginator->getCollection(), [$effectiveWarehouseId]);
+                }
+                $stockAsOf = now('UTC')->toIso8601String();
+
+                $fallbackIdentities = collect();
+                if ($isOptical && $paginator->isNotEmpty()) {
+                    $fallbackIdentities = \Illuminate\Support\Facades\DB::table('optical_lens_identities')
+                        ->where('company_id', $context->companyId)
+                        ->where('is_active', true)
+                        ->whereIn('product_id', $paginator->getCollection()->pluck('id')->all())
+                        ->get()
+                        ->groupBy('product_id');
+                }
+                $normalizedOptReq = ($isOptical && $effectiveOpticalSpec !== [])
+                    ? \App\Services\Optical\OpticalSpecNormalizer::normalizeSpec($effectiveOpticalSpec)['canonical']
+                    : [];
+
                 $items = [];
                 foreach ($paginator->items() as $prod) {
                     $isActive = (bool) ($prod->is_active ?? true);
@@ -301,6 +399,48 @@ class EntityDirectorySearchService
                         }
                     }
 
+                    $optCand = $opticalCatalogCandidates[(int) $prod->id] ?? null;
+                    $optSpec = $optCand['optical_spec'] ?? null;
+                    $diffFields = (array) ($optCand['diff_fields'] ?? []);
+                    if ($isOptical && $optCand === null) {
+                        $row = $fallbackIdentities->get($prod->id)?->first();
+                        if ($row) {
+                            $optSpec = [
+                                'lens_family' => $row->lens_family,
+                                'lens_material' => $row->lens_material,
+                                'refractive_index' => $row->refractive_index,
+                                'coating' => $row->coating,
+                                'lens_form' => $row->lens_form,
+                                'sph' => $row->sph,
+                                'cyl' => $row->cyl,
+                                'axis' => $row->axis,
+                                'addition' => $row->addition,
+                                'base_curve' => $row->base_curve,
+                                'dia' => $row->dia,
+                                'lr' => $row->lr,
+                            ];
+                            if ($normalizedOptReq !== []) {
+                                $diffFields = \App\Services\Optical\OpticalSpecNormalizer::diffFields($normalizedOptReq, $optSpec);
+                            }
+                        }
+                    }
+                    $mismatchBadges = [];
+                    foreach ($diffFields as $dField => $dVals) {
+                        if (is_array($dVals)) {
+                            $mismatchBadges[] = strtoupper((string) $dField) . ': req ' . ($dVals['requested'] ?? '—') . ' vs cat ' . ($dVals['candidate'] ?? '—');
+                        }
+                    }
+
+                    $availableQty = null;
+                    if (isset($stockByProduct[$prod->id]) && is_array($stockByProduct[$prod->id])) {
+                        $whStock = $stockByProduct[$prod->id];
+                        if (isset($whStock['on_hand'])) {
+                            $availableQty = \App\Support\LedgerAmount::decimal(((int) $whStock['on_hand']) - ((int) ($whStock['reserved'] ?? 0)));
+                        }
+                    } elseif ($optCand && isset($optCand['available'])) {
+                        $availableQty = $optCand['available'];
+                    }
+
                     $items[] = [
                         'id' => (int) $prod->id,
                         'name' => (string) $prod->name,
@@ -314,24 +454,47 @@ class EntityDirectorySearchService
                         'eligible' => $isActive,
                         'disabled_reason' => $isActive ? null : 'inactive',
                         'match_kind' => $matchKind,
+                        'cost' => (float) ($prod->cost ?? 0),
+                        'price' => (float) ($prod->price ?? 0),
+                        'unit_id' => (int) ($prod->unit_id ?? 1),
+                        'optical_spec' => $optSpec,
+                        'diff_fields' => $diffFields,
+                        'mismatch_badges' => $mismatchBadges,
+                        'available_qty' => $availableQty,
+                        'stock_as_of' => $effectiveWarehouseId !== null ? $stockAsOf : null,
                         'metadata' => [
                             'cost' => $prod->cost,
                             'price' => $prod->price,
                             'hsn_code' => $prod->hsn_code,
                             'unit_id' => $prod->unit_id,
+                            'optical_spec' => $optSpec,
+                            'available_qty' => $availableQty,
+                            'stock_as_of' => $effectiveWarehouseId !== null ? $stockAsOf : null,
                         ],
                     ];
                 }
 
-                $resolution = $query !== null ? $this->resolutionService->resolveProduct($context, $query) : ['status' => 'none', 'product' => null];
-                if ($resolution['status'] === 'exact' && $resolution['product']) {
-                    $recommendedId = (int) $resolution['product']->id;
-                    $recommendationReason = 'exact_match';
-                    $status = 'suggested';
+                if ($isOptical && $effectiveOpticalSpec !== []) {
+                    if ($opticalResolution && $opticalResolution['status'] === 'exact' && $opticalResolution['product']) {
+                        $recommendedId = (int) $opticalResolution['product']->id;
+                        $recommendationReason = 'exact_optical_match';
+                        $status = 'suggested';
+                    } else {
+                        $recommendedId = null;
+                        $recommendationReason = $opticalResolution['message'] ?? null;
+                        $status = ($total === 0) ? 'no_matches' : 'selection_needed';
+                    }
                 } else {
-                    $recommendedId = null;
-                    $recommendationReason = null;
-                    $status = ($total === 0) ? 'no_matches' : 'selection_needed';
+                    $resolution = $query !== null ? $this->resolutionService->resolveProduct($context, $query) : ['status' => 'none', 'product' => null];
+                    if ($resolution['status'] === 'exact' && $resolution['product']) {
+                        $recommendedId = (int) $resolution['product']->id;
+                        $recommendationReason = 'exact_match';
+                        $status = 'suggested';
+                    } else {
+                        $recommendedId = null;
+                        $recommendationReason = null;
+                        $status = ($total === 0) ? 'no_matches' : 'selection_needed';
+                    }
                 }
                 break;
 

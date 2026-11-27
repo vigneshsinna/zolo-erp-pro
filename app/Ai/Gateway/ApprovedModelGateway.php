@@ -340,6 +340,9 @@ class ApprovedModelGateway
             $durationMs = (int) round((microtime(true) - $start) * 1000);
             $errorCode = $e instanceof MultimodalException ? $e->errorCode : class_basename($e);
             $errorMessage = $errorCode . ': ' . substr($e->getMessage(), 0, 200);
+            $httpAttempts = ($e instanceof MultimodalException && isset($e->details['http_attempts']))
+                ? max(1, (int) $e->details['http_attempts'])
+                : 1;
 
             $this->recordModelInvocation(
                 $principal,
@@ -351,7 +354,7 @@ class ApprovedModelGateway
                 0,
                 $durationMs,
                 $errorMessage,
-                httpAttempts: 1,
+                httpAttempts: $httpAttempts,
                 modelPurpose: $purpose->value,
                 mediaId: $mediaId,
                 providerAttemptId: $attemptId,

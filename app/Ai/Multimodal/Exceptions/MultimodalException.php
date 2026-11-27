@@ -120,9 +120,9 @@ class MultimodalException extends RuntimeException
         return new self('RATE_LIMITED', $message, 429, ['retry_after' => $retryAfter]);
     }
 
-    public static function providerUnavailable(string $message = 'Multimodal perception service is temporarily unavailable.'): self
+    public static function providerUnavailable(string $message = 'Multimodal perception service is temporarily unavailable.', array $details = []): self
     {
-        return new self('PERCEPTION_PROVIDER_UNAVAILABLE', $message, 503);
+        return new self('PERCEPTION_PROVIDER_UNAVAILABLE', $message, 503, $details);
     }
 
     public static function dependencyUnavailable(string $code, string $message): self

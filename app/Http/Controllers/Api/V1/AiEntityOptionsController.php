@@ -40,6 +40,8 @@ final class AiEntityOptionsController extends Controller
             'field' => ['nullable', 'string', 'max:120'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'warehouse_id' => ['nullable', 'integer', 'min:1'],
+            'optical_spec' => ['nullable', 'array'],
         ]);
 
         $user = $request->user();
@@ -154,38 +156,20 @@ final class AiEntityOptionsController extends Controller
                 $recommendationReason = 'Single matching supplier';
             }
         } elseif ($type === 'product') {
-            $builder = Product::where('company_id', $context->companyId)
-                ->where('is_active', true);
+            $result = app(\App\Ai\Services\EntityDirectorySearchService::class)->search(
+                context: $context,
+                actorId: $actorId,
+                entityType: 'product',
+                query: $rawQuery !== '' ? $rawQuery : null,
+                page: $page,
+                perPage: $perPage,
+                taskId: $taskId !== null && $taskId !== '' ? (string) $taskId : null,
+                fieldPath: $field !== '' ? (string) $field : null,
+                opticalSpec: $validated['optical_spec'] ?? null,
+                warehouseId: isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null,
+            );
 
-            if ($q !== '') {
-                $builder->where(function ($sub) use ($q) {
-                    $sub->where('name', 'LIKE', "%{$q}%")
-                        ->orWhere('code', 'LIKE', "%{$q}%");
-                });
-            }
-
-            $total = $builder->count();
-            $records = $builder->orderBy('name', 'asc')
-                ->forPage($page, $perPage)
-                ->get();
-
-            $items = $records->map(function (Product $p) use ($rawQuery): array {
-                return [
-                    'id' => (int) $p->id,
-                    'name' => (string) $p->name,
-                    'code' => (string) $p->code,
-                    'cost' => (float) ($p->cost ?? 0),
-                    'price' => (float) ($p->price ?? 0),
-                    'unit_id' => (int) ($p->unit_id ?? 1),
-                    'is_active' => (bool) $p->is_active,
-                    'match_kind' => $rawQuery !== '' ? 'query_match' : 'directory',
-                ];
-            })->all();
-
-            if ($total === 1 && !empty($items)) {
-                $recommendedId = (int) $items[0]['id'];
-                $recommendationReason = 'Single matching product';
-            }
+            return response()->json($result);
         } elseif ($type === 'customer') {
             $builder = Customer::where('company_id', $context->companyId)
                 ->where('is_active', true);

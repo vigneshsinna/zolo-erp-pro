@@ -17,6 +17,7 @@ return [
     'mcp' => [
         'enabled' => (bool) env('AI_MCP_ENABLED', false),
         'governed_proposals_enabled' => (bool) env('AI_MCP_GOVERNED_PROPOSALS_ENABLED', false),
+        'commercial_prepare_enabled' => (bool) env('AI_MCP_COMMERCIAL_PREPARE_ENABLED', false),
         'outbound' => [
             'enabled' => (bool) env('AI_MCP_OUTBOUND_ENABLED', false),
             // Code-reviewed server URLs, tool schemas, permission requirements and per-company/branch credentials.

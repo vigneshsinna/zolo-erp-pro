@@ -189,8 +189,19 @@ final class ConversationTurnRouter
         if ($directoryTypes === [] && app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($message)) {
             return null;
         }
-        if (preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $message)) {
-            return $this->summary($task, 'The purchase draft is preserved. Select or start a separate operation explicitly.');
+        $intentAnalysis = app(TransactionIntentResolver::class)->analyzeText($message);
+        if (
+            ($intentAnalysis['status'] === 'resolved' && $intentAnalysis['action'] !== $task['action_key'])
+            || preg_match('/\b(?:sales order|sales invoice|sales bill|sale bill|purchase bill|journal|payment)\b/i', $message)
+        ) {
+            $requested = $intentAnalysis['action'] ?? null;
+            $conflictSummary = $this->summary($task, 'The existing draft is preserved. Choose whether to resume it or start a separate operation explicitly.');
+            $conflictSummary['decision_status'] = 'active_task_conflict';
+            $conflictSummary['reason_code'] = 'ACTIVE_TASK_ACTION_CONFLICT';
+            $conflictSummary['active_task_action'] = $task['action_key'];
+            $conflictSummary['requested_action'] = $requested;
+            $conflictSummary['allowed_next_actions'] = ['resume_active_task', 'start_new_task'];
+            return $conflictSummary;
         }
         if ($directoryTypes !== []) {
             $result = $this->withDirectories(
@@ -350,7 +361,7 @@ final class ConversationTurnRouter
         }
         if (count($tasks) !== 1 || app(ConversationDirectoryIntent::class)->isReadOnlyQuestion($input['message'])
             || preg_match('/^(?:cancel|continue|resume|preview|who|what|how|show|list|report)\b/i', trim($input['message']))
-            || preg_match('/\b(?:sales order|sales invoice|purchase bill|journal|payment)\b/i', $input['message'])
+            || preg_match('/\b(?:sales order|sales invoice|sales bill|sale bill|purchase bill|journal|payment)\b/i', $input['message'])
             || preg_match('/^(?:find|search)\s+(?:suppliers?|warehouses?|products?|units?)\b/i', $input['message'])
             || app(ConversationChoices::class)->isSelection($input['message'], $input)) {
             return null;

@@ -118,6 +118,7 @@ final class MediaExtractionService
 
         $activeCompanyName = null;
         $activeCompanyGstin = null;
+        $isOpticalProfile = false;
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('companies')) {
                 $comp = \Illuminate\Support\Facades\DB::table('companies')->where('id', $principal->companyId)->first(['legal_name', 'trade_name']);
@@ -128,6 +129,14 @@ final class MediaExtractionService
                     ->where('company_id', $principal->companyId)
                     ->whereNotNull('gstin')
                     ->value('gstin');
+            }
+            if (class_exists(\App\Ai\Knowledge\IndustryContextResolver::class) && function_exists('app')) {
+                $companyCtx = new \App\Services\Platform\CompanyContext(
+                    $principal->companyId,
+                    (int) ($principal->branchId ?? 0),
+                    (int) ($principal->financialYearId ?? 0),
+                );
+                $isOpticalProfile = app(\App\Ai\Knowledge\IndustryContextResolver::class)->isOptical($companyCtx);
             }
         } catch (\Throwable) {
             // Unbound in isolated unit tests
@@ -172,8 +181,8 @@ final class MediaExtractionService
                     principal: $principal,
                     mediaId: $asset->id,
                     images: [['mime' => $mime, 'base64' => base64_encode($binary), 'page' => $pageNum]],
-                    systemPrompt: InvoiceExtractionV1::systemPrompt($activeCompanyName, $activeCompanyGstin),
-                    userPrompt: InvoiceExtractionV1::userPrompt($pageNum, $totalPages),
+                    systemPrompt: InvoiceExtractionV1::systemPrompt($activeCompanyName, $activeCompanyGstin, $isOpticalProfile),
+                    userPrompt: InvoiceExtractionV1::userPrompt($pageNum, $totalPages, $isOpticalProfile),
                 );
 
                 $modelProvider = $res->provider;
@@ -213,7 +222,13 @@ final class MediaExtractionService
                 }
             } catch (Throwable $e) {
                 $errorCode = $e instanceof MultimodalException ? $e->errorCode : 'EXTRACTION_ERROR';
-                $isRetryable = ! in_array($errorCode, ['INVALID_PERCEPTION_RESPONSE', 'MISSING_DERIVATIVE', 'EMPTY_DERIVATIVE'], true);
+                $isRetryable = ! in_array($errorCode, [
+                    'INVALID_PERCEPTION_RESPONSE',
+                    'MISSING_DERIVATIVE',
+                    'EMPTY_DERIVATIVE',
+                    'PROVIDER_AUTH_FAILED',
+                    'PROVIDER_SSL_ERROR',
+                ], true);
                 $pageFailures[] = [
                     'page' => $pageNum,
                     'error_code' => $errorCode,
@@ -252,7 +267,13 @@ final class MediaExtractionService
         }
 
         try {
-            $normalizedExtraction = $this->invoiceSchema->validateAndNormalize($principal->companyId, $mergedRaw, $sourceEvidence);
+            $normalizedExtraction = $this->invoiceSchema->validateAndNormalize(
+                companyId: $principal->companyId,
+                raw: $mergedRaw,
+                sourceEvidence: $sourceEvidence,
+                isOpticalProfile: $isOpticalProfile,
+                expectedPages: $totalPages,
+            );
         } catch (Throwable $e) {
             $asset->update(['state' => 'failed', 'last_error_code' => 'EXTRACTION_SCHEMA_REJECTED']);
             throw MultimodalException::extractionFailed('EXTRACTION_SCHEMA_REJECTED', 'Schema validation rejected extraction output: ' . $e->getMessage());
@@ -263,8 +284,8 @@ final class MediaExtractionService
             asset: $asset,
             provider: $modelProvider,
             modelKey: $modelKey,
-            promptVersion: InvoiceExtractionV1::promptVersion(),
-            schemaVersion: InvoiceExtractionV1::version(),
+            promptVersion: $isOpticalProfile ? InvoiceExtractionV1::opticalPromptVersion() : InvoiceExtractionV1::promptVersion(),
+            schemaVersion: $isOpticalProfile ? InvoiceExtractionV1::opticalVersion() : InvoiceExtractionV1::version(),
             extractedJson: $normalizedExtraction,
             sourceEvidence: $sourceEvidence,
             idempotencyKey: $idempotencyKey,

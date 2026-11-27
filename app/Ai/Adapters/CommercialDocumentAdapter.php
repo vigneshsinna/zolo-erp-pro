@@ -57,19 +57,43 @@ final class CommercialDocumentAdapter implements ActionPreviewAdapterInterface, 
         }
         $priced = app(CommercialPricing::class)->preview($input, false, $context);
         $items = [];
+        $previewItems = [];
+        $availability = app(\App\Services\Inventory\InventoryAvailabilityService::class);
+        $inventoryPolicy = app(\App\Services\Inventory\InventoryPolicy::class);
+        $uomService = app(\App\Services\Inventory\UomConversionService::class);
         foreach ($priced['items'] as $index => $line) {
             $product = Product::where('company_id', $context->companyId)->where('is_active', true)->findOrFail($line['product_id']);
             if ($definition->key === 'delivery_challan.create.v1' && ($product->type !== 'standard' || $product->is_imei)) {
                 throw ValidationException::withMessages(['items' => 'Delivery challans support non-serialized stock products.']);
             }
+            if ($definition->key === 'sales_invoice.create.v1' && empty($slots['delivery_challan_id']) && $product->type === 'standard') {
+                $policy = $inventoryPolicy->negativeStock($context->companyId, $product);
+                if ($policy === 'block') {
+                    $saleUnitId = (int) $line['sale_unit_id'];
+                    $requiredBase = $uomService->toBase($product, (float) $line['qty'], $saleUnitId);
+                    $stock = $availability->forProduct($product->id, $warehouse->id);
+                    if (($stock['available'] ?? 0.0) + 0.00005 < $requiredBase) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.qty" => "Insufficient available stock for '{$product->name}' in warehouse '{$warehouse->name}' (available: {$stock['available']}).",
+                        ]);
+                    }
+                }
+            }
             $optLine = \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($slots['items'][$index] ?? []);
-            $items[] = [
+            $itemPayload = [
                 'product_id' => (int) $product->id, 'qty' => (string) $line['qty'],
                 'sale_unit_id' => (int) $line['sale_unit_id'], 'net_unit_price' => (string) $line['net_unit_price'],
                 'discount' => (string) ($line['discount'] ?? 0), 'tax_rate' => (string) $line['tax_rate'],
                 ...array_intersect_key($slots['items'][$index], array_flip(['order_item_id', 'batch_no', 'note', 'tax_rate_override'])),
             ] + $optLine;
-            if (isset($items[$index]['tax_rate_override'])) $items[$index]['tax_rate_override'] = (string) $items[$index]['tax_rate_override'];
+            if (isset($itemPayload['tax_rate_override'])) $itemPayload['tax_rate_override'] = (string) $itemPayload['tax_rate_override'];
+            $items[] = $itemPayload;
+            $previewItems[] = $itemPayload + [
+                'product_name' => $product->name,
+                'product_code' => $product->code,
+                'tax_amount' => (string) ($line['tax'] ?? '0.00'),
+                'line_total' => (string) ($line['total'] ?? '0.00'),
+            ];
         }
         $payload = array_intersect_key($slots, array_flip([
             'note', 'order_discount', 'shipping_cost', 'valid_until', 'due_date', 'sales_order_id', 'delivery_challan_id', 'purpose',
@@ -107,17 +131,41 @@ final class CommercialDocumentAdapter implements ActionPreviewAdapterInterface, 
             // A challan does not invoice the customer. MaterialDocumentService values its inventory accrual at posting.
             $payload['expected_totals'] = ['grand_total' => '0', 'tax_total' => '0'];
         }
-        $preview = ['document_type' => match ($definition->key) {
-            'quotation.create.v1' => 'Customer Quotation', 'sales_invoice.create.v1' => 'Sales Tax Invoice',
-            'delivery_challan.create.v1' => 'Delivery Challan', default => throw new \InvalidArgumentException('Unsupported sales action.'),
-        }, 'customer_name' => $customer->name, 'date' => $date, 'items' => $items, 'totals' => $payload['expected_totals'],
+        $routeKind = !empty($payload['delivery_challan_id'])
+            ? 'dc_linked'
+            : (!empty($payload['sales_order_id']) ? 'so_linked' : 'direct_invoice');
+        $subtotalStr = CommercialDecimal::format((float) ($priced['total_price'] ?? 0) - (float) ($priced['total_tax'] ?? 0));
+        $taxStr = CommercialDecimal::format((float) ($priced['total_tax'] ?? 0));
+        $grandStr = CommercialDecimal::format((float) ($priced['grand_total'] ?? 0));
+        $previewTotals = $definition->key === 'delivery_challan.create.v1'
+            ? $payload['expected_totals']
+            : [
+                'subtotal' => $subtotalStr,
+                'tax_total' => $taxStr,
+                'grand_total' => $grandStr,
+                'tax_breakdown' => $priced['tax_breakdown'] ?? null,
+            ];
+        $preview = [
+            'document_type' => match ($definition->key) {
+                'quotation.create.v1' => 'Customer Quotation', 'sales_invoice.create.v1' => 'Sales Tax Invoice',
+                'delivery_challan.create.v1' => 'Delivery Challan', default => throw new \InvalidArgumentException('Unsupported sales action.'),
+            },
+            'action_key' => $definition->key,
+            'route_kind' => $routeKind,
+            'customer_name' => $customer->name,
+            'customer' => ['id' => (int) $customer->id, 'name' => $customer->name, 'tax_no' => $customer->tax_no],
+            'warehouse' => ['id' => (int) $warehouse->id, 'name' => $warehouse->name],
+            'date' => $date,
+            'items' => $previewItems,
+            'totals' => $previewTotals,
             'policy' => ['requires_approval' => true, 'external_sending' => 'none', 'inventory_impact' => match ($definition->key) {
                 'quotation.create.v1' => 'none', 'delivery_challan.create.v1' => 'physical_dispatch', default => empty($payload['delivery_challan_id']) ? 'invoice_stock_issue' : 'settle_existing_dispatch',
             }, 'ledger_impact' => match ($definition->key) {
                 'quotation.create.v1' => 'none',
                 'delivery_challan.create.v1' => 'Dr Goods Delivered Not Invoiced / Cr Inventory at authoritative ERP valuation. No accounts receivable or sales tax is posted.',
                 default => 'authoritative_domain_posting',
-            }]];
+            }],
+        ];
         return new ActionPreviewResult($payload, $preview, $this->sourceHash($payload, $context));
     }
 

@@ -84,7 +84,7 @@ final class SalesOrderCommandAdapter implements ActionCommandAdapterInterface
                         'sale_unit_id' => (int) ($line['sale_unit_id'] ?? 1),
                         'discount' => (float) ($line['discount'] ?? 0),
                         'note' => $line['note'] ?? null,
-                    ];
+                    ] + \App\Ai\Schemas\OpticalSchemaFragment::normalizeLineOpticalFields($line);
                 }, $payload['items'] ?? []),
             ];
 
