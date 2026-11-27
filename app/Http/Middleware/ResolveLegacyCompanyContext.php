@@ -39,6 +39,9 @@ class ResolveLegacyCompanyContext extends ResolveCompanyContext
             } catch (\App\Exceptions\CompanyFinancialYearSetupRequired) {
                 // The parent sends administrators to financial-year setup.
             } catch (ValidationException) {
+                if (\App\Services\Platform\MenuSwitches::isDeveloper($request->user())) {
+                    return redirect()->route('developer.index');
+                }
                 return redirect()->route('company.select');
             }
         }

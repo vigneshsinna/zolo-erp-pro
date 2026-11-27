@@ -57,6 +57,9 @@ class HomeController extends Controller
 
     public function index()
     {
+        if (\App\Services\Platform\MenuSwitches::isDeveloper(Auth::user())) {
+            return redirect()->route('developer.index');
+        }
         return redirect('dashboard');
     }
 

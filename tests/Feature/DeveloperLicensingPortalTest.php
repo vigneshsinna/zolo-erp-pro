@@ -638,4 +638,45 @@ class DeveloperLicensingPortalTest extends CompanyContextTestCase
         $this->assertNull(DB::table('company_groups')->where('id', $groupId)->first());
         $this->assertNull(Company::findOrFail(1)->company_group_id);
     }
+
+    public function test_developer_login_and_root_redirect_directly_to_developer_portal(): void
+    {
+        $dev = User::create([
+            'name' => 'Lead Developer',
+            'email' => 'dev@samurai.test',
+            'password' => bcrypt('devpass123'),
+            'role_id' => 1,
+            'is_active' => true,
+            'is_developer' => true,
+        ]);
+
+        // Non-developer login redirects to company.select
+        auth()->shouldUse('web');
+        auth()->logout();
+        session()->flush();
+        $resNonDev = $this->post('/login', [
+            'name' => 'admin@companya.test',
+            'password' => 'secret1234',
+        ]);
+        $resNonDev->assertRedirect(route('company.select'));
+
+        // Developer login redirects straight to /developer
+        auth()->shouldUse('web');
+        auth()->logout();
+        session()->flush();
+        $resDev = $this->post('/login', [
+            'name' => 'dev@samurai.test',
+            'password' => 'devpass123',
+        ]);
+        $resDev->assertRedirect(route('developer.index'));
+
+        // Authenticated developer accessing root or login redirects to /developer
+        $this->actingAs($dev);
+        $this->get('/')->assertRedirect(route('developer.index'));
+        $this->get('/login')->assertRedirect(route('developer.index'));
+
+        // Authenticated developer without active company session accessing dashboard redirects to /developer
+        session()->forget(['company_id', 'branch_id', 'financial_year_id']);
+        $this->get('/dashboard')->assertRedirect(route('developer.index'));
+    }
 }
