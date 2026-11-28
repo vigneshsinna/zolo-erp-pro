@@ -41,12 +41,32 @@ class AiCreditReconciliationService
 
                 $held = (int) $locked->remaining_held_credits;
 
-                // P1-09: Check whether an in-flight model invocation exists for this reservation
+                $linkedAttempt = DB::table('ai_media_provider_attempts')
+                    ->where('reservation_id', $locked->id)
+                    ->first();
+
+                if ($linkedAttempt && ! empty($linkedAttempt->task_id)) {
+                    $activeTask = DB::table('ai_media_processing_tasks')
+                        ->where('id', $linkedAttempt->task_id)
+                        ->first(['state', 'lease_expires_at']);
+                    if ($activeTask && $activeTask->state === 'processing' && $activeTask->lease_expires_at !== null
+                        && Carbon::parse($activeTask->lease_expires_at, 'UTC')->isFuture()) {
+                        // Active worker lease still owns this attempt; skip sweeping live reservation.
+                        return;
+                    }
+                }
+
+                // P1-09: Check whether an in-flight model invocation or sent media attempt exists for this reservation
                 $linkedInvocation = DB::table('ai_model_invocations')
                     ->where('reservation_id', $locked->id)
                     ->first();
 
-                if ($linkedInvocation && in_array($linkedInvocation->status, ['running', 'pending', null], true)) {
+                $uncertainMediaAttempt = $linkedAttempt && in_array($linkedAttempt->status, ['sent', 'uncertain'], true);
+                $uncertainInvocation = $linkedAttempt === null
+                    && $linkedInvocation
+                    && in_array($linkedInvocation->status, ['running', 'pending', 'uncertain', null], true);
+
+                if ($uncertainMediaAttempt || $uncertainInvocation) {
                     // In-flight dispatch: Provider billability is uncertain.
                     // DO NOT release held credits to avoid uncontrolled free retries before provider billing is confirmed.
                     DB::table('ai_credit_reservations')
@@ -56,12 +76,23 @@ class AiCreditReconciliationService
                             'updated_at' => now(),
                         ]);
 
-                    DB::table('ai_credit_periods')
-                        ->where('id', $locked->period_id)
-                        ->update([
-                            'reconcile_required' => 1,
-                            'updated_at' => now(),
-                        ]);
+                    if ($linkedAttempt && $linkedAttempt->status === 'sent') {
+                        DB::table('ai_media_provider_attempts')
+                            ->where('id', $linkedAttempt->id)
+                            ->update([
+                                'status' => 'uncertain',
+                                'updated_at' => now('UTC'),
+                            ]);
+                    }
+
+                    if ($uncertainInvocation) {
+                        DB::table('ai_credit_periods')
+                            ->where('id', $locked->period_id)
+                            ->update([
+                                'reconcile_required' => 1,
+                                'updated_at' => now(),
+                            ]);
+                    }
 
                     $count++;
                     return;

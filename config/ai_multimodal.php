@@ -68,7 +68,33 @@ return [
     'daily_company_uploads' => max(1, (int) env('AI_MULTIMODAL_DAILY_COMPANY_UPLOADS', 100)),
     'max_extraction_tokens' => max(256, (int) env('AI_MULTIMODAL_MAX_EXTRACTION_TOKENS', 4096)),
     'timeout_seconds' => max(10, (int) env('AI_MULTIMODAL_TIMEOUT_SECONDS', 75)),
-    'max_retry_attempts' => 2,
+    'connect_timeout_seconds' => max(3, (int) env('AI_MULTIMODAL_CONNECT_TIMEOUT_SECONDS', 10)),
+    'max_retry_attempts' => max(0, (int) env('AI_MULTIMODAL_MAX_RETRY_ATTEMPTS', 2)),
+    'adaptive_jpeg_for_photos' => (bool) env('AI_MULTIMODAL_ADAPTIVE_JPEG', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Asynchronous Media Preparation Pipeline (Default: Disabled / Fail-Closed)
+    |--------------------------------------------------------------------------
+    */
+
+    'async' => [
+        'enabled' => (bool) env('AI_MEDIA_ASYNC_ENABLED', false),
+        'queue_connection' => (string) env('AI_MEDIA_QUEUE_CONNECTION', 'ai_media_database'),
+        'queue_name' => (string) env('AI_MEDIA_QUEUE_NAME', 'ai-perception'),
+        'job_timeout_seconds' => max(30, (int) env('AI_MEDIA_JOB_TIMEOUT', 180)),
+        'lease_ttl_seconds' => max(60, (int) env('AI_MEDIA_LEASE_TTL_SECONDS', 210)),
+        'task_deadline_seconds' => max(120, (int) env('AI_MEDIA_TASK_DEADLINE_SECONDS', 600)),
+        'max_provider_attempts_per_page' => max(1, (int) env('AI_MEDIA_MAX_PROVIDER_ATTEMPTS', 2)),
+        'max_rate_limit_deferrals' => max(1, (int) env('AI_MEDIA_MAX_RATE_LIMIT_DEFERRALS', 5)),
+        'provider_immediate_retries' => max(0, (int) env('AI_MEDIA_PROVIDER_IMMEDIATE_RETRIES', 0)),
+        'retry_backoff_seconds' => [15, 30, 60],
+        'poll_after_ms' => max(500, (int) env('AI_MEDIA_POLL_AFTER_MS', 2000)),
+        'worker_heartbeat_ttl_seconds' => max(30, (int) env('AI_MEDIA_WORKER_HEARTBEAT_TTL_SECONDS', 120)),
+        'require_worker_heartbeat' => (bool) env('AI_MEDIA_REQUIRE_WORKER_HEARTBEAT', false),
+        'outbox_dispatch_grace_seconds' => max(5, (int) env('AI_MEDIA_OUTBOX_GRACE_SECONDS', 15)),
+        'abandoned_task_ttl_hours' => max(1, (int) env('AI_MEDIA_ABANDONED_TTL_HOURS', 24)),
+    ],
 
     /*
     |--------------------------------------------------------------------------

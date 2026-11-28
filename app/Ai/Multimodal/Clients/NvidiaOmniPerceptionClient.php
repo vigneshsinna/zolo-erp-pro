@@ -11,9 +11,12 @@ use App\Ai\Multimodal\DTOs\PerceptionResult;
 use App\Ai\Multimodal\Enums\ModelPurpose;
 use App\Ai\Multimodal\Exceptions\MultimodalException;
 use App\Ai\Services\AiFeatureGate;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 /**
  * Purpose-scoped client for NVIDIA Nemotron 3 Nano Omni perception calls.
@@ -24,7 +27,8 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
     public function __construct(
         protected ApprovedModelGateway $gateway,
         protected AiFeatureGate $featureGate,
-    ) {}
+    ) {
+    }
 
     public function extractStructuredFromImages(
         AiPrincipal $principal,
@@ -152,7 +156,7 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
         int $estimatedInputBytes,
         array $options,
     ): PerceptionResult {
-        if (! $this->featureGate->isMultimodalEnabledForCompany($principal->companyId)) {
+        if (!$this->featureGate->isMultimodalEnabledForCompany($principal->companyId)) {
             throw MultimodalException::featureDisabled();
         }
 
@@ -163,32 +167,67 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
             date: $date,
             purpose: $purpose,
             estimatedInputBytes: $estimatedInputBytes,
-            mediaId: $mediaId,
-            callback: function (string $provider, string $model) use ($systemPrompt, $userContent, $options, $purpose): PerceptionResult {
+            callback: function (string $provider, string $model, ?string $attemptId = null) use ($systemPrompt, $userContent, $options, $purpose): PerceptionResult {
                 $apiKey = (string) config("ai.providers.{$provider}.key", '');
                 $baseUrl = rtrim((string) config("ai.providers.{$provider}.url", 'https://integrate.api.nvidia.com/v1'), '/');
                 if (trim($apiKey) === '') {
-                    throw MultimodalException::providerUnavailable('NVIDIA perception credentials are not configured.');
+                    throw MultimodalException::providerUnavailable('NVIDIA perception credentials are not configured.', ['request_sent' => false]);
                 }
 
                 $payload = $this->buildPayload($model, $systemPrompt, $userContent, $options);
                 $endpoint = $baseUrl . '/chat/completions';
-                $timeout = max(10, (int) config('ai_multimodal.timeout_seconds', 75));
-                $maxRetries = max(0, (int) config('ai_multimodal.max_retry_attempts', 2));
+                $configuredTimeout = max(5, (int) ($options['timeout'] ?? config('ai_multimodal.timeout_seconds', 75)));
+                $connectTimeout = max(3, (int) ($options['connect_timeout'] ?? config('ai_multimodal.connect_timeout_seconds', 10)));
+                $maxRetries = array_key_exists('max_retries', $options)
+                    ? max(0, (int) $options['max_retries'])
+                    : max(0, (int) config('ai_multimodal.max_retry_attempts', 2));
+
+                $deadline = null;
+                if (!empty($options['deadline_utc'])) {
+                    try {
+                        $deadline = CarbonImmutable::parse((string) $options['deadline_utc'], 'UTC');
+                    } catch (Throwable) {
+                        $deadline = null;
+                    }
+                }
 
                 $start = microtime(true);
                 $attempts = 0;
                 $response = null;
 
                 while (true) {
+                    $timeout = $configuredTimeout;
+                    if ($deadline !== null) {
+                        $remaining = (int) floor(now('UTC')->diffInSeconds($deadline, false));
+                        if ($remaining <= 2) {
+                            throw MultimodalException::extractionFailed(
+                                'PROVIDER_TIMEOUT',
+                                'Task deadline exceeded before dispatching perception request.',
+                                504,
+                                ['http_attempts' => $attempts, 'request_sent' => false, 'deadline_exceeded' => true],
+                            );
+                        }
+                        $timeout = max(3, min($configuredTimeout, $remaining));
+                    }
+
                     if ($attempts > 0) {
                         $this->gateway->enforceProviderRateLimit($provider);
                     }
                     $attempts++;
 
+                    if ($attemptId !== null) {
+                        try {
+                            DB::table('ai_media_provider_attempts')
+                                ->where('provider_attempt_id', $attemptId)
+                                ->update(['status' => 'sent', 'sent_at' => now('UTC'), 'updated_at' => now('UTC')]);
+                        } catch (Throwable) {
+                            // Ignore in isolated unit tests without DB
+                        }
+                    }
+
                     try {
                         $response = Http::withToken($apiKey)
-                            ->connectTimeout(min(15, $timeout))
+                            ->connectTimeout(min($connectTimeout, $timeout))
                             ->timeout($timeout)
                             ->withHeaders(['Expect' => ''])
                             ->withOptions([
@@ -206,33 +245,38 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
 
                         $status = $response->status();
                         if ($status === 429) {
-                            $retryAfter = (int) ($response->header('Retry-After') ?: 30);
-                            throw MultimodalException::rateLimited($retryAfter);
+                            $retryAfter = $this->parseRetryAfterSeconds($response->header('Retry-After'));
+                            throw MultimodalException::extractionFailed(
+                                'RATE_LIMITED',
+                                'AI provider rate limit reached. Please retry shortly.',
+                                429,
+                                ['retry_after' => $retryAfter, 'http_attempts' => $attempts, 'request_sent' => false],
+                            );
                         }
 
                         if ($status === 400 || $status === 422) {
-                            throw MultimodalException::extractionFailed('PROVIDER_HTTP_400', "Perception provider rejected request (HTTP {$status}).", 422, ['http_attempts' => $attempts]);
+                            throw MultimodalException::extractionFailed('PROVIDER_HTTP_400', "Perception provider rejected request (HTTP {$status}).", 422, ['http_attempts' => $attempts, 'request_sent' => false]);
                         }
 
                         if ($status === 401 || $status === 403) {
-                            throw MultimodalException::extractionFailed('PROVIDER_AUTH_FAILED', 'Perception provider authentication or permission failed.', 503, ['http_attempts' => $attempts]);
+                            throw MultimodalException::extractionFailed('PROVIDER_AUTH_FAILED', 'Perception provider authentication or permission failed.', 503, ['http_attempts' => $attempts, 'request_sent' => false]);
                         }
 
                         if ($status === 408 || $status === 504) {
                             if ($attempts > $maxRetries) {
-                                throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider timed out.', 504, ['http_attempts' => $attempts]);
+                                throw MultimodalException::extractionFailed('PROVIDER_TIMEOUT', 'Perception provider timed out.', 504, ['http_attempts' => $attempts, 'request_sent' => true]);
                             }
-                        } elseif (! in_array($status, [500, 502, 503], true) || $attempts > $maxRetries) {
-                            throw MultimodalException::providerUnavailable("Perception provider returned HTTP {$status}.", ['http_attempts' => $attempts]);
+                        } elseif (!in_array($status, [500, 502, 503], true) || $attempts > $maxRetries) {
+                            throw MultimodalException::providerUnavailable("Perception provider returned HTTP {$status}.", ['http_attempts' => $attempts, 'request_sent' => in_array($status, [500, 502, 503], true)]);
                         }
                     } catch (ConnectionException $e) {
                         $classified = $this->classifyConnectionException($e);
-                        if (! $classified['retryable'] || $attempts > $maxRetries) {
+                        if (!$classified['retryable'] || $attempts > $maxRetries) {
                             throw MultimodalException::extractionFailed(
                                 $classified['code'],
                                 $classified['message'],
                                 $classified['status'],
-                                ['http_attempts' => $attempts],
+                                ['http_attempts' => $attempts, 'request_sent' => $classified['request_sent']],
                             );
                         }
                     }
@@ -240,8 +284,9 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
 
                 /** @var Response $response */
                 $durationMs = (int) round((microtime(true) - $start) * 1000);
+                $providerRequestId = $response->header('x-request-id') ?: ($response->header('nvcf-reqid') ?: null);
                 $body = $response->json();
-                if (! is_array($body)) {
+                if (!is_array($body)) {
                     throw MultimodalException::extractionFailed('INVALID_PERCEPTION_RESPONSE', 'Perception provider returned a non-JSON payload.');
                 }
 
@@ -271,8 +316,11 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
                     finishReason: $finishReason,
                     warnings: [],
                     httpAttempts: $attempts,
+                    providerRequestId: is_string($providerRequestId) && $providerRequestId !== '' ? substr($providerRequestId, 0, 120) : null,
                 );
             },
+            mediaId: $mediaId,
+            options: $options,
         );
     }
 
@@ -285,7 +333,7 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
             return trim($content);
         }
 
-        if (! is_array($content)) {
+        if (!is_array($content)) {
             return '';
         }
 
@@ -334,7 +382,7 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
     /**
      * Classify transport exceptions so SSL/TLS failures surface immediately instead of masquerading as timeouts.
      *
-     * @return array{code: string, message: string, status: int, retryable: bool}
+     * @return array{code: string, message: string, status: int, retryable: bool, request_sent: bool}
      */
     private function classifyConnectionException(ConnectionException $e): array
     {
@@ -343,7 +391,8 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
         $suffix = $curlCode !== null ? " (cURL {$curlCode})" : '';
 
         $sslCurlCodes = [35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91, 98];
-        if (($curlCode !== null && in_array($curlCode, $sslCurlCodes, true))
+        if (
+            ($curlCode !== null && in_array($curlCode, $sslCurlCodes, true))
             || preg_match('/\bSSL\b|certificate|cainfo/i', $raw) === 1
         ) {
             return [
@@ -351,15 +400,19 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
                 'message' => 'Perception provider TLS/SSL certificate verification failed.' . $suffix,
                 'status' => 502,
                 'retryable' => false,
+                'request_sent' => false,
             ];
         }
 
         if ($curlCode === 28 || preg_match('/timed?\s*out/i', $raw) === 1) {
+            $connectTimeoutHit = preg_match('/connect(?:ion)?\s*timed?\s*out/i', $raw) === 1;
+
             return [
                 'code' => 'PROVIDER_TIMEOUT',
                 'message' => 'Perception provider connection timed out.' . $suffix,
                 'status' => 504,
                 'retryable' => true,
+                'request_sent' => !$connectTimeoutHit,
             ];
         }
 
@@ -368,7 +421,29 @@ final class NvidiaOmniPerceptionClient implements PerceptionClientInterface
             'message' => 'Unable to reach perception provider.' . $suffix,
             'status' => 503,
             'retryable' => true,
+            'request_sent' => false,
         ];
+    }
+
+    private function parseRetryAfterSeconds(?string $header): int
+    {
+        if ($header === null || trim($header) === '') {
+            return 30;
+        }
+
+        $trimmed = trim($header);
+        if (ctype_digit($trimmed)) {
+            return max(1, min(300, (int) $trimmed));
+        }
+
+        try {
+            $target = CarbonImmutable::parse($trimmed, 'UTC');
+            $seconds = (int) ceil(now('UTC')->diffInSeconds($target, false));
+
+            return max(1, min(300, $seconds));
+        } catch (Throwable) {
+            return 30;
+        }
     }
 }
 

@@ -27,6 +27,8 @@ final class ExtractMediaJob implements ShouldQueue
 
     public int $tries = 2;
 
+    public int $timeout = 180;
+
     public function __construct(
         public readonly int $companyId,
         public readonly int $actorId,

@@ -9,6 +9,7 @@ use App\Ai\Multimodal\Exceptions\MultimodalException;
 use App\Ai\Multimodal\Services\ExtractionRevisionService;
 use App\Ai\Multimodal\Services\MediaExtractionService;
 use App\Ai\Multimodal\Services\MediaIngestionService;
+use App\Ai\Multimodal\Services\MediaProcessingTaskService;
 use App\Ai\Multimodal\Services\NormalizedInputWorkflowBridge;
 use App\Ai\Services\AiFeatureGate;
 use App\Ai\Services\AiPrincipalFactory;
@@ -44,6 +45,7 @@ class AiMediaController extends Controller
         protected MediaExtractionService $extractionService,
         protected ExtractionRevisionService $revisionService,
         protected NormalizedInputWorkflowBridge $workflowBridge,
+        protected MediaProcessingTaskService $taskService,
     ) {}
 
     public function store(UploadAiMediaRequest $request): JsonResponse
@@ -439,6 +441,10 @@ class AiMediaController extends Controller
 
     public function prepare(Request $request): JsonResponse
     {
+        if ((bool) config('ai_multimodal.async.enabled', false)) {
+            return $this->createProcessingTask($request);
+        }
+
         try {
             $principal = $this->resolveAuthorizedPrincipal($request);
             $idempotencyKey = $this->resolveIdempotencyKey($request);
@@ -571,6 +577,151 @@ class AiMediaController extends Controller
         $request->merge(['media_id' => $id]);
 
         return $this->prepare($request);
+    }
+
+    public function createProcessingTask(Request $request): JsonResponse
+    {
+        try {
+            foreach (['url', 'media_url', 'remote_url', 'file_url', 'source_url'] as $forbiddenKey) {
+                if ($request->filled($forbiddenKey)) {
+                    throw MultimodalException::remoteUrlForbidden();
+                }
+            }
+
+            $principal = $this->resolveAuthorizedPrincipal($request);
+
+            $maxKb = max(
+                (int) ceil(((int) config('ai_multimodal.max_pdf_bytes', 20_971_520)) / 1024),
+                (int) ceil(((int) config('ai_multimodal.max_audio_bytes', 20_971_520)) / 1024),
+            );
+
+            $validated = $request->validate([
+                'file' => ['nullable', 'required_without:media_id', 'file', "max:{$maxKb}"],
+                'media_id' => ['nullable', 'required_without:file', 'uuid'],
+                'thread_id' => ['nullable', 'uuid'],
+                'workflow_task_id' => ['nullable', 'uuid'],
+                'expected_task_revision' => ['nullable', 'integer', 'min:1'],
+                'companion_text' => ['nullable', 'string', 'max:2000'],
+                'action_key' => ['nullable', 'string', 'max:80'],
+                'resolution_mode' => ['nullable', 'string', 'in:record_purchase_instead,record_sales_instead,use_as_resale_reference,review_source,start_new_task,resume_active_task,confirm_intent'],
+                'client_request_id' => ['nullable', 'string', 'max:120'],
+                'idempotency_key' => ['nullable', 'string', 'max:120'],
+                'force' => ['nullable', 'boolean'],
+            ]);
+
+            $clientRequestId = $validated['client_request_id']
+                ?? $this->resolveIdempotencyKey($request);
+
+            $admitted = $this->taskService->admit(
+                principal: $principal,
+                file: $request->file('file'),
+                mediaId: $validated['media_id'] ?? null,
+                params: array_merge($validated, ['client_request_id' => $clientRequestId]),
+            );
+
+            $task = $admitted['task'];
+            $replayed = $admitted['replayed'];
+            $snapshot = $this->taskService->presentSnapshot($principal, $task);
+            $snapshot['idempotent_replay'] = $replayed;
+
+            $status = ($replayed && $task->isTerminal()) ? 200 : 202;
+
+            return response()->json($snapshot, $status);
+        } catch (Throwable $e) {
+            return $this->handleException($e);
+        }
+    }
+
+    public function showProcessingTask(Request $request, string $taskId): JsonResponse
+    {
+        try {
+            $principal = $this->resolveAuthorizedPrincipal($request);
+            $task = $this->taskService->findOwnedTask($principal, $taskId);
+            $etag = '"task-' . $task->id . '-v' . $task->state_version . '"';
+
+            if ($request->header('If-None-Match') === $etag) {
+                return response()->json(null, 304, ['ETag' => $etag]);
+            }
+
+            return response()
+                ->json($this->taskService->presentSnapshot($principal, $task))
+                ->header('ETag', $etag);
+        } catch (Throwable $e) {
+            return $this->handleException($e);
+        }
+    }
+
+    public function listProcessingTasks(Request $request): JsonResponse
+    {
+        try {
+            $principal = $this->resolveAuthorizedPrincipal($request);
+            $validated = $request->validate([
+                'thread_id' => ['nullable', 'uuid'],
+                'client_request_id' => ['nullable', 'string', 'max:120'],
+                'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+            ]);
+
+            $tasks = $this->taskService->listForScope(
+                principal: $principal,
+                threadId: $validated['thread_id'] ?? null,
+                clientRequestId: $validated['client_request_id'] ?? null,
+                limit: (int) ($validated['limit'] ?? 20),
+            );
+
+            return response()->json([
+                'tasks' => $tasks->map(fn ($task) => $this->taskService->presentSnapshot($principal, $task))->values(),
+            ]);
+        } catch (Throwable $e) {
+            return $this->handleException($e);
+        }
+    }
+
+    public function retryProcessingTask(Request $request, string $taskId): JsonResponse
+    {
+        try {
+            $principal = $this->resolveAuthorizedPrincipal($request);
+            $validated = $request->validate([
+                'expected_state_version' => ['required', 'integer', 'min:1'],
+                'operation_key' => ['nullable', 'string', 'max:120'],
+                'force_reextract' => ['nullable', 'boolean'],
+            ]);
+
+            $operationKey = $validated['operation_key']
+                ?? $this->resolveIdempotencyKey($request)
+                ?? (string) \Illuminate\Support\Str::uuid();
+
+            $task = $this->taskService->retryTask(
+                principal: $principal,
+                taskId: $taskId,
+                expectedVersion: (int) $validated['expected_state_version'],
+                operationKey: $operationKey,
+                forceReextract: (bool) ($validated['force_reextract'] ?? false),
+            );
+
+            return response()->json($this->taskService->presentSnapshot($principal, $task), 202);
+        } catch (Throwable $e) {
+            return $this->handleException($e);
+        }
+    }
+
+    public function cancelProcessingTask(Request $request, string $taskId): JsonResponse
+    {
+        try {
+            $principal = $this->resolveAuthorizedPrincipal($request);
+            $validated = $request->validate([
+                'expected_state_version' => ['required', 'integer', 'min:1'],
+            ]);
+
+            $task = $this->taskService->requestCancel(
+                principal: $principal,
+                taskId: $taskId,
+                expectedVersion: (int) $validated['expected_state_version'],
+            );
+
+            return response()->json($this->taskService->presentSnapshot($principal, $task));
+        } catch (Throwable $e) {
+            return $this->handleException($e);
+        }
     }
 
     public function destroy(Request $request, string $id): JsonResponse
@@ -715,18 +866,22 @@ class AiMediaController extends Controller
 
     private function handleException(Throwable $e): JsonResponse
     {
+        $correlationId = (string) \Illuminate\Support\Str::uuid();
+
         if ($e instanceof MultimodalException) {
             return response()->json([
                 'error_code' => $e->errorCode,
                 'error_message' => $e->getMessage(),
+                'correlation_id' => $correlationId,
                 'details' => $e->details,
             ], $e->httpStatus);
         }
 
         if ($e instanceof HttpExceptionInterface) {
             return response()->json([
-                'error_code' => $e->getStatusCode() === 429 ? 'AI_QUOTA_EXCEEDED' : 'MULTIMODAL_HTTP_ERROR',
+                'error_code' => $e->getStatusCode() === 429 ? 'AI_QUOTA_EXCEEDED' : ($e->getStatusCode() === 409 ? 'CONFLICT' : 'MULTIMODAL_HTTP_ERROR'),
                 'error_message' => $e->getMessage() ?: 'Request could not be completed.',
+                'correlation_id' => $correlationId,
             ], $e->getStatusCode());
         }
 
@@ -734,6 +889,7 @@ class AiMediaController extends Controller
             return response()->json([
                 'error_code' => 'VALIDATION_ERROR',
                 'error_message' => $e->getMessage(),
+                'correlation_id' => $correlationId,
                 'errors' => $e->errors(),
             ], 422);
         }
@@ -742,12 +898,19 @@ class AiMediaController extends Controller
             return response()->json([
                 'error_code' => 'PERMISSION_DENIED',
                 'error_message' => $e->getMessage() ?: 'Not authorized.',
+                'correlation_id' => $correlationId,
             ], 403);
         }
+
+        \Illuminate\Support\Facades\Log::warning('Multimodal request failed safely', [
+            'correlation_id' => $correlationId,
+            'exception_type' => $e::class,
+        ]);
 
         return response()->json([
             'error_code' => 'MULTIMODAL_INTERNAL_ERROR',
             'error_message' => 'Media processing could not be completed safely.',
+            'correlation_id' => $correlationId,
         ], 500);
     }
 }

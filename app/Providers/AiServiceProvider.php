@@ -188,6 +188,28 @@ class AiServiceProvider extends ServiceProvider
                 $this->app->make(ApprovedModelGateway::class)->admitProviderDispatch($event->request->url());
             }
         });
+
+        Event::listen(\Illuminate\Queue\Events\Looping::class, function (\Illuminate\Queue\Events\Looping $event): void {
+            $validator = $this->app->make(\App\Ai\Multimodal\Services\MediaQueueConfigValidator::class);
+            $queues = array_map('trim', explode(',', (string) $event->queue));
+            if (in_array($validator->resolveQueueName(), $queues, true)) {
+                $validator->recordWorkerHeartbeat($event->connectionName, $validator->resolveQueueName());
+            }
+        });
+
+        Event::listen(\Illuminate\Queue\Events\JobProcessing::class, function (\Illuminate\Queue\Events\JobProcessing $event): void {
+            $validator = $this->app->make(\App\Ai\Multimodal\Services\MediaQueueConfigValidator::class);
+            if ($event->job->getQueue() === $validator->resolveQueueName()) {
+                $validator->recordWorkerHeartbeat($event->connectionName, $validator->resolveQueueName());
+            }
+        });
+
+        Event::listen(\Illuminate\Queue\Events\JobProcessed::class, function (\Illuminate\Queue\Events\JobProcessed $event): void {
+            $validator = $this->app->make(\App\Ai\Multimodal\Services\MediaQueueConfigValidator::class);
+            if ($event->job->getQueue() === $validator->resolveQueueName()) {
+                $validator->recordWorkerHeartbeat($event->connectionName, $validator->resolveQueueName());
+            }
+        });
     }
 }
 

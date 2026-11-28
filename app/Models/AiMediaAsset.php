@@ -39,7 +39,9 @@ class AiMediaAsset extends Model
         'sha256',
         'private_disk',
         'private_key',
+        'raw_private_key',
         'derivatives_json',
+        'preprocessing_metrics_json',
         'page_count',
         'duration_seconds',
         'idempotency_key',
@@ -52,6 +54,7 @@ class AiMediaAsset extends Model
     protected $hidden = [
         'private_disk',
         'private_key',
+        'raw_private_key',
     ];
 
     protected function casts(): array
@@ -63,6 +66,7 @@ class AiMediaAsset extends Model
             'actor_id' => 'integer',
             'size_bytes' => 'integer',
             'derivatives_json' => 'array',
+            'preprocessing_metrics_json' => 'array',
             'page_count' => 'integer',
             'duration_seconds' => 'float',
             'expires_at' => 'datetime',

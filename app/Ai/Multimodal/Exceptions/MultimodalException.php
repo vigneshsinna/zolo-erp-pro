@@ -170,4 +170,37 @@ class MultimodalException extends RuntimeException
     {
         return new self('CAPABILITY_UNAVAILABLE', $message, 422, ['intent_key' => $intentKey]);
     }
+
+    public static function asyncDisabled(string $message = 'Asynchronous media preparation is disabled.'): self
+    {
+        return new self('ASYNC_MEDIA_DISABLED', $message, 503);
+    }
+
+    public static function asyncQueueUnavailable(string $message = 'Dedicated async media queue is not configured or unavailable.'): self
+    {
+        return new self('ASYNC_QUEUE_UNAVAILABLE', $message, 503);
+    }
+
+    public static function taskNotFound(string $message = 'Media processing task was not found.'): self
+    {
+        return new self('MEDIA_TASK_NOT_FOUND', $message, 404);
+    }
+
+    public static function taskRevisionConflict(int $expected, int $actual): self
+    {
+        return new self('TASK_REVISION_CONFLICT', 'Processing task state changed. Reload the latest status.', 409, [
+            'expected_state_version' => $expected,
+            'current_state_version' => $actual,
+        ]);
+    }
+
+    public static function taskNotRetryable(string $message = 'This media processing task cannot be retried in its current state.'): self
+    {
+        return new self('TASK_NOT_RETRYABLE', $message, 409);
+    }
+
+    public static function taskLeaseLost(string $message = 'Processing task lease expired or was claimed by another worker.'): self
+    {
+        return new self('TASK_LEASE_LOST', $message, 409);
+    }
 }

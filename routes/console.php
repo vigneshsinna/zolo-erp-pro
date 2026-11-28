@@ -24,3 +24,7 @@ Schedule::command('ai:run-schedules')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('ai:reconcile-media-tasks')
+    ->everyMinute()
+    ->withoutOverlapping();
+

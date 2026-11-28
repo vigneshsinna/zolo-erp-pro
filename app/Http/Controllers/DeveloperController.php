@@ -114,6 +114,78 @@ class DeveloperController extends Controller
         $states = array_diff_key(\App\Services\Tax\Gstin::$states, ['97' => 1]);
         $today = CarbonImmutable::now(config('app.timezone', 'UTC'));
         $fyStart = $today->month >= 4 ? $today->setDate($today->year, 4, 1) : $today->setDate($today->year - 1, 4, 1);
+        $fifteenDaysLater = $today->addDays(15)->toDateString();
+
+        $mrr = 0.0;
+        $renewalWatchlist = collect();
+        $quotaHotlist = collect();
+
+        foreach ($allTenants as $t) {
+            $plan = $t['plan'] ?? null;
+            $lic = $t['license'] ?? null;
+            $usage = $t['usage'] ?? [];
+            $quotas = $t['quotas'] ?? [];
+
+            // MRR calculation across active/grace licenses
+            if ($plan && in_array($lic['status'] ?? '', ['active', 'grace', 'unlicensed_legacy'], true)) {
+                $cycle = $lic['billing_cycle'] ?? 'monthly';
+                $price = (float) ($plan['price'] ?? 0);
+                $mrr += ($cycle === 'yearly') ? ($price / 12) : $price;
+            }
+
+            // Renewal & Risk Watchlist
+            $exp = $lic['expires_at'] ?? null;
+            $status = $lic['status'] ?? 'active';
+            if (in_array($status, ['grace', 'trial', 'expired', 'suspended', 'cancelled'], true) || ($exp && $exp <= $fifteenDaysLater)) {
+                $renewalWatchlist->push([
+                    'id' => $t['id'],
+                    'label' => $t['label'],
+                    'code' => $t['code'] ?? '',
+                    'plan_name' => $plan['name'] ?? 'Enterprise',
+                    'status' => $status,
+                    'expires_at' => $exp,
+                    'grace_ends_at' => $lic['grace_ends_at'] ?? null,
+                ]);
+            }
+
+            // Quota Saturation Hotlist (>=80%)
+            $hotMetrics = [];
+            $checkMetric = function($name, $used, $limit) use (&$hotMetrics) {
+                if ($limit && $limit > 0 && ($used / $limit) >= 0.8) {
+                    $hotMetrics[] = [
+                        'name' => $name,
+                        'used' => $used,
+                        'limit' => $limit,
+                        'pct' => (int) round(($used / $limit) * 100),
+                    ];
+                }
+            };
+            $checkMetric('Users', $usage['users'] ?? 0, $quotas['max_users'] ?? 0);
+            $checkMetric('Branches', $usage['branches'] ?? 0, $quotas['max_branches'] ?? 0);
+            $checkMetric('Warehouses', $usage['warehouses'] ?? 0, $quotas['max_warehouses'] ?? 0);
+            $checkMetric('Invoices', $usage['monthly_invoices'] ?? 0, $quotas['max_monthly_invoices'] ?? 0);
+
+            if (!empty($hotMetrics)) {
+                $quotaHotlist->push([
+                    'id' => $t['id'],
+                    'label' => $t['label'],
+                    'code' => $t['code'] ?? '',
+                    'metrics' => $hotMetrics,
+                ]);
+            }
+        }
+
+        $verticalDistribution = $allTenants->groupBy('industry')->map(function ($items, $key) {
+            return [
+                'vertical' => $key ?: 'general_trading',
+                'count' => $items->count(),
+                'users' => $items->sum('usage.users'),
+                'branches' => $items->sum('usage.branches'),
+            ];
+        })->values();
+
+        $pendingActivationsCount = User::where('is_deleted', false)->where('is_active', false)->count();
+        $pendingUsers = User::where('is_deleted', false)->where('is_active', false)->orderByDesc('id')->limit(8)->get();
 
         $stats = [
             'tenants_total' => $allTenants->count(),
@@ -126,6 +198,12 @@ class DeveloperController extends Controller
             'modules_total' => count(CapabilityCatalog::DEFINITIONS),
             'total_users' => $allTenants->sum('usage.users'),
             'total_monthly_invoices' => $allTenants->sum('usage.monthly_invoices'),
+            'mrr' => $mrr,
+            'arr' => $mrr * 12,
+            'renewal_alerts_count' => $renewalWatchlist->count(),
+            'quota_hotlist_count' => $quotaHotlist->count(),
+            'pending_activations_count' => $pendingActivationsCount,
+            'audits_count' => $audits->count(),
         ];
 
         return view('backend.developer.index', [
@@ -153,6 +231,10 @@ class DeveloperController extends Controller
             'groups' => $groups,
             'groupedCounts' => $groupedCounts,
             'independentCount' => $independentCount,
+            'renewalWatchlist' => $renewalWatchlist,
+            'quotaHotlist' => $quotaHotlist,
+            'verticalDistribution' => $verticalDistribution,
+            'pendingUsers' => $pendingUsers,
             'theme' => $_COOKIE['theme'] ?? 'light',
             'currencies' => $currencies,
             'defaultCurrencyId' => $defaultCurrencyId,

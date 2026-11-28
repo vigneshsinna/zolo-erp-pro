@@ -414,6 +414,7 @@
                 $('#btn-new-thread').on('click', function () {
                     if (sending || loadingHistory || window.zoloAiConversation?.isBusy()) return;
                     currentThreadId = null;
+                    window.zoloAiMedia?.disposeProgressTasks?.();
                     $(document).trigger('ai:conversation:reset');
                     sessionStorage.removeItem('ai_active_thread');
                     $('#active-thread-title').text('New conversation');
@@ -431,6 +432,7 @@
                     $('#chat-messages').attr('aria-busy', 'true');
                     const id = $(this).data('id');
                     currentThreadId = id;
+                    window.zoloAiMedia?.disposeProgressTasks?.();
                     $(document).trigger('ai:conversation:reset');
                     sessionStorage.setItem('ai_active_thread', id);
                     $('#thread-list .thread-item').removeClass('active').attr('aria-current', 'false');
@@ -453,6 +455,7 @@
                                 $('#chat-messages').html(welcomeMarkup);
                             }
                             $(document).trigger('ai:conversation:history');
+                            window.zoloAiMedia?.restoreThreadTasks?.(id);
                         },
                         error: function () {
                             $('#chat-messages').empty().append($('<div class="text-danger p-3"></div>').text('Could not load this conversation.'));
@@ -1899,7 +1902,7 @@
                         sending = true;
                         $('#btn-send-text').hide();
                         $('#btn-send-spinner').prop('hidden', false);
-                        $('#ai-response-status').text('Extracting attachment…');
+                        $('#ai-response-status').text(window.zoloAiMultimodalConfig?.asyncEnabled ? 'Uploading attachment…' : 'Extracting attachment…');
                         $('#btn-send').prop('disabled', true);
 
                         window.zoloAiMedia.submitStagedAttachment(message, currentThreadId, function (err, result) {
@@ -1911,8 +1914,9 @@
                             input.val('').trigger('input');
                             $('#char-counter').text('0 / 4000');
 
-                            if (result && result.media && result.media.thread_id && !currentThreadId) {
-                                currentThreadId = result.media.thread_id;
+                            const resolvedThreadId = result?.thread_id || result?.media?.thread_id;
+                            if (resolvedThreadId && !currentThreadId) {
+                                currentThreadId = resolvedThreadId;
                                 sessionStorage.setItem('ai_active_thread', currentThreadId);
                                 loadThreads();
                             }
@@ -2195,10 +2199,14 @@
         <script>
             window.zoloAiMultimodalConfig = {!! \Illuminate\Support\Js::from([
                 'enabled' => (bool) ($isMultimodalEnabled ?? false),
+                'asyncEnabled' => (bool) config('ai_multimodal.async.enabled', false),
                 'conversationEnabled' => (bool) config('erp_ai.conversation_enabled', false),
                 'allowDirectPurchaseBill' => (bool) config('ai_multimodal.allow_direct_purchase_bill', false),
                 'allowDirectSalesInvoice' => (bool) config('ai_multimodal.allow_direct_sales_invoice', false),
                 'mediaBaseUrl' => url('ai'),
+                'processingTasksUrl' => url('ai/media/processing-tasks'),
+                'pollAfterMs' => (int) config('ai_multimodal.async.poll_after_ms', 2000),
+                'isOpticalProfile' => (bool) (!empty($opticalContext['is_optical'])),
                 'maxAudioSeconds' => (int) ($multimodalLimits['max_audio_seconds'] ?? 120),
                 'maxPdfPages' => (int) ($multimodalLimits['max_pdf_pages'] ?? 5),
                 'copilotModel' => (string) ($model ?? 'Nemotron 3.5 Lightning'),
@@ -2208,6 +2216,7 @@
         @if ((!empty($isMultimodalEnabled) || config('erp_ai.conversation_enabled', false)) && $canUseCopilot)
             <script src="{{ versioned_asset('js/ai-entity-picker.js') }}"></script>
             <script src="{{ versioned_asset('js/ai-master-create.js') }}"></script>
+            <script src="{{ versioned_asset('js/ai-media-progress.js') }}"></script>
             <script src="{{ versioned_asset('js/ai-media-input.js') }}"></script>
         @endif
         @if (config('erp_ai.conversation_enabled', false) && $canUseCopilot)

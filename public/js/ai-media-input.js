@@ -118,12 +118,50 @@
     // Monotonic scope/thread epoch to discard stale asynchronous extraction/handoff responses
     let activeScopeEpoch = 0;
 
+    function createProgressController() {
+        if (!window.zoloAiMediaProgress || typeof window.zoloAiMediaProgress.createController !== 'function') {
+            return null;
+        }
+        return window.zoloAiMediaProgress.createController({
+            getScopeEpoch: function () { return activeScopeEpoch; },
+            isResponseCurrent: isResponseCurrent,
+            baseHeaders: baseHeaders,
+            processingTasksBaseUrl: function () { return cfg.processingTasksUrl || mediaUrl('/processing-tasks'); },
+            processingTaskUrl: function (taskId) {
+                return (cfg.processingTasksUrl || mediaUrl('/processing-tasks')) + '/' + encodeURIComponent(taskId);
+            },
+            pollAfterMs: Number(cfg.pollAfterMs || 2000),
+            onTerminalResult: function (snapshot, entry) {
+                const ws = getWs();
+                const res = snapshot.result || {};
+                if (res.status === 'voice_intent_review_ready' && window.zoloAiConversation) {
+                    window.zoloAiConversation.reviewInitialVoice(res);
+                } else if (res.status === 'voice_reply_ready' && window.zoloAiConversation) {
+                    window.zoloAiConversation.reviewVoice(res);
+                } else if (res.status === 'supplier_photo_review_ready' && window.zoloAiConversation) {
+                    window.zoloAiConversation.reviewSupplierPhoto(res);
+                } else if (res.status === 'incomplete_extraction' && res.media && res.extraction) {
+                    renderExtractionCard(res.media, res.extraction, entry?.companionText || null);
+                } else {
+                    renderUnifiedWorkflowCard(res, entry?.companionText || null, entry?.stagedRef || null);
+                }
+                if (ws && ws.loadTelemetry) ws.loadTelemetry();
+                if (ws && ws.loadCreditsBalance) ws.loadCreditsBalance();
+            },
+        });
+    }
+
+    const progressController = createProgressController();
+
     function clearScopedMediaState() {
         activeScopeEpoch += 1;
+        if (progressController) {
+            progressController.disposeAll();
+        }
         clearStagedAttachment();
         attachedMedia.clear();
         renderAttachedChips();
-        $('.ai-unified-workflow-wrap, .ai-media-review-bubble, .ai-decision-card-wrap').remove();
+        $('.ai-unified-workflow-wrap, .ai-media-review-bubble, .ai-decision-card-wrap, .ai-media-progress-wrap').remove();
     }
 
     $(document).on('zolo:ai:scope-changed', function () {
@@ -405,150 +443,216 @@
             ws.appendMessage('user', promptText, null, null, null, [targetStaged]);
         }
 
-        const placeholderId = 'ai-media-loading-' + Date.now();
-        const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
-        const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
-            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Validating document, resolving records, and automatically preparing ERP proposal with ' + escapeText(perceptionName) + '...</div>');
-        $('.ai-welcome-box').remove();
-        $('#chat-messages').append(loadingCard);
-        $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
-
-        function prepareInThread(effectiveThreadId) {
-        const fd = new FormData();
-        fd.append('file', targetStaged.file, targetStaged.fileName);
-        fd.append('prepare_now', '1');
-        if (companionText) {
-            fd.append('companion_text', companionText);
-        }
-        if (effectiveThreadId) {
-            fd.append('thread_id', effectiveThreadId);
-        }
-        const replyTask = window.zoloAiConversation?.getActiveTask();
-        if (replyTask && (targetStaged.isAudio || replyTask.action_key === 'setup.supplier.create.v1')) {
-            fd.append('workflow_task_id', replyTask.task_id);
-            fd.append('expected_task_revision', replyTask.task_revision);
-        }
-
-        const prepareEpoch = activeScopeEpoch;
-        $.ajax({
-            url: mediaUrl('/prepare'),
-            method: 'POST',
-            headers: baseHeaders(false),
-            data: fd,
-            processData: false,
-            contentType: false,
-            success: function (res) {
-                $('#' + placeholderId).remove();
-                if (targetStaged.previewUrl) {
-                    try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
-                }
-                if (!isResponseCurrent(prepareEpoch, res?.media?.thread_id)) {
-                    return;
-                }
-                try {
-                    if (res.status === 'voice_intent_review_ready' && window.zoloAiConversation) {
-                        window.zoloAiConversation.reviewInitialVoice(res);
-                    } else if (res.status === 'voice_reply_ready' && window.zoloAiConversation) {
-                        window.zoloAiConversation.reviewVoice(res);
-                    } else if (res.status === 'supplier_photo_review_ready' && window.zoloAiConversation) {
-                        window.zoloAiConversation.reviewSupplierPhoto(res);
-                    } else if (targetStaged.isAudio && cfg.conversationEnabled) {
-                        throw new Error('Voice instruction requires explicit transcript review. No ERP action was staged.');
-                    } else {
-                        renderUnifiedWorkflowCard(res, companionText, targetStaged);
-                    }
-                    if (ws && ws.loadTelemetry) {
-                        ws.loadTelemetry();
-                    }
-                } catch (cardErr) {
-                    console.error('Error rendering unified workflow card:', cardErr);
-                    if (ws && ws.appendMessage) {
-                        ws.appendMessage('assistant', 'Could not display the verified ERP workflow: ' + (cardErr.message || 'Unknown error'));
-                    }
-                } finally {
-                    if (callback) callback(null, res);
-                }
-            },
-            error: function (xhr) {
-                $('#' + placeholderId).remove();
-                try {
-                    const err = xhr.responseJSON || {};
-                    const code = err.error_code || ('HTTP_' + xhr.status);
-                    const msg = err.error_message || err.message || 'Media upload or preparation failed.';
-                    const details = err.details || {};
-
-                    // UI-01: Preserve staged attachment on upload/extraction failure
-                    if (xhr.status !== 413) {
-                        stagedAttachment = targetStaged;
-                        renderAttachedChips();
-                    } else if (targetStaged.previewUrl) {
+        function submitAsyncInThread(effectiveThreadId) {
+            progressController.submitAsync(
+                targetStaged,
+                companionText,
+                effectiveThreadId,
+                $('#chat-messages'),
+                function (snapshot) {
+                    if (targetStaged.previewUrl) {
                         try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
                     }
-
-                    let errMsg = '[' + code + '] ' + msg;
-                    if (details.failures && Array.isArray(details.failures) && details.failures.length > 0) {
-                        const failCodes = details.failures.map(function (f) { return 'P' + f.page + ':' + f.error_code; }).join(', ');
-                        errMsg += ' (' + failCodes + ')';
+                    if (callback) callback(null, snapshot);
+                },
+                function (xhr) {
+                    if (xhr && xhr.status && xhr.status !== 413 && xhr.status !== 0 && xhr.status !== 502 && xhr.status !== 504) {
+                        stagedAttachment = targetStaged;
+                        renderAttachedChips();
                     }
+                    if (callback) callback(xhr?.responseJSON || new Error('Upload could not be admitted.'));
+                }
+            );
+        }
 
-                    if (ws && ws.appendMessage) {
-                        const msgEl = ws.appendMessage('assistant', errMsg);
+        function prepareSyncInThread(effectiveThreadId) {
+            const placeholderId = 'ai-media-loading-' + Date.now();
+            const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
+                .append($('<div class="chat-bubble chat-assistant shadow-sm small"></div>')
+                    .append('<span class="spinner-border spinner-border-sm mr-2" role="status"></span>')
+                    .append($('<span></span>').text('Processing attachment ' + (targetStaged.fileName || '') + '…')));
+            $('.ai-welcome-box').remove();
+            $('#chat-messages').append(loadingCard);
+            $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
-                        // UI-02: Add Retry Preparation on existing valid media object
-                        if (details.media_id && details.is_retryable !== false) {
-                            const retryBtn = $('<button type="button" class="btn btn-sm btn-outline-primary mt-2 d-inline-flex align-items-center"><i class="dripicons-clockwise mr-1"></i> Retry Preparation</button>');
-                            retryBtn.on('click', function () {
-                                retryBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Retrying...');
-                                retryPreparation(details.media_id, companionText, function () {
-                                    retryBtn.remove();
+            const fd = new FormData();
+            fd.append('file', targetStaged.file, targetStaged.fileName);
+            fd.append('prepare_now', '1');
+            if (companionText) {
+                fd.append('companion_text', companionText);
+            }
+            if (effectiveThreadId) {
+                fd.append('thread_id', effectiveThreadId);
+            }
+            const replyTask = window.zoloAiConversation?.getActiveTask();
+            if (replyTask && (targetStaged.isAudio || replyTask.action_key === 'setup.supplier.create.v1')) {
+                fd.append('workflow_task_id', replyTask.task_id);
+                fd.append('expected_task_revision', replyTask.task_revision);
+            }
+
+            const prepareEpoch = activeScopeEpoch;
+            $.ajax({
+                url: mediaUrl('/prepare'),
+                method: 'POST',
+                headers: baseHeaders(false),
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function (res) {
+                    $('#' + placeholderId).remove();
+                    if (targetStaged.previewUrl) {
+                        try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
+                    }
+                    if (!isResponseCurrent(prepareEpoch, res?.media?.thread_id)) {
+                        return;
+                    }
+                    try {
+                        if (res.status === 'voice_intent_review_ready' && window.zoloAiConversation) {
+                            window.zoloAiConversation.reviewInitialVoice(res);
+                        } else if (res.status === 'voice_reply_ready' && window.zoloAiConversation) {
+                            window.zoloAiConversation.reviewVoice(res);
+                        } else if (res.status === 'supplier_photo_review_ready' && window.zoloAiConversation) {
+                            window.zoloAiConversation.reviewSupplierPhoto(res);
+                        } else if (targetStaged.isAudio && cfg.conversationEnabled) {
+                            throw new Error('Voice instruction requires explicit transcript review. No ERP action was staged.');
+                        } else {
+                            renderUnifiedWorkflowCard(res, companionText, targetStaged);
+                        }
+                        if (ws && ws.loadTelemetry) {
+                            ws.loadTelemetry();
+                        }
+                    } catch (cardErr) {
+                        console.error('Error rendering unified workflow card:', cardErr);
+                        if (ws && ws.appendMessage) {
+                            ws.appendMessage('assistant', 'Could not display the verified ERP workflow: ' + (cardErr.message || 'Unknown error'));
+                        }
+                    } finally {
+                        if (callback) callback(null, res);
+                    }
+                },
+                error: function (xhr) {
+                    $('#' + placeholderId).remove();
+                    try {
+                        const err = xhr.responseJSON || {};
+                        const code = err.error_code || ('HTTP_' + xhr.status);
+                        const msg = err.error_message || err.message || 'Media upload or preparation failed.';
+                        const details = err.details || {};
+
+                        if (xhr.status !== 413) {
+                            stagedAttachment = targetStaged;
+                            renderAttachedChips();
+                        } else if (targetStaged.previewUrl) {
+                            try { URL.revokeObjectURL(targetStaged.previewUrl); } catch (_) {}
+                        }
+
+                        let errMsg = '[' + code + '] ' + msg;
+                        if (details.failures && Array.isArray(details.failures) && details.failures.length > 0) {
+                            const failCodes = details.failures.map(function (f) { return 'P' + f.page + ':' + f.error_code; }).join(', ');
+                            errMsg += ' (' + failCodes + ')';
+                        }
+
+                        if (ws && ws.appendMessage) {
+                            const msgEl = ws.appendMessage('assistant', errMsg);
+                            if (details.media_id && details.is_retryable !== false) {
+                                const retryBtn = $('<button type="button" class="btn btn-sm btn-outline-primary mt-2 d-inline-flex align-items-center"><i class="dripicons-clockwise mr-1"></i> Retry Preparation</button>');
+                                retryBtn.on('click', function () {
+                                    retryBtn.prop('disabled', true).text('Retrying...');
+                                    retryPreparation(details.media_id, companionText, function () {
+                                        retryBtn.remove();
+                                    });
                                 });
-                            });
-                            if (msgEl && msgEl.find) {
-                                msgEl.find('.chat-bubble').append($('<div class="mt-2"></div>').append(retryBtn));
+                                if (msgEl && msgEl.find) {
+                                    msgEl.find('.chat-bubble').append($('<div class="mt-2"></div>').append(retryBtn));
+                                }
                             }
                         }
+                    } finally {
+                        if (callback) callback(xhr.responseJSON || new Error('Upload or preparation failed'));
                     }
-                } finally {
-                    if (callback) callback(xhr.responseJSON || new Error('Upload or preparation failed'));
                 }
-            }
-        });
-        } // prepareInThread
+            });
+        }
 
+        const useAsyncPath = Boolean(cfg.asyncEnabled && progressController);
         const effectiveThreadId = threadId || (ws && ws.getCurrentThreadId && ws.getCurrentThreadId());
-        if (targetStaged.isAudio && cfg.conversationEnabled && !effectiveThreadId) {
+
+        if ((targetStaged.isAudio && cfg.conversationEnabled && !effectiveThreadId) || (useAsyncPath && !effectiveThreadId)) {
             $.ajax({
                 url: resolveAiBaseUrl() + '/threads',
                 method: 'POST',
                 headers: baseHeaders(true),
-                data: JSON.stringify({title: 'Voice instruction'}),
+                data: JSON.stringify({ title: targetStaged.isAudio ? 'Voice instruction' : (targetStaged.fileName || 'Attachment') }),
                 success: function (thread) {
-                    ws.setCurrentThreadId(thread.id);
+                    if (ws && ws.setCurrentThreadId) ws.setCurrentThreadId(thread.id);
                     sessionStorage.setItem('ai_active_thread', thread.id);
-                    ws.loadThreads();
-                    prepareInThread(thread.id);
+                    if (ws && ws.loadThreads) ws.loadThreads();
+                    if (useAsyncPath) {
+                        submitAsyncInThread(thread.id);
+                    } else {
+                        prepareSyncInThread(thread.id);
+                    }
                 },
                 error: function (xhr) {
-                    $('#' + placeholderId).remove();
                     stagedAttachment = targetStaged;
                     renderAttachedChips();
                     if (ws && ws.appendMessage) {
-                        ws.appendMessage('assistant', 'Unable to create a scoped conversation for this voice note. No ERP action was staged.');
+                        ws.appendMessage('assistant', 'Unable to create a scoped conversation for this attachment.');
                     }
                     if (callback) callback(xhr.responseJSON || new Error('Conversation creation failed'));
                 },
             });
             return;
         }
-        prepareInThread(effectiveThreadId);
+
+        if (useAsyncPath) {
+            submitAsyncInThread(effectiveThreadId);
+        } else {
+            prepareSyncInThread(effectiveThreadId);
+        }
     }
 
     function retryPreparation(mediaId, companionText, onDone) {
         const ws = getWs();
+        if (cfg.asyncEnabled && progressController) {
+            const clientRequestId = (window.crypto && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : ('retry-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+            const entry = progressController.mountCard({
+                clientRequestId: clientRequestId,
+                fileName: 'Saved attachment',
+                companionText: companionText,
+            }, $('#chat-messages'));
+            $.ajax({
+                url: (cfg.processingTasksUrl || mediaUrl('/processing-tasks')),
+                method: 'POST',
+                headers: baseHeaders(true),
+                data: JSON.stringify({
+                    media_id: mediaId,
+                    thread_id: (ws && ws.getCurrentThreadId && ws.getCurrentThreadId()) || null,
+                    companion_text: companionText || null,
+                    client_request_id: clientRequestId,
+                    force: true,
+                }),
+                success: function (res) {
+                    if (onDone) onDone();
+                    clearStagedAttachment();
+                    progressController.applySnapshot(entry, res);
+                },
+                error: function (xhr) {
+                    if (onDone) onDone();
+                    entry.wrap.remove();
+                    const err = xhr.responseJSON || {};
+                    if (ws && ws.appendMessage) {
+                        ws.appendMessage('assistant', '[' + (err.error_code || 'HTTP_' + xhr.status) + '] ' + (err.error_message || err.message || 'Retry preparation failed.'));
+                    }
+                }
+            });
+            return;
+        }
+
         const placeholderId = 'ai-media-loading-' + Date.now();
-        const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
         const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
-            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Retrying preparation with ' + escapeText(perceptionName) + '...</div>');
+            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Retrying document preparation…</div>');
         $('#chat-messages').append(loadingCard);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
@@ -584,10 +688,14 @@
 
     function retryExtraction(mediaId, companionText, onDone) {
         const ws = getWs();
+        if (cfg.asyncEnabled && progressController) {
+            retryPreparation(mediaId, companionText, onDone);
+            return;
+        }
+
         const placeholderId = 'ai-media-loading-' + Date.now();
-        const perceptionName = formatModelDisplayName(cfg.multimodalModel || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia');
         const loadingCard = $('<div class="d-flex mb-3 justify-content-start" id="' + placeholderId + '"></div>')
-            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Retrying extraction with ' + escapeText(perceptionName) + '...</div>');
+            .append('<div class="chat-bubble chat-assistant shadow-sm small"><span class="spinner-border spinner-border-sm mr-2" role="status"></span>Retrying document extraction…</div>');
         $('#chat-messages').append(loadingCard);
         $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
 
@@ -3195,5 +3303,16 @@
         submitStagedAttachment: submitStagedAttachment,
         renderExtractionCard: renderExtractionCard,
         renderUnifiedWorkflowCard: renderUnifiedWorkflowCard,
+        restoreThreadTasks: function (threadId) {
+            if (cfg.asyncEnabled && progressController && threadId) {
+                progressController.restoreThreadTasks(threadId, $('#chat-messages'));
+            }
+        },
+        disposeProgressTasks: function () {
+            activeScopeEpoch += 1;
+            if (progressController) {
+                progressController.disposeAll();
+            }
+        },
     };
 })(jQuery);

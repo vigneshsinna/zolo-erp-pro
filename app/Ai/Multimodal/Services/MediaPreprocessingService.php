@@ -32,10 +32,11 @@ final class MediaPreprocessingService
      *   derivatives: array<int, array{page?: int, local_path: string, mime: string, width?: int, height?: int, size_bytes: int}>,
      *   page_count: ?int,
      *   duration_seconds: ?float,
-     *   staging_dir: string
+     *   staging_dir: string,
+     *   metrics: array<string, mixed>
      * }
      */
-    public function preprocess(string $sourcePath, array $validated): array
+    public function preprocess(string $sourcePath, array $validated, bool $isOpticalProfile = false): array
     {
         $stagingDir = storage_path('app/private/ai_staging/' . Str::uuid());
         if (! is_dir($stagingDir) && ! @mkdir($stagingDir, 0750, true) && ! is_dir($stagingDir)) {
@@ -44,9 +45,9 @@ final class MediaPreprocessingService
 
         try {
             return match ($validated['source_kind']) {
-                'image' => $this->preprocessImage($sourcePath, $validated['original_mime'], $stagingDir),
-                'pdf' => $this->preprocessPdf($sourcePath, $stagingDir),
-                'audio' => $this->preprocessAudio($sourcePath, $validated['original_mime'], $stagingDir),
+                'image' => $this->preprocessImage($sourcePath, $validated['original_mime'], $stagingDir, $validated, $isOpticalProfile),
+                'pdf' => $this->preprocessPdf($sourcePath, $stagingDir, $validated),
+                'audio' => $this->preprocessAudio($sourcePath, $validated['original_mime'], $stagingDir, $validated),
                 default => throw MultimodalException::unsupportedMime($validated['original_mime']),
             };
         } catch (Throwable $e) {
@@ -79,29 +80,52 @@ final class MediaPreprocessingService
     /**
      * Re-encode images cleanly via Intervention Image v3 so EXIF, GPS, comments,
      * and any trailing polyglot payloads are physically removed.
+     * Preserves lossless PNG for optical grids/powers so signed decimals never blur.
      *
-     * @return array{canonical_mime: string, canonical_path: string, derivatives: array<int, array<string, mixed>>, page_count: int, duration_seconds: null, staging_dir: string}
+     * @param array<string, mixed> $validated
+     * @return array{canonical_mime: string, canonical_path: string, derivatives: array<int, array<string, mixed>>, page_count: int, duration_seconds: null, staging_dir: string, metrics: array<string, mixed>}
      */
-    private function preprocessImage(string $sourcePath, string $originalMime, string $stagingDir): array
+    private function preprocessImage(string $sourcePath, string $originalMime, string $stagingDir, array $validated = [], bool $isOpticalProfile = false): array
     {
+        $startedAt = microtime(true);
         $maxDim = max(512, (int) config('ai_multimodal.max_image_dimension', 2048));
-        $targetMime = $originalMime === 'image/png' ? 'image/png' : 'image/jpeg';
+        $origBytes = (int) ($validated['size_bytes'] ?? (@filesize($sourcePath) ?: 0));
+        $adaptiveJpeg = (bool) config('ai_multimodal.adaptive_jpeg_for_photos', false);
+
+        if ($originalMime === 'image/png' && $adaptiveJpeg && ! $isOpticalProfile && $origBytes > 2_097_152) {
+            $targetMime = 'image/jpeg';
+            $formatStrategy = 'adaptive_jpeg_q90';
+        } elseif ($originalMime === 'image/png') {
+            $targetMime = 'image/png';
+            $formatStrategy = 'lossless_png';
+        } else {
+            $targetMime = 'image/jpeg';
+            $formatStrategy = 'jpeg_q88';
+        }
+
         $ext = $targetMime === 'image/png' ? 'png' : 'jpg';
         $outputPath = $stagingDir . DIRECTORY_SEPARATOR . 'canonical.' . $ext;
 
         try {
             $manager = $this->createImageManager();
-            $image = $manager->read($sourcePath)->orient()->scaleDown($maxDim, $maxDim);
+            $image = $manager->read($sourcePath)->orient();
+            $origWidth = (int) ($validated['width'] ?? $image->width());
+            $origHeight = (int) ($validated['height'] ?? $image->height());
+            $image = $image->scaleDown($maxDim, $maxDim);
             $encoded = $targetMime === 'image/png'
                 ? $image->toPng()
-                : $image->toJpeg(88);
+                : $image->toJpeg($formatStrategy === 'adaptive_jpeg_q90' ? 90 : 88);
 
             $encoded->save($outputPath);
             $width = $image->width();
             $height = $image->height();
+            unset($encoded, $image);
         } catch (Throwable) {
             throw MultimodalException::corruptedMedia('Image decoding failed during sanitization.');
         }
+
+        $derivativeBytes = (int) (@filesize($outputPath) ?: 0);
+        $encodingMs = max(1, (int) round((microtime(true) - $startedAt) * 1000));
 
         return [
             'canonical_mime' => $targetMime,
@@ -112,19 +136,32 @@ final class MediaPreprocessingService
                 'mime' => $targetMime,
                 'width' => $width,
                 'height' => $height,
-                'size_bytes' => (int) filesize($outputPath),
+                'size_bytes' => $derivativeBytes,
             ]],
             'page_count' => 1,
             'duration_seconds' => null,
             'staging_dir' => $stagingDir,
+            'metrics' => [
+                'source_kind' => 'image',
+                'original_bytes' => $origBytes,
+                'original_width' => $origWidth,
+                'original_height' => $origHeight,
+                'derivative_bytes' => $derivativeBytes,
+                'derivative_width' => $width,
+                'derivative_height' => $height,
+                'encoding_ms' => $encodingMs,
+                'format_strategy' => $formatStrategy,
+            ],
         ];
     }
 
     /**
-     * @return array{canonical_mime: string, canonical_path: string, derivatives: array<int, array<string, mixed>>, page_count: int, duration_seconds: null, staging_dir: string}
+     * @param array<string, mixed> $validated
+     * @return array{canonical_mime: string, canonical_path: string, derivatives: array<int, array<string, mixed>>, page_count: int, duration_seconds: null, staging_dir: string, metrics: array<string, mixed>}
      */
-    private function preprocessPdf(string $sourcePath, string $stagingDir): array
+    private function preprocessPdf(string $sourcePath, string $stagingDir, array $validated = []): array
     {
+        $startedAt = microtime(true);
         $maxPages = max(1, (int) config('ai_multimodal.max_pdf_pages', 5));
         $dpi = max(100, min(300, (int) config('ai_multimodal.pdf_rasterizer.dpi', 175)));
         $maxDim = max(512, (int) config('ai_multimodal.max_image_dimension', 2048));
@@ -134,19 +171,25 @@ final class MediaPreprocessingService
 
         $manager = $this->createImageManager();
         $derivatives = [];
+        $totalDerivativeBytes = 0;
         foreach ($rasterized['page_paths'] as $index => $pagePath) {
             $pageNum = $index + 1;
             $normalizedPath = $stagingDir . DIRECTORY_SEPARATOR . "page_{$pageNum}.jpg";
             $img = $manager->read($pagePath)->scaleDown($maxDim, $maxDim);
             $img->toJpeg(88)->save($normalizedPath);
+            $w = $img->width();
+            $h = $img->height();
+            unset($img);
 
+            $bytes = (int) (@filesize($normalizedPath) ?: 0);
+            $totalDerivativeBytes += $bytes;
             $derivatives[] = [
                 'page' => $pageNum,
                 'local_path' => $normalizedPath,
                 'mime' => 'image/jpeg',
-                'width' => $img->width(),
-                'height' => $img->height(),
-                'size_bytes' => (int) filesize($normalizedPath),
+                'width' => $w,
+                'height' => $h,
+                'size_bytes' => $bytes,
             ];
         }
 
@@ -157,14 +200,25 @@ final class MediaPreprocessingService
             'page_count' => (int) $rasterized['page_count'],
             'duration_seconds' => null,
             'staging_dir' => $stagingDir,
+            'metrics' => [
+                'source_kind' => 'pdf',
+                'original_bytes' => (int) ($validated['size_bytes'] ?? (@filesize($sourcePath) ?: 0)),
+                'derivative_bytes' => $totalDerivativeBytes,
+                'page_count' => (int) $rasterized['page_count'],
+                'dpi' => $dpi,
+                'encoding_ms' => max(1, (int) round((microtime(true) - $startedAt) * 1000)),
+                'format_strategy' => 'pdf_raster_jpeg_q88',
+            ],
         ];
     }
 
     /**
-     * @return array{canonical_mime: string, canonical_path: string, derivatives: array<int, array<string, mixed>>, page_count: null, duration_seconds: float, staging_dir: string}
+     * @param array<string, mixed> $validated
+     * @return array{canonical_mime: string, canonical_path: string, derivatives: array<int, array<string, mixed>>, page_count: null, duration_seconds: float, staging_dir: string, metrics: array<string, mixed>}
      */
-    private function preprocessAudio(string $sourcePath, string $originalMime, string $stagingDir): array
+    private function preprocessAudio(string $sourcePath, string $originalMime, string $stagingDir, array $validated = []): array
     {
+        $startedAt = microtime(true);
         $maxDuration = max(5, (int) config('ai_multimodal.max_audio_seconds', 120));
         $wavPath = $stagingDir . DIRECTORY_SEPARATOR . 'canonical.wav';
 
@@ -174,6 +228,7 @@ final class MediaPreprocessingService
             outputWavPath: $wavPath,
             maxDurationSeconds: $maxDuration,
         );
+        $derivativeBytes = (int) (@filesize($transcoded['wav_path']) ?: 0);
 
         return [
             'canonical_mime' => 'audio/wav',
@@ -182,11 +237,19 @@ final class MediaPreprocessingService
                 'page' => 1,
                 'local_path' => $transcoded['wav_path'],
                 'mime' => 'audio/wav',
-                'size_bytes' => (int) filesize($transcoded['wav_path']),
+                'size_bytes' => $derivativeBytes,
             ]],
             'page_count' => null,
             'duration_seconds' => (float) $transcoded['duration_seconds'],
             'staging_dir' => $stagingDir,
+            'metrics' => [
+                'source_kind' => 'audio',
+                'original_bytes' => (int) ($validated['size_bytes'] ?? (@filesize($sourcePath) ?: 0)),
+                'derivative_bytes' => $derivativeBytes,
+                'duration_seconds' => (float) $transcoded['duration_seconds'],
+                'encoding_ms' => max(1, (int) round((microtime(true) - $startedAt) * 1000)),
+                'format_strategy' => 'wav_16k_mono',
+            ],
         ];
     }
 

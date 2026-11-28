@@ -307,6 +307,11 @@ Route::prefix('v1')->group(function () {
 
             // Phase 2.3: Private Multimodal Uploads, Perception & Revisioned Extractions
             Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
+                Route::get('processing-tasks', 'listProcessingTasks')->name('api.v1.ai.media.processing-tasks.index');
+                Route::post('processing-tasks', 'createProcessingTask')->name('api.v1.ai.media.processing-tasks.store');
+                Route::get('processing-tasks/{taskId}', 'showProcessingTask')->whereUuid('taskId')->name('api.v1.ai.media.processing-tasks.show');
+                Route::post('processing-tasks/{taskId}/retry', 'retryProcessingTask')->whereUuid('taskId')->name('api.v1.ai.media.processing-tasks.retry');
+                Route::post('processing-tasks/{taskId}/cancel', 'cancelProcessingTask')->whereUuid('taskId')->name('api.v1.ai.media.processing-tasks.cancel');
                 Route::post('/', 'store')->name('api.v1.ai.media.store');
                 Route::post('prepare', 'prepare')->name('api.v1.ai.media.prepare');
                 Route::get('{id}', 'show')->whereUuid('id')->name('api.v1.ai.media.show');

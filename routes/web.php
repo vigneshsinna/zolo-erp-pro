@@ -257,6 +257,11 @@ Route::middleware(['auth', 'company.context'])->prefix('ai')->name('ai.')->group
 
     // Phase 2.3: Multimodal Uploads, Preview & Extractions (Session-authenticated workspace routes)
     Route::prefix('media')->controller(\App\Http\Controllers\Api\V1\AiMediaController::class)->group(function () {
+        Route::get('processing-tasks', 'listProcessingTasks')->name('media.processing-tasks.index');
+        Route::post('processing-tasks', 'createProcessingTask')->name('media.processing-tasks.store');
+        Route::get('processing-tasks/{taskId}', 'showProcessingTask')->whereUuid('taskId')->name('media.processing-tasks.show');
+        Route::post('processing-tasks/{taskId}/retry', 'retryProcessingTask')->whereUuid('taskId')->name('media.processing-tasks.retry');
+        Route::post('processing-tasks/{taskId}/cancel', 'cancelProcessingTask')->whereUuid('taskId')->name('media.processing-tasks.cancel');
         Route::post('/', 'store')->name('media.store');
         Route::post('prepare', 'prepare')->name('media.prepare');
         Route::get('{id}', 'show')->whereUuid('id')->name('media.show');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs\Ai;
 
 use App\Models\AiMediaAsset;
+use App\Models\AiMediaProcessingTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -38,9 +39,19 @@ final class CleanupExpiredMediaJob implements ShouldQueue
                         'state' => 'purged',
                         'deleted_at_policy' => now('UTC'),
                     ]);
+                    AiMediaProcessingTask::query()
+                        ->where('media_id', $asset->id)
+                        ->update(['companion_text_encrypted' => null]);
                     $purged++;
                 }
             });
+
+        $abandonedCutoff = now('UTC')->subHours(max(1, (int) config('ai_multimodal.async.abandoned_task_ttl_hours', 24)));
+        AiMediaProcessingTask::query()
+            ->whereNotNull('companion_text_encrypted')
+            ->whereIn('state', ['failed', 'cancelled', 'expired'])
+            ->where('updated_at', '<=', $abandonedCutoff)
+            ->update(['companion_text_encrypted' => null]);
 
         return $purged;
     }
@@ -51,6 +62,9 @@ final class CleanupExpiredMediaJob implements ShouldQueue
             $disk = Storage::disk($asset->private_disk);
             if ($asset->private_key !== '' && $disk->exists($asset->private_key)) {
                 $disk->delete($asset->private_key);
+            }
+            if (! empty($asset->raw_private_key) && $asset->raw_private_key !== $asset->private_key && $disk->exists($asset->raw_private_key)) {
+                $disk->delete($asset->raw_private_key);
             }
 
             foreach ((array) $asset->derivatives_json as $deriv) {

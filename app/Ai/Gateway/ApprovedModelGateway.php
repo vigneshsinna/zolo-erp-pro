@@ -216,6 +216,7 @@ class ApprovedModelGateway
      * Reserve tokens, enforce the shared NVIDIA RPM bucket, execute perception, and meter usage.
      *
      * @param Closure(string, string): PerceptionResult $callback
+     * @param array<string, mixed> $options
      */
     public function admitPerceptionDispatch(
         AiPrincipal $principal,
@@ -224,6 +225,7 @@ class ApprovedModelGateway
         int $estimatedInputBytes,
         Closure $callback,
         ?string $mediaId = null,
+        array $options = [],
     ): PerceptionResult {
         if (! $purpose->isPerception()) {
             throw new InvalidArgumentException('admitPerceptionDispatch only accepts perception purposes.');
@@ -271,8 +273,16 @@ class ApprovedModelGateway
             $outputLimit,
             imagesCount: 1
         );
-        $attemptId = 'att_' . Str::uuid();
-        $idempotencyKey = 'res_perc_' . ($mediaId ?: Str::uuid()) . '_' . $attemptId;
+        $attemptId = isset($options['provider_attempt_id']) && is_string($options['provider_attempt_id']) && $options['provider_attempt_id'] !== ''
+            ? $options['provider_attempt_id']
+            : ('att_' . Str::uuid());
+        $idempotencyKey = isset($options['reservation_idempotency_key']) && is_string($options['reservation_idempotency_key']) && $options['reservation_idempotency_key'] !== ''
+            ? $options['reservation_idempotency_key']
+            : ('res_perc_' . ($mediaId ?: Str::uuid()) . '_' . $attemptId);
+        $mediaTaskId = isset($options['media_task_id']) && is_string($options['media_task_id']) ? $options['media_task_id'] : null;
+        $pageNumber = max(1, (int) ($options['page_number'] ?? 1));
+        $attemptNumber = max(1, (int) ($options['attempt_number'] ?? 1));
+
         $creditReservation = $this->creditMeter->reserve(
             $principal,
             $principal->requestId,
@@ -283,12 +293,53 @@ class ApprovedModelGateway
             $estimatedCredits
         );
 
-        $start = microtime(true);
+        $invocationRowId = (string) Str::uuid();
+        $attemptRowId = null;
 
         try {
             $this->enforceProviderRateLimit($provider);
 
-            $result = $callback($provider, $model);
+            if ($mediaTaskId !== null && $mediaId !== null) {
+                $attemptRowId = $this->upsertMediaProviderAttempt(
+                    taskId: $mediaTaskId,
+                    companyId: $principal->companyId,
+                    mediaId: $mediaId,
+                    pageNumber: $pageNumber,
+                    attemptNumber: $attemptNumber,
+                    provider: $provider,
+                    model: $model,
+                    providerAttemptId: $attemptId,
+                    reservationId: $creditReservation->id,
+                );
+            }
+
+            $this->insertRunningModelInvocation(
+                id: $invocationRowId,
+                principal: $principal,
+                provider: $provider,
+                model: $model,
+                purpose: $purpose->value,
+                mediaId: $mediaId,
+                providerAttemptId: $attemptId,
+                reservationId: $creditReservation->id,
+            );
+        } catch (Throwable $preflightError) {
+            $this->settleStep($principal, $date, $reserved, new TextUsage());
+            $this->creditMeter->releaseUnsent($creditReservation->id, 'perception_preflight_aborted');
+            if ($attemptRowId !== null) {
+                $this->updateMediaProviderAttempt($attemptRowId, [
+                    'status' => $preflightError instanceof TooManyRequestsHttpException ? 'retry_scheduled' : 'failed',
+                    'error_code' => $preflightError instanceof TooManyRequestsHttpException ? 'RATE_LIMITED' : class_basename($preflightError),
+                    'finished_at' => now('UTC'),
+                ]);
+            }
+            throw $preflightError;
+        }
+
+        $start = microtime(true);
+
+        try {
+            $result = $callback($provider, $model, $attemptId);
             $durationMs = max(1, $result->durationMs > 0 ? $result->durationMs : (int) round((microtime(true) - $start) * 1000));
 
             $this->settleStep(
@@ -310,20 +361,17 @@ class ApprovedModelGateway
                 isChargeable: true
             );
 
-            $this->recordModelInvocation(
-                $principal,
-                1,
-                $provider,
-                $model,
-                'completed',
-                $result->inputTokens,
-                $result->outputTokens,
-                $durationMs,
+            $this->finalizeModelInvocation(
+                id: $invocationRowId,
+                principal: $principal,
+                provider: $provider,
+                model: $model,
+                status: 'completed',
+                inputTokens: $result->inputTokens,
+                outputTokens: $result->outputTokens,
+                durationMs: $durationMs,
+                errorMessage: null,
                 httpAttempts: $result->httpAttempts,
-                modelPurpose: $purpose->value,
-                mediaId: $mediaId,
-                providerAttemptId: $attemptId,
-                reservationId: $creditReservation->id,
                 billingAccountId: $settlement->accountId,
                 chargeStatus: $settlement->status,
                 rateCardVersion: $settlement->rateCardVersion,
@@ -332,38 +380,262 @@ class ApprovedModelGateway
                 creditsDebited: $settlement->creditsDebited,
             );
 
+            if ($attemptRowId !== null) {
+                $this->updateMediaProviderAttempt($attemptRowId, [
+                    'status' => 'responded',
+                    'provider_request_id' => $result->providerRequestId,
+                    'http_status' => 200,
+                    'input_tokens' => $result->inputTokens,
+                    'output_tokens' => $result->outputTokens,
+                    'duration_ms' => $durationMs,
+                    'finished_at' => now('UTC'),
+                ]);
+            }
+
             return $result;
         } catch (Throwable $e) {
             $this->settleStep($principal, $date, $reserved, new TextUsage());
-            $this->creditMeter->releaseUnsent($creditReservation->id, 'perception_failed');
 
             $durationMs = (int) round((microtime(true) - $start) * 1000);
             $errorCode = $e instanceof MultimodalException ? $e->errorCode : class_basename($e);
             $errorMessage = $errorCode . ': ' . substr($e->getMessage(), 0, 200);
             $httpAttempts = ($e instanceof MultimodalException && isset($e->details['http_attempts']))
-                ? max(1, (int) $e->details['http_attempts'])
+                ? max(0, (int) $e->details['http_attempts'])
                 : 1;
+            $requestSent = $e instanceof MultimodalException && ! empty($e->details['request_sent']);
+            $isUncertain = $requestSent && $e instanceof MultimodalException && in_array($e->errorCode, [
+                'PROVIDER_TIMEOUT',
+                'PERCEPTION_PROVIDER_UNAVAILABLE',
+                'PROVIDER_CONNECTION_FAILED',
+            ], true);
 
-            $this->recordModelInvocation(
+            if ($isUncertain) {
+                if ((bool) config('ai_credits.enabled', true)) {
+                    DB::table('ai_credit_reservations')
+                        ->where('id', $creditReservation->id)
+                        ->where('status', 'active')
+                        ->update([
+                            'status' => 'unknown_billability',
+                            'updated_at' => now(),
+                        ]);
+                }
+                $chargeStatus = 'unknown_billability';
+                $invStatus = 'uncertain';
+                $attStatus = 'uncertain';
+            } else {
+                $this->creditMeter->releaseUnsent($creditReservation->id, 'perception_' . strtolower($errorCode));
+                $chargeStatus = 'released';
+                $invStatus = 'failed';
+                $attStatus = $errorCode === 'RATE_LIMITED' ? 'retry_scheduled' : 'failed';
+            }
+
+            $this->finalizeModelInvocation(
+                id: $invocationRowId,
+                principal: $principal,
+                provider: $provider,
+                model: $model,
+                status: $invStatus,
+                inputTokens: 0,
+                outputTokens: 0,
+                durationMs: $durationMs,
+                errorMessage: $errorMessage,
+                httpAttempts: $httpAttempts,
+                billingAccountId: null,
+                chargeStatus: $chargeStatus,
+                rateCardVersion: null,
+                fxRateVersion: null,
+                chargeMinorInr: null,
+                creditsDebited: 0,
+            );
+
+            if ($attemptRowId !== null) {
+                $this->updateMediaProviderAttempt($attemptRowId, [
+                    'status' => $attStatus,
+                    'error_code' => $errorCode,
+                    'http_status' => $e instanceof MultimodalException ? $e->httpStatus : null,
+                    'duration_ms' => $durationMs,
+                    'finished_at' => now('UTC'),
+                ]);
+            }
+
+            throw $e;
+        }
+    }
+
+    private function upsertMediaProviderAttempt(
+        string $taskId,
+        int $companyId,
+        string $mediaId,
+        int $pageNumber,
+        int $attemptNumber,
+        string $provider,
+        string $model,
+        string $providerAttemptId,
+        string $reservationId,
+    ): string {
+        $existing = DB::table('ai_media_provider_attempts')
+            ->where('task_id', $taskId)
+            ->where('page_number', $pageNumber)
+            ->where('attempt_number', $attemptNumber)
+            ->first(['id']);
+
+        if ($existing) {
+            DB::table('ai_media_provider_attempts')
+                ->where('id', $existing->id)
+                ->update([
+                    'provider_attempt_id' => $providerAttemptId,
+                    'reservation_id' => $reservationId,
+                    'status' => 'admitted',
+                    'updated_at' => now('UTC'),
+                ]);
+
+            return (string) $existing->id;
+        }
+
+        $id = (string) Str::uuid();
+        DB::table('ai_media_provider_attempts')->insert([
+            'id' => $id,
+            'task_id' => $taskId,
+            'company_id' => $companyId,
+            'media_id' => $mediaId,
+            'page_number' => $pageNumber,
+            'attempt_number' => $attemptNumber,
+            'provider' => $provider,
+            'model_key' => $model,
+            'provider_attempt_id' => $providerAttemptId,
+            'reservation_id' => $reservationId,
+            'status' => 'admitted',
+            'created_at' => now('UTC'),
+            'updated_at' => now('UTC'),
+        ]);
+
+        return $id;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function updateMediaProviderAttempt(string $id, array $fields): void
+    {
+        try {
+            $fields['updated_at'] = now('UTC');
+            DB::table('ai_media_provider_attempts')->where('id', $id)->update($fields);
+        } catch (Throwable) {
+            // Best-effort telemetry update
+        }
+    }
+
+    private function insertRunningModelInvocation(
+        string $id,
+        AiPrincipal $principal,
+        string $provider,
+        string $model,
+        string $purpose,
+        ?string $mediaId,
+        string $providerAttemptId,
+        string $reservationId,
+    ): void {
+        try {
+            DB::table('ai_model_invocations')->insert([
+                'id' => $id,
+                'run_id' => $principal->requestId,
+                'company_id' => $principal->companyId,
+                'step_number' => 1,
+                'provider' => $provider,
+                'model' => $model,
+                'model_purpose' => $purpose,
+                'media_id' => $mediaId,
+                'status' => 'running',
+                'input_tokens' => 0,
+                'output_tokens' => 0,
+                'duration_ms' => 0,
+                'provider_attempt_id' => $providerAttemptId,
+                'reservation_id' => $reservationId,
+                'charge_status' => 'reserved',
+                'credits_debited' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (Throwable) {
+            // Isolated unit tests without DB schema ignore
+        }
+    }
+
+    private function finalizeModelInvocation(
+        string $id,
+        AiPrincipal $principal,
+        string $provider,
+        string $model,
+        string $status,
+        int $inputTokens,
+        int $outputTokens,
+        int $durationMs,
+        ?string $errorMessage,
+        ?int $httpAttempts,
+        ?string $billingAccountId,
+        ?string $chargeStatus,
+        ?string $rateCardVersion,
+        ?string $fxRateVersion,
+        ?int $chargeMinorInr,
+        ?int $creditsDebited,
+    ): void {
+        try {
+            $updated = DB::table('ai_model_invocations')
+                ->where('id', $id)
+                ->update([
+                    'status' => $status,
+                    'input_tokens' => $inputTokens,
+                    'output_tokens' => $outputTokens,
+                    'duration_ms' => $durationMs,
+                    'error_message' => $errorMessage,
+                    'http_attempts' => $httpAttempts,
+                    'billing_account_id' => $billingAccountId,
+                    'charge_status' => $chargeStatus,
+                    'rate_card_version' => $rateCardVersion,
+                    'fx_rate_version' => $fxRateVersion,
+                    'charge_minor_inr' => $chargeMinorInr,
+                    'credits_debited' => $creditsDebited,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated === 0) {
+                $this->recordModelInvocation(
+                    $principal,
+                    1,
+                    $provider,
+                    $model,
+                    $status,
+                    $inputTokens,
+                    $outputTokens,
+                    $durationMs,
+                    $errorMessage,
+                    httpAttempts: $httpAttempts,
+                    billingAccountId: $billingAccountId,
+                    chargeStatus: $chargeStatus,
+                    rateCardVersion: $rateCardVersion,
+                    fxRateVersion: $fxRateVersion,
+                    chargeMinorInr: $chargeMinorInr,
+                    creditsDebited: $creditsDebited,
+                );
+                return;
+            }
+
+            app(\App\Ai\Telemetry\TelemetryDispatcher::class)->recordModel(
                 $principal,
                 1,
                 $provider,
                 $model,
-                'failed',
-                0,
-                0,
+                $status,
+                $inputTokens,
+                $outputTokens,
                 $durationMs,
-                $errorMessage,
-                httpAttempts: $httpAttempts,
-                modelPurpose: $purpose->value,
-                mediaId: $mediaId,
-                providerAttemptId: $attemptId,
-                reservationId: $creditReservation->id,
-                chargeStatus: 'failed',
-                creditsDebited: 0,
+                $httpAttempts,
             );
-
-            throw $e;
+        } catch (Throwable $e) {
+            Log::warning('Failed to finalize AI model invocation telemetry', [
+                'run_id' => $principal->requestId,
+                'exception_type' => $e::class,
+            ]);
         }
     }
 

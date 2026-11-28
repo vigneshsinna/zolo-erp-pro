@@ -27,6 +27,7 @@ final readonly class PerceptionResult
         public ?string $finishReason = null,
         public array $warnings = [],
         public int $httpAttempts = 1,
+        public ?string $providerRequestId = null,
     ) {}
 }
 

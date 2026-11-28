@@ -41,6 +41,23 @@ return [
             'retry_after' => 90,
         ],
 
+        'ai_media_database' => [
+            'driver' => 'database',
+            'table' => 'jobs',
+            'queue' => env('AI_MEDIA_QUEUE_NAME', 'ai-perception'),
+            'retry_after' => max(180, (int) env('AI_MEDIA_QUEUE_RETRY_AFTER', 240)),
+            'after_commit' => false,
+        ],
+
+        'ai_media_redis' => [
+            'driver' => 'redis',
+            'connection' => env('AI_MEDIA_REDIS_CONNECTION', 'default'),
+            'queue' => env('AI_MEDIA_QUEUE_NAME', 'ai-perception'),
+            'retry_after' => max(180, (int) env('AI_MEDIA_QUEUE_RETRY_AFTER', 240)),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => 'localhost',
